@@ -15,31 +15,6 @@ do $$ begin
   create type app.import_status as enum ('preview', 'committed', 'failed');
 exception when duplicate_object then null; end $$;
 
-create or replace function app.is_staff_member()
-returns boolean
-language sql
-stable
-security definer
-set search_path = app, pg_temp
-as $$
-  select exists (
-    select 1 from app.staff_profiles
-    where auth_user_id = auth.uid() and active = true
-  );
-$$;
-
-create or replace function app.staff_role()
-returns app.staff_role
-language sql
-stable
-security definer
-set search_path = app, pg_temp
-as $$
-  select role from app.staff_profiles
-  where auth_user_id = auth.uid() and active = true
-  limit 1;
-$$;
-
 create or replace function app.touch_updated_at()
 returns trigger
 language plpgsql
@@ -91,6 +66,31 @@ create table if not exists app.staff_profiles (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+create or replace function app.is_staff_member()
+returns boolean
+language sql
+stable
+security definer
+set search_path = app, pg_temp
+as $$
+  select exists (
+    select 1 from app.staff_profiles
+    where auth_user_id = auth.uid() and active = true
+  );
+$$;
+
+create or replace function app.staff_role()
+returns app.staff_role
+language sql
+stable
+security definer
+set search_path = app, pg_temp
+as $$
+  select role from app.staff_profiles
+  where auth_user_id = auth.uid() and active = true
+  limit 1;
+$$;
 
 create table if not exists app.import_batches (
   id uuid primary key default gen_random_uuid(),
