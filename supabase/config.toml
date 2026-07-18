@@ -1,0 +1,13 @@
+project_id = "duindorp-tenueportaal-local"
+
+[api]
+port = 54329
+
+[db]
+port = 54339
+
+[studio]
+port = 54349
+
+[inbucket]
+port = 54359
