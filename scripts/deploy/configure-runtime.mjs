@@ -93,7 +93,6 @@ const emailEnabled = booleanFlag("EMAIL_ENABLED");
 const sendGridApiKey = optional("SENDGRID_API_KEY");
 const sendGridFromEmail = optional("SENDGRID_FROM_EMAIL");
 const sendGridReplyToEmail = optional("SENDGRID_REPLY_TO_EMAIL");
-const sendGridTemplateId = optional("SENDGRID_PARENT_OTP_TEMPLATE_ID");
 const sendGridWebhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 
 if (emailEnabled === "true") {
@@ -101,7 +100,6 @@ if (emailEnabled === "true") {
     ["SENDGRID_API_KEY", sendGridApiKey],
     ["SENDGRID_FROM_EMAIL", sendGridFromEmail],
     ["SENDGRID_REPLY_TO_EMAIL", sendGridReplyToEmail],
-    ["SENDGRID_PARENT_OTP_TEMPLATE_ID", sendGridTemplateId],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", sendGridWebhookKey],
   ]) {
     if (!candidate) errors.push(`${name} is verplicht wanneer e-mail actief is`);
@@ -154,7 +152,6 @@ const runtime = {
   SENDGRID_API_KEY: sendGridApiKey,
   SENDGRID_FROM_EMAIL: sendGridFromEmail,
   SENDGRID_REPLY_TO_EMAIL: sendGridReplyToEmail,
-  SENDGRID_PARENT_OTP_TEMPLATE_ID: sendGridTemplateId,
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: sendGridWebhookKey,
   RELEASE_SHA: deploySha,
 };

@@ -49,7 +49,6 @@ Maak iedere variable via **Settings → Secrets and variables → Actions → Va
 | `<PREFIX>_EMAIL_ENABLED` | `false` | Harde providergrens; eerst uit |
 | `<PREFIX>_SENDGRID_FROM_EMAIL` | Leeg tot configuratie gereed is | Geverifieerde afzender |
 | `<PREFIX>_SENDGRID_REPLY_TO_EMAIL` | Leeg tot configuratie gereed is | Operationeel antwoordadres |
-| `<PREFIX>_SENDGRID_PARENT_OTP_TEMPLATE_ID` | Leeg tot configuratie gereed is | SendGrid dynamic-template-ID |
 | `<PREFIX>_SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | Leeg tot webhook gereed is | PEM met letterlijke `\n`, of DER als base64 |
 
 Maak alle namen tweemaal met `<PREFIX>` gelijk aan `STAGING` en `PRODUCTION`. Staging en production gebruiken nooit dezelfde Supabase-URL, project-ref of publishable key.

@@ -1,7 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { bulkEmailTemplateKeySchema, createEmailBulkResponseSchema, emailWorkspaceSchema, type BulkEmailTemplateKey, type ClaimedEmailJob, type EmailWorkspace } from "@/lib/email-contract";
 import { requireStaffRole } from "@/server/auth/staff";
-import { fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateSource } from "@/server/email/templates";
+import { fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateForPurpose } from "@/server/email/templates";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export async function getEmailWorkspace() {
@@ -44,8 +44,7 @@ export async function updateEmailTemplate(input: { templateId: string; subjectSo
   const { workspace } = await getEmailWorkspace();
   const template = workspace.templates.find((candidate) => candidate.id === input.templateId);
   if (!template) throw new Error("EMAIL_TEMPLATE_NOT_FOUND");
-  if (template.key === "verification_code") throw new Error("EMAIL_TEMPLATE_FIXED");
-  validateTemplateSource(input.subjectSource, input.bodySource, templateShortcodeNames(template));
+  validateTemplateForPurpose(template.key, input.subjectSource, input.bodySource, templateShortcodeNames(template));
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("EMAIL_DATABASE_UNAVAILABLE");
   return supabase.schema("app").rpc("update_email_template", {
@@ -100,6 +99,7 @@ export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) 
       afhaallocatie: job.payload.pickupLocation ?? "Nog niet ingesteld",
       clubnaam: job.payload.clubName,
       contact_email: job.payload.contactEmail ?? "Nog niet ingesteld",
+      verificatiecode: "",
     },
   );
 }

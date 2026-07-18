@@ -425,6 +425,15 @@ async function verifyProviderSprint(page, screenshotDir) {
   for (const expected of ["Verzending gepauzeerd", "6", "Verificatiecode", "Betalingsherinnering"]) {
     if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(`E-mailcentrum mist verwachte tekst: ${expected}`);
   }
+  await page.getByRole("button", { name: /Verificatiecode/ }).click();
+  await page.getByLabel("Onderwerp").waitFor({ state: "visible" });
+  if (await page.getByLabel("Onderwerp").isDisabled() || await page.getByLabel("Berichttekst").isDisabled()) {
+    throw new Error("De ouder-OTP-template is niet bewerkbaar in het e-mailcentrum.");
+  }
+  await page.getByLabel("Berichttekst").fill("Uw tijdelijke voorbeeldcode is {{verificatiecode}}. Vragen? {{contact_email}}");
+  await page.getByRole("button", { name: "Fictief voorbeeld" }).click();
+  await page.getByText(/Uw tijdelijke voorbeeldcode is 123456/).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Template opslaan" }).waitFor({ state: "visible" });
   await page.getByRole("button", { name: "Bulkmail" }).click();
   await page.getByRole("heading", { name: "Bestellingen selecteren" }).waitFor({ timeout: 5_000 });
   await page.getByText("Elk geselecteerd lid krijgt één afzonderlijk bericht.").waitFor({ timeout: 5_000 });

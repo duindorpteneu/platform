@@ -32,23 +32,31 @@ async function mailSend(apiKey: string, body: Record<string, unknown>) {
   });
 }
 
-export async function sendParentOtpEmail(recipientEmail: string, code: string) {
+export async function sendParentOtpEmail(recipientEmail: string, message: { subject: string; text: string; html: string }) {
   const configuration = providerConfiguration();
-  const templateId = process.env.SENDGRID_PARENT_OTP_TEMPLATE_ID;
   const replyToEmail = process.env.SENDGRID_REPLY_TO_EMAIL;
   const recipient = recipientSchema.safeParse(recipientEmail);
   const replyTo = recipientSchema.safeParse(replyToEmail);
+  const rendered = z.object({
+    subject: z.string().trim().min(1).max(200),
+    text: z.string().trim().min(1).max(20_000),
+    html: z.string().trim().min(1).max(50_000),
+  }).strict().safeParse(message);
   if (!configuration.enabled) return { delivered: false as const, reason: "disabled" as const };
-  if (!configuration.configured || !templateId || !recipient.success || !replyTo.success || !/^\d{6}$/.test(code)) {
+  if (!configuration.configured || !recipient.success || !replyTo.success || !rendered.success) {
     return { delivered: false as const, reason: "configuration_error" as const };
   }
 
   try {
     const response = await mailSend(configuration.apiKey, {
-      personalizations: [{ to: [{ email: recipient.data }], dynamic_template_data: { verification_code: code } }],
+      personalizations: [{ to: [{ email: recipient.data }] }],
       from: { email: configuration.fromEmail, name: "Duindorp SV Tenueportaal" },
       reply_to: { email: replyTo.data },
-      template_id: templateId,
+      subject: rendered.data.subject,
+      content: [
+        { type: "text/plain", value: rendered.data.text },
+        { type: "text/html", value: rendered.data.html },
+      ],
       tracking_settings: { click_tracking: { enable: false, enable_text: false }, open_tracking: { enable: false } },
     });
     if (!response.ok) return { delivered: false as const, reason: "provider_error" as const };

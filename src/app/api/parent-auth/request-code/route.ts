@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { generateParentCode, hashParentSecret, normalizeParentEmail, parentEmailSchema } from "@/server/auth/parent";
 import { sendParentOtpEmail } from "@/server/email/sendgrid";
+import { getParentOtpEmailTemplate, renderParentOtpEmail } from "@/server/email/otp";
 import { consumeRateLimit, requestRateKey } from "@/server/auth/rate-limit";
 import { guardBrowserMutation } from "@/server/security/route-guard";
 import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
@@ -27,7 +28,11 @@ export async function POST(request: Request) {
     const code = generateParentCode();
     const codeHash = hashParentSecret(code);
     const { data: accountId, error } = await admin.rpc("create_parent_otp", { p_email: email, p_code_hash: codeHash, p_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() });
-    if (!error && accountId) await sendParentOtpEmail(email, code);
+    if (!error && accountId) {
+      const template = await getParentOtpEmailTemplate(admin);
+      const message = renderParentOtpEmail(template, code);
+      await sendParentOtpEmail(email, message);
+    }
   } catch {
     // Do not reveal whether an e-mail exists or whether delivery infrastructure is configured.
   }

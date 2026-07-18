@@ -9,7 +9,6 @@ beforeEach(() => {
   process.env.SENDGRID_API_KEY = "test-key";
   process.env.SENDGRID_FROM_EMAIL = "tenue@duindorpsv.nl";
   process.env.SENDGRID_REPLY_TO_EMAIL = "kledingcommissie@duindorpsv.nl";
-  process.env.SENDGRID_PARENT_OTP_TEMPLATE_ID = "d-otp";
 });
 
 afterEach(() => {
@@ -21,10 +20,19 @@ describe("SendGrid delivery boundary", () => {
   it("keeps OTP direct and disables tracking", async () => {
     const request = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", request);
-    await expect(sendParentOtpEmail("ouder@example.nl", "123456")).resolves.toEqual({ delivered: true });
+    await expect(sendParentOtpEmail("ouder@example.nl", {
+      subject: "Uw verificatiecode",
+      text: "Uw verificatiecode is 123456.",
+      html: "<p>Uw verificatiecode is <strong>123456</strong>.</p>",
+    })).resolves.toEqual({ delivered: true });
     const body = JSON.parse(request.mock.calls[0][1].body as string);
     expect(body.dynamic_template_data).toBeUndefined();
-    expect(body.personalizations[0].dynamic_template_data).toEqual({ verification_code: "123456" });
+    expect(body.template_id).toBeUndefined();
+    expect(body.subject).toBe("Uw verificatiecode");
+    expect(body.content).toEqual([
+      { type: "text/plain", value: "Uw verificatiecode is 123456." },
+      { type: "text/html", value: "<p>Uw verificatiecode is <strong>123456</strong>.</p>" },
+    ]);
     expect(body.reply_to).toEqual({ email: "kledingcommissie@duindorpsv.nl" });
     expect(body.tracking_settings.open_tracking.enable).toBe(false);
   });
@@ -33,7 +41,9 @@ describe("SendGrid delivery boundary", () => {
     delete process.env.SENDGRID_REPLY_TO_EMAIL;
     const request = vi.fn();
     vi.stubGlobal("fetch", request);
-    await expect(sendParentOtpEmail("ouder@example.nl", "123456")).resolves.toEqual({ delivered: false, reason: "configuration_error" });
+    await expect(sendParentOtpEmail("ouder@example.nl", {
+      subject: "Uw verificatiecode", text: "Code 123456", html: "<p>Code 123456</p>",
+    })).resolves.toEqual({ delivered: false, reason: "configuration_error" });
     expect(request).not.toHaveBeenCalled();
   });
 

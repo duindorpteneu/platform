@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { previewEmailTemplateRequestSchema } from "@/lib/email-contract";
-import { fictionalEmailPreviewValues, renderEmailTemplate } from "@/server/email/templates";
+import { fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateForPurpose } from "@/server/email/templates";
 import { getEmailWorkspace, templateShortcodeNames } from "@/server/email/workspace";
 import { guardBrowserMutation } from "@/server/security/route-guard";
 
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     const { workspace } = await getEmailWorkspace();
     const template = workspace.templates.find((candidate) => candidate.id === parsed.data.templateId);
     if (!template) return NextResponse.json({ error: "De template bestaat niet meer." }, { status: 404 });
+    validateTemplateForPurpose(template.key, parsed.data.subjectSource, parsed.data.bodySource, templateShortcodeNames(template));
     const rendered = renderEmailTemplate(
       parsed.data.subjectSource,
       parsed.data.bodySource,

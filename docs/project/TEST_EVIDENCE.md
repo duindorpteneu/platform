@@ -158,3 +158,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm lint`, sequentiële `pnpm typecheck`, 35 Vitest-bestanden/158 tests en `pnpm build` zijn groen met `output: standalone`.
 - Het door het deployscript gebruikte release-layout (`server.js`, `.next/static`, `public`) is in een tijdelijke map gestart en serveert succesvol via een vrije loopbackpoort.
 - Remote Supabase-migratie, systemd-herstart, Caddy-HTTPS en publieke health blijven bewust ongeverifieerd totdat de nieuwe VPS, DNS, twee Supabase-projecten en GitHub-configuratiewaarden beschikbaar zijn.
+
+## Bewerkbaar ouder-OTP-template — 2026-07-18
+
+- Forward migration `20260718186000_editable_parent_otp_template.sql` maakt `verification_code` via dezelfde AAL2/RBAC-, versie- en audit-RPC bewerkbaar en voegt uitsluitend `{{verificatiecode}}`, `{{clubnaam}}` en `{{contact_email}}` aan de OTP-allowlist toe.
+- Een OTP-template zonder `{{verificatiecode}}` wordt zowel applicatief als in PostgreSQL fail-closed geweigerd.
+- Het service-only template-RPC levert alleen de actuele bron, versie en noodzakelijke clubcontext; `authenticated` heeft geen execute-recht.
+- De echte zescijferige code wordt pas in geheugen gerenderd voor directe SendGrid Mail Send en staat niet in de duurzame jobqueue, templatebron of auditmetadata. Het aparte SendGrid Dynamic Template-ID-configuratiecontract is verwijderd.
+- Schone reset: 37 migrations en seed toegepast. `pnpm test:db`: 15 bestanden en 390 assertions groen; concurrency groen.
+- `pnpm lint`, `pnpm typecheck`, 36 Vitest-bestanden/162 tests en standalone `pnpm build` zijn groen.
+- `pnpm test:e2e` is groen en bewijst in de echte AAL2-backoffice dat onderwerp/body actief bewerkbaar zijn, de opslagactie beschikbaar is en de fictieve preview `{{verificatiecode}}` als `123456` rendert zonder de template op te slaan.

@@ -51,7 +51,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Uitgiftehistorie en transactionele regelcorrecties naar Af te halen of Nalevering toegevoegd met behoud van oorspronkelijke fulfilment, reserveringssemantiek en auditspoor.
 - Schone database-reset met 20 migrations, 127 pgTAP-asserties, 41 unit-/integratietests, concurrencytest, MFA-integratie, productiebuild en volledige browserreview zijn groen.
 - Zelfopruimende browserreview bewijst cataloguscreate, variantcreate, orderupdate, paid immutability, QR rotate/revoke/reissue, fulfilmentcorrectie, desktop/mobiel en routebeveiliging.
-- Zes canonieke e-mailtypen, gesloten shortcodes, fictieve previews, immutable templateversies, handmatige bulkselectie tot 2.000 orders en een duurzame SendGrid-jobqueue toegevoegd.
+- Zes canonieke e-mailtypen, gesloten shortcodes, fictieve previews, immutable job-snapshots, handmatige bulkselectie tot 2.000 orders en een duurzame SendGrid-jobqueue toegevoegd. De ouder-OTP-template is in dezelfde editor bewerkbaar en gebruikt `{{verificatiecode}}` uitsluitend tijdens vluchtige directe verzending.
 - E-mailworker claimt maximaal 25 jobs met `SKIP LOCKED`, verwerkt begrensd parallel, gebruikt maximaal vijf pogingen en schakelt open-/kliktracking uit.
 - SendGrid-eventwebhook valideert de raw-bodyhandtekening, dedupliceert `sg_event_id` en bewaart uitsluitend delivered, bounced, deferred, dropped en failed.
 - Mollie Payments API hosted checkout, stabiele lokale idempotentie, klassieke webhook, provider-GET en exacte EUR/metadata-reconciliatie toegevoegd.

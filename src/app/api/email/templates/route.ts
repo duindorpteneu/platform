@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === "STAFF_AUTHORIZATION_REQUIRED") return NextResponse.json({ error: "Geen toegang tot e-mailtemplates." }, { status: 403 });
     if (error instanceof Error && error.message === "EMAIL_TEMPLATE_NOT_FOUND") return NextResponse.json({ error: "De template bestaat niet meer." }, { status: 404 });
-    if (error instanceof Error && error.message === "EMAIL_TEMPLATE_FIXED") return NextResponse.json({ error: "De verificatiecode-template is een vast beveiligd providerblok." }, { status: 409 });
+    if (error instanceof Error && error.message === "EMAIL_VERIFICATION_CODE_REQUIRED") return NextResponse.json({ error: "De verificatiecode-template moet {{verificatiecode}} bevatten." }, { status: 400 });
     if (error instanceof Error && ["EMAIL_SUBJECT_INVALID", "EMAIL_BODY_INVALID", "EMAIL_SHORTCODE_NOT_ALLOWED", "EMAIL_TEMPLATE_SYNTAX_INVALID"].includes(error.message)) return NextResponse.json({ error: "De template bevat niet-toegestane inhoud of shortcodes." }, { status: 400 });
     if (error instanceof Error && error.message === "EMAIL_DATABASE_UNAVAILABLE") return NextResponse.json({ error: "Templatebeheer is tijdelijk niet beschikbaar." }, { status: 503 });
     return NextResponse.json({ error: "De template kon niet worden verwerkt." }, { status: 500 });

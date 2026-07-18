@@ -14,7 +14,6 @@ const serverEnvSchema = z.object({
   SENDGRID_API_KEY: z.string().min(1).optional(),
   SENDGRID_FROM_EMAIL: z.string().email().optional(),
   SENDGRID_REPLY_TO_EMAIL: z.string().email().optional(),
-  SENDGRID_PARENT_OTP_TEMPLATE_ID: z.string().min(1).optional(),
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: z.string().min(1).optional(),
 }).superRefine((env, context) => {
   if (env.MOLLIE_ENABLED === "true") {
@@ -35,7 +34,7 @@ const serverEnvSchema = z.object({
     if (!env.APP_BASE_URL.startsWith("https://")) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["APP_BASE_URL"], message: "E-mailverzending vereist een publieke HTTPS-basis-URL." });
     }
-    const required = ["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_PARENT_OTP_TEMPLATE_ID", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
+    const required = ["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
     for (const key of required) {
       if (!env[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is verplicht wanneer e-mail actief is.` });
     }
@@ -61,7 +60,6 @@ export function getServerEnv() {
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL,
     SENDGRID_REPLY_TO_EMAIL: process.env.SENDGRID_REPLY_TO_EMAIL,
-    SENDGRID_PARENT_OTP_TEMPLATE_ID: process.env.SENDGRID_PARENT_OTP_TEMPLATE_ID,
     SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY,
   });
 }

@@ -33,7 +33,6 @@ describe("server provider configuration", () => {
       SENDGRID_API_KEY: "SG.test",
       SENDGRID_FROM_EMAIL: "tenue@duindorp.example",
       SENDGRID_REPLY_TO_EMAIL: "commissie@duindorp.example",
-      SENDGRID_PARENT_OTP_TEMPLATE_ID: "otp-template",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
       CRON_SECRET: "x".repeat(16),
     })).toThrow();

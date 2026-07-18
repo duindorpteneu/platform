@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMAIL_SHORTCODES, fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateSource } from "@/server/email/templates";
+import { EMAIL_SHORTCODES, fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateForPurpose, validateTemplateSource } from "@/server/email/templates";
 
 describe("e-mailtemplateveiligheid", () => {
   it("renders only allowlisted shortcodes and escapes HTML", () => {
@@ -13,5 +13,11 @@ describe("e-mailtemplateveiligheid", () => {
     expect(() => validateTemplateSource("Hallo {{wachtwoord}}", "Tekst", EMAIL_SHORTCODES)).toThrow();
     expect(() => validateTemplateSource("Hallo", "<script>alert(1)</script>", EMAIL_SHORTCODES)).toThrow();
     expect(() => validateTemplateSource("Hallo\nwereld", "Tekst", EMAIL_SHORTCODES)).toThrow();
+  });
+
+  it("requires the transient verification-code shortcode in the OTP template", () => {
+    expect(() => validateTemplateForPurpose("verification_code", "Uw code", "Tien minuten geldig.", ["verificatiecode"])).toThrow("EMAIL_VERIFICATION_CODE_REQUIRED");
+    expect(() => validateTemplateForPurpose("verification_code", "Uw code", "Code: {{verificatiecode}}", ["verificatiecode"])).not.toThrow();
+    expect(fictionalEmailPreviewValues().verificatiecode).toBe("123456");
   });
 });
