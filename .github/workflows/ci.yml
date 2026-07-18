@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  application:
+    name: Application quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Scan repository for secrets
+        run: node scripts/check-secrets.mjs
+
+      - name: Lint forward-only migrations
+        run: node scripts/check-migrations.mjs
+
+      - name: Lint application
+        run: pnpm lint
+
+      - name: Type-check application
+        run: pnpm typecheck
+
+      - name: Run unit and integration tests
+        run: pnpm test
+
+      - name: Build production application
+        run: pnpm build
+
+  database:
+    name: Supabase migration and pgTAP gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start isolated local Supabase
+        run: pnpm supabase:start
+
+      - name: Apply all migrations to a clean database
+        run: pnpm db:reset
+
+      - name: Run database and RLS tests
+        run: pnpm test:db
+
+      - name: Run fulfilment concurrency test
+        run: pnpm test:db:concurrency
+
+      - name: Build browser-test application
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run staff MFA integration
+        run: pnpm test:staff-mfa
+
+      - name: Run full Playwright browser review
+        run: pnpm test:e2e
+
+      - name: Stop local Supabase
+        if: always()
+        run: pnpm supabase:stop

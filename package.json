@@ -11,14 +11,16 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/test-dashboard-browser.mjs",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "db:reset": "supabase db reset --local",
     "test:db": "supabase test db --local supabase/tests",
     "test:db:concurrency": "bash scripts/test-fulfilment-concurrency.sh",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
-    "test:dashboard-browser": "node scripts/test-dashboard-browser.mjs"
+    "test:dashboard-browser": "node scripts/test-dashboard-browser.mjs",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "security:migrations": "node scripts/check-migrations.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
@@ -47,7 +49,7 @@
     "eslint": "^9.19.0",
     "eslint-config-next": "^15.5.4",
     "jsdom": "^26.0.0",
-    "postcss": "^8.5.3",
+    "postcss": "^8.5.10",
     "supabase": "2.109.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
