@@ -90,7 +90,9 @@ function cleanupSql(userId) {
     delete from app.payments where id in (${sqlList(paymentIds)});
     delete from app.order_lines where id in (${sqlList(lineIds)});
     delete from app.member_orders where id in (${sqlList(orderIds)});
+    delete from app.members where relation_number = 'DSV-BROWSER-IMPORT';
     delete from app.members where id in (${sqlList(memberIds)});
+    delete from app.import_batches where file_name = 'browser-import.csv';
     delete from app.article_variants where id = '${articleId}';
     delete from app.articles where id = '${articleId}';
     delete from app.staff_profiles where auth_user_id = '${userId}';
@@ -194,6 +196,82 @@ async function verifyDashboard(page, viewport, screenshotPath) {
   if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: true });
 }
 
+async function verifyMemberOverview(page, screenshotDir) {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/backoffice/leden`);
+  await page.getByRole("heading", { name: "Leden", exact: true }).waitFor({ timeout: 5_000 });
+  let bodyText = await page.locator("body").innerText();
+  for (const expected of ["5 actief", "5 totaal", "Sophie de Bruin", "Sportlink importeren"]) {
+    if (!bodyText.includes(expected)) throw new Error(`Ledenoverzicht mist verwachte tekst: ${expected}`);
+  }
+  for (const forbidden of ["486 leden", "Liam van der Meer", "sophie@example.invalid"]) {
+    if (bodyText.includes(forbidden)) throw new Error(`Ledenlijst bevat preview- of detaildata: ${forbidden}`);
+  }
+
+  await page.locator('select[name="team"]').selectOption("JO13-2");
+  await page.getByRole("button", { name: "Filters toepassen" }).click();
+  await page.waitForURL(/team=JO13-2/);
+  await page.getByRole("heading", { name: "Leden", exact: true }).waitFor({ timeout: 5_000 });
+  bodyText = await page.locator("body").innerText();
+  if (!bodyText.includes("1 resultaten") || !bodyText.includes("Yassin El Amrani") || bodyText.includes("Sophie de Bruin")) {
+    throw new Error(`Het server-side teamfilter gaf niet exact het verwachte lid terug: ${bodyText.replace(/\s+/g, " ").slice(-500)}`);
+  }
+
+  const detailUrl = `${baseUrl}/backoffice/leden?member=${memberIds[0]}`;
+  await page.goto(detailUrl);
+  await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
+  bodyText = await page.locator("body").innerText();
+  bodyText = bodyText.replace(/\u00a0/g, " ");
+  for (const expected of ["sophie@example.invalid", "€ 125,00", "Volledig af te halen", "Niet aangemaakt", "Sprint testartikel · M"]) {
+    if (!bodyText.includes(expected)) throw new Error(`Liddetail mist verwachte tekst: ${expected}`);
+  }
+  if (bodyText.includes("token_hash") || bodyText.includes("qrToken")) throw new Error("Liddetail toont QR-geheim materiaal.");
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-members-desktop.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(detailUrl);
+  await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
+  const dimensions = await page.evaluate(() => ({
+    clientWidth: document.body.clientWidth,
+    scrollWidth: document.body.scrollWidth,
+  }));
+  if (dimensions.scrollWidth > dimensions.clientWidth) {
+    throw new Error(`Mobiel ledenoverzicht heeft body-overflow: ${dimensions.scrollWidth}/${dimensions.clientWidth}`);
+  }
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-member-detail-mobile.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/backoffice/leden`);
+  await page.getByRole("heading", { name: "Leden", exact: true }).waitFor({ timeout: 5_000 });
+  process.stdout.write("Backoffice-browsertest: Sportlink-preview controleren…\n");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "browser-import.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from([
+      "Relatienummer;Voornaam;Achternaam;E-mailadres;Team;Actief voor seizoen",
+      "DSV-BROWSER-IMPORT;Browser;Importlid;browser-import@example.invalid;JO19-1;Ja",
+    ].join("\n")),
+  });
+  await page.getByRole("button", { name: "Kolommen en preview controleren", exact: true }).click();
+  await page.getByText("Kolommen gekoppeld en preview gereed").waitFor({ timeout: 5_000 });
+  const previewText = await page.locator("section").filter({ hasText: "Sportlink importeren" }).innerText();
+  if (!previewText.includes("Nieuw") || !previewText.match(/Nieuw\s+1|1\s+Nieuw/)) {
+    throw new Error("Sportlink-preview toont het nieuwe lid niet.");
+  }
+  process.stdout.write("Backoffice-browsertest: Sportlink-commit controleren…\n");
+  const [commitResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/imports/commit") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Import definitief verwerken" }).click(),
+  ]);
+  if (!commitResponse.ok()) {
+    throw new Error(`Sportlink-commit gaf HTTP ${commitResponse.status()}: ${await commitResponse.text()}`);
+  }
+  await page.getByText("1 leden zijn transactioneel verwerkt.").waitFor({ timeout: 5_000 });
+  await page.goto(`${baseUrl}/backoffice/leden?search=DSV-BROWSER-IMPORT`);
+  await page.getByRole("heading", { name: "Leden", exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByText("Browser Importlid", { exact: true }).waitFor({ timeout: 5_000 });
+}
+
 const local = localSupabaseEnv();
 for (const name of ["API_URL", "DB_URL", "ANON_KEY", "SERVICE_ROLE_KEY"]) {
   if (!local[name]) throw new Error(`Lokale Supabase-status mist ${name}.`);
@@ -264,6 +342,8 @@ try {
     { width: 390, height: 844 },
     screenshotDir ? path.join(screenshotDir, "after-dashboard-mobile.png") : null,
   );
+  process.stdout.write("Backoffice-browsertest: ledenlijst, detail, filters en import controleren…\n");
+  await verifyMemberOverview(page, screenshotDir);
 
   const unauthenticatedPage = await browser.newPage();
   process.stdout.write("Dashboard-browsertest: anonieme routebeveiliging controleren…\n");
@@ -273,7 +353,7 @@ try {
   }
 
   process.stdout.write(
-    "Dashboard-browsertest geslaagd: AAL2-login, live data, desktop, mobiel en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, ledenlijst, detail, filters, import, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);
