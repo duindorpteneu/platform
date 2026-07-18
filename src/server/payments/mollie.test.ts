@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, parseMollieAmountCents, parseMollieMetadata } from "@/server/payments/mollie";
+import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
 
 const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 1 as const };
 
@@ -29,6 +29,20 @@ describe("Mollie provider boundary", () => {
 
   it("accepts only a classic Mollie form or JSON payment id", async () => {
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "id=tr_abc123" }))).resolves.toBe("tr_abc123");
-    await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: '{"id":"invalid"}' }))).rejects.toThrow();
+    await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: '{"id":"tr_abc123"}' }))).rejects.toThrow("MOLLIE_WEBHOOK_CONTENT_TYPE_INVALID");
+  });
+
+  it("maps authorized and refunded provider observations to safe local states", () => {
+    const base = { id: "tr_test123", status: "authorized", amount: { currency: "EUR", value: "125.00" }, metadata, _links: {} };
+    const authorized = molliePaymentSchema.parse(base);
+    const refunded = molliePaymentSchema.parse({ ...base, status: "paid", amountRefunded: { currency: "EUR", value: "125.00" } });
+    expect(toLocalMollieStatus(authorized)).toBe("pending");
+    expect(toLocalMollieStatus(refunded)).toBe("refunded");
+  });
+
+  it("accepts checkout links only from Mollie over HTTPS", () => {
+    const base = { id: "tr_test123", status: "open", amount: { currency: "EUR", value: "125.00" }, metadata };
+    expect(requireHostedCheckoutUrl(molliePaymentSchema.parse({ ...base, _links: { checkout: { href: "https://checkout.mollie.com/pay/test" } } }))).toContain("checkout.mollie.com");
+    expect(() => requireHostedCheckoutUrl(molliePaymentSchema.parse({ ...base, _links: { checkout: { href: "https://evil.example/pay/test" } } }))).toThrow("MOLLIE_CHECKOUT_INVALID");
   });
 });
