@@ -1,12 +1,12 @@
 import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-const host = "127.0.0.1";
+const host = "localhost";
 const port = 3100;
 const baseUrl = `http://${host}:${port}`;
 const email = "dashboard-browser@example.invalid";
@@ -25,6 +25,7 @@ const receiptLineId = "67000000-0000-4000-8000-000000000001";
 const reservationId = "68000000-0000-4000-8000-000000000001";
 const fulfilmentId = "69000000-0000-4000-8000-000000000001";
 const fulfilmentLineId = "6a000000-0000-4000-8000-000000000001";
+const formulaMemberId = "62000000-0000-4000-8000-000000000006";
 
 function localSupabaseEnv() {
   const output = execFileSync("pnpm", ["exec", "supabase", "status", "-o", "env"], {
@@ -95,6 +96,15 @@ async function waitForApp(process) {
 function cleanupSql(userId) {
   return `
     delete from app.audit_logs where actor_user_id = '${userId}' or entity_id in (${sqlList([...orderIds, ...articleIds])});
+    delete from app.email_events where email_job_id in (
+      select id from private.email_jobs
+      where order_id in (${sqlList(orderIds)})
+        or batch_id in (select id from app.email_batches where actor_user_id = '${userId}')
+    );
+    delete from private.email_jobs
+    where order_id in (${sqlList(orderIds)})
+      or batch_id in (select id from app.email_batches where actor_user_id = '${userId}');
+    delete from app.email_batches where actor_user_id = '${userId}';
     delete from app.fulfilment_lines where fulfilment_id in (select id from app.fulfilments where order_id in (${sqlList(orderIds)}));
     delete from app.fulfilments where order_id in (${sqlList(orderIds)});
     delete from app.inventory_reservations where order_line_id in (select id from app.order_lines where order_id in (${sqlList(orderIds)}));
@@ -103,6 +113,7 @@ function cleanupSql(userId) {
     delete from app.order_lines where order_id in (${sqlList(orderIds)});
     delete from app.member_orders where id in (${sqlList(orderIds)});
     delete from app.members where relation_number = 'DSV-BROWSER-IMPORT';
+    delete from app.members where id = '${formulaMemberId}';
     delete from app.members where id in (${sqlList(memberIds)});
     delete from app.import_batches where file_name = 'browser-import.csv';
     delete from app.delivery_receipt_lines where receipt_id = '${receiptId}';
@@ -321,6 +332,8 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await articleForm.getByLabel("Sorteervolgorde").fill("110");
   await articleForm.getByRole("button", { name: "Artikel toevoegen" }).click();
   await page.getByText("Artikel toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.reload();
+  await page.getByRole("heading", { name: "Artikelen en maten" }).waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: /Browser trainingsjack/ }).click();
 
   const variantForm = page.locator("form").filter({ hasText: "Variant toevoegen" });
@@ -341,7 +354,13 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await orderForm.getByLabel(/Exact verschuldigd bedrag/).fill("130,00");
   const jacketRow = orderForm.locator("div.rounded-xl").filter({ hasText: "Browser trainingsjack" });
   await jacketRow.getByRole("combobox").selectOption({ label: "164 · BROWSER-164" });
-  await orderForm.getByRole("button", { name: "Bestelling opslaan" }).click();
+  const [saveResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/orders/save") && response.request().method() === "POST"),
+    orderForm.getByRole("button", { name: "Bestelling opslaan" }).click(),
+  ]);
+  if (!saveResponse.ok()) {
+    throw new Error(`Bestelling opslaan gaf HTTP ${saveResponse.status()}: ${await saveResponse.text()}`);
+  }
   await page.getByText("Bestelling bijgewerkt en geaudit.", { exact: true }).waitFor({ timeout: 10_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-orders-desktop.png"), fullPage: true });
 
@@ -435,6 +454,68 @@ async function verifyProviderSprint(page, screenshotDir) {
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-payment-return-mobile.png"), fullPage: true });
 }
 
+async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
+  process.stdout.write("Release-browsertest: exacte kasbetaling controleren…\n");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/backoffice/leden?member=${memberIds[2]}`);
+  await page.getByRole("heading", { name: "Lotte Jansen" }).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Kas", exact: true }).click();
+  await page.getByText("Bevestig kas: € 130,00", { exact: true }).waitFor({ timeout: 5_000 });
+  const [paymentResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/payments/manual") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Exact registreren" }).click(),
+  ]);
+  if (!paymentResponse.ok()) throw new Error(`Handmatige betaling gaf HTTP ${paymentResponse.status()}: ${await paymentResponse.text()}`);
+  await page.getByText("De exacte kasbetaling van € 130,00 is geregistreerd.", { exact: true }).waitFor({ timeout: 5_000 });
+
+  process.stdout.write("Release-browsertest: settings en audit controleren…\n");
+  const settingsResponse = await page.goto(`${baseUrl}/backoffice/instellingen`);
+  await page.getByRole("heading", { name: "Instellingen", exact: true }).waitFor({ timeout: 5_000 });
+  for (const expected of ["Duindorp SV", "SAFETY SWITCHES", "Medewerkers", "Beheerder · AAL2"]) {
+    if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(`Instellingen mist verwachte tekst: ${expected}`);
+  }
+  const securityHeaders = settingsResponse?.headers() ?? {};
+  for (const name of ["content-security-policy", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy", "x-correlation-id"]) {
+    if (!securityHeaders[name]) throw new Error(`Productieresponse mist securityheader ${name}.`);
+  }
+  if (!securityHeaders["content-security-policy"].includes("frame-ancestors 'none'")) throw new Error("CSP mist frame-ancestors none.");
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-settings-desktop.png"), fullPage: true });
+
+  await page.goto(`${baseUrl}/backoffice/audit`);
+  await page.getByRole("heading", { name: "Auditlog", exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByText("payment.manual.recorded", { exact: true }).first().waitFor({ timeout: 5_000 });
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-audit-desktop.png"), fullPage: true });
+
+  process.stdout.write("Release-browsertest: formuleveilige CSV/XLSX-export controleren…\n");
+  runSql(databaseUrl, `insert into app.members (id, relation_number, first_name, last_name, email, team) values ('${formulaMemberId}', 'DSV-FORMULA', '=CMD', 'Test', 'formula@example.invalid', 'TEST-1');`);
+  await page.goto(`${baseUrl}/backoffice/export`);
+  await page.getByRole("heading", { name: "Exports", exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Seizoen").selectOption("");
+  const csvEvent = page.waitForEvent("download");
+  await page.getByRole("link", { name: "CSV" }).click();
+  const csvDownload = await csvEvent;
+  const csvPath = await csvDownload.path();
+  if (!csvPath) throw new Error("CSV-download heeft geen lokaal testpad.");
+  const csv = await readFile(csvPath, "utf8");
+  if (!csv.startsWith("\uFEFF")) throw new Error("CSV-export mist UTF-8 BOM.");
+  if (!csv.includes("'=CMD Test") || csv.includes('"=CMD Test"')) throw new Error("CSV-export neutraliseert formulegevoelige tekst niet.");
+  if (!/^duindorp-sv-leden-alle-seizoenen-\d{4}-\d{2}-\d{2}\.csv$/.test(csvDownload.suggestedFilename())) throw new Error(`Onveilige exportbestandsnaam: ${csvDownload.suggestedFilename()}`);
+  const xlsxEvent = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Excel" }).click();
+  const xlsxDownload = await xlsxEvent;
+  const xlsxPath = await xlsxDownload.path();
+  if (!xlsxPath || (await readFile(xlsxPath)).subarray(0, 2).toString() !== "PK") throw new Error("XLSX-export is geen geldig OOXML-archief.");
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-exports-desktop.png"), fullPage: true });
+
+  process.stdout.write("Release-browsertest: mutatie zonder CSRF-proof weigeren…\n");
+  const csrfStatus = await page.evaluate(async () => (await fetch("/api/orders/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  })).status);
+  if (csrfStatus !== 403) throw new Error(`Mutatie zonder CSRF-proof gaf ${csrfStatus} in plaats van 403.`);
+}
+
 const local = localSupabaseEnv();
 for (const name of ["API_URL", "DB_URL", "ANON_KEY", "SERVICE_ROLE_KEY"]) {
   if (!local[name]) throw new Error(`Lokale Supabase-status mist ${name}.`);
@@ -473,6 +554,7 @@ try {
       stdio: process.env.DASHBOARD_APP_LOGS === "1" ? "inherit" : "ignore",
       env: {
         ...process.env,
+        APP_BASE_URL: baseUrl,
         NEXT_PUBLIC_SUPABASE_URL: local.API_URL,
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.ANON_KEY,
         SUPABASE_SECRET_KEY: local.SERVICE_ROLE_KEY,
@@ -516,6 +598,7 @@ try {
   await verifyMemberOverview(page, screenshotDir);
   await verifyOperationsSprint(page, screenshotDir);
   await verifyProviderSprint(page, screenshotDir);
+  await verifyReleaseHardening(page, local.DB_URL, screenshotDir);
 
   const unauthenticatedPage = await browser.newPage();
   process.stdout.write("Dashboard-browsertest: anonieme routebeveiliging controleren…\n");
@@ -525,7 +608,7 @@ try {
   }
 
   process.stdout.write(
-    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, responsive layout en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, exacte kasbetaling, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, exports, settings, audit, securityheaders, CSRF, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);
