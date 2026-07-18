@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 import { manualPaymentRequestSchema } from "@/server/payments/manual";
+import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +16,12 @@ export async function POST(request: Request) {
     const parsed = manualPaymentRequestSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "Ongeldige betaalregistratie." }, { status: 400 });
 
-    const { data, error } = await supabase.schema("app").rpc("record_manual_payment", {
+    const qrToken = deriveQrBearerToken(parsed.data.orderId, 1);
+    const { data, error } = await supabase.schema("app").rpc("record_manual_payment_with_qr", {
       p_order_id: parsed.data.orderId,
       p_method: parsed.data.method,
       p_idempotency_key: randomUUID(),
+      p_token_hash: hashQrBearerToken(qrToken),
     });
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze betaling." }, { status: 403 });
