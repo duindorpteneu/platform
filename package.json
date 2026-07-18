@@ -17,7 +17,8 @@
     "db:reset": "supabase db reset --local",
     "test:db": "supabase test db --local supabase/tests",
     "test:db:concurrency": "bash scripts/test-fulfilment-concurrency.sh",
-    "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs"
+    "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
+    "test:dashboard-browser": "node scripts/test-dashboard-browser.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
