@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   ChevronDown,
@@ -20,7 +20,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import type { StaffRole } from "@/server/auth/staff";
 
 const primaryNavigation = [
   { label: "Dashboard", href: "/backoffice", icon: LayoutDashboard },
@@ -34,9 +36,20 @@ const primaryNavigation = [
   { label: "Export", href: "/backoffice/export", icon: Download },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+const roleLabels: Record<StaffRole, string> = { beheerder: "Beheerder", kledingcommissie: "Kledingcommissie", uitgifte: "Uitgifte" };
+
+export function AppShell({ children, staff }: { children: React.ReactNode; staff: { displayName: string; role: StaffRole } }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isIssuance = pathname.startsWith("/uitgifte");
+  const navigation = staff.role === "uitgifte" ? primaryNavigation.filter((item) => item.href === "/uitgifte") : primaryNavigation;
+  const initials = staff.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "DS";
+
+  async function signOut() {
+    await getSupabaseBrowserClient()?.auth.signOut({ scope: "local" });
+    router.replace("/staff/login");
+    router.refresh();
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -47,30 +60,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6">
           <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-blue-200/70">Werkruimte</p>
           <nav className="space-y-1" aria-label="Hoofdnavigatie">
-            {primaryNavigation.map((item) => {
+            {navigation.map((item) => {
               const Icon = item.icon;
               const active = item.href === "/backoffice" ? pathname === item.href : pathname.startsWith(item.href);
               return (
                 <Link key={item.href} href={item.href} className={cn("group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", active && "bg-white/12 text-white shadow-sm") }>
                   <Icon className={cn("size-[17px] text-blue-200/80", active && "text-white")} strokeWidth={1.8} />
                   <span>{item.label}</span>
-                  {item.label === "Leden" && <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-blue-100">486</span>}
                 </Link>
               );
             })}
           </nav>
-          <div className="my-7 h-px bg-white/10" />
-          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-blue-200/70">Beheer</p>
-          <nav className="space-y-1">
-            <Link href="/backoffice/instellingen" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white">
+          {staff.role !== "uitgifte" && <><div className="my-7 h-px bg-white/10" /><p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-blue-200/70">Beheer</p><nav className="space-y-1">
+            {staff.role === "beheerder" && <Link href="/backoffice/instellingen" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white">
               <Settings className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
               Instellingen
-            </Link>
+            </Link>}
             <Link href="/backoffice/help" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white">
               <HelpCircle className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
               Helpcentrum
             </Link>
-          </nav>
+          </nav></>}
           <div className="mt-auto rounded-xl border border-white/10 bg-white/[0.06] p-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[11px] font-semibold text-blue-100">Seizoen 2025/26</span>
@@ -81,12 +91,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="border-t border-white/10 p-4">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-            <div className="flex size-8 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white">DG</div>
+            <div className="flex size-8 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white">{initials}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold">Danny Goldenbelt</p>
-              <p className="truncate text-[10px] text-blue-200/70">Beheerder</p>
+              <p className="truncate text-xs font-semibold">{staff.displayName}</p>
+              <p className="truncate text-[10px] text-blue-200/70">{roleLabels[staff.role]}</p>
             </div>
-            <LogOut className="size-4 text-blue-200/70" />
+            <button onClick={() => void signOut()} aria-label="Uitloggen" title="Uitloggen" className="flex size-8 items-center justify-center rounded-lg text-blue-200/70 hover:bg-white/10 hover:text-white"><LogOut className="size-4" /></button>
           </div>
         </div>
       </aside>
@@ -101,7 +111,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
             <div className="hidden h-7 w-px bg-line md:block" />
             <button aria-label="Open meldingen" className="relative flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-canvas hover:text-brand-700"><FileText className="size-[17px]" strokeWidth={1.8} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-500" /></button>
-            <div className="flex items-center gap-2 border-l border-line pl-3"><div className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-700">DG</div><ChevronDown className="hidden size-3.5 text-slate-400 sm:block" /></div>
+            <div className="flex items-center gap-2 border-l border-line pl-3"><div className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-700">{initials}</div><span className="hidden text-xs font-semibold text-ink xl:inline">{staff.displayName}</span></div>
           </div>
         </header>
         <main className="min-h-[calc(100vh-82px)] px-5 py-7 md:px-8 md:py-9">{children}</main>

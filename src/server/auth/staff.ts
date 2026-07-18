@@ -9,12 +9,23 @@ export type StaffContext = {
   role: StaffRole;
 };
 
+export function hasAal2(level: string | null | undefined) {
+  return level === "aal2";
+}
+
+export function getStaffLandingPath(role: StaffRole) {
+  return role === "uitgifte" ? "/uitgifte" : "/backoffice";
+}
+
 export async function getStaffContext(): Promise<StaffContext | null> {
   const supabase = await getSupabaseServerClient();
   if (!supabase) return null;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
+
+  const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError || !hasAal2(assurance?.currentLevel)) return null;
 
   const { data: profile } = await supabase
     .schema("app")
