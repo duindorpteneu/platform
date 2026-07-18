@@ -1,0 +1,3 @@
+export default function EmailsLoading() {
+  return <div className="mx-auto max-w-[1400px] animate-pulse" aria-label="E-mailcentrum laden"><div className="h-3 w-40 rounded bg-slate-200" /><div className="mt-4 h-10 w-72 rounded bg-slate-200" /><div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-32 rounded-xl border border-line bg-white shadow-card" />)}</div><div className="mt-6 h-12 rounded-xl border border-line bg-white shadow-card" /><div className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]"><div className="h-[560px] rounded-xl border border-line bg-white shadow-card" /><div className="h-[560px] rounded-xl border border-line bg-white shadow-card" /></div></div>;
+}
