@@ -28,3 +28,5 @@ Record commands, results and relevant screenshots/notes per phase.
 - Parent auth tests: 2 passed; totaal unit tests: 9 passed.
 - `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed for parent auth routes.
 - Private schema access was reviewed and routed through RPC wrappers; plaintext OTP is not persisted.
+- Parent route correction validated: `/login`, `/login/code`, `/staff/login` and `/mijn-tenue` generated in build.
+- `pnpm test` (9 passed), `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed after Suspense fix.
