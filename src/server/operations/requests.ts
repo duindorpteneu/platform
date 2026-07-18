@@ -15,4 +15,3 @@ export const fulfilmentCorrectionRequestSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["orderLineIds"], message: "Een regel mag maar één keer worden gecorrigeerd." });
   }
 });
-

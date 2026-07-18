@@ -19,4 +19,3 @@ describe("operationele correctiecontracten", () => {
     expect(fulfilmentCorrectionRequestSchema.safeParse({ orderLineIds: [id], targetStatus: "picked_up", reason: "Onjuiste status" }).success).toBe(false);
   });
 });
-

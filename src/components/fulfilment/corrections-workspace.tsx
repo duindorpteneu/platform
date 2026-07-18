@@ -53,4 +53,3 @@ export function CorrectionsWorkspace({ workspace }: { workspace: Workspace }) {
     </div>
   </div>;
 }
-

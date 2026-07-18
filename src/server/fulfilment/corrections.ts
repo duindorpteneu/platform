@@ -17,4 +17,3 @@ export async function getFulfilmentCorrectionsWorkspace() {
   if (!parsed.success) throw new Error("CORRECTIONS_RESPONSE_INVALID");
   return parsed.data;
 }
-

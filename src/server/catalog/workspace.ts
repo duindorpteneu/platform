@@ -18,4 +18,3 @@ export async function getCatalogOrderWorkspace() {
   if (!parsed.success) throw new Error("CATALOG_WORKSPACE_RESPONSE_INVALID");
   return { workspace: parsed.data, staff };
 }
-

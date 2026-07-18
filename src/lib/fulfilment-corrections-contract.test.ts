@@ -13,4 +13,3 @@ describe("uitgiftecorrectiecontract", () => {
     }] }).success).toBe(false);
   });
 });
-

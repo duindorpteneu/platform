@@ -16,4 +16,3 @@ export const fulfilmentCorrectionsWorkspaceSchema = z.object({
 }).strict();
 
 export type FulfilmentCorrectionsWorkspace = z.infer<typeof fulfilmentCorrectionsWorkspaceSchema>;
-

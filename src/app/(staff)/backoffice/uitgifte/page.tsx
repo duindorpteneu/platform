@@ -4,4 +4,3 @@ export const dynamic = "force-dynamic";
 export default async function FulfilmentHistoryPage() {
   return <CorrectionsWorkspace workspace={await getFulfilmentCorrectionsWorkspace()} />;
 }
-

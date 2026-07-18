@@ -124,4 +124,3 @@ export type CatalogOrderWorkspace = z.infer<typeof catalogOrderWorkspaceSchema>;
 export type CatalogArticleRequest = z.infer<typeof catalogArticleRequestSchema>;
 export type CatalogVariantRequest = z.infer<typeof catalogVariantRequestSchema>;
 export type SaveMemberOrderRequest = z.infer<typeof saveMemberOrderRequestSchema>;
-

@@ -45,4 +45,3 @@ describe("catalogus- en bestelcontract", () => {
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
   });
 });
-

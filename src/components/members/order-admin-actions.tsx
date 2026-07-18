@@ -87,4 +87,3 @@ export function OrderAdminActions({ orderId, paid, qrStatus, pickedLines }: {
     </section>
   );
 }
-
