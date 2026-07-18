@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Exports, instellingen, audit, operationele health/retentie, securityheaders, rate limits, CI en release-runbooks zijn afgerond. De code is gereed voor deploy naar een afzonderlijke stagingomgeving; alleen omgevings- en providerverificatie blijft extern.
+De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Exports, instellingen, audit, operationele health/retentie, securityheaders, rate limits, CI en release-runbooks zijn afgerond. Een gescheiden self-hosted VPS-deploypad met GitHub-configuratiecontract, Supabase-migraties, standalone releases, systemd en Caddy is toegevoegd; VPS-bootstrap en providerverificatie blijven extern.
 
 ## Completed
 - Starter governance and canon assets added.

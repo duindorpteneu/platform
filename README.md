@@ -63,6 +63,7 @@ De CI voert locked installatie, secret scan, migration lint, lint, typecheck, te
 - [Omgevingsmatrix](docs/project/ENVIRONMENT_MATRIX.md) — harde scheiding tussen local, staging en production.
 - [Operationsrunbook](docs/project/OPERATIONS_RUNBOOK.md) — monitoring, cron, back-up/herstel, providerflags, keyrotatie en incidenten.
 - [Releasechecklist](docs/project/RELEASE_CHECKLIST.md) — lokale, staging- en productiepoorten.
+- [VPS-deployment](docs/project/VPS_DEPLOYMENT.md) — self-hosted runners, GitHub-configuratie, Supabase-migraties, systemd en Caddy-isolatie naast andere projecten.
 - [Stagingverificatie](docs/project/STAGING_VERIFICATION.md) — alle achttien canonieke E2E-scenario’s en bewijsvelden.
 - [Securityacceptatie](docs/project/SECURITY_ACCEPTANCE.md) — autorisatie-, request-, provider- en privacycontroles.
 

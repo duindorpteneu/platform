@@ -1,0 +1,111 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Gepubliceerde release-tag, bijvoorbeeld v1.0.0
+        required: true
+        type: string
+      confirmation:
+        description: Typ exact DEPLOY PRODUCTION
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-duindorp-production
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Authorize immutable production release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      DEPLOY_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Require explicit confirmation
+        run: test "$DEPLOY_CONFIRMATION" = "DEPLOY PRODUCTION"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          clean: true
+
+      - name: Verify tag is contained in main
+        id: release
+        run: |
+          git fetch origin main --no-tags
+          sha="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$sha" origin/main
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce release, CI, staging and four-eyes gates
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ steps.release.outputs.sha }}
+        run: node scripts/deploy/verify-production-release.mjs
+
+  deploy:
+    name: Migrate and deploy production
+    needs: authorize
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorp-production
+    timeout-minutes: 30
+    env:
+      DEPLOY_ENVIRONMENT: production
+      DEPLOY_SHA: ${{ needs.authorize.outputs.sha }}
+      APP_PORT: ${{ vars.PRODUCTION_APP_PORT }}
+      APP_BASE_URL: ${{ vars.PRODUCTION_APP_BASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.PRODUCTION_NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_PROJECT_ID: ${{ vars.PRODUCTION_SUPABASE_PROJECT_ID }}
+      MOLLIE_ENABLED: ${{ vars.PRODUCTION_MOLLIE_ENABLED }}
+      EMAIL_ENABLED: ${{ vars.PRODUCTION_EMAIL_ENABLED }}
+      SENDGRID_FROM_EMAIL: ${{ vars.PRODUCTION_SENDGRID_FROM_EMAIL }}
+      SENDGRID_REPLY_TO_EMAIL: ${{ vars.PRODUCTION_SENDGRID_REPLY_TO_EMAIL }}
+      SENDGRID_PARENT_OTP_TEMPLATE_ID: ${{ vars.PRODUCTION_SENDGRID_PARENT_OTP_TEMPLATE_ID }}
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.PRODUCTION_SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.PRODUCTION_SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.PRODUCTION_SUPABASE_DB_PASSWORD }}
+      SUPABASE_SECRET_KEY: ${{ secrets.PRODUCTION_SUPABASE_SECRET_KEY }}
+      PARENT_TOKEN_PEPPER: ${{ secrets.PRODUCTION_PARENT_TOKEN_PEPPER }}
+      CRON_SECRET: ${{ secrets.PRODUCTION_CRON_SECRET }}
+      MOLLIE_API_KEY: ${{ secrets.PRODUCTION_MOLLIE_API_KEY }}
+      SENDGRID_API_KEY: ${{ secrets.PRODUCTION_SENDGRID_API_KEY }}
+    steps:
+      - name: Checkout exact authorized commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          clean: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate, migrate and deploy
+        run: bash scripts/deploy/deploy.sh

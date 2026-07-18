@@ -1,0 +1,24 @@
+[Unit]
+Description=Duindorp SV Tenueportaal staging
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=duindorp-staging
+Group=duindorp-staging
+WorkingDirectory=/srv/duindorp-tenueportaal/staging/current
+EnvironmentFile=/srv/duindorp-tenueportaal/staging/shared/app.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/duindorp-tenueportaal/staging
+
+[Install]
+WantedBy=multi-user.target

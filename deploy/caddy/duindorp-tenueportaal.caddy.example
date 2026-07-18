@@ -1,0 +1,20 @@
+# Vervang uitsluitend de twee voorbeeldhostnamen. Houd deze snippet apart van
+# Castivo en importeer hem vanuit de globale /etc/caddy/Caddyfile.
+
+staging-tenue.example.invalid {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:32110 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+}
+
+tenue.example.invalid {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:32120 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+}

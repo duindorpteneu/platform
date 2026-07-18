@@ -148,3 +148,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - Screenshots in het lokale staginghandoffartefact: dashboard desktop/mobiel, leden desktop, lid/security mobiel, catalogus, bestellingen, correcties, e-mailcentrum, betaalregister, Mollie-retour mobiel, instellingen, audit en exports.
 - Geen live providercredentials, productiegegevens, productiewebhooks of productieacties gebruikt.
 - Externe open gates: publieke HTTPS-stagingdeploy, Mollie testmode-roundtrip/replay, SendGrid-afzender/inbox/eventwebhook, Supabase-staffuitnodiging, scheduler/alerts en geïsoleerde restore-drill.
+
+## Self-hosted VPS-deploybasis — 2026-07-18
+
+- `actionlint 1.7.12` is via de officiële releasechecksum geverifieerd en accepteert `ci.yml`, `deploy-staging.yml` en `deploy-production.yml` met de twee vastgelegde custom runnerlabels.
+- Beide workflowbestanden en `.github/actionlint.yaml` zijn daarnaast als YAML geparseerd.
+- Geldige fictieve staging- en productionconfiguraties slagen door `configure-runtime.mjs`; een Mollie live-key in staging wordt aantoonbaar geweigerd.
+- `bash -n` en `node --check` slagen voor alle nieuwe deployscripts; `git diff --check`, migration lint en secret scan zijn groen.
+- `pnpm lint`, sequentiële `pnpm typecheck`, 35 Vitest-bestanden/158 tests en `pnpm build` zijn groen met `output: standalone`.
+- Het door het deployscript gebruikte release-layout (`server.js`, `.next/static`, `public`) is in een tijdelijke map gestart en serveert succesvol via een vrije loopbackpoort.
+- Remote Supabase-migratie, systemd-herstart, Caddy-HTTPS en publieke health blijven bewust ongeverifieerd totdat de nieuwe VPS, DNS, twee Supabase-projecten en GitHub-configuratiewaarden beschikbaar zijn.
