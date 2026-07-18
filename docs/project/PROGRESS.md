@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer, uitgiftecorrecties, SendGrid-operaties en Mollie webhookreconciliatie zijn operationeel, AAL2-beveiligd en lokaal gevalideerd. De volgende fase richt zich op exports en releasehardening.
+De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Exports, instellingen, audit, operationele health/retentie, securityheaders, rate limits, CI en release-runbooks zijn afgerond. De code is gereed voor deploy naar een afzonderlijke stagingomgeving; alleen omgevings- en providerverificatie blijft extern.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -58,15 +58,25 @@ Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer, uitgiftecorrecti
 - Paid, drievoudige replay, mismatch/manual review, duplicate paid, authorized/pending en refund/QR-intrekking worden transactioneel en met een private redacted eventledger verwerkt.
 - PII-minimale operationele betaalwerkruimte toegevoegd; `uitgifte` en AAL1 worden in PostgreSQL geweigerd.
 - Schone database-reset met 30 migrations en 238 pgTAP-asserties, 92 applicatietests, lint, TypeScript, productiebuild en de uitgebreide AAL2-browserflow zijn groen.
+- Zes geautoriseerde CSV/XLSX-exporttypen toegevoegd met server-side filters, limiet van 10.000 regels, UTF-8 BOM, veilige bestandsnamen, formule-injectieneutralisatie en audit.
+- OTP-, verify-, Mollie-, export-, QR- en ledenzoeklimieten zijn server-side en in PostgreSQL afgedwongen; de gevonden zoek-digestfout is via een aparte forward-fixmigratie en regressietest hersteld.
+- Browsermutaties hebben centrale Origin/Host/Fetch-Metadata/CSRF-proof- en bodygrenzen; Sportlink-upload heeft MIME/extensie/grootte/rij/kolom/cel/formulegrenzen.
+- Productieheaders, actieve Next.js-middleware, correlation-id, no-store op private surfaces, publieke/interne health en beveiligde e-mail-/retentiejobs zijn toegevoegd.
+- Beheerderinstellingen, exact drie staffrollen, veilige uitnodiging/blokkering, provider-safety switches en rolgescheiden auditviewer zijn AAL2-afgeschermd.
+- Ouderlogout trekt de server-side sessie in; exact één kandidaat wordt na OTP expliciet automatisch gekoppeld, meerdere kandidaten nooit.
+- CI, secret scan, forward-only migratielint, omgevingsmatrix, operationsrunbook, releasechecklist, securityacceptatie en stagingverificatieprocedure zijn toegevoegd.
+- Definitieve lokale gates: 36 migrations schoon toegepast; 15 pgTAP-bestanden/383 assertions, 35 Vitest-bestanden/158 tests, concurrency, echte staff-MFA, lint, TypeScript, productiebuild en dependency-audit zijn groen.
+- De volledige productie-browserflow is tweemaal achtereen groen en ruimt Auth, MFA en alle fictieve database-/e-mailfixtures aantoonbaar op.
 
 ## In progress
-- Exports, retentie, operationele recoveryprocedures en releasehardening zijn nog niet afgerond.
-- Live SendGrid- en Mollie test-mode verificatie wacht op externe stagingcredentials en publieke HTTPS-webhooks.
+- Deploy van de exact gecommitte releasecandidate naar een afzonderlijke publieke HTTPS-stagingomgeving.
+- Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
 
 ## Next
-- Bouw geautoriseerde CSV/XLSX-exports met formule-injectiebescherming.
-- Voeg retentie, security headers, operationele jobrecovery en release-runbooks toe.
-- Voer daarna live provider-E2E in staging uit en rond release-evidence af.
+- Doorloop `docs/project/STAGING_VERIFICATION.md` met uitsluitend fictieve data.
+- Verifieer Mollie testmode, SendGrid-afzender/templates/webhook, staffuitnodiging, scheduler, alerts en restore-drill.
+- Leg de geaccepteerde commit-SHA en alle externe bewijslinks vast voordat productie wordt overwogen.
 
 ## Blockers
-- Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.
+- Geen lokale codeblocker.
+- Externe staging-URL, afzonderlijk Supabase-project, secretstore, Mollie-testkey, SendGrid-configuratie en operationele eigenaren zijn nodig voor de resterende stagingverificatie.

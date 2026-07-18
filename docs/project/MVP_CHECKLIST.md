@@ -16,5 +16,7 @@ Codex must expand this checklist from the canonical PDF before implementation an
 - [x] SendGrid templates and bulk e-mail
 - [x] Mollie webhook-first integration with mocked provider contracts
 - [ ] Live Mollie test-mode roundtrip on public staging HTTPS
-- [ ] Exports and audit trail
-- [ ] Security, RLS and E2E acceptance gates
+- [x] Exports and audit trail
+- [x] Security, RLS and local E2E acceptance gates
+- [ ] Live SendGrid delivery, staff invitation and signed event webhook on public staging HTTPS
+- [ ] Staging schedulers, alerts and isolated backup/restore drill

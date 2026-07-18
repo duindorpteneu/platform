@@ -129,3 +129,22 @@ Record commands, results and relevant screenshots/notes per phase.
 - Responsive browsercontrole: 1440×1000 voor e-mailcentrum en betaalregister, 390×844 voor Mollie-retour; geen horizontale body-overflow.
 - Screenshots: `artifacts/provider-sprint/after-email-center-desktop.png`, `after-payments-desktop.png` en `after-payment-return-mobile.png`; lokale artefacten zijn van git uitgesloten.
 - Live SendGrid SPF/DKIM/delivery en Mollie test-mode checkout/webhook blijven staginggates; er zijn geen live credentials of productieacties gebruikt.
+
+## Releasehardening en lokale staginghandoff — 2026-07-18
+
+- `pnpm install --frozen-lockfile` — passed.
+- `pnpm audit --prod --audit-level moderate` — passed: geen bekende kwetsbaarheden.
+- `pnpm security:secrets` — passed: geen high-confidence credentials of gevolgde runtime-environmentbestanden.
+- `pnpm security:migrations` — passed: 36 uitsluitend vooruitrollende migrations gecontroleerd.
+- `pnpm db:reset` — passed op de geïsoleerde PostgreSQL 17-stack; alle 36 migrations en seed vanaf nul toegepast.
+- `pnpm test:db` — 15 pgTAP-bestanden, 383 assertions passed. Dit omvat negatieve RLS, exports, retentie/health, instellingen/audit, zoek-rate-limit en alle eerdere domeininvarianten.
+- `pnpm test:db:concurrency` — passed: exact één fulfilment, tweede gelijktijdige balie geblokkeerd.
+- `pnpm test:staff-mfa` — passed: AAL2 toegestaan, AAL1 aantoonbaar geweigerd.
+- `pnpm test` — 35 Vitest-bestanden, 158 tests passed.
+- `pnpm lint` en `pnpm typecheck` — passed.
+- `pnpm build` — passed; Next.js rapporteert de middleware expliciet in het productieartefact en bundelt settings, audit, health, jobs en export.
+- `pnpm test:e2e` — tweemaal achtereen passed na timinghardening. De flow bewijst wachtwoord + TOTP/AAL2, dashboard, leden/Sportlink, catalogus, bestellingen, exacte kasbetaling, QR, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, instellingen, audit, CSV/XLSX, securityheaders, correlation-id, negatief CSRF-pad, mobiel/desktop en anonieme redirect.
+- De E2E-fixture verwijdert aantoonbaar Auth-user, MFA-factor, staffprofiel, leden, orders, betalingen, QR, fulfilments, voorraad, e-mailjobs, batches, events, import en catalogusdata; een directe telling na de run was nul.
+- Screenshots in het lokale staginghandoffartefact: dashboard desktop/mobiel, leden desktop, lid/security mobiel, catalogus, bestellingen, correcties, e-mailcentrum, betaalregister, Mollie-retour mobiel, instellingen, audit en exports.
+- Geen live providercredentials, productiegegevens, productiewebhooks of productieacties gebruikt.
+- Externe open gates: publieke HTTPS-stagingdeploy, Mollie testmode-roundtrip/replay, SendGrid-afzender/inbox/eventwebhook, Supabase-staffuitnodiging, scheduler/alerts en geïsoleerde restore-drill.
