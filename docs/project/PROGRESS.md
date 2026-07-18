@@ -17,6 +17,7 @@ Phase 0 complete; Phase 1 dashboard foundation in progress.
 - Parent OTP, hashed session token and server-only SendGrid OTP adapter added.
 - Canonieke ouderroutes `/login`, `/login/code` en staff-route `/staff/login` toegevoegd met werkende formulieren.
 - Parent session/member RPCs and protected member, candidate, link and unlink endpoints added.
+- Datagedreven ouderdashboard met member cards, artikelstatussen, betaalstatus en expliciete koppelkandidaten toegevoegd.
 
 ## In progress
 - Supabase staff authentication and data-backed dashboard are not implemented yet.

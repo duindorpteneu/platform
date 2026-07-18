@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ArrowRight, LockKeyhole } from "lucide-react";
+import { MemberDashboard } from "@/components/member/member-dashboard";
 
 export default function MemberPortalPage() {
-  return <main className="min-h-screen bg-canvas px-5 py-12"><div className="mx-auto max-w-[720px] text-center"><div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-brand-700 text-white"><LockKeyhole className="size-6" /></div><p className="mt-6 text-xs font-bold uppercase tracking-[0.14em] text-brand-500">Mijn Duindorp SV tenue</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-900">Je sessie is klaar voor het dashboard</h1><p className="mt-3 text-sm leading-6 text-slate-500">De ledenkaarten, betaling en QR-status worden hier server-side geladen zodra de Supabase-omgeving is aangesloten.</p><div className="mx-auto mt-8 rounded-2xl border border-line bg-white p-8 shadow-card"><p className="text-sm font-semibold text-ink">Nog geen gekoppeld lid zichtbaar</p><p className="mt-2 text-xs leading-5 text-slate-500">Log opnieuw in wanneer je een lid wilt koppelen aan je ouderaccount.</p><Link href="/login" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-900">Naar ouderlogin <ArrowRight className="size-4" /></Link></div></div></main>;
+  return <main className="min-h-screen bg-canvas px-5 py-10 md:px-8 md:py-14"><MemberDashboard /></main>;
 }

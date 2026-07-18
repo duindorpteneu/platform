@@ -33,3 +33,5 @@ Record commands, results and relevant screenshots/notes per phase.
 - Parent member-link test: 1 passed; totaal unit tests: 10 passed.
 - `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed for parent member access endpoints.
 - SQL migration `20260718000700_parent_member_access.sql` is pending execution against a clean local Supabase database.
+- Ouderportaal UI `/mijn-tenue` buildt met loading, unauthorized, error, empty en success states.
+- `pnpm test` (10 passed), `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed.
