@@ -9,5 +9,11 @@ port = 54339
 [studio]
 port = 54349
 
-[inbucket]
+[local_smtp]
+enabled = true
 port = 54359
+
+[analytics]
+enabled = true
+port = 54369
+backend = "postgres"
