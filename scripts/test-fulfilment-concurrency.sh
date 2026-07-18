@@ -108,7 +108,7 @@ if [[ "$first_status" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ "$second_status" -eq 0 ]] || ! rg -q "ORDER_LINE_NOT_READY" "$second_log"; then
+if [[ "$second_status" -eq 0 ]] || ! grep -q "ORDER_LINE_NOT_READY" "$second_log"; then
   tail -n 40 "$second_log"
   exit 1
 fi
