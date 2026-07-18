@@ -37,6 +37,11 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
   const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("MEMBER_DATABASE_UNAVAILABLE");
+  if (query.search) {
+    const { data: allowed, error: rateError } = await supabase.schema("app").rpc("consume_staff_search_rate");
+    if (rateError?.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+    if (rateError || allowed !== true) throw new Error("MEMBER_SEARCH_RATE_LIMITED");
+  }
 
   const { data: listData, error: listError } = await supabase.schema("app").rpc("get_member_list", {
     p_search: query.search ?? null,

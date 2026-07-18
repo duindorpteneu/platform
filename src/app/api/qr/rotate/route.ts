@@ -3,11 +3,13 @@ import { requireStaffRole } from "@/server/auth/staff";
 import { qrManagementRequestSchema } from "@/server/operations/requests";
 import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   try {
     const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
     let body: unknown;

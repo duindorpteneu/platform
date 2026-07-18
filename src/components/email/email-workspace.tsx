@@ -13,7 +13,7 @@ const fieldClass = "mt-2 w-full rounded-lg border border-line bg-white px-3 text
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", { dateStyle: "short", timeStyle: "short" });
 
 async function postJson(path: string, body: unknown) {
-  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify(body) });
   const payload = await response.json() as Record<string, unknown> & { error?: string };
   if (!response.ok) throw new Error(payload.error ?? "De aanvraag kon niet worden verwerkt.");
   return payload;

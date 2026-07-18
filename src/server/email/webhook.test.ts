@@ -1,8 +1,14 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { parseSendGridOperationalEvents, verifySendGridSignature } from "@/server/email/webhook";
+import { isFreshSendGridTimestamp, parseSendGridOperationalEvents, verifySendGridSignature } from "@/server/email/webhook";
 
 describe("SendGrid event webhook", () => {
+  it("rejects stale or future signed-request timestamps", () => {
+    const now = Date.parse("2026-07-18T12:00:00Z");
+    expect(isFreshSendGridTimestamp(String(now / 1_000), now)).toBe(true);
+    expect(isFreshSendGridTimestamp(String((now - 301_000) / 1_000), now)).toBe(false);
+    expect(isFreshSendGridTimestamp(String((now + 301_000) / 1_000), now)).toBe(false);
+  });
   it("verifies the timestamp plus unmodified raw body", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const rawBody = '[{"event":"delivered"}]';

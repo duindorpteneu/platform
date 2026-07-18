@@ -14,7 +14,7 @@ const fieldClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text
 const lineStatusLabels = { backorder: "Nalevering", ready_for_pickup: "Af te halen", picked_up: "Afgehaald", cancelled: "Geannuleerd" } as const;
 
 async function saveOrder(body: unknown) {
-  const response = await fetch("/api/orders/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch("/api/orders/save", { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify(body) });
   const payload = await response.json() as { error?: string };
   if (!response.ok) throw new Error(payload.error ?? "De bestelling kon niet worden opgeslagen.");
 }

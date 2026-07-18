@@ -60,6 +60,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
 
         {detail.order && <OrderAdminActions
           orderId={detail.order.id}
+          amountDueCents={detail.order.amountDueCents}
           paid={detail.order.paymentStatus === "Betaald"}
           qrStatus={detail.order.qrStatus}
           pickedLines={detail.order.lines.filter((line) => line.status === "picked_up").map((line) => ({ id: line.id, article: line.article, size: line.size }))}

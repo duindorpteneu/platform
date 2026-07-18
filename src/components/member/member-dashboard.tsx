@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, CreditCard, Link2, Loader2, LockKeyhole, RefreshCw, Shirt, UserRound } from "lucide-react";
+import { ArrowRight, CheckCircle2, CreditCard, Link2, Loader2, LockKeyhole, LogOut, RefreshCw, Shirt, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -128,7 +128,7 @@ export function MemberDashboard() {
     try {
       const response = await fetch("/api/parent/member-links", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ memberId }),
       });
       if (!response.ok) throw new Error();
@@ -138,6 +138,11 @@ export function MemberDashboard() {
     } finally {
       setLinking(null);
     }
+  }
+
+  async function logout() {
+    await fetch("/api/parent-auth/logout", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" } });
+    window.location.assign("/login");
   }
 
   if (loading) {
@@ -170,7 +175,7 @@ export function MemberDashboard() {
     <div className="mx-auto max-w-[980px]">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-500">Mijn Duindorp SV tenue</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-900">Jouw tenue-overzicht</h1><p className="mt-2 text-sm text-slate-500">Ieder lid heeft een eigen bestelling, betaling en QR-code.</p></div>
-        <button onClick={() => void load()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:border-brand-500"><RefreshCw className="size-3.5" /> Vernieuwen</button>
+        <div className="flex gap-2"><button onClick={() => void load()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:border-brand-500"><RefreshCw className="size-3.5" /> Vernieuwen</button><button onClick={() => void logout()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:border-brand-500"><LogOut className="size-3.5" /> Uitloggen</button></div>
       </div>
 
       {members.length === 0 ? (

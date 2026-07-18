@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { updateEmailTemplateRequestSchema, updateEmailTemplateResponseSchema } from "@/lib/email-contract";
 import { updateEmailTemplate } from "@/server/email/workspace";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function hasValidOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  return Boolean(origin && origin === new URL(request.url).origin);
-}
-
 export async function POST(request: Request) {
-  if (!hasValidOrigin(request)) return NextResponse.json({ error: "Ongeldige aanvraagbron." }, { status: 403 });
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
   const parsed = updateEmailTemplateRequestSchema.safeParse(body);

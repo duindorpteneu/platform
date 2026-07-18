@@ -4,11 +4,13 @@ import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { manualPaymentRequestSchema } from "@/server/payments/manual";
 import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   try {
     const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
     const supabase = getSupabaseAdminClient();

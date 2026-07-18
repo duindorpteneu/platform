@@ -1,13 +1,14 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, KeyRound, Loader2, RotateCw, Undo2 } from "lucide-react";
+import { AlertTriangle, Banknote, CheckCircle2, CreditCard, KeyRound, Loader2, RotateCw, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 type PickedLine = { id: string; article: string; size: string };
 
-export function OrderAdminActions({ orderId, paid, qrStatus, pickedLines }: {
+export function OrderAdminActions({ orderId, amountDueCents, paid, qrStatus, pickedLines }: {
   orderId: string;
+  amountDueCents: number;
   paid: boolean;
   qrStatus: "Actief" | "Ingetrokken" | "Niet aangemaakt";
   pickedLines: PickedLine[];
@@ -17,16 +18,37 @@ export function OrderAdminActions({ orderId, paid, qrStatus, pickedLines }: {
   const [correctionReason, setCorrectionReason] = useState("");
   const [targetStatus, setTargetStatus] = useState<"ready_for_pickup" | "backorder">("ready_for_pickup");
   const [selected, setSelected] = useState<string[]>([]);
-  const [busy, setBusy] = useState<"qr" | "correction" | null>(null);
+  const [busy, setBusy] = useState<"payment" | "qr" | "correction" | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const canRotate = paid && qrStatus !== "Niet aangemaakt";
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const exactAmount = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amountDueCents / 100);
+
+  async function recordPayment() {
+    if (!paymentMethod || paid) return;
+    setBusy("payment"); setMessage(null);
+    try {
+      const response = await fetch("/api/payments/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
+        body: JSON.stringify({ orderId, method: paymentMethod }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Betaling registreren mislukt.");
+      setPaymentMethod(null);
+      setMessage({ tone: "success", text: `De exacte ${paymentMethod === "cash" ? "kas" : "pin"}betaling van ${exactAmount} is geregistreerd.` });
+      router.refresh();
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : "Betaling registreren mislukt." });
+    } finally { setBusy(null); }
+  }
 
   async function manageQr(action: "rotate" | "revoke") {
     setBusy("qr"); setMessage(null);
     try {
       const response = await fetch("/api/qr/rotate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ orderId, action, reason }),
       });
       const payload = await response.json() as { error?: string };
@@ -43,7 +65,7 @@ export function OrderAdminActions({ orderId, paid, qrStatus, pickedLines }: {
     setBusy("correction"); setMessage(null);
     try {
       const response = await fetch("/api/fulfilment/reverse", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ orderLineIds: selected, targetStatus, reason: correctionReason }),
       });
       const payload = await response.json() as { error?: string; correctedLines?: number };
@@ -60,6 +82,12 @@ export function OrderAdminActions({ orderId, paid, qrStatus, pickedLines }: {
     <section className="p-5">
       <div className="flex items-center gap-2"><KeyRound className="size-4 text-brand-500" /><h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Beheeracties</h3></div>
       {message && <div role="status" className={`mt-4 flex gap-2 rounded-lg border p-3 text-xs leading-5 ${message.tone === "success" ? "border-emerald-100 bg-emerald-50 text-success" : "border-red-100 bg-red-50 text-danger"}`}>{message.tone === "success" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}{message.text}</div>}
+
+      <div className="mt-4 rounded-lg border border-line p-4">
+        <p className="text-xs font-bold text-brand-900">Exacte handmatige betaling</p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500">Registreer uitsluitend het volledige verschuldigde bedrag van <strong>{exactAmount}</strong> voor dit lid. Deelbedragen zijn niet mogelijk.</p>
+        {paid ? <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-success"><CheckCircle2 className="size-4" /> Deze bestelling is betaald.</p> : paymentMethod ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">Bevestig {paymentMethod === "cash" ? "kas" : "pin"}: {exactAmount}</p><p className="mt-1 text-[11px] leading-5 text-amber-800">Controleer dat het bedrag daadwerkelijk volledig is ontvangen. Deze registratie wordt immutable en geaudit opgeslagen.</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => setPaymentMethod(null)} disabled={busy !== null} className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900">Annuleren</button><button type="button" onClick={() => void recordPayment()} disabled={busy !== null} className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white">{busy === "payment" && <Loader2 className="size-4 animate-spin" />} Exact registreren</button></div></div> : <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPaymentMethod("cash")} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 text-xs font-semibold text-brand-700 hover:bg-brand-50"><Banknote className="size-4" /> Kas</button><button type="button" onClick={() => setPaymentMethod("card")} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 text-xs font-semibold text-brand-700 hover:bg-brand-50"><CreditCard className="size-4" /> Pin</button></div>}
+      </div>
 
       <div className="mt-4 rounded-lg border border-line p-4">
         <p className="text-xs font-bold text-brand-900">QR-code beveiligen</p>

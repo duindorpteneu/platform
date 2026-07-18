@@ -1,10 +1,12 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { emailJobClaimResponseSchema, type ClaimedEmailJob } from "@/lib/email-contract";
 import { sendEmailJob } from "@/server/email/sendgrid";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { hasInternalBearer } from "@/server/operations/internal-auth";
+import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,20 +19,12 @@ const completionResponseSchema = z.object({
   availableAt: z.string().datetime({ offset: true }),
 }).strict();
 
-function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  const header = request.headers.get("authorization");
-  if (!secret || !header?.startsWith("Bearer ")) return false;
-  const provided = Buffer.from(header.slice(7));
-  const expected = Buffer.from(secret);
-  return provided.length === expected.length && timingSafeEqual(provided, expected);
-}
-
 export async function POST(request: Request) {
-  if (!authorized(request)) return NextResponse.json({ error: "Geen toegang tot de worker." }, { status: 401 });
+  if (!hasInternalBearer(request)) return NextResponse.json({ error: "Geen toegang tot de worker." }, { status: 401 });
   if (process.env.EMAIL_ENABLED !== "true") return NextResponse.json({ status: "paused", claimed: 0, sent: 0, retry: 0, failed: 0 });
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "E-mailworker tijdelijk niet beschikbaar." }, { status: 503 });
+  if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "email_enabled")) return NextResponse.json({ status: "paused", claimed: 0, sent: 0, retry: 0, failed: 0 });
   const claimToken = randomUUID();
   const { data, error } = await admin.schema("app").rpc("claim_email_jobs", { p_claim_token: claimToken, p_limit: 25 });
   if (error) return NextResponse.json({ error: "E-mailjobs konden niet worden geclaimd." }, { status: 503 });

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
-import { previewSportlinkImport, SPORTLINK_MAX_BYTES, toSportlinkDatabaseRows } from "@/server/imports/sportlink";
+import { previewSportlinkImport, SPORTLINK_MAX_REQUEST_BYTES, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
 import { getSupabaseServerClient } from "@/server/supabase/server";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["multipart/form-data"], maxBytes: SPORTLINK_MAX_REQUEST_BYTES } }); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     const formData = await request.formData();
@@ -14,9 +16,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "CSV-bestand ontbreekt." }, { status: 400 });
     }
-    if (file.size > SPORTLINK_MAX_BYTES) {
-      return NextResponse.json({ error: "Het CSV-bestand is groter dan 10 MB." }, { status: 413 });
-    }
+    validateSportlinkUpload(file);
     const preview = previewSportlinkImport(await file.text());
     if (preview.members.length === 0 || preview.issues.length > 0) {
       return NextResponse.json({ ...preview, summary: { ...preview.summary, new: 0, updated: 0, unchanged: 0 } }, { status: 200 });

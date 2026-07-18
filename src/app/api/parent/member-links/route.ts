@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getParentSession } from "@/server/auth/parent-session";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { parentMemberLinkSchema } from "@/server/auth/parent-links";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   const session = await getParentSession(); const admin = getSupabaseAdminClient();
   if (!session || !admin) return NextResponse.json({ error: "Oudersessie vereist." }, { status: 401 });
   const parsed = parentMemberLinkSchema.safeParse(await request.json().catch(() => null));

@@ -2,23 +2,36 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { generateParentSessionToken, hashParentSecret, normalizeParentEmail, parentCodeSchema } from "@/server/auth/parent";
+import { consumeRateLimit, requestRateKey, valueRateKey } from "@/server/auth/rate-limit";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } }); if (guarded) return guarded;
   const parsed = parentCodeSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Voer de zescijferige code in." }, { status: 400 });
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "Inloggen is tijdelijk niet beschikbaar." }, { status: 503 });
 
   const email = normalizeParentEmail(parsed.data.email);
+  const [ipAllowed, emailAllowed] = await Promise.all([
+    consumeRateLimit(admin, { scope: "otp_verify", keyHash: requestRateKey(request, "otp-verify-ip"), limit: 30, windowSeconds: 3_600 }),
+    consumeRateLimit(admin, { scope: "otp_verify", keyHash: valueRateKey("otp-verify-email", email), limit: 15, windowSeconds: 3_600 }),
+  ]);
+  if (!ipAllowed || !emailAllowed) return NextResponse.json({ error: "Te veel verificatiepogingen. Vraag later een nieuwe code aan." }, { status: 429 });
   const { data: result, error } = await admin.rpc("consume_parent_otp", { p_email: email, p_code_hash: hashParentSecret(parsed.data.code) });
   if (error || !result || result.status !== "verified") return NextResponse.json({ error: "De code is ongeldig of verlopen." }, { status: 401 });
 
   const sessionToken = generateParentSessionToken();
   const { error: sessionError } = await admin.rpc("create_parent_session", { p_parent_account_id: result.parentAccountId, p_token_hash: hashParentSecret(sessionToken), p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
   if (sessionError) return NextResponse.json({ error: "De sessie kon niet worden aangemaakt." }, { status: 503 });
+  const tokenHash = hashParentSecret(sessionToken);
+  const { data: candidates } = await admin.rpc("get_parent_candidates", { p_token_hash: tokenHash });
+  if (Array.isArray(candidates) && candidates.length === 1 && typeof candidates[0]?.member_id === "string") {
+    await admin.rpc("link_parent_member", { p_token_hash: tokenHash, p_member_id: candidates[0].member_id });
+  }
   const cookieStore = await cookies();
   cookieStore.set("duindorp_parent_session", sessionToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60 });
   return NextResponse.json({ status: "verified" }, { status: 200 });

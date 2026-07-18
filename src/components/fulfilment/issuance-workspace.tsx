@@ -55,7 +55,7 @@ export function IssuanceWorkspace() {
     try {
       const response = await fetch("/api/fulfilment/lookup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ token }),
       });
       const payload = await response.json() as LookupResult | { status?: string; error?: string };
@@ -131,7 +131,7 @@ export function IssuanceWorkspace() {
     try {
       const response = await fetch("/api/fulfilment/commit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ orderId: result.orderId, orderLineIds: selected, location, token: activeToken }),
       });
       const payload = await response.json() as { issuedLines?: number; completedAt?: string; error?: string };

@@ -10,6 +10,9 @@ import {
   type MollieRpcClient,
 } from "@/server/payments/mollie-service";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { consumeRateLimit } from "@/server/auth/rate-limit";
+import { guardBrowserMutation } from "@/server/security/route-guard";
+import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,19 +30,18 @@ export async function POST(request: Request) {
   } catch {
     return failure("Online betalen is tijdelijk niet beschikbaar.", 503);
   }
-  if (!hasTrustedPaymentOrigin(request, config.appBaseUrl)) {
+  const guarded = guardBrowserMutation(request, { appBaseUrl: config.appBaseUrl, body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } });
+  if (guarded || !hasTrustedPaymentOrigin(request, config.appBaseUrl)) {
+    if (guarded) return guarded;
     return failure("Dit betaalverzoek kon niet veilig worden gecontroleerd.", 403);
   }
-  if (!request.headers.get("content-type")?.includes("application/json")) {
-    return failure("Ongeldig betaalverzoek.", 415);
-  }
-
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 4_096) return failure("Ongeldig betaalverzoek.", 413);
 
   const session = await getParentSession();
   const admin = getSupabaseAdminClient();
   if (!session || !admin) return failure("Log opnieuw in om veilig te betalen.", 401);
+  if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "mollie_enabled")) return failure("Online betalen is tijdelijk gepauzeerd.", 503);
+  const allowed = await consumeRateLimit(admin, { scope: "mollie_create", keyHash: session.tokenHash, limit: 10, windowSeconds: 600 });
+  if (!allowed) return failure("Te veel betaalpogingen. Probeer het over enkele minuten opnieuw.", 429);
 
   let payload: unknown;
   try {

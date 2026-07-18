@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { previewEmailTemplateRequestSchema } from "@/lib/email-contract";
 import { fictionalEmailPreviewValues, renderEmailTemplate } from "@/server/email/templates";
 import { getEmailWorkspace, templateShortcodeNames } from "@/server/email/workspace";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) return NextResponse.json({ error: "Ongeldige aanvraagbron." }, { status: 403 });
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   const parsed = previewEmailTemplateRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Controleer onderwerp en inhoud." }, { status: 400 });
   try {

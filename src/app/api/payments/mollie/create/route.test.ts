@@ -27,7 +27,7 @@ const orderId = "00000000-0000-4000-8000-000000000002";
 function request(body: unknown) {
   return new Request("https://tenue.example/api/payments/mollie/create", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "https://tenue.example" },
+    headers: { "Content-Type": "application/json", Origin: "https://tenue.example", Host: "tenue.example", "Sec-Fetch-Site": "same-origin", "X-Duindorp-CSRF": "same-origin" },
     body: JSON.stringify(body),
   });
 }
@@ -38,7 +38,13 @@ describe("Mollie create-route", () => {
     mocks.origin.mockReset().mockReturnValue(true);
     mocks.start.mockReset().mockResolvedValue({ checkoutUrl: "https://checkout.mollie.com/pay/test" });
     mocks.session.mockReset().mockResolvedValue({ tokenHash: "a".repeat(64) });
-    mocks.admin.mockReset().mockReturnValue({ rpc: vi.fn() });
+    mocks.admin.mockReset().mockReturnValue({
+      rpc: vi.fn(),
+      schema: vi.fn().mockReturnValue({
+        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+        from: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: { mollie_enabled: true }, error: null }) }) }) }),
+      }),
+    });
   });
 
   it("mapt een ongeldige env-configuratie altijd naar een neutrale 503", async () => {

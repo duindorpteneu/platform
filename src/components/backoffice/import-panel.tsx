@@ -34,7 +34,7 @@ export function ImportPanel() {
     setPreview(null);
     setBusy("preview");
     try {
-      const response = await fetch("/api/imports/preview", { method: "POST", body: formData });
+      const response = await fetch("/api/imports/preview", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" }, body: formData });
       const payload = await response.json() as PreviewResponse & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Preview kon niet worden gemaakt.");
       setPreview(payload);
@@ -52,7 +52,7 @@ export function ImportPanel() {
     setSuccess(null);
     setBusy("commit");
     try {
-      const response = await fetch("/api/imports/commit", { method: "POST", body: formData });
+      const response = await fetch("/api/imports/commit", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" }, body: formData });
       const payload = await response.json() as { error?: string; upserted?: number };
       if (!response.ok) throw new Error(payload.error ?? "De import kon niet worden opgeslagen.");
       setSuccess(`${payload.upserted ?? preview.summary.valid} leden zijn transactioneel verwerkt.`);

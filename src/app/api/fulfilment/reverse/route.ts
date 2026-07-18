@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { fulfilmentCorrectionRequestSchema } from "@/server/operations/requests";
 import { getSupabaseServerClient } from "@/server/supabase/server";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     let body: unknown;

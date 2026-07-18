@@ -32,6 +32,12 @@ export function verifySendGridSignature(rawBody: string, timestamp: string | nul
   }
 }
 
+export function isFreshSendGridTimestamp(timestamp: string | null, now = Date.now(), maximumSkewMs = 5 * 60 * 1_000) {
+  if (!timestamp || !/^\d+$/.test(timestamp)) return false;
+  const signedAt = Number(timestamp) * 1_000;
+  return Number.isSafeInteger(signedAt) && Math.abs(now - signedAt) <= maximumSkewMs;
+}
+
 function normalizeEventType(event: string): SendGridEventType | null {
   if (event === "bounce" || event === "bounced") return "bounced";
   return sendGridEventTypeSchema.safeParse(event).success ? event as SendGridEventType : null;

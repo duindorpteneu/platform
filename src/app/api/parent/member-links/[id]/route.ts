@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { getParentSession } from "@/server/auth/parent-session";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const guarded = guardBrowserMutation(request, { body: false }); if (guarded) return guarded;
   const session = await getParentSession(); const admin = getSupabaseAdminClient();
   if (!session || !admin) return NextResponse.json({ error: "Oudersessie vereist." }, { status: 401 });
   const { id } = await params;

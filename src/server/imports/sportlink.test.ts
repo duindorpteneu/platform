@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { previewSportlinkImport, toSportlinkDatabaseRows } from "@/server/imports/sportlink";
+import { previewSportlinkImport, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
 
 describe("Sportlink CSV preview", () => {
+  it("accepts alleen een CSV-extensie en geallowliste MIME", () => {
+    expect(() => validateSportlinkUpload(new File(["a;b"], "leden.csv", { type: "text/csv" }))).not.toThrow();
+    expect(() => validateSportlinkUpload(new File(["a;b"], "leden.txt", { type: "text/csv" }))).toThrow("CSV_EXTENSION_INVALID");
+    expect(() => validateSportlinkUpload(new File(["a;b"], "leden.csv", { type: "application/octet-stream" }))).toThrow("CSV_MIME_INVALID");
+  });
   it("accepts semicolon CSV, normalizes relation numbers and e-mail", () => {
     const result = previewSportlinkImport([
       "Relatienummer;Voornaam;Achternaam;E-mailadres;Team;Actief voor seizoen",

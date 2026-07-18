@@ -20,7 +20,7 @@ export default function PaymentStartPage() {
     try {
       const response = await fetch("/api/payments/mollie/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ orderId: params.orderId }),
       });
       const payload = await response.json() as { checkoutUrl?: unknown; error?: unknown };

@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { previewSportlinkImport, SPORTLINK_MAX_BYTES, toSportlinkDatabaseRows } from "@/server/imports/sportlink";
+import { previewSportlinkImport, SPORTLINK_MAX_REQUEST_BYTES, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
+import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["multipart/form-data"], maxBytes: SPORTLINK_MAX_REQUEST_BYTES } }); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     const supabase = await getSupabaseServerClient();
@@ -16,7 +18,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "CSV-bestand ontbreekt." }, { status: 400 });
-    if (file.size > SPORTLINK_MAX_BYTES) return NextResponse.json({ error: "Het CSV-bestand is groter dan 10 MB." }, { status: 413 });
+    validateSportlinkUpload(file);
 
     const input = await file.text();
     const preview = previewSportlinkImport(input);
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
 
     const checksum = createHash("sha256").update(Buffer.from(input, "utf8")).digest("hex");
     const { data, error } = await supabase.schema("app").rpc("commit_sportlink_import", {
-      p_file_name: file.name,
+      p_file_name: "sportlink.csv",
       p_checksum: checksum,
       p_mapping: { delimiter: preview.delimiter, source: "Sportlink CSV", columns: preview.mapping },
       p_members: toSportlinkDatabaseRows(preview.members),

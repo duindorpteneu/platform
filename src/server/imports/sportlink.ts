@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const SPORTLINK_MAX_BYTES = 10 * 1024 * 1024;
+export const SPORTLINK_MAX_REQUEST_BYTES = SPORTLINK_MAX_BYTES + 1024 * 1024;
 const MAX_ROWS = 10_000;
 const MAX_COLUMNS = 32;
 const MAX_CELL_LENGTH = 512;
@@ -34,6 +35,14 @@ export type ImportPreview = {
   delimiter: "," | ";";
   mapping: SportlinkColumnMapping;
 };
+
+const CSV_MIME_TYPES = new Set(["text/csv", "application/csv", "application/vnd.ms-excel"]);
+
+export function validateSportlinkUpload(file: File) {
+  if (!file.name.toLocaleLowerCase("nl-NL").endsWith(".csv")) throw new Error("CSV_EXTENSION_INVALID");
+  if (!CSV_MIME_TYPES.has(file.type.toLocaleLowerCase("en-US"))) throw new Error("CSV_MIME_INVALID");
+  if (file.size > SPORTLINK_MAX_BYTES) throw new Error("CSV_FILE_TOO_LARGE");
+}
 
 const headerAliases: Record<keyof SportlinkMember, string[]> = {
   relationNumber: ["relatienummer", "relatienr", "relatie nr", "relatiecode"],

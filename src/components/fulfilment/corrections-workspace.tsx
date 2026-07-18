@@ -19,7 +19,7 @@ export function CorrectionsWorkspace({ workspace }: { workspace: Workspace }) {
   async function correct() {
     setBusy(true); setMessage(null);
     try {
-      const response = await fetch("/api/fulfilment/reverse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderLineIds: selected, targetStatus, reason }) });
+      const response = await fetch("/api/fulfilment/reverse", { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify({ orderLineIds: selected, targetStatus, reason }) });
       const payload = await response.json() as { correctedLines?: number; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Correctie mislukt.");
       setSelected([]); setReason("");

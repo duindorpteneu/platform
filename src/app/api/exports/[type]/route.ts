@@ -16,7 +16,7 @@ export async function GET(request: Request, context: { params: Promise<{ type: s
     const url = new URL(request.url);
     const query = querySchema.safeParse({ format: url.searchParams.get("format"), seasonId: url.searchParams.get("seasonId"), filter: url.searchParams.get("filter") });
     if (!type.success || !query.success) return NextResponse.json({ error: "Ongeldige exportselectie." }, { status: 400 });
-    const payload = await getExportPayload(type.data, query.data.seasonId, query.data.filter);
+    const payload = await getExportPayload(type.data, query.data.seasonId, query.data.filter ?? "all");
     const filename = createExportFilename(payload, query.data.format);
     const body = query.data.format === "csv" ? createCsvExport(payload) : await createXlsxExport(payload);
     return new NextResponse(body, { headers: {

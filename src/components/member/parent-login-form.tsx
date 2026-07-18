@@ -13,7 +13,7 @@ export function ParentLoginForm() {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(null); setLoading(true);
     try {
-      const response = await fetch("/api/parent-auth/request-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const response = await fetch("/api/parent-auth/request-code", { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify({ email }) });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Voer een geldig e-mailadres in.");
       router.push(`/login/code?email=${encodeURIComponent(email.trim().toLowerCase())}`);

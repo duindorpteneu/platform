@@ -51,7 +51,7 @@ export function DeliveriesWorkspace() {
     try {
       const response = await fetch("/api/stock/receipts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({
           receivedOn,
           supplier,
@@ -88,7 +88,7 @@ export function DeliveriesWorkspace() {
     try {
       const response = await fetch("/api/stock/reservations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
         body: JSON.stringify({ receiptLineId, orderLineIds: selectedOrderLines }),
       });
       const payload = await response.json() as { error?: string };
