@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(7);
+select plan(9);
 
 insert into app.staff_profiles (auth_user_id, display_name, role)
 values
@@ -27,6 +27,12 @@ select throws_ok(
   'uitgifte kan geen voorraadontvangst registreren'
 );
 select is(app.lookup_fulfilment(repeat('f', 64))->>'status', 'invalid', 'uitgifte mag alleen via de minimale QR-lookup zoeken');
+select throws_ok(
+  $$select app.get_stock_overview(null)$$,
+  '42501',
+  'STAFF_AUTHORIZATION_REQUIRED',
+  'uitgifte kan het operationele voorraadoverzicht niet openen'
+);
 
 reset role;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
@@ -34,6 +40,10 @@ set local role authenticated;
 
 select is((select count(*) from app.members where relation_number = 'RLS-001'), 1::bigint, 'kledingcommissie kan leden operationeel lezen');
 select is((select count(*) from app.import_batches where file_name = 'rls-test.csv'), 1::bigint, 'kledingcommissie kan imports lezen');
+select lives_ok(
+  $$select app.get_stock_overview(null)$$,
+  'kledingcommissie kan het operationele voorraadoverzicht openen'
+);
 
 select * from finish();
 rollback;
