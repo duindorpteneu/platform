@@ -30,6 +30,7 @@ Thumbs.db
 *.log
 pnpm-debug.log*
 
+*.tsbuildinfo
 # temporary
 .tmp/
 tmp/
