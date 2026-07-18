@@ -20,3 +20,6 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm build` — passed; dynamic route `/api/imports/preview` generated.
 - `pnpm typecheck` — passed sequentially after build (parallel race avoided).
 - Backoffice routes `/backoffice/leden`, `/backoffice/artikelen` and dynamic operational modules compile and render in production build.
+- `pnpm test` — passed (5 tests).
+- `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed after adding `/api/imports/commit`.
+- Supabase migration execution remains pending because the Supabase CLI/local database is not installed in this workspace.
