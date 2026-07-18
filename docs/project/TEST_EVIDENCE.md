@@ -15,3 +15,4 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test` — passed (2 role-permission tests).
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
+- `pnpm typecheck`, `pnpm lint` and `pnpm build` — passed after middleware typing fix.

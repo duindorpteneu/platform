@@ -8,6 +8,8 @@ Phase 0 complete; Phase 1 dashboard foundation in progress.
 - Next.js App Router foundation, route groups, shared shell and first enterprise dashboard added.
 - TypeScript, ESLint and production build gates pass locally.
 - Supabase foundation migration, local port contract, server client and staff-role guard added.
+- Supabase middleware session refresh and configured staff-route gating added.
+- Append-only audit, orders, order lines and payment foundation migration added.
 
 ## In progress
 - Supabase staff authentication and data-backed dashboard are not implemented yet.
