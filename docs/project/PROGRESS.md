@@ -11,6 +11,7 @@ Phase 0 complete; Phase 1 dashboard foundation in progress.
 - Supabase middleware session refresh and configured staff-route gating added.
 - Append-only audit, orders, order lines and payment foundation migration added.
 - Sportlink CSV preview domain service and protected `/api/imports/preview` endpoint added.
+- Ledenmodule, importpanel, catalogusmodule en consistente operationele placeholderroutes toegevoegd.
 
 ## In progress
 - Supabase staff authentication and data-backed dashboard are not implemented yet.

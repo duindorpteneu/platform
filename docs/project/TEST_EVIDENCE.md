@@ -19,3 +19,4 @@ Record commands, results and relevant screenshots/notes per phase.
 - Sportlink preview tests: 3 passed; total unit tests: 5 passed.
 - `pnpm build` — passed; dynamic route `/api/imports/preview` generated.
 - `pnpm typecheck` — passed sequentially after build (parallel race avoided).
+- Backoffice routes `/backoffice/leden`, `/backoffice/artikelen` and dynamic operational modules compile and render in production build.
