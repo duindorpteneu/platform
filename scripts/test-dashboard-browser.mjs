@@ -16,7 +16,15 @@ const memberIds = Array.from({ length: 5 }, (_, index) => `62000000-0000-4000-80
 const orderIds = Array.from({ length: 5 }, (_, index) => `63000000-0000-4000-8000-00000000000${index + 1}`);
 const lineIds = Array.from({ length: 6 }, (_, index) => `64000000-0000-4000-8000-00000000000${index + 1}`);
 const paymentIds = [1, 2, 4, 5].map((index) => `65000000-0000-4000-8000-00000000000${index}`);
-const articleId = "61000000-0000-4000-8000-000000000001";
+const articleIds = [
+  "61000000-0000-4000-8000-000000000001",
+  "61000000-0000-4000-8000-000000000002",
+];
+const receiptId = "66000000-0000-4000-8000-000000000001";
+const receiptLineId = "67000000-0000-4000-8000-000000000001";
+const reservationId = "68000000-0000-4000-8000-000000000001";
+const fulfilmentId = "69000000-0000-4000-8000-000000000001";
+const fulfilmentLineId = "6a000000-0000-4000-8000-000000000001";
 
 function localSupabaseEnv() {
   const output = execFileSync("pnpm", ["exec", "supabase", "status", "-o", "env"], {
@@ -86,15 +94,22 @@ async function waitForApp(process) {
 
 function cleanupSql(userId) {
   return `
-    delete from app.audit_logs where actor_user_id = '${userId}' or entity_id in (${sqlList([...orderIds, articleId])});
-    delete from app.payments where id in (${sqlList(paymentIds)});
-    delete from app.order_lines where id in (${sqlList(lineIds)});
+    delete from app.audit_logs where actor_user_id = '${userId}' or entity_id in (${sqlList([...orderIds, ...articleIds])});
+    delete from app.fulfilment_lines where fulfilment_id in (select id from app.fulfilments where order_id in (${sqlList(orderIds)}));
+    delete from app.fulfilments where order_id in (${sqlList(orderIds)});
+    delete from app.inventory_reservations where order_line_id in (select id from app.order_lines where order_id in (${sqlList(orderIds)}));
+    delete from private.qr_tokens where order_id in (${sqlList(orderIds)});
+    delete from app.payments where order_id in (${sqlList(orderIds)});
+    delete from app.order_lines where order_id in (${sqlList(orderIds)});
     delete from app.member_orders where id in (${sqlList(orderIds)});
     delete from app.members where relation_number = 'DSV-BROWSER-IMPORT';
     delete from app.members where id in (${sqlList(memberIds)});
     delete from app.import_batches where file_name = 'browser-import.csv';
-    delete from app.article_variants where id = '${articleId}';
-    delete from app.articles where id = '${articleId}';
+    delete from app.delivery_receipt_lines where receipt_id = '${receiptId}';
+    delete from app.delivery_receipts where id = '${receiptId}';
+    delete from app.article_seasons where article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
+    delete from app.article_variants where article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
+    delete from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK');
     delete from app.staff_profiles where auth_user_id = '${userId}';
   `;
 }
@@ -103,10 +118,17 @@ function fixtureSql(userId) {
   return `
     insert into app.staff_profiles (auth_user_id, display_name, role)
     values ('${userId}', 'Sprint Review', 'beheerder');
-    insert into app.articles (id, name, sort_order)
-    values ('${articleId}', 'Sprint testartikel', 99);
-    insert into app.article_variants (id, article_id, size, sku)
-    values ('${articleId}', '${articleId}', 'M', 'SPRINT-M');
+    insert into app.articles (id, name, code, icon_type, sort_order) values
+      ('${articleIds[0]}', 'Sprint testartikel', 'SPRINT-TEST', 'shirt', 99),
+      ('${articleIds[1]}', 'Sprint testbroek', 'SPRINT-BROEK', 'circle-dot', 100);
+    insert into app.article_variants (id, article_id, size, sku) values
+      ('${articleIds[0]}', '${articleIds[0]}', 'M', 'SPRINT-M'),
+      ('${articleIds[1]}', '${articleIds[1]}', '152', 'SPRINT-152');
+    insert into app.article_seasons (article_id, season_id)
+    select article_id, settings.active_season_id
+    from app.app_settings settings
+    cross join (values ('${articleIds[0]}'::uuid), ('${articleIds[1]}'::uuid)) articles(article_id)
+    where settings.id = true;
 
     insert into app.members (id, relation_number, first_name, insertion, last_name, email, team) values
       ('${memberIds[0]}', 'DSV-S01', 'Sophie', null, 'de Bruin', 'sophie@example.invalid', 'JO11-1'),
@@ -128,12 +150,12 @@ function fixtureSql(userId) {
     where settings.id = true;
 
     insert into app.order_lines (id, order_id, article_variant_id, quantity, status) values
-      ('${lineIds[0]}', '${orderIds[0]}', '${articleId}', 1, 'ready_for_pickup'),
-      ('${lineIds[1]}', '${orderIds[1]}', '${articleId}', 1, 'ready_for_pickup'),
-      ('${lineIds[2]}', '${orderIds[1]}', '${articleId}', 1, 'backorder'),
-      ('${lineIds[3]}', '${orderIds[2]}', '${articleId}', 1, 'backorder'),
-      ('${lineIds[4]}', '${orderIds[3]}', '${articleId}', 1, 'backorder'),
-      ('${lineIds[5]}', '${orderIds[4]}', '${articleId}', 1, 'picked_up');
+      ('${lineIds[0]}', '${orderIds[0]}', '${articleIds[0]}', 1, 'ready_for_pickup'),
+      ('${lineIds[1]}', '${orderIds[1]}', '${articleIds[0]}', 1, 'ready_for_pickup'),
+      ('${lineIds[2]}', '${orderIds[1]}', '${articleIds[1]}', 1, 'backorder'),
+      ('${lineIds[3]}', '${orderIds[2]}', '${articleIds[0]}', 1, 'backorder'),
+      ('${lineIds[4]}', '${orderIds[3]}', '${articleIds[0]}', 1, 'backorder'),
+      ('${lineIds[5]}', '${orderIds[4]}', '${articleIds[0]}', 1, 'picked_up');
 
     insert into app.payments (id, order_id, method, status, amount_cents, idempotency_key, paid_at) values
       ('${paymentIds[0]}', '${orderIds[0]}', 'card', 'paid', 12500, 'dashboard-browser-1', timezone('utc', now())),
@@ -141,11 +163,25 @@ function fixtureSql(userId) {
       ('${paymentIds[2]}', '${orderIds[3]}', 'card', 'paid', 12500, 'dashboard-browser-4', timezone('utc', now())),
       ('${paymentIds[3]}', '${orderIds[4]}', 'cash', 'paid', 12500, 'dashboard-browser-5', timezone('utc', now()));
 
+    insert into private.qr_tokens (order_id, token_hash, version, active, created_by)
+    values ('${orderIds[0]}', repeat('1', 64), 1, true, '${userId}');
+
+    insert into app.delivery_receipts (id, received_on, supplier, packing_slip_reference, actor_user_id)
+    values ('${receiptId}', current_date, 'Sprint browserleverancier', 'BROWSER-PAK', '${userId}');
+    insert into app.delivery_receipt_lines (id, receipt_id, article_variant_id, received_quantity)
+    values ('${receiptLineId}', '${receiptId}', '${articleIds[0]}', 1);
+    insert into app.inventory_reservations (id, receipt_line_id, order_line_id, quantity, status, actor_user_id)
+    values ('${reservationId}', '${receiptLineId}', '${lineIds[5]}', 1, 'fulfilled', '${userId}');
+    insert into app.fulfilments (id, order_id, actor_user_id, location, created_at)
+    values ('${fulfilmentId}', '${orderIds[4]}', '${userId}', 'Browserbalie', timezone('utc', now()) - interval '30 seconds');
+    insert into app.fulfilment_lines (id, fulfilment_id, order_line_id, reservation_id, quantity)
+    values ('${fulfilmentLineId}', '${fulfilmentId}', '${lineIds[5]}', '${reservationId}', 1);
+
     insert into app.audit_logs (actor_user_id, action, entity_type, entity_id, created_at) values
       ('${userId}', 'fulfilment.completed', 'member_order', '${orderIds[4]}', timezone('utc', now()) - interval '1 minute'),
       ('${userId}', 'stock.lines.reserved', 'member_order', '${orderIds[1]}', timezone('utc', now()) - interval '2 minutes'),
       ('${userId}', 'payment.manual.recorded', 'member_order', '${orderIds[3]}', timezone('utc', now()) - interval '3 minutes'),
-      ('${userId}', 'stock.receipt.created', 'article', '${articleId}', timezone('utc', now()) - interval '4 minutes'),
+      ('${userId}', 'stock.receipt.created', 'article', '${articleIds[0]}', timezone('utc', now()) - interval '4 minutes'),
       ('${userId}', 'members.import.commit', 'import_batch', null, timezone('utc', now()) - interval '5 minutes'),
       ('${userId}', 'qr.lookup', 'member_order', '${orderIds[0]}', timezone('utc', now()));
   `;
@@ -222,7 +258,7 @@ async function verifyMemberOverview(page, screenshotDir) {
   await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
   bodyText = await page.locator("body").innerText();
   bodyText = bodyText.replace(/\u00a0/g, " ");
-  for (const expected of ["sophie@example.invalid", "€ 125,00", "Volledig af te halen", "Niet aangemaakt", "Sprint testartikel · M"]) {
+  for (const expected of ["sophie@example.invalid", "€ 125,00", "Volledig af te halen", "Actief", "Sprint testartikel · M"]) {
     if (!bodyText.includes(expected)) throw new Error(`Liddetail mist verwachte tekst: ${expected}`);
   }
   if (bodyText.includes("token_hash") || bodyText.includes("qrToken")) throw new Error("Liddetail toont QR-geheim materiaal.");
@@ -272,6 +308,96 @@ async function verifyMemberOverview(page, screenshotDir) {
   await page.getByText("Browser Importlid", { exact: true }).waitFor({ timeout: 5_000 });
 }
 
+async function verifyOperationsSprint(page, screenshotDir) {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  process.stdout.write("Operations-browsertest: catalogusartikel en variant aanmaken…\n");
+  await page.goto(`${baseUrl}/backoffice/artikelen`);
+  await page.getByRole("heading", { name: "Artikelen en maten" }).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Artikel toevoegen" }).first().click();
+  const articleForm = page.locator("form").filter({ hasText: "Tenueonderdeel toevoegen" });
+  await articleForm.getByLabel("Naam").fill("Browser trainingsjack");
+  await articleForm.getByLabel("Korte code").fill("BROWSER-JACK");
+  await articleForm.getByLabel("Icoon").selectOption("package");
+  await articleForm.getByLabel("Sorteervolgorde").fill("110");
+  await articleForm.getByRole("button", { name: "Artikel toevoegen" }).click();
+  await page.getByText("Artikel toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: /Browser trainingsjack/ }).click();
+
+  const variantForm = page.locator("form").filter({ hasText: "Variant toevoegen" });
+  await variantForm.getByLabel("Maat").fill("164");
+  await variantForm.getByLabel("Leverancierscode").fill("BROWSER-164");
+  await variantForm.getByLabel("Volgorde").fill("10");
+  await variantForm.getByRole("button", { name: "Variant toevoegen" }).click();
+  await page.getByText("Variant toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByText("BROWSER-164", { exact: true }).waitFor({ timeout: 5_000 });
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-catalog-desktop.png"), fullPage: true });
+
+  process.stdout.write("Operations-browsertest: open bestelling wijzigen en betaalde bestelling vergrendelen…\n");
+  await page.goto(`${baseUrl}/backoffice/bestellingen`);
+  await page.getByRole("heading", { name: "Bestellingen" }).waitFor({ timeout: 5_000 });
+  await page.getByPlaceholder("Naam, team of relatienummer").fill("Lotte");
+  await page.getByRole("button", { name: /Lotte Jansen/ }).click();
+  const orderForm = page.locator("form").filter({ hasText: "Lotte Jansen" });
+  await orderForm.getByLabel(/Exact verschuldigd bedrag/).fill("130,00");
+  const jacketRow = orderForm.locator("div.rounded-xl").filter({ hasText: "Browser trainingsjack" });
+  await jacketRow.getByRole("combobox").selectOption({ label: "164 · BROWSER-164" });
+  await orderForm.getByRole("button", { name: "Bestelling opslaan" }).click();
+  await page.getByText("Bestelling bijgewerkt en geaudit.", { exact: true }).waitFor({ timeout: 5_000 });
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-orders-desktop.png"), fullPage: true });
+
+  await page.getByPlaceholder("Naam, team of relatienummer").fill("Sophie");
+  await page.getByRole("button", { name: /Sophie de Bruin/ }).click();
+  await page.getByText("Betaald · alleen-lezen", { exact: true }).waitFor({ timeout: 5_000 });
+  if (await page.getByRole("button", { name: "Bestelling opslaan" }).isEnabled()) {
+    throw new Error("Een betaalde bestelling is in de browser niet alleen-lezen.");
+  }
+
+  process.stdout.write("Operations-browsertest: QR roteren, intrekken en opnieuw activeren…\n");
+  const detailUrl = `${baseUrl}/backoffice/leden?member=${memberIds[0]}`;
+  await page.goto(detailUrl);
+  await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Verplichte reden").first().fill("Ouder meldde verlies");
+  const [rotateResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/qr/rotate") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "QR roteren" }).click(),
+  ]);
+  if (!rotateResponse.ok()) {
+    throw new Error(`QR-rotatie gaf HTTP ${rotateResponse.status()}: ${await rotateResponse.text()}`);
+  }
+  await page.getByText("Nieuwe QR-versie is actief; de oude code is direct ongeldig.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Verplichte reden").first().fill("Tijdelijk veiligheidsincident");
+  await page.getByRole("button", { name: "QR intrekken" }).click();
+  await page.getByText("De QR-code is direct ingetrokken.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.reload();
+  await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
+  await page.getByText("Ingetrokken", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Verplichte reden").first().fill("Nieuwe code na intrekking");
+  await page.getByRole("button", { name: "Nieuwe QR activeren" }).click();
+  await page.getByText("Nieuwe QR-versie is actief; de oude code is direct ongeldig.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.reload();
+  await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
+  await page.getByText("Actief", { exact: true }).last().waitFor({ timeout: 5_000 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-member-security-mobile.png"), fullPage: true });
+
+  process.stdout.write("Operations-browsertest: foutieve uitgifte transactioneel corrigeren…\n");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/backoffice/uitgifte`);
+  await page.getByRole("heading", { name: "Uitgiftes en correcties" }).waitFor({ timeout: 5_000 });
+  await page.getByText("Noa Smit", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByRole("checkbox").check();
+  await page.getByLabel("Doelstatus").selectOption("backorder");
+  await page.getByLabel("Verplichte reden").fill("Artikel bleek niet meegegeven");
+  await page.getByRole("button", { name: "Correctie bevestigen" }).click();
+  await page.getByText("1 regel(s) transactioneel gecorrigeerd.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByText(/Gecorrigeerd/).waitFor({ timeout: 5_000 });
+  const historyText = await page.locator("body").innerText();
+  if (!historyText.includes("Reden: Artikel bleek niet meegegeven") || !historyText.includes("Nalevering")) {
+    throw new Error("Uitgiftecorrectie is niet volledig zichtbaar in de operationele historie.");
+  }
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-corrections-desktop.png"), fullPage: true });
+}
+
 const local = localSupabaseEnv();
 for (const name of ["API_URL", "DB_URL", "ANON_KEY", "SERVICE_ROLE_KEY"]) {
   if (!local[name]) throw new Error(`Lokale Supabase-status mist ${name}.`);
@@ -308,6 +434,13 @@ try {
     appProcess = spawn("pnpm", ["start", "--hostname", host, "--port", String(port)], {
       detached: true,
       stdio: "ignore",
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_SUPABASE_URL: local.API_URL,
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.ANON_KEY,
+        SUPABASE_SECRET_KEY: local.SERVICE_ROLE_KEY,
+        PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER ?? "dashboard-browser-test-pepper-with-32-characters",
+      },
     });
   }
   await waitForApp(appProcess);
@@ -344,6 +477,7 @@ try {
   );
   process.stdout.write("Backoffice-browsertest: ledenlijst, detail, filters en import controleren…\n");
   await verifyMemberOverview(page, screenshotDir);
+  await verifyOperationsSprint(page, screenshotDir);
 
   const unauthenticatedPage = await browser.newPage();
   process.stdout.write("Dashboard-browsertest: anonieme routebeveiliging controleren…\n");
@@ -353,7 +487,7 @@ try {
   }
 
   process.stdout.write(
-    "Backoffice-browsertest geslaagd: AAL2, dashboard, ledenlijst, detail, filters, import, responsive layout en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, QR-beheer, uitgiftecorrecties, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);
