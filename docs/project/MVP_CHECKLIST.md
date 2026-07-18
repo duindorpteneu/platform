@@ -2,7 +2,7 @@
 
 Codex must expand this checklist from the canonical PDF before implementation and keep it traceable to tests.
 
-- [ ] Three staff roles only
+- [x] Three staff roles only
 - [ ] Sportlink CSV import
 - [ ] Products, sizes and member order lines
 - [ ] Exact amount and payment per member

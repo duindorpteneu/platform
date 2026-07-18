@@ -35,11 +35,15 @@ Voer daarna lokaal `pnpm exec supabase status` uit en kopieer alleen de lokale p
 pnpm db:reset
 pnpm test:db
 pnpm test:db:concurrency
+pnpm test:staff-mfa
 ```
 
 - `db:reset` wist uitsluitend de lokale Duindorp-database, voert alle migrations opnieuw uit en laadt fictieve seeddata.
 - `test:db` voert pgTAP-tests uit voor RLS, rollen, voorraad, QR en deeluitgifte.
 - `test:db:concurrency` opent twee echte PostgreSQL-sessies en bewijst dat slechts één balie dezelfde artikelregel kan uitgeven.
+- `test:staff-mfa` maakt tijdelijk een fictief account en profiel, bewijst wachtwoordlogin, TOTP-promotie naar AAL2, AAL1-weigering en verwijdert de fixture altijd weer.
+
+De lokale Auth-config heeft TOTP enrollment en verificatie expliciet aan. Het Data API exposeert `app` voor RLS- en RPC-gecontroleerde applicatietoegang; `private` blijft niet-exposed.
 
 ## Stoppen
 

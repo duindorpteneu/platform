@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Phase 5 inventory, fulfilment and the data-backed deliveries workspace are validated; staff Auth/MFA is next.
+Staff Auth/MFA and the fulfilment/stock foundation are validated; the fixturevrije backoffice-aggregaties are next.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -30,14 +30,18 @@ Phase 5 inventory, fulfilment and the data-backed deliveries workspace are valid
 - Rolbeveiligd voorraadoverzicht toegevoegd met totalen per variant, beschikbare ontvangstregels en variantgebonden wachtlijst.
 - Datagedreven leveringenwerkruimte toegevoegd voor ontvangstregistratie, voorraadselectie en atomaire reserveringsbevestiging.
 - De leveringenroute is zonder horizontale overflow gecontroleerd op desktop en mobiel; fout-, laad-, lege en successtatussen zijn aanwezig.
+- Medewerkerslogin met sterk wachtwoord, TOTP enrollment/challenge, AAL2-middleware, serverguard en lokale sessie-intrekking toegevoegd.
+- Staff-shell toont de echte profielnaam en rol; `uitgifte` krijgt uitsluitend de scanner-navigatie en kan niet naar backoffice doorlopen.
+- AAL2 wordt ook in PostgreSQL fail-closed afgedwongen; een actief profiel met AAL1 krijgt `42501` op staff-RPC's.
+- Volledige lokale browserflow wachtwoord → TOTP → backoffice → logout en reproduceerbare providerintegratietest zijn groen.
 
 ## In progress
-- Supabase staff authentication/MFA en het fixturevrije backofficedashboard zijn nog niet aangesloten.
+- Het backofficedashboard gebruikt nog visuele fixtures in plaats van geautoriseerde operationele aggregaties.
 - QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
-- Sluit staff Auth/MFA en echte medewerkergegevens op de shell aan.
-- Vervang daarna de backoffice-dashboardfixtures door geautoriseerde operationele aggregaties.
+- Vervang de backoffice-dashboardfixtures door geautoriseerde operationele aggregaties.
+- Bouw daarna QR-rotatie/intrekking en fulfilmentcorrectie met verplichte reden.
 
 ## Blockers
 - Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.
