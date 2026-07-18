@@ -14,6 +14,7 @@ export const molliePaymentSchema = z.object({
   amountRefunded: amountSchema.optional(),
   amountRemaining: amountSchema.optional(),
   metadata: z.union([z.record(z.unknown()), z.string(), z.null()]),
+  createdAt: z.string().datetime({ offset: true }).nullable().optional(),
   expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
   paidAt: z.string().datetime({ offset: true }).nullable().optional(),
   canceledAt: z.string().datetime({ offset: true }).nullable().optional(),

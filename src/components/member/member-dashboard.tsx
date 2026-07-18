@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, Link2, Loader2, LockKeyhole, RefreshCw, Shirt, UserRound } from "lucide-react";
+import { ArrowRight, CheckCircle2, CreditCard, Link2, Loader2, LockKeyhole, RefreshCw, Shirt, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -36,6 +36,28 @@ const statusLabel: Record<string, string> = {
   picked_up: "Afgehaald",
 };
 
+const paymentLabel: Record<string, string> = {
+  open: "Nog te betalen",
+  pending: "Betaling wordt verwerkt",
+  paid: "Betaald",
+  failed: "Nog te betalen",
+  canceled: "Nog te betalen",
+  expired: "Nog te betalen",
+  refunded: "Terugbetaald",
+  duplicate_paid: "Betaling ontvangen",
+};
+
+function paymentBadge(status: string | null) {
+  if (status === "paid" || status === "duplicate_paid") return "bg-emerald-50 text-success";
+  if (status === "pending") return "bg-brand-50 text-brand-700";
+  if (status === "refunded") return "bg-slate-100 text-slate-600";
+  return "bg-amber-50 text-warning";
+}
+
+function canStartPayment(member: Member) {
+  return Boolean(member.order_id && member.amount_due_cents !== null && !["paid", "pending", "refunded", "duplicate_paid"].includes(member.payment_status ?? "open"));
+}
+
 function fullName(member: { first_name: string; insertion: string | null; last_name: string }) {
   return [member.first_name, member.insertion, member.last_name].filter(Boolean).join(" ");
 }
@@ -55,7 +77,13 @@ function QrPanel({ member }: { member: Member }) {
       <LockKeyhole className="size-5 text-slate-400" />
       <p className="mt-2 text-[10px] font-semibold text-slate-500">QR vergrendeld</p>
       <p className="mt-1 text-[9px] leading-4 text-slate-400">
-        {member.payment_status === "paid" ? "QR wordt klaargezet" : "Beschikbaar na betaling"}
+        {member.payment_status === "paid"
+          ? "QR wordt klaargezet"
+          : member.payment_status === "pending"
+            ? "Wacht op betaalbevestiging"
+            : member.payment_status === "refunded"
+              ? "Geblokkeerd na terugbetaling"
+              : "Beschikbaar na betaling"}
       </p>
     </div>
   );
@@ -153,13 +181,22 @@ export function MemberDashboard() {
             <article key={member.member_id} className="rounded-2xl border border-line bg-white p-6 shadow-card">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">{member.first_name.slice(0, 1)}{member.last_name.slice(0, 1)}</div><div><h2 className="text-base font-bold text-brand-900">{fullName(member)}</h2><p className="mt-1 text-xs text-slate-500">{member.team} · {member.relation_number}</p></div></div>
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${member.payment_status === "paid" ? "bg-emerald-50 text-success" : "bg-amber-50 text-warning"}`}>{member.payment_status === "paid" ? "Betaald" : "Nog te betalen"}</span>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(member.payment_status)}`}>{paymentLabel[member.payment_status ?? "open"] ?? "Nog te betalen"}</span>
               </div>
               <div className="mt-6 grid grid-cols-[1fr_118px] gap-4">
                 <div><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Artikelregels</p><div className="mt-3 space-y-2">{member.article_lines.length === 0 ? <p className="text-xs text-slate-400">Nog geen artikelen gekoppeld.</p> : member.article_lines.map((line) => <div key={line.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"><span className="flex items-center gap-2 text-xs font-medium text-ink"><Shirt className="size-3.5 text-brand-500" />{line.article} · {line.size}</span><span className={`text-[10px] font-semibold ${line.status === "picked_up" ? "text-success" : line.status === "ready_for_pickup" ? "text-brand-700" : "text-warning"}`}>{statusLabel[line.status] ?? line.status}</span></div>)}</div></div>
                 <QrPanel member={member} />
               </div>
-              <div className="mt-5 flex items-center justify-between border-t border-line pt-4"><div><p className="text-[10px] text-slate-400">Verschuldigd bedrag</p><p className="mt-1 text-sm font-bold text-ink">{member.amount_due_cents === null ? "Nog niet samengesteld" : amount.format(member.amount_due_cents / 100)}</p></div>{member.payment_status === "paid" && <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-success"><CheckCircle2 className="size-4" /> Betaling ontvangen</span>}</div>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                <div><p className="text-[10px] text-slate-400">Verschuldigd bedrag</p><p className="mt-1 text-sm font-bold text-ink">{member.amount_due_cents === null ? "Nog niet samengesteld" : amount.format(member.amount_due_cents / 100)}</p></div>
+                {(member.payment_status === "paid" || member.payment_status === "duplicate_paid") && <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-success"><CheckCircle2 className="size-4" /> Betaling ontvangen</span>}
+                {member.payment_status === "pending" && <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-brand-700"><Loader2 className="size-4 animate-spin" /> Wordt verwerkt</span>}
+                {canStartPayment(member) && (
+                  <Link href={`/betaling/${member.order_id}`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">
+                    <CreditCard className="size-4" aria-hidden="true" /> Betaal {amount.format((member.amount_due_cents ?? 0) / 100)}
+                  </Link>
+                )}
+              </div>
             </article>
           ))}
         </div>
