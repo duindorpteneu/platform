@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Staff Auth/MFA and the fulfilment/stock foundation are validated; the fixturevrije backoffice-aggregaties are next.
+Het operationele backofficedashboard is fixturevrij, AAL2-beveiligd en gevalideerd; de volgende bouwfase richt zich op de resterende operationele beheerflows.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -34,14 +34,20 @@ Staff Auth/MFA and the fulfilment/stock foundation are validated; the fixturevri
 - Staff-shell toont de echte profielnaam en rol; `uitgifte` krijgt uitsluitend de scanner-navigatie en kan niet naar backoffice doorlopen.
 - AAL2 wordt ook in PostgreSQL fail-closed afgedwongen; een actief profiel met AAL1 krijgt `42501` op staff-RPC's.
 - Volledige lokale browserflow wachtwoord → TOTP → backoffice → logout en reproduceerbare providerintegratietest zijn groen.
+- Aparte AAL2-dashboard- en personeelsshell-RPC's toegevoegd met fail-closed rolcontrole en een minimale gegevensset zonder e-mailadressen.
+- Dashboard-KPI's, recente bestelstatussen, auditactiviteit, actieve seizoencontext en gereed-voor-uitgifte-aantal zijn volledig datagedreven.
+- Visuele dashboardfixtures, fictieve syncstatus, notificatieteller en fictieve uitgifteplanning zijn uit de backoffice verwijderd.
+- Dashboard heeft loading-, error-, leeg-seizoen-, lege-lijst- en successtatussen; desktop en mobiel zijn zonder body-overflow gevalideerd.
+- Zelfopruimende browserregressietest toegevoegd voor wachtwoord → TOTP → AAL2 → live dashboard, KPI's, fixtureverbod, routebeveiliging en screenshots.
+- Schone database-reset met 17 migrations, 38 pgTAP-asserties, 26 unit-tests en de productiebuild zijn groen.
 
 ## In progress
-- Het backofficedashboard gebruikt nog visuele fixtures in plaats van geautoriseerde operationele aggregaties.
+- Het afzonderlijke ledenoverzicht gebruikt nog geïsoleerde previewdata en is nog geen operationele leden-/bestellijst.
 - QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
-- Vervang de backoffice-dashboardfixtures door geautoriseerde operationele aggregaties.
-- Bouw daarna QR-rotatie/intrekking en fulfilmentcorrectie met verplichte reden.
+- Sluit het leden- en bestellingenoverzicht aan op geautoriseerde operationele data en verwijder de resterende previewdata.
+- Bouw daarna QR-rotatie/intrekking en fulfilmentcorrectie met verplichte reden en auditregistratie.
 
 ## Blockers
 - Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.

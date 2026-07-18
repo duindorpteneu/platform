@@ -3,16 +3,16 @@
 Codex must expand this checklist from the canonical PDF before implementation and keep it traceable to tests.
 
 - [x] Three staff roles only
-- [ ] Sportlink CSV import
+- [x] Sportlink CSV import
 - [ ] Products, sizes and member order lines
-- [ ] Exact amount and payment per member
-- [ ] Manual cash/card registration
-- [ ] Parent e-mail OTP, six digits, ten minutes
-- [ ] No parent password, magic link or Supabase Auth account
-- [ ] Optional explicit linking of matching members
-- [ ] One member card and one QR per member/season
-- [ ] Partial delivery states and item-level fulfilment
-- [ ] Restricted issuance app
+- [x] Exact amount and payment per member
+- [x] Manual cash/card registration
+- [x] Parent e-mail OTP, six digits, ten minutes
+- [x] No parent password, magic link or Supabase Auth account
+- [x] Optional explicit linking of matching members
+- [x] One member card and one QR per member/season
+- [x] Partial delivery states and item-level fulfilment
+- [x] Restricted issuance app
 - [ ] SendGrid templates and bulk e-mail
 - [ ] Mollie webhook-first sandbox integration
 - [ ] Exports and audit trail
