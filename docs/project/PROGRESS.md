@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Het operationele backofficedashboard is fixturevrij, AAL2-beveiligd en gevalideerd; de volgende bouwfase richt zich op de resterende operationele beheerflows.
+Het operationele dashboard en ledenoverzicht zijn fixturevrij, AAL2-beveiligd en gevalideerd; de volgende bouwfase richt zich op artikel-/bestelbeheer en correctieflows.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -39,14 +39,18 @@ Het operationele backofficedashboard is fixturevrij, AAL2-beveiligd en gevalidee
 - Visuele dashboardfixtures, fictieve syncstatus, notificatieteller en fictieve uitgifteplanning zijn uit de backoffice verwijderd.
 - Dashboard heeft loading-, error-, leeg-seizoen-, lege-lijst- en successtatussen; desktop en mobiel zijn zonder body-overflow gevalideerd.
 - Zelfopruimende browserregressietest toegevoegd voor wachtwoord → TOTP → AAL2 → live dashboard, KPI's, fixtureverbod, routebeveiliging en screenshots.
-- Schone database-reset met 17 migrations, 38 pgTAP-asserties, 26 unit-tests en de productiebuild zijn groen.
+- Operationeel ledenoverzicht toegevoegd met server-side zoeken, canonieke filters, paginering en een detailpaneel zonder volledige paginawissel.
+- Lijst- en detaildata zijn gescheiden: de lijst bevat geen e-mailadressen; persoonsgegevens, ouderkoppelingen, orderregels, QR-status en historie komen uitsluitend via een expliciete detailquery.
+- Sportlink-import afgerond als vierstappenflow met kolomkoppeling, nieuwe/gewijzigde/ongewijzigde tellingen en een transactionele, geaudite commit.
+- Schone database-reset met 19 migrations, 75 pgTAP-asserties, 31 unit-tests en de productiebuild zijn groen.
+- Zelfopruimende browserregressie bewijst AAL2, live dashboard, ledenlijst, filters, detail, desktop/mobiel, Sportlink preview/commit en anonieme routebeveiliging.
 
 ## In progress
-- Het afzonderlijke ledenoverzicht gebruikt nog geïsoleerde previewdata en is nog geen operationele leden-/bestellijst.
+- Artikel-, variant- en orderbeheer hebben nog geen volledige operationele backofficeflow.
 - QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
-- Sluit het leden- en bestellingenoverzicht aan op geautoriseerde operationele data en verwijder de resterende previewdata.
+- Bouw canoniek artikel-, variant- en orderbeheer op de bestaande datalaag, inclusief exacte bedragen en server-side invarianten.
 - Bouw daarna QR-rotatie/intrekking en fulfilmentcorrectie met verplichte reden en auditregistratie.
 
 ## Blockers

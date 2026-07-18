@@ -90,3 +90,16 @@ Record commands, results and relevant screenshots/notes per phase.
 - Browsercontrole: 1440×1000 en 390×844, geen horizontale body-overflow, actuele seizoen-/profieldata zichtbaar, voormalige fixtures `486`, `Danny`, `Zaterdag 22 juli` en `laatste sync` afwezig.
 - Screenshots: `after-dashboard-desktop.png` en `after-dashboard-mobile.png` in het lokale sprintartefact; testdata en MFA-factor zijn na vastlegging verwijderd.
 - Definitieve applicatiegates: `pnpm lint`, `pnpm typecheck` en `pnpm build` — passed; `/backoffice` blijft dynamisch server-rendered.
+
+## Operationeel ledenoverzicht en Sportlink-commit — 2026-07-18
+
+- Migrations `20260718150000_member_overview.sql` en `20260718151000_sportlink_summary.sql` zijn als migration 18 en 19 schoon toegepast.
+- `pnpm db:reset` — passed; alle 19 migrations en `supabase/seed.sql` zijn vanaf nul toegepast op de geïsoleerde PostgreSQL 17-stack.
+- `pnpm test:db` — 5 pgTAP-bestanden en 75 assertions passed; omvat AAL1- en `uitgifte`-weigering, PII-minimale lijst, alle filters, paginering, detailgegevens, ouderkoppelingen, orderregels, QR-status, historie en Sportlink change summary/commit.
+- `pnpm test` — 11 bestanden en 31 tests passed; strikte query-, lijst- en detailcontracten weigeren ongeldige selecties, identifiers en extra PII/QR-tokens. De Sportlink databaseadapter is afzonderlijk getest.
+- `pnpm lint`, `pnpm typecheck` en `pnpm build` — passed; `/backoffice/leden` en beide importroutes zijn dynamisch gebundeld.
+- `pnpm test:db:concurrency` — passed; één fulfilment slaagt en de concurrerende tweede balie wordt geblokkeerd.
+- `pnpm test:staff-mfa` — passed; AAL2 wordt toegestaan en AAL1 retourneert `42501`.
+- `pnpm test:dashboard-browser` — passed na een schone database-reset; controleert wachtwoord + TOTP, dashboard, live ledenlijst, serverfilters, expliciet detail, responsiviteit, CSV-upload, change preview, transactionele commit, terugzoekbaarheid en anonieme redirect.
+- Browserfixtures, MFA-account, importbatch en geïmporteerd testlid worden in `finally` verwijderd; de productie-app wordt door het script gestopt.
+- Screenshots: `after-members-desktop.png` op 1440×1000 en `after-member-detail-mobile.png` op 390×844; mobiel heeft geen horizontale body-overflow.
