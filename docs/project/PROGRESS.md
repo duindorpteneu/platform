@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Phase 0 complete; Phase 1 dashboard foundation in progress.
+Phase 5 inventory and fulfilment implementation in progress. Clean-database and RLS verification remain open.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -18,12 +18,21 @@ Phase 0 complete; Phase 1 dashboard foundation in progress.
 - Canonieke ouderroutes `/login`, `/login/code` en staff-route `/staff/login` toegevoegd met werkende formulieren.
 - Parent session/member RPCs and protected member, candidate, link and unlink endpoints added.
 - Datagedreven ouderdashboard met member cards, artikelstatussen, betaalstatus en expliciete koppelkandidaten toegevoegd.
+- Voorraadontvangsten, variantreserveringen, fulfilments, QR-tokenhashes en afgeleide orderstatussen als vooruitrolbare migrations toegevoegd.
+- Handmatige betaling en eerste QR-activering in één database-transactie samengebracht.
+- Beschermde stock receipt, reservation, QR lookup en atomaire fulfilment endpoints toegevoegd.
+- Beperkte enterprise-uitgiftewerkruimte toegevoegd met camera-actie, neutrale ongeldige-QR-status, betaalblokkade en artikelselectie per status.
+- QR lookup rate limiting, minimale persoonsgegevens, auditregistratie, live QR-hercontrole en dubbele-uitgifteconstraints toegevoegd.
 
 ## In progress
-- Supabase staff authentication and data-backed dashboard are not implemented yet.
+- De migraties moeten nog op een schone lokale Supabase/PostgreSQL-database worden uitgevoerd en met negatieve RLS- en concurrencytests worden bewezen.
+- Supabase staff authentication/MFA en het fixturevrije backofficedashboard zijn nog niet aangesloten.
+- De backoffice-interface voor levering aanmaken en wachtlijstselectie is nog niet aangesloten op de nieuwe stock endpoints.
 
 ## Next
-- Connect staff Auth/MFA to the shell and add the audit table plus first data-backed member query.
+- Voer alle migrations en seed uit op een geïsoleerde lokale Supabase-stack en voeg database-integratietests toe voor voorraadoverschrijding, dubbele reservering en gelijktijdige uitgifte.
+- Bouw daarna de datagedreven leveringenpagina voor ontvangst, variantwachtlijst en reserveringsbevestiging.
 
 ## Blockers
-- Live Supabase, Mollie and SendGrid credentials are intentionally not needed for the current foundation phase.
+- De Supabase CLI en een lokaal Supabase PostgreSQL-image zijn niet aanwezig; daardoor is echte migratie-, RLS- en transactieverificatie lokaal nog geblokkeerd. Applicatiecode, unit tests en productiebuild kunnen wel verder.
+- Live Mollie- en SendGrid-credentials zijn voor deze stap niet nodig.
