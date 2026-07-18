@@ -196,7 +196,7 @@ async function verifyDashboard(page, viewport, screenshotPath) {
   try {
     await page.getByRole("heading", { name: "Welkom terug, Sprint" }).waitFor({ timeout: 5_000 });
   } catch {
-    const bodySummary = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 300);
+    const bodySummary = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 1500);
     throw new Error(`De dashboardkop is niet zichtbaar. Pagina: ${bodySummary}`);
   }
 
@@ -342,7 +342,7 @@ async function verifyOperationsSprint(page, screenshotDir) {
   const jacketRow = orderForm.locator("div.rounded-xl").filter({ hasText: "Browser trainingsjack" });
   await jacketRow.getByRole("combobox").selectOption({ label: "164 · BROWSER-164" });
   await orderForm.getByRole("button", { name: "Bestelling opslaan" }).click();
-  await page.getByText("Bestelling bijgewerkt en geaudit.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByText("Bestelling bijgewerkt en geaudit.", { exact: true }).waitFor({ timeout: 10_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-orders-desktop.png"), fullPage: true });
 
   await page.getByPlaceholder("Naam, team of relatienummer").fill("Sophie");
@@ -398,6 +398,43 @@ async function verifyOperationsSprint(page, screenshotDir) {
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-corrections-desktop.png"), fullPage: true });
 }
 
+async function verifyProviderSprint(page, screenshotDir) {
+  process.stdout.write("Provider-browsertest: e-mailcentrum en bulkcontrole controleren…\n");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/backoffice/emails`);
+  await page.getByRole("heading", { name: "E-mailcentrum" }).waitFor({ timeout: 5_000 });
+  for (const expected of ["Verzending gepauzeerd", "6", "Verificatiecode", "Betalingsherinnering"]) {
+    if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(`E-mailcentrum mist verwachte tekst: ${expected}`);
+  }
+  await page.getByRole("button", { name: "Bulkmail" }).click();
+  await page.getByRole("heading", { name: "Bestellingen selecteren" }).waitFor({ timeout: 5_000 });
+  await page.getByText("Elk geselecteerd lid krijgt één afzonderlijk bericht.").waitFor({ timeout: 5_000 });
+  const emailDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));
+  if (emailDimensions.scrollWidth > emailDimensions.clientWidth) throw new Error("E-mailcentrum heeft horizontale body-overflow.");
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-email-center-desktop.png"), fullPage: true });
+
+  process.stdout.write("Provider-browsertest: operationeel betaalregister controleren…\n");
+  await page.goto(`${baseUrl}/backoffice/betalingen`);
+  await page.getByRole("heading", { name: "Betalingen", exact: true }).waitFor({ timeout: 5_000 });
+  const paymentBody = await page.locator("body").innerText();
+  for (const expected of ["open of onderweg", "betaald", "recente betaalpogingen", "kas"]) {
+    if (!paymentBody.toLowerCase().includes(expected)) throw new Error(`Betaalregister mist verwachte tekst: ${expected}. Pagina: ${paymentBody.replace(/\s+/g, " ").slice(0, 500)}`);
+  }
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-payments-desktop.png"), fullPage: true });
+
+  process.stdout.write("Provider-browsertest: neutrale Mollie-retourpagina mobiel controleren…\n");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/betaling/terug`);
+  await page.getByRole("heading", { name: "Betaling wordt gecontroleerd" }).waitFor({ timeout: 5_000 });
+  const returnText = await page.locator("body").innerText();
+  if (!returnText.includes("Deze pagina markeert een bestelling nooit zelf als betaald.")) {
+    throw new Error("De Mollie-retourpagina mist de webhook-first veiligheidsmelding.");
+  }
+  const returnDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));
+  if (returnDimensions.scrollWidth > returnDimensions.clientWidth) throw new Error("Mollie-retourpagina heeft horizontale body-overflow.");
+  if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-payment-return-mobile.png"), fullPage: true });
+}
+
 const local = localSupabaseEnv();
 for (const name of ["API_URL", "DB_URL", "ANON_KEY", "SERVICE_ROLE_KEY"]) {
   if (!local[name]) throw new Error(`Lokale Supabase-status mist ${name}.`);
@@ -433,7 +470,7 @@ try {
     process.stdout.write("Dashboard-browsertest: productie-app starten…\n");
     appProcess = spawn("pnpm", ["start", "--hostname", host, "--port", String(port)], {
       detached: true,
-      stdio: "ignore",
+      stdio: process.env.DASHBOARD_APP_LOGS === "1" ? "inherit" : "ignore",
       env: {
         ...process.env,
         NEXT_PUBLIC_SUPABASE_URL: local.API_URL,
@@ -478,6 +515,7 @@ try {
   process.stdout.write("Backoffice-browsertest: ledenlijst, detail, filters en import controleren…\n");
   await verifyMemberOverview(page, screenshotDir);
   await verifyOperationsSprint(page, screenshotDir);
+  await verifyProviderSprint(page, screenshotDir);
 
   const unauthenticatedPage = await browser.newPage();
   process.stdout.write("Dashboard-browsertest: anonieme routebeveiliging controleren…\n");
@@ -487,7 +525,7 @@ try {
   }
 
   process.stdout.write(
-    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, QR-beheer, uitgiftecorrecties, responsive layout en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);

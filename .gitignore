@@ -15,6 +15,7 @@ out/
 coverage/
 playwright-report/
 test-results/
+artifacts/
 
 # local Supabase
 supabase/.branches/
