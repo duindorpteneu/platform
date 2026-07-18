@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Phase 5 inventory and fulfilment backend validated; the data-backed deliveries UI is next.
+Phase 5 inventory, fulfilment and the data-backed deliveries workspace are validated; staff Auth/MFA is next.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -27,15 +27,17 @@ Phase 5 inventory and fulfilment backend validated; the data-backed deliveries U
 - Projectlokale Supabase CLI 2.109.1 en geïsoleerde Docker-stack toegevoegd; alle migrations en seed slagen vanaf een schone PostgreSQL 17-database.
 - RLS en tabelprivileges aangescherpt zodat `uitgifte` geen leden/imports kan browsen en authenticated geen directe tabelmutaties kan uitvoeren.
 - 18 pgTAP-asserties en een echte twee-sessies fulfilmentracetest toegevoegd en groen gemaakt.
+- Rolbeveiligd voorraadoverzicht toegevoegd met totalen per variant, beschikbare ontvangstregels en variantgebonden wachtlijst.
+- Datagedreven leveringenwerkruimte toegevoegd voor ontvangstregistratie, voorraadselectie en atomaire reserveringsbevestiging.
+- De leveringenroute is zonder horizontale overflow gecontroleerd op desktop en mobiel; fout-, laad-, lege en successtatussen zijn aanwezig.
 
 ## In progress
 - Supabase staff authentication/MFA en het fixturevrije backofficedashboard zijn nog niet aangesloten.
-- De backoffice-interface voor levering aanmaken en wachtlijstselectie is nog niet aangesloten op de nieuwe stock endpoints.
 - QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
-- Bouw de datagedreven leveringenpagina voor ontvangst, variantwachtlijst en reserveringsbevestiging.
-- Sluit daarna staff Auth/MFA en echte medewerkergegevens op de shell aan.
+- Sluit staff Auth/MFA en echte medewerkergegevens op de shell aan.
+- Vervang daarna de backoffice-dashboardfixtures door geautoriseerde operationele aggregaties.
 
 ## Blockers
 - Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.
