@@ -23,11 +23,13 @@ Phase 5 inventory and fulfilment implementation in progress. Clean-database and 
 - Beschermde stock receipt, reservation, QR lookup en atomaire fulfilment endpoints toegevoegd.
 - Beperkte enterprise-uitgiftewerkruimte toegevoegd met camera-actie, neutrale ongeldige-QR-status, betaalblokkade en artikelselectie per status.
 - QR lookup rate limiting, minimale persoonsgegevens, auditregistratie, live QR-hercontrole en dubbele-uitgifteconstraints toegevoegd.
+- Betaalde ouderkaarten tonen de server-side gegenereerde actieve QR; onbetaalde kaarten blijven vergrendeld en de openbare QR-URL toont geen lidgegevens.
 
 ## In progress
 - De migraties moeten nog op een schone lokale Supabase/PostgreSQL-database worden uitgevoerd en met negatieve RLS- en concurrencytests worden bewezen.
 - Supabase staff authentication/MFA en het fixturevrije backofficedashboard zijn nog niet aangesloten.
 - De backoffice-interface voor levering aanmaken en wachtlijstselectie is nog niet aangesloten op de nieuwe stock endpoints.
+- QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
 - Voer alle migrations en seed uit op een geïsoleerde lokale Supabase-stack en voeg database-integratietests toe voor voorraadoverschrijding, dubbele reservering en gelijktijdige uitgifte.
