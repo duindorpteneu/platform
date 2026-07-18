@@ -25,4 +25,17 @@ describe("server provider configuration", () => {
   it("requires worker and webhook secrets when e-mail is enabled", () => {
     expect(() => parseServerEnv({ EMAIL_ENABLED: "true" })).toThrow();
   });
+
+  it("requires HTTPS for links in enabled e-mail", () => {
+    expect(() => parseServerEnv({
+      EMAIL_ENABLED: "true",
+      APP_BASE_URL: "http://localhost:3100",
+      SENDGRID_API_KEY: "SG.test",
+      SENDGRID_FROM_EMAIL: "tenue@duindorp.example",
+      SENDGRID_REPLY_TO_EMAIL: "commissie@duindorp.example",
+      SENDGRID_PARENT_OTP_TEMPLATE_ID: "otp-template",
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
+      CRON_SECRET: "x".repeat(16),
+    })).toThrow();
+  });
 });
