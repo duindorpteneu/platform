@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer en uitgiftecorrecties zijn operationeel, AAL2-beveiligd en gevalideerd. De volgende fase richt zich op SendGrid, Mollie en releasehardening.
+Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer, uitgiftecorrecties, SendGrid-operaties en Mollie webhookreconciliatie zijn operationeel, AAL2-beveiligd en lokaal gevalideerd. De volgende fase richt zich op exports en releasehardening.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -51,15 +51,22 @@ Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer en uitgiftecorrec
 - Uitgiftehistorie en transactionele regelcorrecties naar Af te halen of Nalevering toegevoegd met behoud van oorspronkelijke fulfilment, reserveringssemantiek en auditspoor.
 - Schone database-reset met 20 migrations, 127 pgTAP-asserties, 41 unit-/integratietests, concurrencytest, MFA-integratie, productiebuild en volledige browserreview zijn groen.
 - Zelfopruimende browserreview bewijst cataloguscreate, variantcreate, orderupdate, paid immutability, QR rotate/revoke/reissue, fulfilmentcorrectie, desktop/mobiel en routebeveiliging.
+- Zes canonieke e-mailtypen, gesloten shortcodes, fictieve previews, immutable templateversies, handmatige bulkselectie tot 2.000 orders en een duurzame SendGrid-jobqueue toegevoegd.
+- E-mailworker claimt maximaal 25 jobs met `SKIP LOCKED`, verwerkt begrensd parallel, gebruikt maximaal vijf pogingen en schakelt open-/kliktracking uit.
+- SendGrid-eventwebhook valideert de raw-bodyhandtekening, dedupliceert `sg_event_id` en bewaart uitsluitend delivered, bounced, deferred, dropped en failed.
+- Mollie Payments API hosted checkout, stabiele lokale idempotentie, klassieke webhook, provider-GET en exacte EUR/metadata-reconciliatie toegevoegd.
+- Paid, drievoudige replay, mismatch/manual review, duplicate paid, authorized/pending en refund/QR-intrekking worden transactioneel en met een private redacted eventledger verwerkt.
+- PII-minimale operationele betaalwerkruimte toegevoegd; `uitgifte` en AAL1 worden in PostgreSQL geweigerd.
+- Schone database-reset met 30 migrations en 238 pgTAP-asserties, 92 applicatietests, lint, TypeScript, productiebuild en de uitgebreide AAL2-browserflow zijn groen.
 
 ## In progress
-- SendGrid transactionele templates en bulkmail zijn nog niet operationeel aangesloten.
-- Mollie sandboxbetaling en webhook-first reconciliatie zijn nog niet operationeel aangesloten.
+- Exports, retentie, operationele recoveryprocedures en releasehardening zijn nog niet afgerond.
+- Live SendGrid- en Mollie test-mode verificatie wacht op externe stagingcredentials en publieke HTTPS-webhooks.
 
 ## Next
-- Bouw SendGrid-templatebeheer, shortcodes, transactionele verzending en gecontroleerde bulkmail.
-- Bouw daarna Mollie sandboxbetalingen en webhook-first, server-side gevalideerde idempotente reconciliatie per bestelling.
-- Rond exports, auditweergave, provider-E2E en release-evidence af.
+- Bouw geautoriseerde CSV/XLSX-exports met formule-injectiebescherming.
+- Voeg retentie, security headers, operationele jobrecovery en release-runbooks toe.
+- Voer daarna live provider-E2E in staging uit en rond release-evidence af.
 
 ## Blockers
 - Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.

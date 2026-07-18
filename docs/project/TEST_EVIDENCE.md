@@ -117,3 +117,15 @@ Record commands, results and relevant screenshots/notes per phase.
 - De browserfixture geeft lokale testprocessen de Supabase- en QR-testconfiguratie uitsluitend in-memory door; sleutels worden niet gelogd, opgeslagen of gecommit.
 - Screenshots in `operations-sprint`: `after-catalog-desktop.png`, `after-orders-desktop.png`, `after-corrections-desktop.png` en `after-member-security-mobile.png`, naast de dashboard- en ledenregressies. De app en alle fictieve data/MFA-factoren zijn in `finally` verwijderd.
 - `git diff --check` — passed.
+
+## Providerintegraties en operationele communicatie — 2026-07-18
+
+- Tien vooruitrolbare providermigrations (`20260718170000` tot en met `20260718179000`) zijn vanaf nul toegepast; totaal 30 migrations op lokale PostgreSQL 17.6.
+- `pnpm db:reset` — passed inclusief seed.
+- `pnpm test:db` — 11 pgTAP-bestanden, 238 assertions passed; 111 nieuwe assertions dekken provider-RLS, exact bedrag/valuta/metadata, drievoudige replay, mismatch/manual review, duplicate paid, refund/QR-intrekking, queue locking, retrylimiet, bulkreplay, immutable snapshots, OTP-immutability en parent-effective-status.
+- `pnpm test` — 26 testbestanden en 92 tests passed; omvat Mollie request/response, classic webhook, metadatafouten, eventkeys, SendGrid tracking-off/reply-to, raw-body signatures, shortcodes, previewtokens en PII-minimale contracts.
+- `pnpm lint`, `pnpm typecheck` en `pnpm build` — passed; alle provider-, e-mail-, betaal- en publieke retourroutes zijn succesvol productiegebundeld.
+- `pnpm test:dashboard-browser` — passed met echte lokale wachtwoord/TOTP/AAL2-flow en zelfopruimende fixtures; controleert bestaand dashboard/leden/operations plus e-mailcentrum, bulkselectie, betaalregister, neutrale Mollie-retour en anonieme routebeveiliging.
+- Responsive browsercontrole: 1440×1000 voor e-mailcentrum en betaalregister, 390×844 voor Mollie-retour; geen horizontale body-overflow.
+- Screenshots: `artifacts/provider-sprint/after-email-center-desktop.png`, `after-payments-desktop.png` en `after-payment-return-mobile.png`; lokale artefacten zijn van git uitgesloten.
+- Live SendGrid SPF/DKIM/delivery en Mollie test-mode checkout/webhook blijven staginggates; er zijn geen live credentials of productieacties gebruikt.

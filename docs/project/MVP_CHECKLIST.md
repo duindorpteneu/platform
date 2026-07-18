@@ -13,7 +13,8 @@ Codex must expand this checklist from the canonical PDF before implementation an
 - [x] One member card and one QR per member/season
 - [x] Partial delivery states and item-level fulfilment
 - [x] Restricted issuance app
-- [ ] SendGrid templates and bulk e-mail
-- [ ] Mollie webhook-first sandbox integration
+- [x] SendGrid templates and bulk e-mail
+- [x] Mollie webhook-first integration with mocked provider contracts
+- [ ] Live Mollie test-mode roundtrip on public staging HTTPS
 - [ ] Exports and audit trail
 - [ ] Security, RLS and E2E acceptance gates
