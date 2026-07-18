@@ -30,3 +30,6 @@ Record commands, results and relevant screenshots/notes per phase.
 - Private schema access was reviewed and routed through RPC wrappers; plaintext OTP is not persisted.
 - Parent route correction validated: `/login`, `/login/code`, `/staff/login` and `/mijn-tenue` generated in build.
 - `pnpm test` (9 passed), `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed after Suspense fix.
+- Parent member-link test: 1 passed; totaal unit tests: 10 passed.
+- `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed for parent member access endpoints.
+- SQL migration `20260718000700_parent_member_access.sql` is pending execution against a clean local Supabase database.
