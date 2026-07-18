@@ -4,7 +4,7 @@ Codex must expand this checklist from the canonical PDF before implementation an
 
 - [x] Three staff roles only
 - [x] Sportlink CSV import
-- [ ] Products, sizes and member order lines
+- [x] Products, sizes and member order lines
 - [x] Exact amount and payment per member
 - [x] Manual cash/card registration
 - [x] Parent e-mail OTP, six digits, ten minutes

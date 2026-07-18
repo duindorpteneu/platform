@@ -103,3 +103,17 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:dashboard-browser` — passed na een schone database-reset; controleert wachtwoord + TOTP, dashboard, live ledenlijst, serverfilters, expliciet detail, responsiviteit, CSV-upload, change preview, transactionele commit, terugzoekbaarheid en anonieme redirect.
 - Browserfixtures, MFA-account, importbatch en geïmporteerd testlid worden in `finally` verwijderd; de productie-app wordt door het script gestopt.
 - Screenshots: `after-members-desktop.png` op 1440×1000 en `after-member-detail-mobile.png` op 390×844; mobiel heeft geen horizontale body-overflow.
+
+## Operationeel catalogus-, bestel-, QR- en correctiebeheer — 2026-07-18
+
+- Migration `20260718160000_catalog_orders_corrections.sql` is als migration 20 schoon toegepast op PostgreSQL 17.6, inclusief seed en expliciete seizoenskoppelingen voor standaardartikelen.
+- `pnpm db:reset` — passed; alle 20 migrations en `supabase/seed.sql` zijn vanaf nul toegepast.
+- `pnpm test:db` — 6 pgTAP-bestanden en 127 assertions passed. Gedekt zijn AAL1-/rolweigering, catalogus- en orderinvarianten, exacte betaling, paid immutability, service-only secrets, oude/nieuwe/ingetrokken QR, beide correctiedoelen, dubbelcorrectie, reserveringen, audit en PII-/hashuitsluiting.
+- `pnpm test` — 14 bestanden en 41 tests passed; catalogus/ordercontracten, eurocentconversie, QR-/correctierequests en bestaande domeingrenzen zijn groen.
+- `pnpm test:db:concurrency` — passed; exact één gelijktijdige fulfilment en blokkade van de tweede balie.
+- `pnpm test:staff-mfa` — passed; echte AAL2-sessie toegestaan en AAL1 met `42501` geweigerd.
+- `pnpm lint`, `pnpm typecheck` en `pnpm build` — passed; expliciete dynamische routes `/backoffice/artikelen`, `/backoffice/bestellingen`, `/backoffice/uitgifte`, `/api/qr/rotate` en `/api/fulfilment/reverse` zijn gebundeld.
+- `pnpm test:dashboard-browser` — passed als zelfopruimende productieflow: wachtwoord + TOTP, catalogusartikel en variant aanmaken, open order wijzigen, betaalde order alleen-lezen, QR roteren/intrekken/heractiveren, foutieve uitgifte corrigeren en anonieme redirect.
+- De browserfixture geeft lokale testprocessen de Supabase- en QR-testconfiguratie uitsluitend in-memory door; sleutels worden niet gelogd, opgeslagen of gecommit.
+- Screenshots in `operations-sprint`: `after-catalog-desktop.png`, `after-orders-desktop.png`, `after-corrections-desktop.png` en `after-member-security-mobile.png`, naast de dashboard- en ledenregressies. De app en alle fictieve data/MFA-factoren zijn in `finally` verwijderd.
+- `git diff --check` — passed.

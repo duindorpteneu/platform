@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Het operationele dashboard en ledenoverzicht zijn fixturevrij, AAL2-beveiligd en gevalideerd; de volgende bouwfase richt zich op artikel-/bestelbeheer en correctieflows.
+Dashboard, leden, catalogus, bestellingen, voorraad, QR-beheer en uitgiftecorrecties zijn operationeel, AAL2-beveiligd en gevalideerd. De volgende fase richt zich op SendGrid, Mollie en releasehardening.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -44,14 +44,22 @@ Het operationele dashboard en ledenoverzicht zijn fixturevrij, AAL2-beveiligd en
 - Sportlink-import afgerond als vierstappenflow met kolomkoppeling, nieuwe/gewijzigde/ongewijzigde tellingen en een transactionele, geaudite commit.
 - Schone database-reset met 19 migrations, 75 pgTAP-asserties, 31 unit-tests en de productiebuild zijn groen.
 - Zelfopruimende browserregressie bewijst AAL2, live dashboard, ledenlijst, filters, detail, desktop/mobiel, Sportlink preview/commit en anonieme routebeveiliging.
+- Operationeel catalogusbeheer toegevoegd voor artikelen, seizoenskoppelingen, varianten, leverancierscodes, sortering en reversibel inactiveren zonder artikelprijzen.
+- Operationeel bestelbeheer toegevoegd met ledenzoekfunctie, exact bedrag in eurocenten, één actieve regel per artikel, expliciete hoeveelheden en alleen-lezen betaalde orders.
+- Database-invarianten toegevoegd voor exact betaalbedrag, immutable betaalde orderidentiteit, historische maatsnapshot en soft-cancelled regels die niet uitlekken naar ouder- of uitgifteviews.
+- QR-rotatie, intrekking en expliciete heractivering toegevoegd met verplichte reden, monotone versie, directe invalidatie, hash-only opslag en service-only secretmutaties.
+- Uitgiftehistorie en transactionele regelcorrecties naar Af te halen of Nalevering toegevoegd met behoud van oorspronkelijke fulfilment, reserveringssemantiek en auditspoor.
+- Schone database-reset met 20 migrations, 127 pgTAP-asserties, 41 unit-/integratietests, concurrencytest, MFA-integratie, productiebuild en volledige browserreview zijn groen.
+- Zelfopruimende browserreview bewijst cataloguscreate, variantcreate, orderupdate, paid immutability, QR rotate/revoke/reissue, fulfilmentcorrectie, desktop/mobiel en routebeveiliging.
 
 ## In progress
-- Artikel-, variant- en orderbeheer hebben nog geen volledige operationele backofficeflow.
-- QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
+- SendGrid transactionele templates en bulkmail zijn nog niet operationeel aangesloten.
+- Mollie sandboxbetaling en webhook-first reconciliatie zijn nog niet operationeel aangesloten.
 
 ## Next
-- Bouw canoniek artikel-, variant- en orderbeheer op de bestaande datalaag, inclusief exacte bedragen en server-side invarianten.
-- Bouw daarna QR-rotatie/intrekking en fulfilmentcorrectie met verplichte reden en auditregistratie.
+- Bouw SendGrid-templatebeheer, shortcodes, transactionele verzending en gecontroleerde bulkmail.
+- Bouw daarna Mollie sandboxbetalingen en webhook-first, server-side gevalideerde idempotente reconciliatie per bestelling.
+- Rond exports, auditweergave, provider-E2E en release-evidence af.
 
 ## Blockers
 - Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.
