@@ -16,3 +16,6 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
 - `pnpm typecheck`, `pnpm lint` and `pnpm build` — passed after middleware typing fix.
+- Sportlink preview tests: 3 passed; total unit tests: 5 passed.
+- `pnpm build` — passed; dynamic route `/api/imports/preview` generated.
+- `pnpm typecheck` — passed sequentially after build (parallel race avoided).
