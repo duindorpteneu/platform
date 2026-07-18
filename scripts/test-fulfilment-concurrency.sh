@@ -64,7 +64,7 @@ run_first() {
   "${psql_cmd[@]}" <<'SQL'
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '40000000-0000-4000-8000-000000000001', true);
+select set_config('request.jwt.claims', '{"sub":"40000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 select app.commit_fulfilment(
   '45000000-0000-4000-8000-000000000001',
   array['46000000-0000-4000-8000-000000000001'::uuid],
@@ -80,7 +80,7 @@ run_second() {
   "${psql_cmd[@]}" <<'SQL'
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '40000000-0000-4000-8000-000000000002', true);
+select set_config('request.jwt.claims', '{"sub":"40000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 select app.commit_fulfilment(
   '45000000-0000-4000-8000-000000000001',
   array['46000000-0000-4000-8000-000000000001'::uuid],

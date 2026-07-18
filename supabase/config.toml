@@ -2,6 +2,8 @@ project_id = "duindorp-tenueportaal-local"
 
 [api]
 port = 54329
+schemas = ["public", "graphql_public", "app"]
+extra_search_path = ["public", "extensions"]
 
 [db]
 port = 54339
@@ -17,3 +19,10 @@ port = 54359
 enabled = true
 port = 54369
 backend = "postgres"
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

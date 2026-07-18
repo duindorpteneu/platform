@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(10);
 
 insert into app.staff_profiles (auth_user_id, display_name, role)
 values
@@ -15,7 +15,7 @@ insert into app.members (relation_number, first_name, last_name, email, team)
 values ('RLS-001', 'Test', 'Lid', 'rls-lid@example.invalid', 'Testteam');
 
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 
 select is((select count(*) from app.members where relation_number = 'RLS-001'), 0::bigint, 'uitgifte kan leden niet rechtstreeks doorzoeken');
 select is((select count(*) from app.import_batches where file_name = 'rls-test.csv'), 0::bigint, 'uitgifte kan imports niet lezen');
@@ -35,7 +35,17 @@ select throws_ok(
 );
 
 reset role;
-select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000002","aal":"aal1"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select app.get_stock_overview(null)$$,
+  '42501',
+  'STAFF_AUTHORIZATION_REQUIRED',
+  'een geldige medewerker zonder AAL2 kan geen staff-RPC openen'
+);
+
+reset role;
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 set local role authenticated;
 
 select is((select count(*) from app.members where relation_number = 'RLS-001'), 1::bigint, 'kledingcommissie kan leden operationeel lezen');

@@ -39,7 +39,7 @@ values ('35000000-0000-4000-8000-000000000001', 'card', 'paid', 12500, 'db-test-
 insert into private.qr_tokens (order_id, token_hash, version)
 values ('35000000-0000-4000-8000-000000000001', repeat('a', 64), 1);
 
-select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', true);
+select set_config('request.jwt.claims', '{"sub":"30000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 set local role authenticated;
 
 select lives_ok(
@@ -64,7 +64,7 @@ select is((select status::text from app.order_lines where id = '36000000-0000-40
 select is((select status::text from app.order_lines where id = '36000000-0000-4000-8000-000000000002'), 'ready_for_pickup', 'tweede regel staat af te halen');
 select is((select status::text from app.order_lines where id = '36000000-0000-4000-8000-000000000003'), 'backorder', 'niet gereserveerde regel blijft nalevering');
 
-select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000002', true);
+select set_config('request.jwt.claims', '{"sub":"30000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 set local role authenticated;
 select is(app.lookup_fulfilment(repeat('a', 64))->>'status', 'found', 'de actieve QR resolveert voor uitgifte');
 select lives_ok(
