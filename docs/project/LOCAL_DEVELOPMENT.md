@@ -19,6 +19,8 @@
 
 Alle Supabase-containers en volumes gebruiken project-id `duindorp-tenueportaal-local`. Stop of wijzig geen containers van andere repositories.
 
+De lokale Supabase CLI publiceert ontwikkelpoorten op alle hostinterfaces en Studio/pgMeta hebben lokaal geen eigen login. Gebruik deze stack daarom uitsluitend op een afgeschermde ontwikkelserver, stel de poorten niet publiek open en voer `pnpm supabase:stop` uit wanneer er niet actief aan dit project wordt gewerkt.
+
 ## Eerste start
 
 ```bash
