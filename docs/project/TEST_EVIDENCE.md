@@ -23,3 +23,5 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test` — passed (5 tests).
 - `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed after adding `/api/imports/commit`.
 - Supabase migration execution remains pending because the Supabase CLI/local database is not installed in this workspace.
+- Handmatige betaalboundarytests: 2 passed; totaal unit tests: 7 passed.
+- `pnpm lint`, `pnpm build` en sequentiële `pnpm typecheck` — passed na toevoegen van `/api/payments/manual`.
