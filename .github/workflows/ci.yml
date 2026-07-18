@@ -87,6 +87,9 @@ jobs:
       - name: Start isolated local Supabase
         run: pnpm supabase:start
 
+      - name: Export local Supabase browser build configuration
+        run: node scripts/export-local-supabase-ci-env.mjs
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
