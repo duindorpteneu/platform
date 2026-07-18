@@ -6,6 +6,9 @@ const statusStyles = {
   "Volledig af te halen": "bg-blue-50 text-brand-700 ring-blue-100",
   "Gedeeltelijk af te halen": "bg-violet-50 text-violet-700 ring-violet-100",
   Nalevering: "bg-amber-50 text-warning ring-amber-100",
+  "Nog niet betaald": "bg-slate-100 text-slate-600 ring-slate-200",
+  "Gedeeltelijk afgehaald": "bg-violet-50 text-violet-700 ring-violet-100",
+  Afgerond: "bg-emerald-50 text-success ring-emerald-100",
 };
 
 export function StatusBadge({ label }: { label: keyof typeof statusStyles }) {

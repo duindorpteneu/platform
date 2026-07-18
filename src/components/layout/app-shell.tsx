@@ -3,10 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
-  ChevronDown,
   ClipboardList,
   Download,
-  FileText,
   HelpCircle,
   LayoutDashboard,
   LogOut,
@@ -38,7 +36,7 @@ const primaryNavigation = [
 
 const roleLabels: Record<StaffRole, string> = { beheerder: "Beheerder", kledingcommissie: "Kledingcommissie", uitgifte: "Uitgifte" };
 
-export function AppShell({ children, staff }: { children: React.ReactNode; staff: { displayName: string; role: StaffRole } }) {
+export function AppShell({ children, staff }: { children: React.ReactNode; staff: { displayName: string; role: StaffRole; activeSeason: { id: string; name: string } | null } }) {
   const pathname = usePathname();
   const router = useRouter();
   const isIssuance = pathname.startsWith("/uitgifte");
@@ -83,10 +81,10 @@ export function AppShell({ children, staff }: { children: React.ReactNode; staff
           </nav></>}
           <div className="mt-auto rounded-xl border border-white/10 bg-white/[0.06] p-4">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-blue-100">Seizoen 2025/26</span>
-              <span className="size-2 rounded-full bg-emerald-400" />
+              <span className="text-[11px] font-semibold text-blue-100">{staff.activeSeason?.name ?? "Geen actief seizoen"}</span>
+              <span className={cn("size-2 rounded-full", staff.activeSeason ? "bg-emerald-400" : "bg-slate-400")} />
             </div>
-            <p className="text-[11px] leading-5 text-blue-200/70">Actief seizoen · laatste sync vandaag om 10:42</p>
+            <p className="text-[11px] leading-5 text-blue-200/70">{staff.activeSeason ? "Actief tenue-seizoen" : "Activeer een seizoen via Instellingen"}</p>
           </div>
         </div>
         <div className="border-t border-white/10 p-4">
@@ -106,11 +104,8 @@ export function AppShell({ children, staff }: { children: React.ReactNode; staff
           <div className="flex items-center gap-3 lg:hidden"><BrandMark compact /><span className="text-sm font-bold text-brand-900">Tenueportaal</span></div>
           <div className="hidden items-center gap-2 text-xs text-slate-500 lg:flex"><BarChart3 className="size-4 text-brand-500" /> Operationeel overzicht <span className="text-slate-300">/</span> {isIssuance ? "Uitgifte" : "Backoffice"}</div>
           <div className="ml-auto flex items-center gap-3">
-            <button className="hidden items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink shadow-sm transition-colors hover:border-brand-500 md:flex">
-              Seizoen 2025/26 <ChevronDown className="size-3.5 text-slate-400" />
-            </button>
+            <div className="hidden rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink shadow-sm md:block">{staff.activeSeason?.name ?? "Geen actief seizoen"}</div>
             <div className="hidden h-7 w-px bg-line md:block" />
-            <button aria-label="Open meldingen" className="relative flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-canvas hover:text-brand-700"><FileText className="size-[17px]" strokeWidth={1.8} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-500" /></button>
             <div className="flex items-center gap-2 border-l border-line pl-3"><div className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-700">{initials}</div><span className="hidden text-xs font-semibold text-ink xl:inline">{staff.displayName}</span></div>
           </div>
         </header>

@@ -1,0 +1,3 @@
+export default function BackofficeLoading() {
+  return <div className="mx-auto max-w-[1440px] animate-pulse" aria-label="Dashboard laden"><div className="h-9 w-72 rounded-lg bg-slate-200" /><div className="mt-3 h-4 w-96 max-w-full rounded bg-slate-100" /><div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-36 rounded-xl border border-line bg-white" />)}</div><div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]"><div className="h-[430px] rounded-xl border border-line bg-white" /><div className="h-[430px] rounded-xl border border-line bg-white" /></div></div>;
+}
