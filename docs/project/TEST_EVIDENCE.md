@@ -25,3 +25,6 @@ Record commands, results and relevant screenshots/notes per phase.
 - Supabase migration execution remains pending because the Supabase CLI/local database is not installed in this workspace.
 - Handmatige betaalboundarytests: 2 passed; totaal unit tests: 7 passed.
 - `pnpm lint`, `pnpm build` en sequentiële `pnpm typecheck` — passed na toevoegen van `/api/payments/manual`.
+- Parent auth tests: 2 passed; totaal unit tests: 9 passed.
+- `pnpm lint`, `pnpm build` and sequential `pnpm typecheck` — passed for parent auth routes.
+- Private schema access was reviewed and routed through RPC wrappers; plaintext OTP is not persisted.

@@ -6,3 +6,4 @@ Record durable decisions here.
 
 | Date | Decision | Reason | Canon impact | Reversible |
 |---|---|---|---|---|
+| 2026-07-18 | Keep parent secrets in `private` schema and expose only narrow server-only RPC wrappers. | Supabase private schema must not be accessed through Data API; this preserves the boundary while allowing server-side OTP/session operations. | Yes |

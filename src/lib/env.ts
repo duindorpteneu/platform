@@ -9,6 +9,9 @@ const serverEnvSchema = z.object({
   APP_BASE_URL: z.string().url().default("http://localhost:3100"),
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
+  SENDGRID_API_KEY: z.string().min(1).optional(),
+  SENDGRID_FROM_EMAIL: z.string().email().optional(),
+  SENDGRID_PARENT_OTP_TEMPLATE_ID: z.string().min(1).optional(),
 });
 
 export function getServerEnv() {
@@ -21,5 +24,8 @@ export function getServerEnv() {
     APP_BASE_URL: process.env.APP_BASE_URL,
     MOLLIE_ENABLED: process.env.MOLLIE_ENABLED,
     EMAIL_ENABLED: process.env.EMAIL_ENABLED,
+    SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
+    SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL,
+    SENDGRID_PARENT_OTP_TEMPLATE_ID: process.env.SENDGRID_PARENT_OTP_TEMPLATE_ID,
   });
 }

@@ -14,6 +14,7 @@ Phase 0 complete; Phase 1 dashboard foundation in progress.
 - Ledenmodule, importpanel, catalogusmodule en consistente operationele placeholderroutes toegevoegd.
 - Transactionele Sportlink commitfunctie en beschermde `/api/imports/commit` route toegevoegd.
 - Exacte kas/pin-betalingsfunctie en beschermde `/api/payments/manual` route toegevoegd.
+- Parent OTP, hashed session token and server-only SendGrid OTP adapter added.
 
 ## In progress
 - Supabase staff authentication and data-backed dashboard are not implemented yet.
