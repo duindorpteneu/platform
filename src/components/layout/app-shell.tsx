@@ -13,6 +13,7 @@ import {
   Package,
   ScanLine,
   Settings,
+  ShieldCheck,
   Shirt,
   Users,
   WalletCards,
@@ -76,6 +77,10 @@ export function AppShell({ children, staff }: { children: React.ReactNode; staff
               <Settings className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
               Instellingen
             </Link>}
+            <Link href="/backoffice/audit" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white">
+              <ShieldCheck className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
+              Auditlog
+            </Link>
             <Link href="/backoffice/help" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white">
               <HelpCircle className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
               Helpcentrum

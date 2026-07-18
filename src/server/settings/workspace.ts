@@ -1,0 +1,69 @@
+import { unstable_noStore as noStore } from "next/cache";
+import {
+  settingsWorkspaceSchema,
+  staffMutationResponseSchema,
+  type SettingsWorkspace,
+} from "@/lib/settings-audit-contract";
+import { requireStaffRole } from "@/server/auth/staff";
+import { getSupabaseServerClient } from "@/server/supabase/server";
+
+type SettingsInput = {
+  contactEmail: string;
+  pickupLocation: string;
+  activeSeasonId: string;
+  seasonAmounts: { seasonId: string; amountCents: number }[];
+  mollieEnabled: boolean;
+  emailEnabled: boolean;
+};
+
+export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
+  noStore();
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc("get_settings_workspace");
+  if (error) {
+    if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+    throw new Error("SETTINGS_WORKSPACE_QUERY_FAILED");
+  }
+  const parsed = settingsWorkspaceSchema.safeParse(data);
+  if (!parsed.success) throw new Error("SETTINGS_WORKSPACE_RESPONSE_INVALID");
+  return parsed.data;
+}
+
+export async function updateSettings(input: SettingsInput, correlationId: string | null) {
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc("update_settings", {
+    p_contact_email: input.contactEmail,
+    p_pickup_location: input.pickupLocation,
+    p_active_season_id: input.activeSeasonId,
+    p_season_amounts: input.seasonAmounts,
+    p_mollie_enabled: input.mollieEnabled,
+    p_email_enabled: input.emailEnabled,
+    p_correlation_id: correlationId,
+  });
+  if (error) return { data: null, error };
+  const parsed = settingsWorkspaceSchema.safeParse(data);
+  if (!parsed.success) throw new Error("SETTINGS_WORKSPACE_RESPONSE_INVALID");
+  return { data: parsed.data, error: null };
+}
+
+export async function updateStaffProfile(input: { authUserId: string; displayName: string; role: string; active: boolean }, correlationId: string | null) {
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc("update_staff_profile", {
+    p_auth_user_id: input.authUserId,
+    p_display_name: input.displayName,
+    p_role: input.role,
+    p_active: input.active,
+    p_correlation_id: correlationId,
+  });
+  if (error) return { data: null, error };
+  const parsed = staffMutationResponseSchema.safeParse(data);
+  if (!parsed.success) throw new Error("STAFF_MUTATION_RESPONSE_INVALID");
+  return { data: parsed.data, error: null };
+}
+
