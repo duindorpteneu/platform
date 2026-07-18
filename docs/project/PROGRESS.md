@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-Phase 5 inventory and fulfilment implementation in progress. Clean-database and RLS verification remain open.
+Phase 5 inventory and fulfilment backend validated; the data-backed deliveries UI is next.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -24,17 +24,18 @@ Phase 5 inventory and fulfilment implementation in progress. Clean-database and 
 - Beperkte enterprise-uitgiftewerkruimte toegevoegd met camera-actie, neutrale ongeldige-QR-status, betaalblokkade en artikelselectie per status.
 - QR lookup rate limiting, minimale persoonsgegevens, auditregistratie, live QR-hercontrole en dubbele-uitgifteconstraints toegevoegd.
 - Betaalde ouderkaarten tonen de server-side gegenereerde actieve QR; onbetaalde kaarten blijven vergrendeld en de openbare QR-URL toont geen lidgegevens.
+- Projectlokale Supabase CLI 2.109.1 en geïsoleerde Docker-stack toegevoegd; alle migrations en seed slagen vanaf een schone PostgreSQL 17-database.
+- RLS en tabelprivileges aangescherpt zodat `uitgifte` geen leden/imports kan browsen en authenticated geen directe tabelmutaties kan uitvoeren.
+- 18 pgTAP-asserties en een echte twee-sessies fulfilmentracetest toegevoegd en groen gemaakt.
 
 ## In progress
-- De migraties moeten nog op een schone lokale Supabase/PostgreSQL-database worden uitgevoerd en met negatieve RLS- en concurrencytests worden bewezen.
 - Supabase staff authentication/MFA en het fixturevrije backofficedashboard zijn nog niet aangesloten.
 - De backoffice-interface voor levering aanmaken en wachtlijstselectie is nog niet aangesloten op de nieuwe stock endpoints.
 - QR-rotatie/intrekking en fulfilmentcorrectie zijn nog niet gebouwd.
 
 ## Next
-- Voer alle migrations en seed uit op een geïsoleerde lokale Supabase-stack en voeg database-integratietests toe voor voorraadoverschrijding, dubbele reservering en gelijktijdige uitgifte.
-- Bouw daarna de datagedreven leveringenpagina voor ontvangst, variantwachtlijst en reserveringsbevestiging.
+- Bouw de datagedreven leveringenpagina voor ontvangst, variantwachtlijst en reserveringsbevestiging.
+- Sluit daarna staff Auth/MFA en echte medewerkergegevens op de shell aan.
 
 ## Blockers
-- De Supabase CLI en een lokaal Supabase PostgreSQL-image zijn niet aanwezig; daardoor is echte migratie-, RLS- en transactieverificatie lokaal nog geblokkeerd. Applicatiecode, unit tests en productiebuild kunnen wel verder.
-- Live Mollie- en SendGrid-credentials zijn voor deze stap niet nodig.
+- Live Mollie- en SendGrid-credentials zijn voor de volgende lokale bouwstappen niet nodig; alleen live providerverificatie blijft extern geblokkeerd.

@@ -2,7 +2,9 @@
 
 | Date | Decision | Reason | Canon impact | Reversible |
 |---|---|---|---|---|
-| 2026-07-18 | Use project-local Supabase ports 54329 (API), 54339 (database), 54349 (Studio) and 54359 (Inbucket). | Port preflight showed these ports free and AGENTS.md requires isolation from sibling projects. | No canon change; isolates local services. | Yes |
+| 2026-07-18 | Use project-local Supabase ports 54329 (API), 54339 (database), 54349 (Studio), 54359 (Mailpit) and 54369 (Analytics). | Port preflight showed these ports free and AGENTS.md requires isolation from sibling projects. | No canon change; isolates local services. | Yes |
+| 2026-07-18 | Pin Supabase CLI 2.109.1 as a project-local devDependency. | Reproducible Docker image selection and migrations without global system changes. | No product impact. | Yes |
+| 2026-07-18 | Give `authenticated` only table `SELECT` under RLS and route all application mutations through narrow RPCs. | Earlier tables had overly broad DML grants while later tables lacked usable read grants. | Enforces server validation, least privilege and auditability. | Yes, via migration. |
 | 2026-07-18 | Keep the first dashboard on server-owned fixture data until staff Auth and RLS are connected. | The visual foundation can be validated without weakening the production authorization boundary. | Temporary implementation state; release remains blocked. | Yes |
 | 2026-07-18 | Keep parent secrets in `private` schema and expose only narrow server-only RPC wrappers. | The private schema must not be accessed through the Data API. | Implements the prescribed secret boundary. | Yes |
 | 2026-07-18 | Derive the versioned 256-bit QR bearer value with HMAC-SHA-256 from the per-environment random pepper and order/version, while storing only its SHA-256 hash. | This keeps the QR opaque and free of PII, permits rotation, and allows the same seasonal QR to be rendered again without storing plaintext. | Implements the canon's 256-bit bearer, hash-only storage and `PARENT_TOKEN_PEPPER` contract. | Yes, before production issuance. |
