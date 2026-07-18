@@ -12,10 +12,10 @@ insert into app.seasons (id, name, default_amount_cents, status)
 values ('71000000-0000-4000-8000-000000000001', 'Ledenseizoen', 12500, 'open');
 update app.app_settings set active_season_id = '71000000-0000-4000-8000-000000000001' where id = true;
 
-insert into app.articles (id, name, sort_order)
+insert into app.articles (id, name, code, sort_order)
 values
-  ('72000000-0000-4000-8000-000000000001', 'Ledenshirt', 201),
-  ('72000000-0000-4000-8000-000000000002', 'Ledenbroekje', 202);
+  ('72000000-0000-4000-8000-000000000001', 'Ledenshirt', 'LEDEN-SHIRT', 201),
+  ('72000000-0000-4000-8000-000000000002', 'Ledenbroekje', 'LEDEN-BROEK', 202);
 insert into app.article_variants (id, article_id, size, sku)
 values
   ('73000000-0000-4000-8000-000000000001', '72000000-0000-4000-8000-000000000001', 'M', 'LEDEN-M'),

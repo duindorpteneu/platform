@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(12);
 
 insert into app.staff_profiles (auth_user_id, display_name, role)
 values
@@ -11,11 +11,15 @@ values
 insert into app.seasons (id, name, default_amount_cents, status)
 values ('31000000-0000-4000-8000-000000000001', 'DB-testseizoen', 12500, 'open');
 
-insert into app.articles (id, name, sort_order)
-values ('32000000-0000-4000-8000-000000000001', 'DB-testshirt', 99);
+insert into app.articles (id, name, code, sort_order)
+values
+  ('32000000-0000-4000-8000-000000000001', 'DB-testshirt', 'DB-SHIRT', 99),
+  ('32000000-0000-4000-8000-000000000002', 'DB-testbroek', 'DB-BROEK', 100);
 
 insert into app.article_variants (id, article_id, size, sku)
-values ('33000000-0000-4000-8000-000000000001', '32000000-0000-4000-8000-000000000001', 'TEST', 'DB-TEST');
+values
+  ('33000000-0000-4000-8000-000000000001', '32000000-0000-4000-8000-000000000001', 'TEST', 'DB-TEST-1'),
+  ('33000000-0000-4000-8000-000000000002', '32000000-0000-4000-8000-000000000002', 'TEST', 'DB-TEST-2');
 
 insert into app.members (id, relation_number, first_name, last_name, email, team)
 values
@@ -30,7 +34,7 @@ values
 insert into app.order_lines (id, order_id, article_variant_id)
 values
   ('36000000-0000-4000-8000-000000000001', '35000000-0000-4000-8000-000000000001', '33000000-0000-4000-8000-000000000001'),
-  ('36000000-0000-4000-8000-000000000002', '35000000-0000-4000-8000-000000000001', '33000000-0000-4000-8000-000000000001'),
+  ('36000000-0000-4000-8000-000000000002', '35000000-0000-4000-8000-000000000001', '33000000-0000-4000-8000-000000000002'),
   ('36000000-0000-4000-8000-000000000003', '35000000-0000-4000-8000-000000000002', '33000000-0000-4000-8000-000000000001');
 
 insert into app.payments (order_id, method, status, amount_cents, idempotency_key, paid_at)
@@ -43,17 +47,21 @@ select set_config('request.jwt.claims', '{"sub":"30000000-0000-4000-8000-0000000
 set local role authenticated;
 
 select lives_ok(
-  $$select app.register_delivery_receipt(current_date, 'DB-testleverancier', 'DB-PAKBON', '[{"variant_id":"33000000-0000-4000-8000-000000000001","quantity":2}]'::jsonb)$$,
+  $$select app.register_delivery_receipt(current_date, 'DB-testleverancier', 'DB-PAKBON', '[{"variant_id":"33000000-0000-4000-8000-000000000001","quantity":1},{"variant_id":"33000000-0000-4000-8000-000000000002","quantity":1}]'::jsonb)$$,
   'kledingcommissie kan twee stuks ontvangen'
 );
 
 select lives_ok(
-  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier'), array['36000000-0000-4000-8000-000000000001'::uuid, '36000000-0000-4000-8000-000000000002'::uuid])$$,
-  'twee orderregels worden atomair gereserveerd'
+  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000001'::uuid])$$,
+  'eerste artikelregel wordt gereserveerd'
+);
+select lives_ok(
+  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000002'), array['36000000-0000-4000-8000-000000000002'::uuid])$$,
+  'tweede artikelregel wordt apart gereserveerd'
 );
 
 select throws_ok(
-  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier'), array['36000000-0000-4000-8000-000000000003'::uuid])$$,
+  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000003'::uuid])$$,
   '23514',
   'INSUFFICIENT_STOCK',
   'reserveren boven beschikbare voorraad wordt geblokkeerd'

@@ -15,11 +15,15 @@ values
 
 update app.app_settings set active_season_id = '51000000-0000-4000-8000-000000000001' where id = true;
 
-insert into app.articles (id, name, sort_order)
-values ('52000000-0000-4000-8000-000000000001', 'Dashboardshirt', 120);
+insert into app.articles (id, name, code, sort_order)
+values
+  ('52000000-0000-4000-8000-000000000001', 'Dashboardshirt', 'DASH-SHIRT', 120),
+  ('52000000-0000-4000-8000-000000000002', 'Dashboardbroek', 'DASH-BROEK', 121);
 
 insert into app.article_variants (id, article_id, size, sku)
-values ('53000000-0000-4000-8000-000000000001', '52000000-0000-4000-8000-000000000001', 'DASH', 'DASH-001');
+values
+  ('53000000-0000-4000-8000-000000000001', '52000000-0000-4000-8000-000000000001', 'DASH', 'DASH-001'),
+  ('53000000-0000-4000-8000-000000000002', '52000000-0000-4000-8000-000000000002', 'DASH', 'DASH-002');
 
 insert into app.members (id, relation_number, first_name, last_name, email, team, active_for_season)
 values
@@ -35,7 +39,7 @@ values
 insert into app.order_lines (id, order_id, article_variant_id, status)
 values
   ('56000000-0000-4000-8000-000000000001', '55000000-0000-4000-8000-000000000001', '53000000-0000-4000-8000-000000000001', 'ready_for_pickup'),
-  ('56000000-0000-4000-8000-000000000002', '55000000-0000-4000-8000-000000000001', '53000000-0000-4000-8000-000000000001', 'backorder'),
+  ('56000000-0000-4000-8000-000000000002', '55000000-0000-4000-8000-000000000001', '53000000-0000-4000-8000-000000000002', 'backorder'),
   ('56000000-0000-4000-8000-000000000003', '55000000-0000-4000-8000-000000000002', '53000000-0000-4000-8000-000000000001', 'ready_for_pickup');
 
 insert into app.payments (order_id, method, status, amount_cents, idempotency_key, paid_at)

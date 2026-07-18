@@ -38,8 +38,8 @@ values
   ('40000000-0000-4000-8000-000000000002', 'Race balie twee', 'uitgifte');
 insert into app.seasons (id, name, default_amount_cents, status)
 values ('41000000-0000-4000-8000-000000000001', 'Race-testseizoen', 12500, 'open');
-insert into app.articles (id, name, sort_order)
-values ('42000000-0000-4000-8000-000000000001', 'Race-testartikel', 100);
+insert into app.articles (id, name, code, sort_order)
+values ('42000000-0000-4000-8000-000000000001', 'Race-testartikel', 'RACE-TEST', 100);
 insert into app.article_variants (id, article_id, size, sku)
 values ('43000000-0000-4000-8000-000000000001', '42000000-0000-4000-8000-000000000001', 'RACE', 'RACE-001');
 insert into app.members (id, relation_number, first_name, last_name, email, team)
