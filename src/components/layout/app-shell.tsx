@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Download,
   HelpCircle,
+  History,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -30,6 +31,7 @@ const primaryNavigation = [
   { label: "Betalingen", href: "/backoffice/betalingen", icon: WalletCards },
   { label: "Leveringen", href: "/backoffice/leveringen", icon: Package },
   { label: "Uitgifte", href: "/uitgifte", icon: ScanLine },
+  { label: "Uitgiftehistorie", href: "/backoffice/uitgifte", icon: History },
   { label: "E-mails", href: "/backoffice/emails", icon: Mail },
   { label: "Export", href: "/backoffice/export", icon: Download },
 ];

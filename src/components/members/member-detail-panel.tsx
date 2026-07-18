@@ -2,6 +2,7 @@ import { Clock3, Link2, Mail, PackageCheck, ReceiptText, ShieldCheck, UserRound,
 import Link from "next/link";
 import type { MemberDetailResponse } from "@/lib/member-overview-contract";
 import { cn } from "@/lib/utils";
+import { OrderAdminActions } from "@/components/members/order-admin-actions";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -12,8 +13,13 @@ const lineLabels = {
 const activityLabels: Record<string, string> = {
   "payment.manual.recorded": "Handmatige betaling geregistreerd",
   "qr.created": "QR-code geactiveerd",
+  "qr.rotated": "QR-code geroteerd",
+  "qr.revoked": "QR-code ingetrokken",
   "stock.lines.reserved": "Voorraad toegewezen",
   "fulfilment.completed": "Uitgifte voltooid",
+  "fulfilment.corrected": "Uitgifte gecorrigeerd",
+  "order.created": "Bestelling aangemaakt",
+  "order.updated": "Bestelling bijgewerkt",
 };
 
 function euro(cents: number) {
@@ -51,6 +57,13 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Seizoen</dt><dd className="mt-0.5 font-semibold text-ink">{detail.activeSeason?.name ?? "Geen actief seizoen"}</dd></div></div>
           </dl>
         </section>
+
+        {detail.order && <OrderAdminActions
+          orderId={detail.order.id}
+          paid={detail.order.paymentStatus === "Betaald"}
+          qrStatus={detail.order.qrStatus}
+          pickedLines={detail.order.lines.filter((line) => line.status === "picked_up").map((line) => ({ id: line.id, article: line.article, size: line.size }))}
+        />}
 
         <section className="p-5">
           <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Bestelling</h3>
