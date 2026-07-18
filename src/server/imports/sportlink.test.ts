@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewSportlinkImport } from "@/server/imports/sportlink";
+import { previewSportlinkImport, toSportlinkDatabaseRows } from "@/server/imports/sportlink";
 
 describe("Sportlink CSV preview", () => {
   it("accepts semicolon CSV, normalizes relation numbers and e-mail", () => {
@@ -9,8 +9,10 @@ describe("Sportlink CSV preview", () => {
     ].join("\n"));
 
     expect(result.delimiter).toBe(";");
+    expect(result.mapping).toMatchObject({ relationNumber: "Relatienummer", activeForSeason: "Actief voor seizoen" });
     expect(result.summary).toMatchObject({ total: 1, valid: 1, invalid: 0 });
     expect(result.members[0]).toMatchObject({ relationNumber: "DSV-42", email: "sophie@example.nl", activeForSeason: true });
+    expect(toSportlinkDatabaseRows(result.members)[0]).toMatchObject({ relation_number: "DSV-42", first_name: "Sophie", active_for_season: true });
   });
 
   it("reports duplicate relation numbers and blocks formula-like cells", () => {

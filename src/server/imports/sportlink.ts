@@ -16,12 +16,23 @@ const memberSchema = z.object({
 });
 
 export type SportlinkMember = z.infer<typeof memberSchema>;
+export type SportlinkColumnMapping = Record<keyof SportlinkMember, string | null>;
+export type SportlinkDatabaseRow = {
+  relation_number: string;
+  first_name: string;
+  insertion: string | null;
+  last_name: string;
+  email: string;
+  team: string;
+  active_for_season: boolean;
+};
 export type ImportIssue = { row: number; field?: string; message: string };
 export type ImportPreview = {
   members: SportlinkMember[];
   issues: ImportIssue[];
   summary: { total: number; valid: number; invalid: number; duplicates: number };
   delimiter: "," | ";";
+  mapping: SportlinkColumnMapping;
 };
 
 const headerAliases: Record<keyof SportlinkMember, string[]> = {
@@ -33,6 +44,18 @@ const headerAliases: Record<keyof SportlinkMember, string[]> = {
   team: ["team", "teamnaam", "team naam"],
   activeForSeason: ["actief voor seizoen", "actief", "active for season"],
 };
+
+export function toSportlinkDatabaseRows(members: SportlinkMember[]): SportlinkDatabaseRow[] {
+  return members.map((member) => ({
+    relation_number: member.relationNumber,
+    first_name: member.firstName,
+    insertion: member.insertion,
+    last_name: member.lastName,
+    email: member.email,
+    team: member.team,
+    active_for_season: member.activeForSeason,
+  }));
+}
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -121,12 +144,18 @@ export function previewSportlinkImport(input: string): ImportPreview {
 
   const headers = records[0];
   const indexFor = headerIndex(headers);
+  const mapping = Object.fromEntries(
+    (Object.keys(headerAliases) as Array<keyof SportlinkMember>).map((field) => {
+      const index = indexFor(field);
+      return [field, index >= 0 ? headers[index].trim() : null];
+    }),
+  ) as SportlinkColumnMapping;
   const required: (keyof SportlinkMember)[] = ["relationNumber", "firstName", "lastName", "email", "team", "activeForSeason"];
   const issues: ImportIssue[] = [];
   for (const field of required) {
     if (indexFor(field) === -1) issues.push({ row: 1, field, message: "Verplichte kolom ontbreekt." });
   }
-  if (issues.length > 0) return { members: [], issues, summary: { total: records.length - 1, valid: 0, invalid: records.length - 1, duplicates: 0 }, delimiter };
+  if (issues.length > 0) return { members: [], issues, summary: { total: records.length - 1, valid: 0, invalid: records.length - 1, duplicates: 0 }, delimiter, mapping };
 
   const members: SportlinkMember[] = [];
   const seenRelations = new Set<string>();
@@ -169,5 +198,6 @@ export function previewSportlinkImport(input: string): ImportPreview {
     issues,
     summary: { total: records.length - 1, valid: members.length, invalid: issues.length, duplicates },
     delimiter,
+    mapping,
   };
 }

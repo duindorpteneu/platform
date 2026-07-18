@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { previewSportlinkImport, SPORTLINK_MAX_BYTES } from "@/server/imports/sportlink";
+import { previewSportlinkImport, SPORTLINK_MAX_BYTES, toSportlinkDatabaseRows } from "@/server/imports/sportlink";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +28,8 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.schema("app").rpc("commit_sportlink_import", {
       p_file_name: file.name,
       p_checksum: checksum,
-      p_mapping: { delimiter: preview.delimiter, source: "Sportlink CSV" },
-      p_members: preview.members,
+      p_mapping: { delimiter: preview.delimiter, source: "Sportlink CSV", columns: preview.mapping },
+      p_members: toSportlinkDatabaseRows(preview.members),
     });
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze import." }, { status: 403 });
