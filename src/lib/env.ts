@@ -8,10 +8,13 @@ const serverEnvSchema = z.object({
   CRON_SECRET: z.string().min(16).optional(),
   APP_BASE_URL: z.string().url().default("http://localhost:3100"),
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
+  MOLLIE_API_KEY: z.string().min(1).optional(),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
   SENDGRID_API_KEY: z.string().min(1).optional(),
   SENDGRID_FROM_EMAIL: z.string().email().optional(),
+  SENDGRID_REPLY_TO_EMAIL: z.string().email().optional(),
   SENDGRID_PARENT_OTP_TEMPLATE_ID: z.string().min(1).optional(),
+  SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: z.string().min(1).optional(),
 });
 
 export function getServerEnv() {
@@ -23,9 +26,12 @@ export function getServerEnv() {
     CRON_SECRET: process.env.CRON_SECRET,
     APP_BASE_URL: process.env.APP_BASE_URL,
     MOLLIE_ENABLED: process.env.MOLLIE_ENABLED,
+    MOLLIE_API_KEY: process.env.MOLLIE_API_KEY,
     EMAIL_ENABLED: process.env.EMAIL_ENABLED,
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL,
+    SENDGRID_REPLY_TO_EMAIL: process.env.SENDGRID_REPLY_TO_EMAIL,
     SENDGRID_PARENT_OTP_TEMPLATE_ID: process.env.SENDGRID_PARENT_OTP_TEMPLATE_ID,
+    SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY,
   });
 }
