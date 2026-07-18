@@ -1,3 +1,4 @@
+import { staffShellContextSchema } from "@/lib/dashboard-contract";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export const STAFF_ROLES = ["beheerder", "kledingcommissie", "uitgifte"] as const;
@@ -7,6 +8,7 @@ export type StaffContext = {
   userId: string;
   displayName: string;
   role: StaffRole;
+  activeSeason: { id: string; name: string } | null;
 };
 
 export function hasAal2(level: string | null | undefined) {
@@ -36,7 +38,13 @@ export async function getStaffContext(): Promise<StaffContext | null> {
     .maybeSingle();
 
   if (!profile || !STAFF_ROLES.includes(profile.role as StaffRole)) return null;
-  return { userId: user.id, displayName: profile.display_name, role: profile.role as StaffRole };
+
+  const { data: shell, error: shellError } = await supabase.schema("app").rpc("get_staff_shell_context");
+  if (shellError) return null;
+  const parsedShell = staffShellContextSchema.safeParse(shell);
+  if (!parsedShell.success) return null;
+
+  return { userId: user.id, displayName: profile.display_name, role: profile.role as StaffRole, activeSeason: parsedShell.data.activeSeason };
 }
 
 export async function requireStaffRole(allowedRoles?: readonly StaffRole[]) {
