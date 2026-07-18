@@ -29,7 +29,7 @@ const primaryNavigation = [
   { label: "Bestellingen", href: "/backoffice/bestellingen", icon: ClipboardList },
   { label: "Betalingen", href: "/backoffice/betalingen", icon: WalletCards },
   { label: "Leveringen", href: "/backoffice/leveringen", icon: Package },
-  { label: "Uitgifte", href: "/backoffice/uitgifte", icon: ScanLine },
+  { label: "Uitgifte", href: "/uitgifte", icon: ScanLine },
   { label: "E-mails", href: "/backoffice/emails", icon: Mail },
   { label: "Export", href: "/backoffice/export", icon: Download },
 ];

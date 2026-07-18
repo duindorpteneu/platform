@@ -1,8 +1,9 @@
 import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
 import { getServerEnv } from "@/lib/env";
+import { QR_TOKEN_PATTERN } from "@/lib/qr-payload";
 
-const qrTokenSchema = z.string().regex(/^v[1-9]\d*\.[A-Za-z0-9_-]{43}$/);
+const qrTokenSchema = z.string().regex(QR_TOKEN_PATTERN);
 
 export const fulfilmentLookupRequestSchema = z.object({ token: qrTokenSchema }).strict();
 
