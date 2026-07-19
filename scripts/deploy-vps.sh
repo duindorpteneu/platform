@@ -12,6 +12,8 @@ valid_sha() { [[ "${1:-}" =~ ^[a-f0-9]{40}$ ]]; }
 build_release() {
   require_command docker
   require_command gzip
+  require_command sha256sum
+  require_command tar
   valid_sha "${RELEASE_SHA:-}" || die "RELEASE_SHA moet een volledige Git-SHA zijn."
   [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || die "Checkout en RELEASE_SHA verschillen."
   [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "Buildcheckout bevat tracked wijzigingen."
@@ -19,11 +21,24 @@ build_release() {
   local output_dir="${RELEASE_OUTPUT_DIRECTORY:-.release}"
   mkdir -p "$output_dir"
   docker build --label "nl.dgwebservices.duindorpteneu.sha=${RELEASE_SHA}" --tag "$image_tag" .
-  local digest
-  digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
-  [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || die "Docker gaf geen geldige image-digest."
-  node scripts/deploy/release-manifest.mjs create "$output_dir/RELEASE_MANIFEST" build "$RELEASE_SHA" "$image_tag" "$digest"
-  docker save "$image_tag" | gzip -9 > "$output_dir/duindorpteneu-app.tar.gz"
+  local image_tar manifest_digest config_path config_digest artifact_digest actual_digest
+  image_tar="$(mktemp "${output_dir}/.image.XXXXXX.tar")"
+  trap 'rm -f -- "${image_tar:-}"' EXIT INT TERM HUP
+  docker save --output "$image_tar" "$image_tag"
+  manifest_digest="$(tar -xOf "$image_tar" index.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.manifests?.length!==1)process.exit(1);process.stdout.write(x.manifests[0].digest)})')"
+  config_path="$(tar -xOf "$image_tar" manifest.json | IMAGE_TAG="$image_tag" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s).filter(v=>v.RepoTags?.includes(process.env.IMAGE_TAG));if(x.length!==1)process.exit(1);process.stdout.write(x[0].Config)})')"
+  [[ "$manifest_digest" =~ ^sha256:[a-f0-9]{64}$ ]] || die "Docker-archief bevat geen geldige OCI-manifestdigest."
+  [[ "$config_path" =~ ^blobs/sha256/[a-f0-9]{64}$ ]] || die "Docker-archief bevat geen geldige imageconfig."
+  config_digest="sha256:${config_path##*/}"
+  actual_digest="sha256:$(tar -xOf "$image_tar" "blobs/sha256/${manifest_digest#sha256:}" | sha256sum | cut -d' ' -f1)"
+  [[ "$actual_digest" == "$manifest_digest" ]] || die "OCI-manifestdigest komt niet overeen met het archief."
+  actual_digest="sha256:$(tar -xOf "$image_tar" "$config_path" | sha256sum | cut -d' ' -f1)"
+  [[ "$actual_digest" == "$config_digest" ]] || die "Imageconfigdigest komt niet overeen met het archief."
+  gzip -9n -c "$image_tar" > "$output_dir/duindorpteneu-app.tar.gz"
+  artifact_digest="sha256:$(sha256sum "$output_dir/duindorpteneu-app.tar.gz" | cut -d' ' -f1)"
+  node scripts/deploy/release-manifest.mjs create "$output_dir/RELEASE_MANIFEST" build "$RELEASE_SHA" "$image_tag" "$manifest_digest" "$config_digest" "$artifact_digest"
+  rm -f -- "$image_tar"
+  trap - EXIT INT TERM HUP
   chmod 600 "$output_dir/RELEASE_MANIFEST" "$output_dir/duindorpteneu-app.tar.gz"
   echo "Immutable image voor ${RELEASE_SHA} is gebouwd."
 }
@@ -53,30 +68,54 @@ deploy_environment() {
   valid_sha "${RELEASE_SHA:-}" || die "RELEASE_SHA is ongeldig."
   [[ -f "${RELEASE_ARTIFACT:-}" && -f "${RELEASE_MANIFEST_SOURCE:-}" ]] || die "Release-artefact of manifest ontbreekt."
 
-  for command in docker curl flock node pnpm gzip; do require_command "$command"; done
+  for command in base64 docker curl flock node pnpm gzip sha256sum stat tar; do require_command "$command"; done
+  [[ "$EUID" -ne 0 ]] || die "Deployment als root is niet toegestaan."
+  [[ "${USER:-}" == "deploy" && "${HOME:-}" == "/home/deploy" ]] || die "Deployment moet onder de geïsoleerde deploygebruiker draaien."
+  [[ " $(id -nG) " != *" docker "* ]] || die "Lidmaatschap van de rootful dockergroep is niet toegestaan."
+  local deploy_uid expected_runtime_dir expected_socket
+  deploy_uid="$(id -u)"
+  expected_runtime_dir="/run/user/${deploy_uid}"
+  expected_socket="${expected_runtime_dir}/docker.sock"
+  [[ "${XDG_RUNTIME_DIR:-}" == "$expected_runtime_dir" ]] || die "XDG_RUNTIME_DIR wijst niet naar de deploygebruiker."
+  [[ "${DOCKER_HOST:-}" == "unix://${expected_socket}" ]] || die "DOCKER_HOST wijst niet naar de Rootless Docker-socket."
+  [[ -S "$expected_socket" && "$(stat -c '%u' "$expected_socket")" == "$deploy_uid" ]] || die "Rootless Docker-socket of eigendom is ongeldig."
   docker compose version >/dev/null
   local security_options
   security_options="$(docker info --format '{{json .SecurityOptions}}')"
   [[ "$security_options" == *rootless* ]] || die "Docker daemon is niet Rootless."
-  [[ "${DOCKER_HOST:-}" != "unix:///var/run/docker.sock" ]] || die "Rootful Docker-socket is niet toegestaan."
 
   node scripts/deploy/configure-runtime.mjs validate
+  [[ ! -L "$runtime_directory" ]] || die "Runtime directory mag geen symlink zijn."
   mkdir -p "$runtime_directory"
+  [[ -d "$runtime_directory" && -O "$runtime_directory" ]] || die "Runtime directory heeft een onjuiste eigenaar."
   chmod 700 "$runtime_directory"
+  [[ ! -L "${runtime_directory}/.deploy.lock" ]] || die "Deploylock mag geen symlink zijn."
   exec 9>"${runtime_directory}/.deploy.lock"
+  chmod 600 "${runtime_directory}/.deploy.lock"
   flock -n 9 || die "Er draait al een deployment voor ${environment}."
 
-  local image_tag="${repository_image}:${RELEASE_SHA}" expected_digest loaded_digest
-  expected_digest="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(x.imageDigest)' "$RELEASE_MANIFEST_SOURCE")"
-  node scripts/deploy/release-manifest.mjs verify "$RELEASE_MANIFEST_SOURCE" "$RELEASE_SHA" "$expected_digest" >/dev/null
-  gzip -dc "$RELEASE_ARTIFACT" | docker load >/dev/null
-  loaded_digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
-  [[ "$loaded_digest" == "$expected_digest" ]] || die "Geladen image-digest wijkt af van het buildmanifest."
+  local image_tag="${repository_image}:${RELEASE_SHA}" expected_digest expected_config_digest expected_artifact_digest loaded_digest loaded_label archive_digest archive_manifest_digest archive_config_path archive_config_digest
+  read -r expected_digest expected_config_digest expected_artifact_digest < <(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(x.imageDigest+" "+x.imageConfigDigest+" "+x.artifactDigest)' "$RELEASE_MANIFEST_SOURCE")
+  node scripts/deploy/release-manifest.mjs verify "$RELEASE_MANIFEST_SOURCE" "$RELEASE_SHA" "$expected_digest" "$expected_config_digest" "$expected_artifact_digest" >/dev/null
+  archive_digest="sha256:$(sha256sum "$RELEASE_ARTIFACT" | cut -d' ' -f1)"
+  [[ "$archive_digest" == "$expected_artifact_digest" ]] || die "Release-artefact wijkt af van het buildmanifest."
+  archive_manifest_digest="$(tar -xOzf "$RELEASE_ARTIFACT" index.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.manifests?.length!==1)process.exit(1);process.stdout.write(x.manifests[0].digest)})')"
+  archive_config_path="$(tar -xOzf "$RELEASE_ARTIFACT" manifest.json | IMAGE_TAG="$image_tag" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s).filter(v=>v.RepoTags?.includes(process.env.IMAGE_TAG));if(x.length!==1)process.exit(1);process.stdout.write(x[0].Config)})')"
+  [[ "$archive_manifest_digest" == "$expected_digest" ]] || die "OCI-manifestdigest wijkt af van het buildmanifest."
+  [[ "$archive_config_path" =~ ^blobs/sha256/[a-f0-9]{64}$ ]] || die "Release-artefact bevat geen geldige imageconfig."
+  archive_config_digest="sha256:${archive_config_path##*/}"
+  [[ "$archive_config_digest" == "$expected_config_digest" ]] || die "Imageconfigdigest wijkt af van het buildmanifest."
+  [[ "sha256:$(tar -xOzf "$RELEASE_ARTIFACT" "blobs/sha256/${expected_digest#sha256:}" | sha256sum | cut -d' ' -f1)" == "$expected_digest" ]] || die "OCI-manifestblob is gewijzigd."
+  [[ "sha256:$(tar -xOzf "$RELEASE_ARTIFACT" "$archive_config_path" | sha256sum | cut -d' ' -f1)" == "$expected_config_digest" ]] || die "Imageconfigblob is gewijzigd."
 
   if [[ "$environment" == production ]]; then
     [[ -f "${STAGING_RELEASE_MANIFEST:-}" ]] || die "Staging release manifest ontbreekt."
     node scripts/deploy/release-manifest.mjs compare "$RELEASE_MANIFEST_SOURCE" "$STAGING_RELEASE_MANIFEST"
-    git fetch origin main --no-tags
+    [[ -n "${GITHUB_TOKEN:-}" ]] || die "Job-scoped GitHub-token ontbreekt."
+    local git_auth_header
+    git_auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\r\n')"
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${git_auth_header}" git fetch origin main --no-tags
+    unset git_auth_header
     local current_main
     current_main="$(git rev-parse origin/main)"
     if [[ "${DEPLOYMENT_MODE:-current}" == current ]]; then
@@ -88,7 +127,14 @@ deploy_environment() {
     fi
   fi
 
+  gzip -dc "$RELEASE_ARTIFACT" | docker load >/dev/null
+  loaded_digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+  loaded_label="$(docker image inspect --format '{{index .Config.Labels "nl.dgwebservices.duindorpteneu.sha"}}' "$image_tag")"
+  [[ "$loaded_digest" == "$expected_digest" || "$loaded_digest" == "$expected_config_digest" ]] || die "Geladen image-identiteit wijkt af van zowel OCI-manifest als imageconfig."
+  [[ "$loaded_label" == "$RELEASE_SHA" ]] || die "Geladen image heeft niet het verwachte releaselabel."
+
   local runtime_env_file="${runtime_directory}/.env.runtime"
+  [[ ! -L "$runtime_env_file" ]] || die "Runtimebestand mag geen symlink zijn."
   export APP_IMAGE="$image_tag" RUNTIME_ENV_FILE=/dev/null
   local rendered_compose
   rendered_compose="$(mktemp "${runtime_directory}/compose.XXXXXX")"
@@ -104,19 +150,27 @@ deploy_environment() {
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes
 
-  local previous_revision="" previous_image="" runtime_backup="${runtime_directory}/.env.runtime.previous"
+  local previous_revision="" previous_image="" runtime_backup="${runtime_directory}/.env.runtime.previous" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
   [[ -f "${runtime_directory}/REVISION" ]] && previous_revision="$(tr -d '\r\n' < "${runtime_directory}/REVISION")"
   if valid_sha "$previous_revision"; then previous_image="${repository_image}:${previous_revision}"; fi
-  if [[ -f "$RUNTIME_ENV_FILE" ]]; then cp -f -- "$RUNTIME_ENV_FILE" "$runtime_backup"; chmod 600 "$runtime_backup"; fi
+  if [[ -f "$RUNTIME_ENV_FILE" ]]; then
+    runtime_existed=true
+    cp -f -- "$RUNTIME_ENV_FILE" "$runtime_backup"
+    chmod 600 "$runtime_backup"
+  fi
   node scripts/deploy/configure-runtime.mjs write-runtime "$RUNTIME_ENV_FILE"
 
   local activated=false
   rollback() {
     local status="${1:-1}"
+    if [[ -f "$runtime_backup" ]]; then
+      mv -f -- "$runtime_backup" "$RUNTIME_ENV_FILE"
+    elif [[ "$runtime_existed" == false ]]; then
+      rm -f -- "$RUNTIME_ENV_FILE"
+    fi
     if [[ "$activated" == true && -n "$previous_image" ]] && docker image inspect "$previous_image" >/dev/null 2>&1; then
       echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
-      [[ -f "$runtime_backup" ]] && mv -f -- "$runtime_backup" "$RUNTIME_ENV_FILE"
       APP_IMAGE="$previous_image" docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans || true
     fi
     docker compose -p "$compose_project" -f "$compose_file" logs --no-color --tail 80 app 2>&1 | node scripts/deploy/redact-logs.mjs || true
@@ -128,8 +182,8 @@ deploy_environment() {
   }
   trap 'rollback $?' ERR
   trap signal_abort INT TERM HUP
-  docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans
   activated=true
+  docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans
 
   check_with_retries() {
     local url="$1"
@@ -148,7 +202,7 @@ deploy_environment() {
   temp_manifest="$(mktemp "${runtime_directory}/RELEASE_MANIFEST.XXXXXX")"
   printf '%s\n' "$RELEASE_SHA" > "$temp_revision"
   printf '%s\n' "$previous_revision" > "$temp_previous"
-  node scripts/deploy/release-manifest.mjs create "$temp_manifest" "$environment" "$RELEASE_SHA" "$image_tag" "$loaded_digest"
+  node scripts/deploy/release-manifest.mjs create "$temp_manifest" "$environment" "$RELEASE_SHA" "$image_tag" "$expected_digest" "$expected_config_digest" "$expected_artifact_digest"
   chmod 600 "$temp_revision" "$temp_previous" "$temp_manifest"
   mv -f -- "$temp_previous" "${runtime_directory}/PREVIOUS_REVISION"
   mv -f -- "$temp_revision" "${runtime_directory}/REVISION"
@@ -157,11 +211,6 @@ deploy_environment() {
   activated=false
   trap - ERR EXIT INT TERM HUP
 
-  mapfile -t old_images < <(docker image ls "$repository_image" --format '{{.Tag}} {{.CreatedAt}}' | sort -rk2,3 | awk 'NR>5 {print $1}')
-  for tag in "${old_images[@]:-}"; do
-    [[ -z "$tag" || "$tag" == "$RELEASE_SHA" || "$tag" == "$previous_revision" ]] && continue
-    docker image rm "${repository_image}:${tag}" >/dev/null 2>&1 || true
-  done
   echo "Deploy van ${RELEASE_SHA} naar ${environment} is volledig geverifieerd."
 }
 

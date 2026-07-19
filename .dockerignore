@@ -1,6 +1,7 @@
 .git
 .github
 .next
+.release
 .env
 .env.*
 !.env.example

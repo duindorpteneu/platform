@@ -3,7 +3,7 @@ if (!baseUrl || !["staging", "production"].includes(environment) || !/^[a-f0-9]{
 const publicOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
 const allowedOrigins = new Set([new URL(baseUrl).origin, publicOrigin]);
 
-async function request(path, health = false) {
+async function request(path, health = false, expectedFinalPath = path) {
   let target = new URL(path, baseUrl);
   const seen = new Set();
   let response;
@@ -27,11 +27,13 @@ async function request(path, health = false) {
     return;
   }
   if (response.status !== 200) throw new Error(`${path}: eindigde met HTTP ${response.status}`);
+  if (target.pathname !== expectedFinalPath) throw new Error(`${path}: eindigde onverwacht op ${target.pathname}`);
 }
 
 try {
   await request("/api/health", true);
-  for (const route of ["/", "/admin", "/uitgifte"]) await request(route);
+  await request("/");
+  for (const route of ["/admin", "/uitgifte"]) await request(route, false, "/staff/login");
 } catch (error) {
   console.error(error instanceof Error ? error.message : "HTTP-controle mislukt");
   process.exit(1);
