@@ -1,6 +1,6 @@
 # GitHub environments
 
-Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Environment branch policies laten uitsluitend `main` toe. Production heeft nog geen required-reviewerregel; dit is een externe releaseblocker.
+Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Environment branch policies laten uitsluitend `main` toe. Production vereist goedkeuring door `TIXOCEO`; self-review blijft voorlopig toegestaan omdat slechts één revieweraccount beschikbaar is.
 
 ## Variables
 
@@ -21,25 +21,16 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 
 | Naam | Staging aanwezig | Production aanwezig | Validatie | Gebruikt door | Status |
 | --- | --- | --- | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ja | ja | JWT, rol `anon` | publieke runtimebootstrap | aanwezig |
-| `SUPABASE_SERVICE_ROLE_KEY` | ja | ja | JWT, rol `service_role` | serverdata | aanwezig |
-| `SUPABASE_DB_URL` | ja | ja | PostgreSQL-URL identificeert eigen project-ref | migrations | aanwezig |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ja | ja | JWT, rol `anon`, exact eigen project-ref | publieke runtimebootstrap | aanwezig |
+| `SUPABASE_SERVICE_ROLE_KEY` | ja | ja | JWT, rol `service_role`, exact eigen project-ref | serverdata | aanwezig |
+| `SUPABASE_DB_URL` | ja | ja | Exact eigen directe Supabase-host of pooler-user; TLS niet uitgeschakeld | migrations | aanwezig |
 | `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | ja | ja | base64, exact 32 bytes | Next Server Actions | aanwezig |
-| `PARENT_TOKEN_PEPPER` | nee | nee | uniek, minimaal 32 tekens | OTP/sessie/QR-hashing | ontbreekt, verplicht |
-| `CRON_SECRET` | nee | nee | uniek, minimaal 16 tekens | interne jobs | ontbreekt, verplicht |
-| `MOLLIE_API_KEY` | nee | nee | staging `test_`; production `live_` bij activering | betalingen | alleen vereist bij Mollie aan |
-| `SENDGRID_API_KEY` | nee | nee | `SG.`-vorm | e-mail | alleen vereist bij e-mail aan |
+| `PARENT_TOKEN_PEPPER` | ja | ja | uniek, minimaal 32 tekens | OTP/sessie/QR-hashing | aanwezig |
+| `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
+| `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
+| `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
 
-Exacte interactieve commando's (gebruik geen `--body`):
-
-```bash
-gh secret set PARENT_TOKEN_PEPPER --repo duindorpteneu/platform --env staging
-gh secret set CRON_SECRET --repo duindorpteneu/platform --env staging
-gh secret set PARENT_TOKEN_PEPPER --repo duindorpteneu/platform --env production
-gh secret set CRON_SECRET --repo duindorpteneu/platform --env production
-```
-
-Alleen vóór provideractivering:
+Bij toekomstige rotatie of provideractivering worden secrets uitsluitend interactief gezet (gebruik geen `--body`):
 
 ```bash
 gh secret set MOLLIE_API_KEY --repo duindorpteneu/platform --env staging

@@ -9,7 +9,7 @@ Dit runbook gebruikt geen productiecredentials en geeft geen toestemming voor pr
 
 ### Health
 
-- `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200 {"status":"ok","version":"..."}`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
+- `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200` met uitsluitend `status`, `service`, `environment` en de volledige `revision`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
 - `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, stale/failed jobs, betaalreconciliatie en recente webhookmismatches.
 - Beide responses moeten `Cache-Control: no-store` gebruiken. Bewaar nooit de bearerheader in monitorlogs.
 

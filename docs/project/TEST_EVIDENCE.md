@@ -177,4 +177,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - Definitieve applicatiegates: secret- en migrationlint, ESLint, TypeScript, 37 Vitestbestanden/166 tests en `next build` groen. Health dekt JSON/200, 503 bij ontbrekende releaseconfig en redactie bij geworpen fouten; de OTP-challenge dekt versleuteling, expiry en tamperafwijzing.
 - Actionlint 1.7.7 is na officiële checksumcontrole groen; ShellCheck, `bash -n`, Node-syntax en `git diff --check` zijn groen.
 - De uiteindelijke Dockerfile bouwt onder Rootless Docker. Een geharde tijdelijke container retourneert zonder kritieke runtimeconfig redacted 503 op health en eindigt voor `/`, `/admin` en `/uitgifte` correct op HTTP 200 (met toegestane staffloginredirects).
-- Een echte VPS-deploy is nog niet uitgevoerd omdat deze branch niet mag worden gepusht/merged, verplichte secrets ontbreken en productionapproval niet is geconfigureerd.
+- Die oorspronkelijke handoff had nog geen echte VPS-deploy; inmiddels zijn de environmentsecret-namen en productionapproval extern ingericht en is de eerste stagingrun als herstelbewijs hieronder vastgelegd.
+
+## Eerste stagingdeploy-herstel — 2026-07-19
+
+- Actions-run `29693692256` bewees dat preflight, alle repositorygates, de immutable imagebuild en artifactupload slaagden. Staging stopte vóór migratie en `compose up` doordat Docker op de Rootless containerd-store de OCI-manifestdigest als `.Id` rapporteerde, terwijl het buildmanifest de configdigest bevatte.
+- Release-manifest v2 verifieert afzonderlijk OCI-manifestdigest, configdigest en SHA-256 van het exacte gecomprimeerde transportartefact. De bijbehorende blobs, releasetag en SHA-label worden vóór activatie gecontroleerd.
+- De basisimage is op registrydigest gepind; `docker save` gebruikt een metadata-neutrale gzip en hetzelfde artifact blijft de enige staging-naar-production-eenheid.
+- Alle checkouts gebruiken `persist-credentials: false`; alleen de twee noodzakelijke private `origin/main`-fetches krijgen tijdelijk `${{ github.token }}` via een HTTP-extraheader.
+- Runtimepreflight koppelt staging en production hard aan hun eigen Supabase-ref en valideert JWT-ref, directe databasehost/pooler-user en het verbod op `sslmode=disable`.
+- Nieuwe Vitest-contracttests bewijzen beide canonieke environments, negatieve production-in-stagingconfiguratie, runtime-browserinjectie en vergelijking van alle drie releasedigests. Totaal: 38 testbestanden en 171 tests groen; lint, TypeScript, build, actionlint, ShellCheck, Bash-/Node-syntax, migration-/secretscan en beide Compose-renders zijn groen.

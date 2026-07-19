@@ -9,12 +9,14 @@ const rules = {
     port: "14000",
     root: "/srv/apps/duindorpteneu/staging",
     project: "duindorpteneu-staging",
+    supabaseRef: "dxbdjtbyghsovlrdcwcr",
   },
   production: {
     host: "duindorp.dgwebservices.nl",
     port: "24000",
     root: "/srv/apps/duindorpteneu/production",
     project: "duindorpteneu-production",
+    supabaseRef: "wobcbufmmputydtzemyu",
   },
 };
 const errors = new Set();
@@ -30,26 +32,33 @@ function optional(name) {
   if (/[\0\r\n]/.test(value)) invalid(name);
   return value;
 }
-function jwt(name, expectedRole) {
+function jwt(name, expectedRole, expectedRef) {
   const value = required(name, 40);
   const parts = value.split(".");
   if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) return invalid(name);
   try {
     const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    if (payload.role !== expectedRole || typeof payload.exp !== "number") invalid(name);
+    if (payload.role !== expectedRole || payload.ref !== expectedRef || typeof payload.exp !== "number") invalid(name);
   } catch { invalid(name); }
 }
 function postgresUrl(name, projectRef) {
   const value = required(name, 20);
   try {
     const parsed = new URL(value);
-    const identifiesProject = parsed.hostname.includes(projectRef) || parsed.username.includes(projectRef);
-    if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname || !parsed.username || parsed.pathname === "/" || !identifiesProject) invalid(name);
+    const direct = parsed.hostname === `db.${projectRef}.supabase.co` && parsed.username === "postgres";
+    const pooler = parsed.hostname.endsWith(".pooler.supabase.com") && parsed.username === `postgres.${projectRef}`;
+    const unsafeTls = parsed.searchParams.get("sslmode") === "disable";
+    if (
+      !["postgres:", "postgresql:"].includes(parsed.protocol)
+      || (!direct && !pooler)
+      || parsed.pathname !== "/postgres"
+      || unsafeTls
+    ) invalid(name);
   } catch { invalid(name); }
 }
 
 if (!(environment in rules)) invalid("DEPLOY_ENVIRONMENT");
-const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "" };
+const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "", supabaseRef: "" };
 if (!/^[a-f0-9]{40}$/.test(releaseSha)) invalid("RELEASE_SHA");
 
 const appHost = required("APP_HOST");
@@ -62,11 +71,12 @@ if (appPort !== expected.port) invalid("APP_BIND_PORT");
 if (process.env.RUNTIME_DIRECTORY !== expected.root) invalid("RUNTIME_DIRECTORY");
 if (process.env.COMPOSE_PROJECT_NAME !== expected.project) invalid("COMPOSE_PROJECT_NAME");
 if (!/^[a-z0-9]{20}$/.test(projectRef)) invalid("SUPABASE_PROJECT_REF");
+if (projectRef !== expected.supabaseRef) invalid("SUPABASE_PROJECT_REF");
 if (appUrl !== `https://${appHost}`) invalid("NEXT_PUBLIC_APP_URL");
 if (supabaseUrl !== `https://${projectRef}.supabase.co`) invalid("NEXT_PUBLIC_SUPABASE_URL");
 
-jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
-jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role");
+jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon", projectRef);
+jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
 postgresUrl("SUPABASE_DB_URL", projectRef);
 required("PARENT_TOKEN_PEPPER", 32);
 required("CRON_SECRET", 16);

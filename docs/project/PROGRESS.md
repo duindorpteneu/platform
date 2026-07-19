@@ -71,7 +71,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
 
 ## In progress
-- Eerste main → staging → approval → productionrun van de exact gecommitte releasecandidate.
+- Herstel van de eerste main → staging-run na de aantoonbare Docker image-ID-representatiemismatch; production blijft achter handmatige approval.
 - Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
 
 ## Next
@@ -81,4 +81,4 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 
 ## Blockers
 - Geen lokale codeblocker.
-- `PARENT_TOKEN_PEPPER` en `CRON_SECRET` ontbreken in beide GitHub environments; production heeft nog geen required reviewer. Providerconfiguratie blijft pas nodig wanneer de bijbehorende flag wordt geactiveerd.
+- Alle verplichte secret-namen zijn in beide GitHub environments aanwezig en production vereist review door `TIXOCEO`; alleen live stagingbewijs resteert. Providerflags blijven standaard uit.
