@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { buildSecurityHeaders } from "./src/server/security/headers";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

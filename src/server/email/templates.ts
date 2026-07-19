@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EMAIL_SHORTCODES = ["voornaam", "volledige_naam", "team", "relatienummer", "seizoen", "bedrag", "betaallink", "qr_code", "artikelen_af_te_halen", "artikelen_nalevering", "afhaallocatie", "clubnaam", "contact_email"] as const;
+export const EMAIL_SHORTCODES = ["voornaam", "volledige_naam", "team", "relatienummer", "seizoen", "bedrag", "betaallink", "qr_code", "artikelen_af_te_halen", "artikelen_nalevering", "afhaallocatie", "clubnaam", "contact_email", "verificatiecode"] as const;
 export const emailShortcodeSchema = z.enum(EMAIL_SHORTCODES);
 export type EmailShortcode = z.infer<typeof emailShortcodeSchema>;
 export type EmailTemplateValues = Record<EmailShortcode, string>;
@@ -17,6 +17,13 @@ export function validateTemplateSource(subject: string, body: string, allowed: r
     }
     const withoutKnown = source.replace(tokenPattern, "");
     if (withoutKnown.includes("{{") || withoutKnown.includes("}}")) throw new Error("EMAIL_TEMPLATE_SYNTAX_INVALID");
+  }
+}
+
+export function validateTemplateForPurpose(templateKey: string, subject: string, body: string, allowed: readonly string[]) {
+  validateTemplateSource(subject, body, allowed);
+  if (templateKey === "verification_code" && !`${subject}\n${body}`.includes("{{verificatiecode}}")) {
+    throw new Error("EMAIL_VERIFICATION_CODE_REQUIRED");
   }
 }
 
@@ -44,5 +51,6 @@ export function fictionalEmailPreviewValues(): EmailTemplateValues {
     qr_code: "Beschikbaar in het beveiligde tenueportaal", artikelen_af_te_halen: "Shirt maat 152",
     artikelen_nalevering: "Broekje maat 152", afhaallocatie: "Clubhuis Duindorp SV", clubnaam: "Duindorp SV",
     contact_email: "kledingcommissie@duindorpsv.nl",
+    verificatiecode: "123456",
   };
 }

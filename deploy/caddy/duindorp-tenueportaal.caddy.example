@@ -1,0 +1,20 @@
+# Referentie voor de reeds ingerichte host-Caddy. Het deployscript leest of
+# wijzigt dit bestand niet en Caddy draait niet in Docker.
+
+staging-duindorp.dgwebservices.nl {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:14000 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+}
+
+duindorp.dgwebservices.nl {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:24000 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+}

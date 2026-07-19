@@ -40,7 +40,6 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `SENDGRID_API_KEY` | Hoog geheim, server-only | Leeg | Unieke minimaal bevoegde Mail Send-key |
 | `SENDGRID_FROM_EMAIL` | Configuratie | Leeg | Geverifieerd afzenderadres van de omgeving |
 | `SENDGRID_REPLY_TO_EMAIL` | Configuratie | Leeg | Operationeel beheerd antwoordadres |
-| `SENDGRID_PARENT_OTP_TEMPLATE_ID` | Omgevingsgebonden | Leeg | Goedgekeurde templateversie in de omgeving |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | Verificatiesleutel | Leeg | Publieke verificatiesleutel van de omgeving |
 
 Geen enkele geheime variabele krijgt een `NEXT_PUBLIC_`-prefix. Secrets staan niet in GitHub-workflowtekst, screenshots, tickets, logs of testbewijs. De repository bevat alleen lege voorbeelden.

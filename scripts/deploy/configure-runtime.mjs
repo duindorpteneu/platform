@@ -1,0 +1,150 @@
+import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const environment = process.env.DEPLOY_ENVIRONMENT;
+const releaseSha = process.env.RELEASE_SHA?.trim() ?? "";
+const rules = {
+  staging: {
+    host: "staging-duindorp.dgwebservices.nl",
+    port: "14000",
+    root: "/srv/apps/duindorpteneu/staging",
+    project: "duindorpteneu-staging",
+  },
+  production: {
+    host: "duindorp.dgwebservices.nl",
+    port: "24000",
+    root: "/srv/apps/duindorpteneu/production",
+    project: "duindorpteneu-production",
+  },
+};
+const errors = new Set();
+
+function invalid(name) { errors.add(name); }
+function required(name, minimum = 1) {
+  const value = process.env[name]?.trim() ?? "";
+  if (value.length < minimum || /[\0\r\n]/.test(value)) invalid(name);
+  return value;
+}
+function optional(name) {
+  const value = process.env[name]?.trim() ?? "";
+  if (/[\0\r\n]/.test(value)) invalid(name);
+  return value;
+}
+function jwt(name, expectedRole) {
+  const value = required(name, 40);
+  const parts = value.split(".");
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) return invalid(name);
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (payload.role !== expectedRole || typeof payload.exp !== "number") invalid(name);
+  } catch { invalid(name); }
+}
+function postgresUrl(name, projectRef) {
+  const value = required(name, 20);
+  try {
+    const parsed = new URL(value);
+    const identifiesProject = parsed.hostname.includes(projectRef) || parsed.username.includes(projectRef);
+    if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname || !parsed.username || parsed.pathname === "/" || !identifiesProject) invalid(name);
+  } catch { invalid(name); }
+}
+
+if (!(environment in rules)) invalid("DEPLOY_ENVIRONMENT");
+const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "" };
+if (!/^[a-f0-9]{40}$/.test(releaseSha)) invalid("RELEASE_SHA");
+
+const appHost = required("APP_HOST");
+const appPort = required("APP_BIND_PORT");
+const appUrl = required("NEXT_PUBLIC_APP_URL");
+const projectRef = required("SUPABASE_PROJECT_REF");
+const supabaseUrl = required("NEXT_PUBLIC_SUPABASE_URL");
+if (appHost !== expected.host) invalid("APP_HOST");
+if (appPort !== expected.port) invalid("APP_BIND_PORT");
+if (process.env.RUNTIME_DIRECTORY !== expected.root) invalid("RUNTIME_DIRECTORY");
+if (process.env.COMPOSE_PROJECT_NAME !== expected.project) invalid("COMPOSE_PROJECT_NAME");
+if (!/^[a-z0-9]{20}$/.test(projectRef)) invalid("SUPABASE_PROJECT_REF");
+if (appUrl !== `https://${appHost}`) invalid("NEXT_PUBLIC_APP_URL");
+if (supabaseUrl !== `https://${projectRef}.supabase.co`) invalid("NEXT_PUBLIC_SUPABASE_URL");
+
+jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
+jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role");
+postgresUrl("SUPABASE_DB_URL", projectRef);
+required("PARENT_TOKEN_PEPPER", 32);
+required("CRON_SECRET", 16);
+
+const encryptionKey = required("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY", 40);
+try {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(encryptionKey) || Buffer.from(encryptionKey, "base64").length !== 32) invalid("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY");
+} catch { invalid("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"); }
+
+const mollieEnabled = required("MOLLIE_ENABLED");
+const mollieKey = optional("MOLLIE_API_KEY");
+if (!["true", "false"].includes(mollieEnabled)) invalid("MOLLIE_ENABLED");
+if (mollieEnabled === "true" && !mollieKey) invalid("MOLLIE_API_KEY");
+if (environment === "staging" && mollieKey && !mollieKey.startsWith("test_")) invalid("MOLLIE_API_KEY");
+if (environment === "production" && mollieEnabled === "true" && !mollieKey.startsWith("live_")) invalid("MOLLIE_API_KEY");
+
+const emailEnabled = required("EMAIL_ENABLED");
+const sendgridKey = optional("SENDGRID_API_KEY");
+const fromEmail = optional("SENDGRID_FROM_EMAIL");
+const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
+const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
+if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
+if (emailEnabled === "true") {
+  if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
+  if (!fromEmail) invalid("SENDGRID_FROM_EMAIL");
+  if (!replyEmail) invalid("SENDGRID_REPLY_TO_EMAIL");
+  if (!webhookKey) invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
+}
+for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail]]) {
+  if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
+}
+
+if (errors.size) {
+  console.error("Runtime-preflight mislukt voor:");
+  for (const name of [...errors].sort()) console.error(`- ${name}`);
+  process.exit(1);
+}
+
+if (process.argv[2] === "validate") {
+  console.log(`Runtime-preflight voor ${environment} is geslaagd.`);
+  process.exit(0);
+}
+if (process.argv[2] !== "write-runtime" || !process.argv[3]) {
+  console.error("Gebruik: configure-runtime.mjs validate | write-runtime <pad>");
+  process.exit(2);
+}
+
+const target = path.resolve(process.argv[3]);
+if (target !== path.join(expected.root, ".env.runtime")) {
+  console.error("Ongeldig runtimebestandpad.");
+  process.exit(1);
+}
+const runtime = {
+  NODE_ENV: "production",
+  HOSTNAME: "0.0.0.0",
+  PORT: "3000",
+  APP_ENVIRONMENT: environment,
+  RELEASE_SHA: releaseSha,
+  APP_BASE_URL: appUrl,
+  NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  SUPABASE_SECRET_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
+  PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
+  CRON_SECRET: process.env.CRON_SECRET,
+  MOLLIE_ENABLED: mollieEnabled,
+  MOLLIE_API_KEY: mollieKey,
+  EMAIL_ENABLED: emailEnabled,
+  SENDGRID_API_KEY: sendgridKey,
+  SENDGRID_FROM_EMAIL: fromEmail,
+  SENDGRID_REPLY_TO_EMAIL: replyEmail,
+  SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: webhookKey,
+};
+function quote(value) { return `"${String(value ?? "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`; }
+await mkdir(expected.root, { recursive: true, mode: 0o700 });
+const temporary = `${target}.tmp-${process.pid}`;
+await writeFile(temporary, `${Object.entries(runtime).map(([name, value]) => `${name}=${quote(value)}`).join("\n")}\n`, { mode: 0o600 });
+await chmod(temporary, 0o600);
+await rename(temporary, target);
+await chmod(target, 0o600);
+console.log(`Runtimebestand voor ${environment} is atomisch geschreven.`);

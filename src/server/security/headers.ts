@@ -8,7 +8,7 @@ const BASE_HEADERS = [
 ] as const;
 
 function supabaseConnections(rawUrl: string | undefined) {
-  if (!rawUrl) return [];
+  if (!rawUrl) return ["https://*.supabase.co", "wss://*.supabase.co"];
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return [];

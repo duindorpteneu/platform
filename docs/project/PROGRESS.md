@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Exports, instellingen, audit, operationele health/retentie, securityheaders, rate limits, CI en release-runbooks zijn afgerond. De code is gereed voor deploy naar een afzonderlijke stagingomgeving; alleen omgevings- en providerverificatie blijft extern.
+De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Het definitieve repositorydeploypad bouwt één immutable Rootless-Dockerimage, verifieert staging en promoveert exact dezelfde digest na GitHub productionapproval. De eerste echte run wacht op twee verplichte secrets en de production required-reviewerregel.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -51,7 +51,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Uitgiftehistorie en transactionele regelcorrecties naar Af te halen of Nalevering toegevoegd met behoud van oorspronkelijke fulfilment, reserveringssemantiek en auditspoor.
 - Schone database-reset met 20 migrations, 127 pgTAP-asserties, 41 unit-/integratietests, concurrencytest, MFA-integratie, productiebuild en volledige browserreview zijn groen.
 - Zelfopruimende browserreview bewijst cataloguscreate, variantcreate, orderupdate, paid immutability, QR rotate/revoke/reissue, fulfilmentcorrectie, desktop/mobiel en routebeveiliging.
-- Zes canonieke e-mailtypen, gesloten shortcodes, fictieve previews, immutable templateversies, handmatige bulkselectie tot 2.000 orders en een duurzame SendGrid-jobqueue toegevoegd.
+- Zes canonieke e-mailtypen, gesloten shortcodes, fictieve previews, immutable job-snapshots, handmatige bulkselectie tot 2.000 orders en een duurzame SendGrid-jobqueue toegevoegd. De ouder-OTP-template is in dezelfde editor bewerkbaar en gebruikt `{{verificatiecode}}` uitsluitend tijdens vluchtige directe verzending.
 - E-mailworker claimt maximaal 25 jobs met `SKIP LOCKED`, verwerkt begrensd parallel, gebruikt maximaal vijf pogingen en schakelt open-/kliktracking uit.
 - SendGrid-eventwebhook valideert de raw-bodyhandtekening, dedupliceert `sg_event_id` en bewaart uitsluitend delivered, bounced, deferred, dropped en failed.
 - Mollie Payments API hosted checkout, stabiele lokale idempotentie, klassieke webhook, provider-GET en exacte EUR/metadata-reconciliatie toegevoegd.
@@ -67,9 +67,11 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - CI, secret scan, forward-only migratielint, omgevingsmatrix, operationsrunbook, releasechecklist, securityacceptatie en stagingverificatieprocedure zijn toegevoegd.
 - Definitieve lokale gates: 36 migrations schoon toegepast; 15 pgTAP-bestanden/383 assertions, 35 Vitest-bestanden/158 tests, concurrency, echte staff-MFA, lint, TypeScript, productiebuild en dependency-audit zijn groen.
 - De volledige productie-browserflow is tweemaal achtereen groen en ruimt Auth, MFA en alle fictieve database-/e-mailfixtures aantoonbaar op.
+- Eén `deploy.yml`, Dockerfile, veilige Composeconfiguratie, centrale `deploy-vps.sh`, atomische revision/manifests, runtime-Supabasebootstrap, `/admin`-alias en releasebewuste healthchecks toegevoegd.
+- Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
 
 ## In progress
-- Deploy van de exact gecommitte releasecandidate naar een afzonderlijke publieke HTTPS-stagingomgeving.
+- Eerste main → staging → approval → productionrun van de exact gecommitte releasecandidate.
 - Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
 
 ## Next
@@ -79,4 +81,4 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 
 ## Blockers
 - Geen lokale codeblocker.
-- Externe staging-URL, afzonderlijk Supabase-project, secretstore, Mollie-testkey, SendGrid-configuratie en operationele eigenaren zijn nodig voor de resterende stagingverificatie.
+- `PARENT_TOKEN_PEPPER` en `CRON_SECRET` ontbreken in beide GitHub environments; production heeft nog geen required reviewer. Providerconfiguratie blijft pas nodig wanneer de bijbehorende flag wordt geactiveerd.

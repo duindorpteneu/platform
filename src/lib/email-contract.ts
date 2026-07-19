@@ -21,7 +21,7 @@ const emailTemplateSchema = z.object({
   key: emailTemplateKeySchema,
   subjectSource: z.string().min(3).max(180),
   bodySource: z.string().min(10).max(10_000),
-  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(13),
+  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(14),
   active: z.boolean(),
   version: z.number().int().positive(),
   updatedAt: timestamp,
@@ -116,7 +116,7 @@ export const claimedEmailJobSchema = z.object({
   templateVersion: z.number().int().positive(),
   subjectSource: z.string().min(3).max(180),
   bodySource: z.string().min(10).max(10_000),
-  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(13),
+  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(14),
   orderId: uuid,
   payload: z.object({
     orderId: uuid,
@@ -145,6 +145,16 @@ export const emailJobClaimResponseSchema = z.object({
   jobs: z.array(claimedEmailJobSchema).max(25),
 }).strict();
 
+export const parentOtpEmailTemplateSchema = z.object({
+  templateKey: z.literal("verification_code"),
+  templateVersion: z.number().int().positive(),
+  subjectSource: z.string().min(3).max(180),
+  bodySource: z.string().min(10).max(10_000),
+  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(14),
+  clubName: z.string().min(1).max(160),
+  contactEmail: z.string().email().max(320).nullable(),
+}).strict();
+
 export const emailTemplateLabels: Record<z.infer<typeof emailTemplateKeySchema>, string> = {
   verification_code: "Verificatiecode",
   payment_request: "Betalingsverzoek",
@@ -158,3 +168,4 @@ export type EmailWorkspace = z.infer<typeof emailWorkspaceSchema>;
 export type EmailTemplateKey = z.infer<typeof emailTemplateKeySchema>;
 export type BulkEmailTemplateKey = z.infer<typeof bulkEmailTemplateKeySchema>;
 export type ClaimedEmailJob = z.infer<typeof claimedEmailJobSchema>;
+export type ParentOtpEmailTemplate = z.infer<typeof parentOtpEmailTemplateSchema>;

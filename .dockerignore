@@ -1,0 +1,16 @@
+.git
+.github
+.next
+.env
+.env.*
+!.env.example
+!.env.local.example
+artifacts
+coverage
+docs
+node_modules
+playwright-report
+test-results
+tmp
+*.log
+*.tsbuildinfo

@@ -1,0 +1,38 @@
+const [baseUrl, environment, revision] = process.argv.slice(2);
+if (!baseUrl || !["staging", "production"].includes(environment) || !/^[a-f0-9]{40}$/.test(revision ?? "")) process.exit(2);
+const publicOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
+const allowedOrigins = new Set([new URL(baseUrl).origin, publicOrigin]);
+
+async function request(path, health = false) {
+  let target = new URL(path, baseUrl);
+  const seen = new Set();
+  let response;
+  for (let redirect = 0; redirect <= 5; redirect += 1) {
+    if (seen.has(target.href)) throw new Error(`${path}: redirectloop`);
+    seen.add(target.href);
+    try { response = await fetch(target, { redirect: "manual", signal: AbortSignal.timeout(5_000) }); }
+    catch { throw new Error(`${path}: verbinding mislukt`); }
+    const location = response.headers.get("location");
+    if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
+    target = new URL(location, target);
+    if (!allowedOrigins.has(target.origin)) throw new Error(`${path}: redirect naar verkeerde host`);
+    if (redirect === 5) throw new Error(`${path}: te veel redirects`);
+  }
+  if (health) {
+    if (response.status !== 200 || !response.headers.get("content-type")?.toLowerCase().includes("application/json")) throw new Error(`${path}: ongeldige healthresponse`);
+    const body = await response.json();
+    if (body.status !== "ok" || body.service !== "duindorpteneu" || body.environment !== environment || body.revision !== revision) throw new Error(`${path}: verkeerde release-identiteit`);
+    const serialized = JSON.stringify(body).toLowerCase();
+    if (serialized.includes("supabase") || serialized.includes("postgres") || serialized.includes("secret")) throw new Error(`${path}: gevoelige metadata`);
+    return;
+  }
+  if (response.status !== 200) throw new Error(`${path}: eindigde met HTTP ${response.status}`);
+}
+
+try {
+  await request("/api/health", true);
+  for (const route of ["/", "/admin", "/uitgifte"]) await request(route);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "HTTP-controle mislukt");
+  process.exit(1);
+}
