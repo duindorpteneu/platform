@@ -407,9 +407,17 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await page.getByRole("checkbox").check();
   await page.getByLabel("Doelstatus").selectOption("backorder");
   await page.getByLabel("Verplichte reden").fill("Artikel bleek niet meegegeven");
-  await page.getByRole("button", { name: "Correctie bevestigen" }).click();
-  await page.getByText("1 regel(s) transactioneel gecorrigeerd.", { exact: true }).waitFor({ timeout: 5_000 });
-  await page.getByText(/Gecorrigeerd/).waitFor({ timeout: 5_000 });
+  const [correctionResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/fulfilment/reverse") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Correctie bevestigen" }).click(),
+  ]);
+  if (!correctionResponse.ok()) {
+    throw new Error(`Uitgiftecorrectie gaf HTTP ${correctionResponse.status()}: ${await correctionResponse.text()}`);
+  }
+  await page.getByText("1 regel(s) transactioneel gecorrigeerd.", { exact: true }).waitFor({ timeout: 10_000 });
+  await page.reload();
+  await page.getByRole("heading", { name: "Uitgiftes en correcties" }).waitFor({ timeout: 10_000 });
+  await page.getByText(/Gecorrigeerd/).waitFor({ timeout: 10_000 });
   const historyText = await page.locator("body").innerText();
   if (!historyText.includes("Reden: Artikel bleek niet meegegeven") || !historyText.includes("Nalevering")) {
     throw new Error("Uitgiftecorrectie is niet volledig zichtbaar in de operationele historie.");
