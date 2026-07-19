@@ -1,4 +1,5 @@
 import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
+import { createPublicKey } from "node:crypto";
 import path from "node:path";
 
 const environment = process.env.DEPLOY_ENVIRONMENT;
@@ -101,6 +102,14 @@ const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
 if (!["https://api.sendgrid.com", "https://api.eu.sendgrid.com"].includes(sendgridApiBaseUrl)) invalid("SENDGRID_API_BASE_URL");
+if (webhookKey) {
+  try {
+    const key = webhookKey.includes("BEGIN PUBLIC KEY")
+      ? createPublicKey(webhookKey.replaceAll("\\n", "\n"))
+      : createPublicKey({ key: Buffer.from(webhookKey, "base64"), format: "der", type: "spki" });
+    if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1") invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
+  } catch { invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY"); }
+}
 if (emailEnabled === "true") {
   if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
   if (!fromEmail) invalid("SENDGRID_FROM_EMAIL");

@@ -46,13 +46,58 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
+    permissions:
+      actions: write
+      contents: read
     env:
       SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
       SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
       SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
       SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
       SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
+      SENDGRID_WEBHOOK_ID: ${{ vars.SENDGRID_WEBHOOK_ID }}
+      SENDGRID_WEBHOOK_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}/api/webhooks/sendgrid
     steps:
+      - name: Checkout provider validation code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure and verify signed staging webhook
+        id: webhook
+        env:
+          SENDGRID_PUBLIC_KEY_FILE: ${{ runner.temp }}/sendgrid-public-key.txt
+        run: node scripts/providers/configure-sendgrid-webhook.mjs
+
+      - name: Preserve public verification key for controlled handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendgrid-staging-public-key-${{ github.run_id }}
+          path: ${{ runner.temp }}/sendgrid-public-key.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Store public verification key in staging environment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SENDGRID_PUBLIC_KEY: ${{ steps.webhook.outputs.public_key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="${RUNNER_TEMP}/sendgrid-environment-variable.json"
+          trap 'rm -f "${payload}"' EXIT
+          node <<'NODE' > "${payload}"
+          process.stdout.write(JSON.stringify({
+            name: "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY",
+            value: process.env.SENDGRID_PUBLIC_KEY,
+          }));
+          NODE
+          endpoint="repos/${GITHUB_REPOSITORY}/environments/staging/variables"
+          if ! gh api --method PATCH "${endpoint}/SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY" --input "${payload}" >/dev/null 2>&1; then
+            gh api --method POST "${endpoint}" --input "${payload}" >/dev/null
+          fi
+
       - name: Send one controlled staging message
         shell: bash
         run: |
@@ -64,8 +109,12 @@ jobs:
           headers="${RUNNER_TEMP}/sendgrid-headers.txt"
           trap 'rm -f "${payload}" "${headers}"' EXIT
           node <<'NODE' > "${payload}"
+          const { randomUUID } = require("node:crypto");
           const body = {
-            personalizations: [{ to: [{ email: process.env.SENDGRID_SMOKE_RECIPIENT }] }],
+            personalizations: [{
+              to: [{ email: process.env.SENDGRID_SMOKE_RECIPIENT }],
+              custom_args: { email_job_id: randomUUID() },
+            }],
             from: { email: process.env.SENDGRID_FROM_EMAIL, name: "Duindorp SV Tenueportaal" },
             reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL },
             subject: "Stagingcontrole Duindorp SV Tenueportaal",

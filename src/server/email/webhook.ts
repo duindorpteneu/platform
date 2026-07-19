@@ -54,7 +54,10 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
   for (const envelope of envelopes.data) {
     const eventType = normalizeEventType(envelope.event);
     if (!eventType) continue;
-    if (!envelope.email_job_id || !envelope.sg_event_id || envelope.timestamp === undefined) throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+    // Direct OTP and controlled provider-smoke messages do not have a durable
+    // queue job. Their signed operational events are valid but not correlatable.
+    if (!envelope.email_job_id) continue;
+    if (!envelope.sg_event_id || envelope.timestamp === undefined) throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
     const seconds = Number(envelope.timestamp);
     const occurredAt = new Date(seconds * 1_000);
     if (!Number.isFinite(seconds) || Number.isNaN(occurredAt.getTime())) throw new Error("SENDGRID_EVENT_TIMESTAMP_INVALID");

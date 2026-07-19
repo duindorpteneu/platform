@@ -11,11 +11,12 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `NEXT_PUBLIC_APP_URL` | ja | ja | `https://` + `APP_HOST` | redirects, QR, callbacks, e-mail | correct |
 | `SUPABASE_PROJECT_REF` | ja | ja | 20 lowercase tekens; verschillend | DB-/URL-koppeling | correct en verschillend |
 | `NEXT_PUBLIC_SUPABASE_URL` | ja | ja | Exact `https://<ref>.supabase.co` | app/runtime | correct |
-| `MOLLIE_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
+| `MOLLIE_ENABLED` | `true` | nee | `false` of `true` | providergate | alleen staging testmode; production default `false` |
 | `EMAIL_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
-| `SENDGRID_FROM_EMAIL` | nee | nee | geldig e-mailadres | SendGrid | vereist bij `EMAIL_ENABLED=true` |
-| `SENDGRID_API_BASE_URL` | nee | nee | `https://api.sendgrid.com` of `https://api.eu.sendgrid.com` | SendGrid | global standaard; EU alleen voor een EU-regional subuser |
-| `SENDGRID_REPLY_TO_EMAIL` | nee | nee | geldig e-mailadres | SendGrid | vereist bij `EMAIL_ENABLED=true` |
+| `SENDGRID_FROM_EMAIL` | `danny.goldenbelt@duindorpsv.nl` | `danny.goldenbelt@duindorpsv.nl` | geldig en geverifieerd e-mailadres | SendGrid | door eigenaar bevestigd |
+| `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
+| `SENDGRID_REPLY_TO_EMAIL` | `danny.goldenbelt@duindorpsv.nl` | `danny.goldenbelt@duindorpsv.nl` | geldig e-mailadres | SendGrid | door eigenaar bevestigd |
+| `SENDGRID_WEBHOOK_ID` | `fd290462-…` | `84500cb8-…` | UUID, omgevingsuniek | provider-smoke | production blijft ongevalideerd en uit |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | nee | nee | niet leeg | webhookvalidatie | vereist bij `EMAIL_ENABLED=true` |
 
 ## Secrets
@@ -30,7 +31,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
-| `SENDGRID_SMOKE_RECIPIENT` | nee | nee | beheerde test-inbox, geen lidadres | provider-smoke | nog in staging toe te voegen; uitsluitend gebruikt door de handmatige staging-smoke |
+| `SENDGRID_SMOKE_RECIPIENT` | ja | nee | `info@dgwebservices.nl`, beheerde test-inbox | provider-smoke | uitsluitend gebruikt door de handmatige staging-smoke |
 
 Bij toekomstige rotatie of provideractivering worden secrets uitsluitend interactief gezet (gebruik geen `--body`):
 
