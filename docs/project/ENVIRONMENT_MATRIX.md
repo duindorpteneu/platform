@@ -38,6 +38,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging, afzonderlijke live key in production |
 | `EMAIL_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
 | `SENDGRID_API_KEY` | Hoog geheim, server-only | Leeg | Unieke minimaal bevoegde Mail Send-key |
+| `SENDGRID_API_BASE_URL` | Configuratie | `https://api.sendgrid.com` | Gebruik `https://api.eu.sendgrid.com` uitsluitend voor een EU-regional subuser |
 | `SENDGRID_FROM_EMAIL` | Configuratie | Leeg | Geverifieerd afzenderadres van de omgeving |
 | `SENDGRID_REPLY_TO_EMAIL` | Configuratie | Leeg | Operationeel beheerd antwoordadres |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | Verificatiesleutel | Leeg | Publieke verificatiesleutel van de omgeving |

@@ -20,15 +20,16 @@ describe("SendGrid event webhook", () => {
   });
 
   it("keeps only operational events, maps bounce and deduplicates", () => {
+    const jobId = "11111111-1111-4111-8111-111111111111";
     const rawBody = JSON.stringify([
       { event: "open", sg_event_id: "ignored", sg_message_id: "message-0", timestamp: 1_784_376_000 },
-      { event: "bounce", sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
-      { event: "bounce", sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
-      { event: "deferred", sg_event_id: "event-2", sg_message_id: "message-2", timestamp: "1784376002" },
+      { event: "bounce", email_job_id: jobId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
+      { event: "bounce", email_job_id: jobId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
+      { event: "deferred", email_job_id: jobId, sg_event_id: "event-2", timestamp: "1784376002" },
     ]);
     expect(parseSendGridOperationalEvents(rawBody)).toEqual([
-      { providerEventId: "event-1", providerMessageId: "message-1", eventType: "bounced", occurredAt: "2026-07-18T12:00:01.000Z" },
-      { providerEventId: "event-2", providerMessageId: "message-2", eventType: "deferred", occurredAt: "2026-07-18T12:00:02.000Z" },
+      { emailJobId: jobId, providerEventId: "event-1", providerMessageId: "message-1", eventType: "bounced", occurredAt: "2026-07-18T12:00:01.000Z" },
+      { emailJobId: jobId, providerEventId: "event-2", providerMessageId: null, eventType: "deferred", occurredAt: "2026-07-18T12:00:02.000Z" },
     ]);
   });
 

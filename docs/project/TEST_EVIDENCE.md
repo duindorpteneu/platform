@@ -1,5 +1,15 @@
 # Test evidence
 
+## Stagingprovider- en staffonboardingfixes — 2026-07-19
+
+- `pnpm test` — 39 Vitest-bestanden en 177 tests passed; omvat expliciete Mollie `public`/`app`-schemaroutering, SendGrid job-UUID-correlatie, ontbrekende `sg_message_id`, global/EU API-hostselectie en strikte invite-fragmentvalidatie.
+- `pnpm lint` en `pnpm typecheck` — passed.
+- `pnpm db:reset` — passed; alle 39 vooruitrollende migrations en seed zijn vanaf nul toegepast.
+- `pnpm test:db` — 15 pgTAP-bestanden en 391 assertions passed; SendGrid-eventcorrelatie gebruikt een andere `sg_message_id` dan de Mail Send-header en blijft bij replay exact één keer verwerkt.
+- `pnpm build` — passed; `/staff/set-password` is in het productieartefact gebundeld.
+- `git diff --check` — passed.
+- Geen providersecretwaarde gelezen of gelogd; geen productieactie uitgevoerd. Live Mollie- en SendGrid-smokes wachten op de stagingconfiguratie en expliciete testdata.
+
 Record commands, results and relevant screenshots/notes per phase.
 ## Phase 0 / foundation — 2026-07-18
 

@@ -20,9 +20,13 @@ import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
 
 type RpcError = { code?: string; message?: string };
 type RpcResult = { data: unknown; error: RpcError | null };
+type MollieSchemaRpcClient = {
+  rpc: (name: string, parameters: Record<string, unknown>) => PromiseLike<RpcResult>;
+};
 
 export type MollieRpcClient = {
   rpc: (name: string, parameters: Record<string, unknown>) => PromiseLike<RpcResult>;
+  schema: (name: "app") => MollieSchemaRpcClient;
 };
 
 export type MollieRuntimeConfig = {
@@ -116,7 +120,7 @@ function checkoutFromProvider(payment: MolliePayment) {
 }
 
 async function bindPayment(database: MollieRpcClient, prepared: PreparedMolliePayment, providerPayment: MolliePayment, checkoutUrl: string, status: "open" | "pending") {
-  const { error } = await database.rpc("bind_mollie_payment", {
+  const { error } = await database.schema("app").rpc("bind_mollie_payment", {
     p_payment_id: prepared.paymentId,
     p_provider_id: providerPayment.id,
     p_checkout_url: checkoutUrl,
@@ -228,7 +232,8 @@ export async function reconcileMollieWebhook(
   }
   if (providerPayment.id !== providerPaymentId) throw new MollieServiceError("INVALID_PROVIDER_RESPONSE");
 
-  const { data: contextData, error: contextError } = await dependencies.database.rpc("get_mollie_reconciliation_context", {
+  const appDatabase = dependencies.database.schema("app");
+  const { data: contextData, error: contextError } = await appDatabase.rpc("get_mollie_reconciliation_context", {
     p_provider_id: providerPayment.id,
   });
   if (contextError) {
@@ -257,7 +262,7 @@ export async function reconcileMollieWebhook(
   const nextQrVersion = context.data.qrVersion + 1;
   const tokenHash = hashQrBearerToken(deriveQrBearerToken(context.data.orderId, nextQrVersion));
   const receivedAt = (dependencies.receivedAt ?? new Date()).toISOString();
-  const { data: resultData, error: resultError } = await dependencies.database.rpc("reconcile_mollie_payment", {
+  const { data: resultData, error: resultError } = await appDatabase.rpc("reconcile_mollie_payment", {
     p_event_key: paymentEventKey(providerPayment, status),
     p_provider_id: providerPayment.id,
     p_local_payment_id: context.data.paymentId,

@@ -28,10 +28,15 @@ const prepared = {
 } as const;
 
 function databaseWith(data = prepared) {
-  const rpc = vi.fn()
-    .mockResolvedValueOnce({ data, error: null })
-    .mockResolvedValueOnce({ data: { paymentId: ids.payment }, error: null });
-  return { database: { rpc } as MollieRpcClient, rpc };
+  const publicRpc = vi.fn().mockResolvedValueOnce({ data, error: null });
+  const appRpc = vi.fn().mockResolvedValueOnce({ data: { paymentId: ids.payment }, error: null });
+  const schema = vi.fn().mockReturnValue({ rpc: appRpc });
+  return { database: { rpc: publicRpc, schema } as MollieRpcClient, publicRpc, appRpc, schema };
+}
+
+function databaseWithAppRpc(appRpc: ReturnType<typeof vi.fn>, publicRpc = vi.fn()) {
+  const schema = vi.fn().mockReturnValue({ rpc: appRpc });
+  return { database: { rpc: publicRpc, schema } as MollieRpcClient, publicRpc, appRpc, schema };
 }
 
 const config = { enabled: true, apiKey: "test_0000000000000000", appBaseUrl: "https://tenue.duindorpsv.nl" } as const;
@@ -71,18 +76,20 @@ describe("Mollie-applicatieservice", () => {
   it("hergebruikt een bestaande beveiligde checkout zonder providercall", async () => {
     const existing = { ...prepared, checkoutUrl: "https://www.mollie.com/checkout/existing", reused: true };
     const rpc = vi.fn().mockResolvedValue({ data: existing, error: null });
+    const schema = vi.fn();
     const createPayment = vi.fn();
 
     await expect(startMollieCheckout({ tokenHash: "a".repeat(64), orderId: ids.order, idempotencyKey: "attempt-key" }, {
-      database: { rpc } as MollieRpcClient,
+      database: { rpc, schema } as MollieRpcClient,
       config,
       createPayment,
     })).resolves.toEqual({ checkoutUrl: existing.checkoutUrl });
     expect(createPayment).not.toHaveBeenCalled();
+    expect(schema).not.toHaveBeenCalled();
   });
 
   it("laat het browserbedrag buiten beschouwing en bindt de providerpoging", async () => {
-    const { database, rpc } = databaseWith();
+    const { database, publicRpc, appRpc, schema } = databaseWith();
     const createPayment = vi.fn().mockResolvedValue({
       id: "tr_test123",
       status: "open",
@@ -106,7 +113,9 @@ describe("Mollie-applicatieservice", () => {
       redirectUrl: "https://tenue.duindorpsv.nl/betaling/terug",
       webhookUrl: "https://tenue.duindorpsv.nl/api/webhooks/mollie",
     }));
-    expect(rpc).toHaveBeenLastCalledWith("bind_mollie_payment", expect.objectContaining({
+    expect(publicRpc).toHaveBeenCalledWith("prepare_mollie_payment", expect.any(Object));
+    expect(schema).toHaveBeenCalledWith("app");
+    expect(appRpc).toHaveBeenLastCalledWith("bind_mollie_payment", expect.objectContaining({
       p_payment_id: ids.payment,
       p_provider_id: "tr_test123",
       p_checkout_url: "https://www.mollie.com/checkout/new",
@@ -131,7 +140,7 @@ describe("Mollie-applicatieservice", () => {
   });
 
   it("bindt een authorized checkout uitsluitend als lokale pending-status", async () => {
-    const { database, rpc } = databaseWith();
+    const { database, appRpc } = databaseWith();
     const createPayment = vi.fn().mockResolvedValue({
       ...providerPayment({ status: "authorized", paidAt: null }),
       _links: { checkout: { href: "https://checkout.mollie.com/pay/authorized" } },
@@ -143,7 +152,7 @@ describe("Mollie-applicatieservice", () => {
       createPayment,
     });
 
-    expect(rpc).toHaveBeenLastCalledWith("bind_mollie_payment", expect.objectContaining({ p_status: "pending" }));
+    expect(appRpc).toHaveBeenLastCalledWith("bind_mollie_payment", expect.objectContaining({ p_status: "pending" }));
   });
 
   it("geeft een deterministische event-key en alleen geredigeerde observatie door", async () => {
@@ -151,16 +160,19 @@ describe("Mollie-applicatieservice", () => {
     const rpc = vi.fn()
       .mockResolvedValueOnce({ data: context, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, orderId: ids.order, status: "paid", effect: "paid", eventType: "paid" }, error: null });
+    const { database, publicRpc, schema } = databaseWithAppRpc(rpc);
     const getPayment = vi.fn().mockResolvedValue(providerPayment());
 
     await reconcileMollieWebhook("tr_test123", {
-      database: { rpc } as MollieRpcClient,
+      database,
       config,
       getPayment,
       receivedAt: new Date("2026-07-18T11:06:00Z"),
     });
 
     expect(getPayment).toHaveBeenCalledWith(config.apiKey, "tr_test123");
+    expect(publicRpc).not.toHaveBeenCalled();
+    expect(schema).toHaveBeenCalledWith("app");
     expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment", expect.objectContaining({
       p_event_key: expect.stringMatching(/^mollie:[0-9a-f]{64}$/),
       p_status: "paid",
@@ -177,9 +189,10 @@ describe("Mollie-applicatieservice", () => {
       .mockResolvedValueOnce({ data: { ...context, paymentStatus: "paid", qrVersion: 1, activeQrVersion: 1 }, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, orderId: ids.order, status: "refunded", effect: "refunded", eventType: "refunded" }, error: null });
     const getPayment = vi.fn().mockResolvedValue(providerPayment({ amountRefunded: { currency: "EUR", value: "1.00" } }));
+    const { database } = databaseWithAppRpc(rpc);
 
     await reconcileMollieWebhook("tr_test123", {
-      database: { rpc } as MollieRpcClient,
+      database,
       config,
       getPayment,
       receivedAt: new Date("2026-07-18T12:00:00Z"),
@@ -197,8 +210,10 @@ describe("Mollie-applicatieservice", () => {
       .mockResolvedValueOnce({ data: context, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, status: "replay", effect: "event_replay", eventType: "paid" }, error: null });
 
+    const { database } = databaseWithAppRpc(rpc);
+
     await expect(reconcileMollieWebhook("tr_test123", {
-      database: { rpc } as MollieRpcClient,
+      database,
       config,
       getPayment: vi.fn().mockResolvedValue(providerPayment()),
     })).resolves.toMatchObject({ effect: "event_replay" });
@@ -210,8 +225,10 @@ describe("Mollie-applicatieservice", () => {
       .mockResolvedValueOnce({ data: context, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, status: "manual_review", effect: "mismatch", issue: "MOLLIE_METADATA_INVALID" }, error: null });
 
+    const { database } = databaseWithAppRpc(rpc);
+
     await expect(reconcileMollieWebhook("tr_test123", {
-      database: { rpc } as MollieRpcClient,
+      database,
       config,
       getPayment: vi.fn().mockResolvedValue(providerPayment({ metadata: "niet-geldige-json" })),
     })).resolves.toMatchObject({ effect: "mismatch", status: "manual_review" });
@@ -231,8 +248,10 @@ describe("Mollie-applicatieservice", () => {
       .mockResolvedValueOnce({ data: context, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, orderId: ids.order, status: "pending", effect: "updated", eventType: "observed" }, error: null });
 
+    const { database } = databaseWithAppRpc(rpc);
+
     await reconcileMollieWebhook("tr_test123", {
-      database: { rpc } as MollieRpcClient,
+      database,
       config,
       getPayment: vi.fn().mockResolvedValue(providerPayment({ status: "authorized", paidAt: null })),
     });

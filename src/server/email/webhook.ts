@@ -5,14 +5,16 @@ export const sendGridEventTypeSchema = z.enum(["delivered", "bounced", "deferred
 export type SendGridEventType = z.infer<typeof sendGridEventTypeSchema>;
 
 export type SendGridOperationalEvent = {
+  emailJobId: string;
   providerEventId: string;
-  providerMessageId: string;
+  providerMessageId: string | null;
   eventType: SendGridEventType;
   occurredAt: string;
 };
 
 const eventEnvelopeSchema = z.object({
   event: z.string().min(1).max(80),
+  email_job_id: z.string().uuid().optional(),
   sg_event_id: z.string().min(1).max(240).optional(),
   sg_message_id: z.string().min(1).max(240).optional(),
   timestamp: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]).optional(),
@@ -52,13 +54,14 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
   for (const envelope of envelopes.data) {
     const eventType = normalizeEventType(envelope.event);
     if (!eventType) continue;
-    if (!envelope.sg_event_id || !envelope.sg_message_id || envelope.timestamp === undefined) throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+    if (!envelope.email_job_id || !envelope.sg_event_id || envelope.timestamp === undefined) throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
     const seconds = Number(envelope.timestamp);
     const occurredAt = new Date(seconds * 1_000);
     if (!Number.isFinite(seconds) || Number.isNaN(occurredAt.getTime())) throw new Error("SENDGRID_EVENT_TIMESTAMP_INVALID");
     unique.set(envelope.sg_event_id, {
+      emailJobId: envelope.email_job_id,
       providerEventId: envelope.sg_event_id,
-      providerMessageId: envelope.sg_message_id,
+      providerMessageId: envelope.sg_message_id ?? null,
       eventType,
       occurredAt: occurredAt.toISOString(),
     });

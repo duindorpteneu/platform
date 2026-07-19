@@ -14,6 +14,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `MOLLIE_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
 | `EMAIL_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
 | `SENDGRID_FROM_EMAIL` | nee | nee | geldig e-mailadres | SendGrid | vereist bij `EMAIL_ENABLED=true` |
+| `SENDGRID_API_BASE_URL` | nee | nee | `https://api.sendgrid.com` of `https://api.eu.sendgrid.com` | SendGrid | global standaard; EU alleen voor een EU-regional subuser |
 | `SENDGRID_REPLY_TO_EMAIL` | nee | nee | geldig e-mailadres | SendGrid | vereist bij `EMAIL_ENABLED=true` |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | nee | nee | niet leeg | webhookvalidatie | vereist bij `EMAIL_ENABLED=true` |
 
@@ -29,6 +30,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
+| `SENDGRID_SMOKE_RECIPIENT` | nee | nee | beheerde test-inbox, geen lidadres | provider-smoke | nog in staging toe te voegen; uitsluitend gebruikt door de handmatige staging-smoke |
 
 Bij toekomstige rotatie of provideractivering worden secrets uitsluitend interactief gezet (gebruik geen `--body`):
 

@@ -43,6 +43,8 @@ Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eig
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
 
+Voor staging voert `.github/workflows/staging-operations.yml` de e-mailworker in vijf korte cycli per vijfminutenschedule uit en de retentiejob dagelijks. De workflow is uitsluitend aan de GitHub Environment `staging` gekoppeld. GitHub-schedules kunnen vertraagd starten en zijn daarom geen productie-scheduler; production vereist vóór ingebruikname een afzonderlijke, bewaakte scheduler die iedere minuut aantoonbaar uitvoert.
+
 De retentiejob:
 
 - verwijdert gebruikte/verlopen OTP-challenges uiterlijk na 24 uur;

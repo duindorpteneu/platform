@@ -10,7 +10,7 @@ export async function inviteStaff(input: { email: string; displayName: string; r
   const admin = getSupabaseAdminClient();
   if (!supabase || !admin) throw new Error("STAFF_INVITE_NOT_CONFIGURED");
 
-  const redirectTo = new URL("/staff/login", getServerEnv().APP_BASE_URL).toString();
+  const redirectTo = new URL("/staff/set-password", getServerEnv().APP_BASE_URL).toString();
   const invitation = await admin.auth.admin.inviteUserByEmail(input.email, {
     redirectTo,
     data: { display_name: input.displayName },
@@ -36,4 +36,3 @@ export async function inviteStaff(input: { email: string; displayName: string; r
   }
   return parsed.data;
 }
-

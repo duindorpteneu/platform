@@ -24,7 +24,10 @@ function providerConfiguration() {
 }
 
 async function mailSend(apiKey: string, body: Record<string, unknown>) {
-  return fetch("https://api.sendgrid.com/v3/mail/send", {
+  const apiBaseUrl = process.env.SENDGRID_API_BASE_URL === "https://api.eu.sendgrid.com"
+    ? "https://api.eu.sendgrid.com"
+    : "https://api.sendgrid.com";
+  return fetch(`${apiBaseUrl}/v3/mail/send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
