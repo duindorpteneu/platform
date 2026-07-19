@@ -3,6 +3,15 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
 
+select ok((
+  select coalesce(
+    rolconfig @> array['pgrst.db_schemas=public, graphql_public, app'],
+    false
+  )
+  from pg_roles
+  where rolname = 'authenticator'
+), 'PostgREST exposeert exact public, graphql_public en app via de rolconfiguratie');
+
 insert into app.members(
   id, relation_number, first_name, last_name, email, team, active_for_season
 ) values

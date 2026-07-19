@@ -187,3 +187,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - Alle checkouts gebruiken `persist-credentials: false`; alleen de twee noodzakelijke private `origin/main`-fetches krijgen tijdelijk `${{ github.token }}` via een HTTP-extraheader.
 - Runtimepreflight koppelt staging en production hard aan hun eigen Supabase-ref en valideert JWT-ref, directe databasehost/pooler-user en het verbod op `sslmode=disable`.
 - Nieuwe Vitest-contracttests bewijzen beide canonieke environments, negatieve production-in-stagingconfiguratie, runtime-browserinjectie en vergelijking van alle drie releasedigests. Totaal: 38 testbestanden en 171 tests groen; lint, TypeScript, build, actionlint, ShellCheck, Bash-/Node-syntax, migration-/secretscan en beide Compose-renders zijn groen.
+
+## Hosted Data API-schemaherstel — 2026-07-19
+
+- Actions-run `29696764081` paste alle 37 bestaande migrations succesvol toe, verifieerde het releaseartefact en startte `duindorpteneu-staging-app-1`; de eerdere 502 was daarmee opgelost.
+- De lokale containerhealth bleef 503. Een PII- en secretvrije REST-probe op het publieke Supabase-endpoint gaf exact HTTP 406 / `PGRST106`: het custom schema `app` stond niet in de hosted PostgREST-allowlist.
+- Forward migration `20260719100000_expose_app_data_api.sql` houdt de hosted allowlist gelijk aan `supabase/config.toml`, herlaadt PostgREST en laat `private` bewust buiten de Data API.
+- pgTAP controleert de effectieve `authenticator`-rolconfiguratie; de deployment-contracttest bewaakt dat lokale config en hosted migration dezelfde schema's noemen.
+- Lokale verificatie is groen: schone reset met 38 migrations, 15 pgTAP-bestanden/391 assertions, 38 Vitestbestanden/172 tests, secret- en migrationlint, ESLint, TypeScript, productiebuild, concurrency, echte AAL2/AAL1-MFA, actionlint, ShellCheck en de volledige zelfopruimende browserflow.
+- Een echte lokale REST-aanroep met `Content-Profile: app` retourneerde HTTP 200 en exact de vier PII-vrije healthvelden; daarmee is de oorspronkelijke `PGRST106`-route rechtstreeks afgedekt.
