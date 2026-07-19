@@ -120,6 +120,7 @@ jobs:
           name: release-image-${{ needs.preflight.outputs.release_sha }}
           path: .release/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 7
 
   deploy-staging:
