@@ -30,6 +30,7 @@ export async function POST(request: Request) {
   if (!admin) return NextResponse.json({ error: "Webhookverwerking tijdelijk niet beschikbaar." }, { status: 503 });
   const { data, error } = await admin.schema("app").rpc("record_sendgrid_events", {
     p_events: events.map((event) => ({
+      email_job_id: event.emailJobId,
       event_id: event.providerEventId,
       provider_message_id: event.providerMessageId,
       event_type: event.eventType,

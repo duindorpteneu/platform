@@ -95,10 +95,12 @@ if (environment === "production" && mollieEnabled === "true" && !mollieKey.start
 
 const emailEnabled = required("EMAIL_ENABLED");
 const sendgridKey = optional("SENDGRID_API_KEY");
+const sendgridApiBaseUrl = optional("SENDGRID_API_BASE_URL") || "https://api.sendgrid.com";
 const fromEmail = optional("SENDGRID_FROM_EMAIL");
 const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
+if (!["https://api.sendgrid.com", "https://api.eu.sendgrid.com"].includes(sendgridApiBaseUrl)) invalid("SENDGRID_API_BASE_URL");
 if (emailEnabled === "true") {
   if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
   if (!fromEmail) invalid("SENDGRID_FROM_EMAIL");
@@ -147,6 +149,7 @@ const runtime = {
   ...Object.fromEntries([
     ["MOLLIE_API_KEY", mollieKey],
     ["SENDGRID_API_KEY", sendgridKey],
+    ["SENDGRID_API_BASE_URL", sendgridApiBaseUrl],
     ["SENDGRID_FROM_EMAIL", fromEmail],
     ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],

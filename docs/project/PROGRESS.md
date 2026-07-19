@@ -69,14 +69,18 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - De volledige productie-browserflow is tweemaal achtereen groen en ruimt Auth, MFA en alle fictieve database-/e-mailfixtures aantoonbaar op.
 - Eén `deploy.yml`, Dockerfile, veilige Composeconfiguratie, centrale `deploy-vps.sh`, atomische revision/manifests, runtime-Supabasebootstrap, `/admin`-alias en releasebewuste healthchecks toegevoegd.
 - Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
+- Mollie checkout en reconciliatie routeren hosted PostgREST-RPC's nu expliciet naar hun werkelijke `public`- respectievelijk `app`-schema; unitregressie dekt deze scheiding.
+- SendGrid-events correleren via de bestaande niet-persoonlijke `email_job_id` in plaats van de afwijkende HTTP- en webhook-message-ID's; events zonder `sg_message_id` blijven idempotent verwerkbaar.
+- De staffuitnodiging verwerkt Supabase's invite-fragment client-side, wist het fragment direct, biedt een veilige wachtwoordinstelpagina en stroomt verplicht door naar TOTP; de eerste stagingbeheerder blijft een expliciete eenmalige Supabase-bootstrap.
+- Staging heeft repository-native operationele en provider-smokeworkflows; production wordt hierdoor niet aangeraakt.
 
 ## In progress
 - Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.
-- Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en de geïsoleerde restore-oefening blijven afzonderlijke stagingacceptatiegates; beide providerflags staan nog uit.
+- Live SendGrid- en Mollie-testmodeverificatie, alerts en de geïsoleerde restore-oefening blijven afzonderlijke stagingacceptatiegates; beide providerflags staan nog uit. De staging-scheduler is geïmplementeerd maar wordt pas actief vanaf de default branch.
 
 ## Next
 - Doorloop `docs/project/STAGING_VERIFICATION.md` met uitsluitend fictieve data.
-- Verifieer Mollie testmode, SendGrid-afzender/templates/webhook, staffuitnodiging, scheduler, alerts en restore-drill.
+- Verifieer Mollie testmode, SendGrid-afzender/templates/webhook, eerste beheerder, staffuitnodiging, scheduler, alerts en restore-drill.
 - Leg de geaccepteerde commit-SHA en alle externe bewijslinks vast voordat productie wordt overwogen.
 
 ## Blockers

@@ -257,14 +257,14 @@ select lives_ok($$select app.complete_email_job((select id from claimed_ids orde
   'b8000000-0000-4000-8000-000000000001', 'sent', 'sg-provider-message-1', null)$$,
   'sent-uitkomst bewaart provider message-id');
 
-select is(app.record_sendgrid_events('[
-  {"event_id":"sg-event-delivered-1","provider_message_id":"sg-provider-message-1","event_type":"delivered","occurred_at":"2026-07-18T12:00:00Z"},
-  {"event_id":"sg-event-delivered-1","provider_message_id":"sg-provider-message-1","event_type":"delivered","occurred_at":"2026-07-18T12:00:00Z"},
-  {"event_id":"sg-event-open-ignored","provider_message_id":"sg-provider-message-1","event_type":"open","occurred_at":"2026-07-18T12:01:00Z"}
-]'::jsonb)->>'recorded', '1', 'SendGrid-eventbatch dedupet event-id en negeert open');
-select is(app.record_sendgrid_events('[
-  {"event_id":"sg-event-delivered-1","provider_message_id":"sg-provider-message-1","event_type":"delivered","occurred_at":"2026-07-18T12:00:00Z"}
-]'::jsonb)->>'recorded', '0', 'herhaalde SendGrid-webhook blijft idempotent');
+select is(app.record_sendgrid_events(jsonb_build_array(
+  jsonb_build_object('email_job_id',(select id from claimed_ids order by id offset 1 limit 1),'event_id','sg-event-delivered-1','provider_message_id','different-sg-message-id','event_type','delivered','occurred_at','2026-07-18T12:00:00Z'),
+  jsonb_build_object('email_job_id',(select id from claimed_ids order by id offset 1 limit 1),'event_id','sg-event-delivered-1','provider_message_id','different-sg-message-id','event_type','delivered','occurred_at','2026-07-18T12:00:00Z'),
+  jsonb_build_object('email_job_id',(select id from claimed_ids order by id offset 1 limit 1),'event_id','sg-event-open-ignored','provider_message_id','different-sg-message-id','event_type','open','occurred_at','2026-07-18T12:01:00Z')
+))->>'recorded', '1', 'SendGrid-eventbatch correleert op job-id, dedupet event-id en negeert open');
+select is(app.record_sendgrid_events(jsonb_build_array(
+  jsonb_build_object('email_job_id',(select id from claimed_ids order by id offset 1 limit 1),'event_id','sg-event-delivered-1','event_type','delivered','occurred_at','2026-07-18T12:00:00Z')
+))->>'recorded', '0', 'herhaalde SendGrid-webhook zonder sg_message_id blijft idempotent');
 select is((select count(*) from app.email_events where provider_event_id='sg-event-delivered-1'), 1::bigint,
   'provider event-id staat exact één keer in ledger');
 select is((select count(*) from app.email_events where event_type in ('open','click')), 0::bigint,

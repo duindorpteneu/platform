@@ -7,6 +7,7 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   process.env.EMAIL_ENABLED = "true";
   process.env.SENDGRID_API_KEY = "test-key";
+  process.env.SENDGRID_API_BASE_URL = "https://api.sendgrid.com";
   process.env.SENDGRID_FROM_EMAIL = "tenue@duindorpsv.nl";
   process.env.SENDGRID_REPLY_TO_EMAIL = "kledingcommissie@duindorpsv.nl";
 });
@@ -63,6 +64,21 @@ describe("SendGrid delivery boundary", () => {
     expect(body.personalizations[0].custom_args).toEqual({ email_job_id: "11111111-1111-4111-8111-111111111111" });
     expect(JSON.stringify(body.personalizations[0].custom_args)).not.toContain("ouder@example.nl");
     expect(body.tracking_settings).toMatchObject({ click_tracking: { enable: false }, open_tracking: { enable: false } });
+  });
+
+  it("uses the EU API host only when explicitly configured", async () => {
+    process.env.SENDGRID_API_BASE_URL = "https://api.eu.sendgrid.com";
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 202, headers: { "x-message-id": "sg-eu-1" } }));
+    vi.stubGlobal("fetch", request);
+    await sendEmailJob({
+      jobId: "11111111-1111-4111-8111-111111111111",
+      recipientEmail: "ouder@example.nl",
+      subject: "Onderwerp",
+      text: "Bericht",
+      html: "<p>Bericht</p>",
+      replyToEmail: "kledingcommissie@duindorpsv.nl",
+    });
+    expect(request).toHaveBeenCalledWith("https://api.eu.sendgrid.com/v3/mail/send", expect.any(Object));
   });
 
   it("fails closed when the safety switch is disabled", async () => {

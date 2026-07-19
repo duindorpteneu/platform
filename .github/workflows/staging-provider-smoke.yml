@@ -1,0 +1,89 @@
+name: Staging provider smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Te controleren stagingprovider
+        required: true
+        type: choice
+        options:
+          - mollie
+          - sendgrid
+
+permissions: {}
+
+concurrency:
+  group: staging-provider-smoke-${{ inputs.provider }}
+  cancel-in-progress: false
+
+jobs:
+  mollie:
+    if: inputs.provider == 'mollie'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: staging
+    env:
+      MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
+    steps:
+      - name: Validate Mollie test credential without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${MOLLIE_API_KEY}" == test_* ]]
+          response="${RUNNER_TEMP}/mollie-profile.json"
+          trap 'rm -f "${response}"' EXIT
+          status="$(curl --silent --show-error --max-time 20 \
+            --output "${response}" --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${MOLLIE_API_KEY}" \
+            https://api.mollie.com/v2/profiles/me)"
+          [[ "${status}" == "200" ]]
+          jq -e '.id | strings | startswith("pfl_")' "${response}" >/dev/null
+          echo "Mollie testcredential is geldig. Er is niets aangemaakt of gewijzigd."
+
+  sendgrid:
+    if: inputs.provider == 'sendgrid'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: staging
+    env:
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
+      SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
+      SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
+      SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
+    steps:
+      - name: Send one controlled staging message
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${SENDGRID_API_KEY}" == SG.* ]]
+          [[ "${SENDGRID_API_BASE_URL}" == "https://api.sendgrid.com" || "${SENDGRID_API_BASE_URL}" == "https://api.eu.sendgrid.com" ]]
+          [[ "${SENDGRID_FROM_EMAIL}" == *@* && "${SENDGRID_REPLY_TO_EMAIL}" == *@* && "${SENDGRID_SMOKE_RECIPIENT}" == *@* ]]
+          payload="${RUNNER_TEMP}/sendgrid-smoke.json"
+          headers="${RUNNER_TEMP}/sendgrid-headers.txt"
+          trap 'rm -f "${payload}" "${headers}"' EXIT
+          node <<'NODE' > "${payload}"
+          const body = {
+            personalizations: [{ to: [{ email: process.env.SENDGRID_SMOKE_RECIPIENT }] }],
+            from: { email: process.env.SENDGRID_FROM_EMAIL, name: "Duindorp SV Tenueportaal" },
+            reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL },
+            subject: "Stagingcontrole Duindorp SV Tenueportaal",
+            content: [
+              { type: "text/plain", value: "Dit is een gecontroleerd stagingbericht. Er is geen actie nodig." },
+              { type: "text/html", value: "<p>Dit is een gecontroleerd stagingbericht. Er is geen actie nodig.</p>" }
+            ],
+            tracking_settings: { click_tracking: { enable: false, enable_text: false }, open_tracking: { enable: false } }
+          };
+          process.stdout.write(JSON.stringify(body));
+          NODE
+          status="$(curl --silent --show-error --max-time 20 \
+            --output /dev/null --dump-header "${headers}" --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer ${SENDGRID_API_KEY}" \
+            --header 'Content-Type: application/json' \
+            --data-binary "@${payload}" \
+            "${SENDGRID_API_BASE_URL}/v3/mail/send")"
+          [[ "${status}" == "202" ]]
+          grep -qi '^x-message-id:' "${headers}"
+          echo "SendGrid heeft precies één gecontroleerd stagingbericht geaccepteerd."
