@@ -62,6 +62,10 @@ if (command === "create") {
     || a.imageConfigDigest !== b.imageConfigDigest
     || a.artifactDigest !== b.artifactDigest
   ) fail("Staging- en buildmanifest verschillen.");
+} else if (command === "fields") {
+  const [target] = args;
+  const data = await read(target);
+  process.stdout.write(`${data.imageDigest} ${data.imageConfigDigest} ${data.artifactDigest}\n`);
 } else {
-  fail("Gebruik: release-manifest.mjs create|verify|compare ...");
+  fail("Gebruik: release-manifest.mjs create|verify|compare|fields ...");
 }

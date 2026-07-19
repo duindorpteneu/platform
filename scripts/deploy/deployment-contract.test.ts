@@ -106,5 +106,7 @@ describe("immutable release manifest", () => {
     create(staging, "staging");
     expect(() => execFileSync(process.execPath, [releaseManifest, "compare", build, staging])).not.toThrow();
     expect(() => execFileSync(process.execPath, [releaseManifest, "verify", build, releaseSha, imageDigest, configDigest, artifactDigest])).not.toThrow();
+    expect(execFileSync(process.execPath, [releaseManifest, "fields", build], { encoding: "utf8" }))
+      .toBe(`${imageDigest} ${configDigest} ${artifactDigest}\n`);
   });
 });
