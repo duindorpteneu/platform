@@ -31,10 +31,13 @@ function response(body: unknown) {
 
 describe("SendGrid webhook configurator", () => {
   it("configures and verifies the exact EU staging webhook without logging provider data", async () => {
+    const providerSettings = { ...settings } as Record<string, unknown>;
+    delete providerSettings.account_status_change;
+    delete providerSettings.group_resubscribe;
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response(settings))
       .mockResolvedValueOnce(response({ id: webhookId, public_key: encodedPublicKey }))
-      .mockResolvedValueOnce(response(settings))
+      .mockResolvedValueOnce(response(providerSettings))
       .mockResolvedValueOnce(response({ id: webhookId, public_key: encodedPublicKey }));
 
     await expect(configureSendGridWebhook({
