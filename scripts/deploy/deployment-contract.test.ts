@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -98,6 +99,26 @@ describe("deployment environment isolation", () => {
     expect(source).toContain('].filter(([, value]) => value)');
     expect(source).not.toMatch(/\n\s*MOLLIE_API_KEY:\s*mollieKey/);
     expect(source).not.toMatch(/\n\s*SENDGRID_FROM_EMAIL:\s*fromEmail/);
+  });
+
+  it("accepts only a P-256 SendGrid webhook verification key", () => {
+    const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const enabledEmail = {
+      ...runtimeEnvironment("staging"),
+      EMAIL_ENABLED: "true",
+      SENDGRID_API_KEY: "SG.test-key",
+      SENDGRID_API_BASE_URL: "https://api.eu.sendgrid.com",
+      SENDGRID_FROM_EMAIL: "danny.goldenbelt@duindorpsv.nl",
+      SENDGRID_REPLY_TO_EMAIL: "danny.goldenbelt@duindorpsv.nl",
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+    };
+    expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], { env: enabledEmail, stdio: "pipe" })).not.toThrow();
+    const invalid = spawnSync(process.execPath, [configureRuntime, "validate"], {
+      env: { ...enabledEmail, SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "not-a-public-key" },
+      encoding: "utf8",
+    });
+    expect(invalid.status).toBe(1);
+    expect(invalid.stderr).toContain("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
   });
 });
 

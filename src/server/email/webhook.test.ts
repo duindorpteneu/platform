@@ -34,7 +34,8 @@ describe("SendGrid event webhook", () => {
   });
 
   it("rejects an operational event without provider identity", () => {
-    expect(() => parseSendGridOperationalEvents('[{"event":"delivered","timestamp":1784376000}]')).toThrow("SENDGRID_EVENT_IDENTITY_INVALID");
+    expect(parseSendGridOperationalEvents('[{"event":"delivered","timestamp":1784376000}]')).toEqual([]);
+    expect(() => parseSendGridOperationalEvents('[{"event":"delivered","email_job_id":"11111111-1111-4111-8111-111111111111","timestamp":1784376000}]')).toThrow("SENDGRID_EVENT_IDENTITY_INVALID");
   });
 
   it("matches the database boundary of at most 500 events", () => {
