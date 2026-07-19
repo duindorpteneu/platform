@@ -576,6 +576,13 @@ try {
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.ANON_KEY,
         SUPABASE_SECRET_KEY: local.SERVICE_ROLE_KEY,
         PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER ?? "dashboard-browser-test-pepper-with-32-characters",
+        MOLLIE_ENABLED: "false",
+        MOLLIE_API_KEY: "",
+        EMAIL_ENABLED: "false",
+        SENDGRID_API_KEY: "",
+        SENDGRID_FROM_EMAIL: "",
+        SENDGRID_REPLY_TO_EMAIL: "",
+        SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "",
       },
     });
   }

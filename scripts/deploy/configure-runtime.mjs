@@ -143,12 +143,14 @@ const runtime = {
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
   CRON_SECRET: process.env.CRON_SECRET,
   MOLLIE_ENABLED: mollieEnabled,
-  MOLLIE_API_KEY: mollieKey,
   EMAIL_ENABLED: emailEnabled,
-  SENDGRID_API_KEY: sendgridKey,
-  SENDGRID_FROM_EMAIL: fromEmail,
-  SENDGRID_REPLY_TO_EMAIL: replyEmail,
-  SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: webhookKey,
+  ...Object.fromEntries([
+    ["MOLLIE_API_KEY", mollieKey],
+    ["SENDGRID_API_KEY", sendgridKey],
+    ["SENDGRID_FROM_EMAIL", fromEmail],
+    ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
+    ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
+  ].filter(([, value]) => value)),
 };
 function quote(value) { return `"${String(value ?? "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`; }
 await mkdir(expected.root, { recursive: true, mode: 0o700 });

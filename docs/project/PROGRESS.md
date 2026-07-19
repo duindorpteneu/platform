@@ -71,7 +71,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
 
 ## In progress
-- Herstel van de hosted Supabase Data API-allowlist na `PGRST106`; de stagingcontainer draait en production blijft achter handmatige approval.
+- Herstel van lege optionele providerwaarden in de stagingruntime; de schema-allowlist is actief, de stagingcontainer draait en production blijft achter handmatige approval.
 - Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
 
 ## Next
