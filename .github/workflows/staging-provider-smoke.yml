@@ -47,7 +47,6 @@ jobs:
     timeout-minutes: 3
     environment: staging
     permissions:
-      actions: write
       contents: read
     env:
       SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -76,27 +75,6 @@ jobs:
           path: ${{ runner.temp }}/sendgrid-public-key.txt
           if-no-files-found: error
           retention-days: 1
-
-      - name: Store public verification key in staging environment
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SENDGRID_PUBLIC_KEY: ${{ steps.webhook.outputs.public_key }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          payload="${RUNNER_TEMP}/sendgrid-environment-variable.json"
-          trap 'rm -f "${payload}"' EXIT
-          node <<'NODE' > "${payload}"
-          process.stdout.write(JSON.stringify({
-            name: "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY",
-            value: process.env.SENDGRID_PUBLIC_KEY,
-          }));
-          NODE
-          endpoint="repos/${GITHUB_REPOSITORY}/environments/staging/variables"
-          if ! gh api --method PATCH "${endpoint}/SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY" --input "${payload}" >/dev/null 2>&1; then
-            gh api --method POST "${endpoint}" --input "${payload}" >/dev/null
-          fi
 
       - name: Send one controlled staging message
         shell: bash
@@ -133,6 +111,12 @@ jobs:
             --header 'Content-Type: application/json' \
             --data-binary "@${payload}" \
             "${SENDGRID_API_BASE_URL}/v3/mail/send")"
-          [[ "${status}" == "202" ]]
-          grep -qi '^x-message-id:' "${headers}"
+          if [[ "${status}" != "202" ]]; then
+            echo "SendGrid Mail Send gaf HTTP ${status}; er is geen stagingbericht geaccepteerd." >&2
+            exit 1
+          fi
+          if ! grep -qi '^x-message-id:' "${headers}"; then
+            echo "SendGrid gaf HTTP 202 maar geen X-Message-ID; de acceptatie kan niet worden gecorreleerd." >&2
+            exit 1
+          fi
           echo "SendGrid heeft precies één gecontroleerd stagingbericht geaccepteerd."
