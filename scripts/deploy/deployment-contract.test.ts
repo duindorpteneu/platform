@@ -79,6 +79,19 @@ describe("deployment environment isolation", () => {
     expect(dockerignore.split(/\r?\n/)).toContain(".release");
     expect(layout).toContain("globalThis.__DUINDORP_RUNTIME_CONFIG__");
   });
+
+  it("keeps the hosted PostgREST schema list aligned with local Supabase", () => {
+    const config = readFileSync(path.join(repositoryRoot, "supabase/config.toml"), "utf8");
+    const migration = readFileSync(
+      path.join(repositoryRoot, "supabase/migrations/20260719100000_expose_app_data_api.sql"),
+      "utf8",
+    );
+    expect(config).toContain('schemas = ["public", "graphql_public", "app"]');
+    expect(migration).toContain(
+      "alter role authenticator set pgrst.db_schemas = 'public, graphql_public, app'",
+    );
+    expect(migration).not.toMatch(/\bprivate\b[^\n]*pgrst\.db_schemas/i);
+  });
 });
 
 describe("immutable release manifest", () => {
