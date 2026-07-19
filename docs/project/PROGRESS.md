@@ -71,8 +71,8 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
 
 ## In progress
-- Herstel van lege optionele providerwaarden in de stagingruntime; de schema-allowlist is actief, de stagingcontainer draait en production blijft achter handmatige approval.
-- Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
+- Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.
+- Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en de geïsoleerde restore-oefening blijven afzonderlijke stagingacceptatiegates; beide providerflags staan nog uit.
 
 ## Next
 - Doorloop `docs/project/STAGING_VERIFICATION.md` met uitsluitend fictieve data.

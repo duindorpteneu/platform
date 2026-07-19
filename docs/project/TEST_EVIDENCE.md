@@ -199,3 +199,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Deployrun `29697586669` paste migration `20260719100000` succesvol toe, herstartte `duindorpteneu-staging-app-1` en bewees via een publieke, secretvrije schema-probe dat `PGRST106` weg is. Health bleef 503 en `/` gaf 500 doordat disabled SendGrid-contactwaarden als lege strings door de runtimeconfiguratie werden geschreven en vervolgens als ongeldige aanwezige e-mailadressen faalden.
 - De opvolgende runtimefix laat lege optionele providervelden weg uit `.env.runtime` en normaliseert expliciete lege waarden defensief naar afwezig; unit-, deploymentcontract- en volledige browsertests starten de productie-app expliciet met lege disabled-providerwaarden, terwijl de bestaande provider-on contracten fail-closed blijven.
 - Lokale hotfixgates zijn groen: ESLint, TypeScript, productiebuild, 38 Vitestbestanden/174 tests, secret- en migrationlint, actionlint, ShellCheck en de volledige zelfopruimende AAL2-browserflow met expliciet lege disabled-providerwaarden.
+
+## Publiek gezonde stagingrelease — 2026-07-19
+
+- PR `#5` is na groene applicatie- en Supabase/pgTAP/MFA/browserchecks gemerged. Deployrun `29698271201` bouwde één immutable artifact en verifieerde staging volledig voor revision `dee16f14220ccb6bedb16fcfb449f627ef222866`.
+- De remote database was bij dry-run en apply actueel; `duindorpteneu-staging-app-1` is opnieuw aangemaakt en gestart. De deployrunner controleerde zowel `http://127.0.0.1:14000` als de publieke HTTPS-host, inclusief health, root, admin en uitgifte.
+- Publieke onafhankelijke verificatie: `/api/health` HTTP 200 met uitsluitend `status=ok`, `service=duindorpteneu`, `environment=staging` en de verwachte revision; `/` HTTP 200; `/admin` en `/uitgifte` HTTP 307 naar dezelfde-host `/staff/login`, daarna HTTP 200.
+- Geverifieerd manifest v2: image `duindorpteneu-app:dee16f14220ccb6bedb16fcfb449f627ef222866`, OCI-digest `sha256:a795e370971a2cd3d63809652c77ea43b2bc62bb8433c6c2b9c56c2be446665d`, configdigest `sha256:5893ba0229b54de44449cc662eb110e1d227d2af7ee2d3e9315965be4a2e8802` en transportdigest `sha256:7e7b4c5047196f03f203f78a48ebe004c55168271b000400f60e776c92e4b8a3`.
+- De productionjob is niet uitgevoerd en staat achter de required-reviewer-gate voor `TIXOCEO`; er is geen approval verleend.
