@@ -1,18 +1,18 @@
-# Vervang uitsluitend de twee voorbeeldhostnamen. Houd deze snippet apart van
-# Castivo en importeer hem vanuit de globale /etc/caddy/Caddyfile.
+# Referentie voor de reeds ingerichte host-Caddy. Het deployscript leest of
+# wijzigt dit bestand niet en Caddy draait niet in Docker.
 
-staging-tenue.example.invalid {
+staging-duindorp.dgwebservices.nl {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:32110 {
+	reverse_proxy 127.0.0.1:14000 {
 		health_uri /api/health
 		health_interval 30s
 		health_timeout 5s
 	}
 }
 
-tenue.example.invalid {
+duindorp.dgwebservices.nl {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:32120 {
+	reverse_proxy 127.0.0.1:24000 {
 		health_uri /api/health
 		health_interval 30s
 		health_timeout 5s

@@ -168,3 +168,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - Schone reset: 37 migrations en seed toegepast. `pnpm test:db`: 15 bestanden en 390 assertions groen; concurrency groen.
 - `pnpm lint`, `pnpm typecheck`, 36 Vitest-bestanden/162 tests en standalone `pnpm build` zijn groen.
 - `pnpm test:e2e` is groen en bewijst in de echte AAL2-backoffice dat onderwerp/body actief bewerkbaar zijn, de opslagactie beschikbaar is en de fictieve preview `{{verificatiecode}}` als `123456` rendert zonder de template op te slaan.
+
+## Definitieve VPS-deploymentfinalisatie — 2026-07-19
+
+- GitHub environmentvariables en secret-namen via `gh` geaudit; Supabaseprojectrefs zijn verschillend en URL-consistent. De staginghosttypefout is gecorrigeerd zonder secrets te lezen of overschrijven.
+- `bash -n`, ShellCheck en `node --check` slagen voor het centrale deployscript en alle helpers.
+- Composeconfig voor staging en production rendert één appservice met `host_ip: 127.0.0.1`, respectievelijk poort 14000 en 24000, zonder `build:`.
+- Definitieve applicatiegates: secret- en migrationlint, ESLint, TypeScript, 37 Vitestbestanden/166 tests en `next build` groen. Health dekt JSON/200, 503 bij ontbrekende releaseconfig en redactie bij geworpen fouten; de OTP-challenge dekt versleuteling, expiry en tamperafwijzing.
+- Actionlint 1.7.7 is na officiële checksumcontrole groen; ShellCheck, `bash -n`, Node-syntax en `git diff --check` zijn groen.
+- De uiteindelijke Dockerfile bouwt onder Rootless Docker. Een geharde tijdelijke container retourneert zonder kritieke runtimeconfig redacted 503 op health en eindigt voor `/`, `/admin` en `/uitgifte` correct op HTTP 200 (met toegestane staffloginredirects).
+- Een echte VPS-deploy is nog niet uitgevoerd omdat deze branch niet mag worden gepusht/merged, verplichte secrets ontbreken en productionapproval niet is geconfigureerd.

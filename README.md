@@ -63,11 +63,13 @@ De CI voert locked installatie, secret scan, migration lint, lint, typecheck, te
 - [Omgevingsmatrix](docs/project/ENVIRONMENT_MATRIX.md) — harde scheiding tussen local, staging en production.
 - [Operationsrunbook](docs/project/OPERATIONS_RUNBOOK.md) — monitoring, cron, back-up/herstel, providerflags, keyrotatie en incidenten.
 - [Releasechecklist](docs/project/RELEASE_CHECKLIST.md) — lokale, staging- en productiepoorten.
-- [VPS-deployment](docs/project/VPS_DEPLOYMENT.md) — self-hosted runners, GitHub-configuratie, Supabase-migraties, systemd en Caddy-isolatie naast andere projecten.
+- [VPS-deployment](docs/deployment/vps-deployment.md) — self-hosted runners, GitHub environments, immutable Dockerpromotie, Supabase-migraties en Caddy-loopbackrouting.
+- [GitHub environments](docs/deployment/github-environments.md) — geaudite variables, secrets en resterende handmatige configuratie.
+- [Rollback](docs/deployment/rollback.md) — veilige appredeploy en forward-only databaseherstel.
 - [Stagingverificatie](docs/project/STAGING_VERIFICATION.md) — alle achttien canonieke E2E-scenario’s en bewijsvelden.
 - [Securityacceptatie](docs/project/SECURITY_ACCEPTANCE.md) — autorisatie-, request-, provider- en privacycontroles.
 
-Live Mollie-testmode, SendGrid-domein/delivery en publiek bereikbare HTTPS-webhooks worden uitsluitend in staging geverifieerd. Productie vereist daarna een afzonderlijke expliciete goedkeuring en release-tag; dit repositorywerk voert geen deployment of productieactie uit.
+Live Mollie-testmode, SendGrid-domein/delivery en publiek bereikbare HTTPS-webhooks worden uitsluitend in staging geverifieerd. Productie vereist daarna de handmatige GitHub production-environmentapproval; dit repositorywerk voert geen deployment of productieactie uit.
 
 ## Veilig werken
 

@@ -16,7 +16,7 @@ export function ParentLoginForm() {
       const response = await fetch("/api/parent-auth/request-code", { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify({ email }) });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Voer een geldig e-mailadres in.");
-      router.push(`/login/code?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      router.push("/login/code");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "De aanvraag kon niet worden verstuurd."); } finally { setLoading(false); }
   }
 

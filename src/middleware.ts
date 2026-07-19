@@ -13,18 +13,8 @@ function privateResponse(response: NextResponse, correlationId: string) {
   return correlatedResponse(response, correlationId);
 }
 
-function redirectUrl(request: NextRequest, path: string) {
-  const rawForwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedHost = rawForwardedHost && !rawForwardedHost.includes(",") ? rawForwardedHost : null;
-  const host = (forwardedHost ?? request.headers.get("host"))?.trim().toLowerCase();
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.trim().toLowerCase();
-  const protocol = forwardedProto === "https" || forwardedProto === "http"
-    ? forwardedProto
-    : request.nextUrl.protocol.replace(":", "");
-  if (!host || !/^[a-z0-9.-]+(?::\d{1,5})?$/.test(host) || !["http", "https"].includes(protocol)) {
-    throw new Error("INVALID_REQUEST_ORIGIN");
-  }
-  return new URL(path, `${protocol}://${host}`);
+function redirectUrl(_request: NextRequest, path: string) {
+  return new URL(path, getServerEnv().APP_BASE_URL);
 }
 
 function redirectWithCookies(request: NextRequest, path: string, correlationId: string, response?: NextResponse) {
@@ -37,7 +27,7 @@ export async function middleware(request: NextRequest) {
   const correlationId = resolveCorrelationId(request.headers.get(CORRELATION_ID_HEADER));
   const requestHeaders = withCorrelationId(request.headers, correlationId);
   const nextResponse = () => NextResponse.next({ request: { headers: requestHeaders } });
-  const staffSurface = request.nextUrl.pathname.startsWith("/backoffice") || request.nextUrl.pathname.startsWith("/uitgifte");
+  const staffSurface = request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice") || request.nextUrl.pathname.startsWith("/uitgifte");
   if (!staffSurface) return correlatedResponse(nextResponse(), correlationId);
 
   const env = getServerEnv();
@@ -67,7 +57,7 @@ export async function middleware(request: NextRequest) {
 
   const { data: profile } = await supabase.schema("app").from("staff_profiles").select("role, active").eq("auth_user_id", user.id).eq("active", true).maybeSingle();
   if (!profile) return redirectWithCookies(request, "/staff/login", correlationId, response);
-  if (profile.role === "uitgifte" && request.nextUrl.pathname.startsWith("/backoffice")) {
+  if (profile.role === "uitgifte" && (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice"))) {
     return redirectWithCookies(request, "/uitgifte", correlationId, response);
   }
   return privateResponse(response, correlationId);

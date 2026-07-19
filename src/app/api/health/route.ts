@@ -7,11 +7,35 @@ export const dynamic = "force-dynamic";
 
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 
-export async function GET() {
-  const admin = getSupabaseAdminClient();
-  if (!admin) return NextResponse.json({ status: "degraded", version: process.env.npm_package_version ?? "0.1.0" }, { status: 503, headers });
-  const { data, error } = await admin.schema("app").rpc("get_operational_health");
-  const valid = !error && operationalHealthSchema.safeParse(data).success;
-  return NextResponse.json({ status: valid ? "ok" : "degraded", version: process.env.npm_package_version ?? "0.1.0" }, { status: valid ? 200 : 503, headers });
+function releaseIdentity() {
+  const environment = process.env.APP_ENVIRONMENT;
+  const revision = process.env.RELEASE_SHA;
+  const value = (name: string) => process.env[name]?.trim() ?? "";
+  const expectedOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
+  if (
+    !["staging", "production"].includes(environment ?? "")
+    || !/^[a-f0-9]{40}$/.test(revision ?? "")
+    || value("APP_BASE_URL") !== expectedOrigin
+    || !/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(value("NEXT_PUBLIC_SUPABASE_URL"))
+    || value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY").length < 20
+    || value("SUPABASE_SECRET_KEY").length < 20
+    || value("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY").length < 40
+    || value("PARENT_TOKEN_PEPPER").length < 32
+    || value("CRON_SECRET").length < 16
+  ) return null;
+  return { service: "duindorpteneu", environment, revision };
 }
 
+export async function GET() {
+  const release = releaseIdentity();
+  if (!release) return NextResponse.json({ status: "degraded", service: "duindorpteneu" }, { status: 503, headers });
+  try {
+    const admin = getSupabaseAdminClient();
+    if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
+    const { data, error } = await admin.schema("app").rpc("get_operational_health");
+    const valid = !error && operationalHealthSchema.safeParse(data).success;
+    return NextResponse.json({ status: valid ? "ok" : "degraded", ...release }, { status: valid ? 200 : 503, headers });
+  } catch {
+    return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
+  }
+}

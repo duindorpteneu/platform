@@ -1,0 +1,279 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deployment_mode:
+        description: Gebruik current voor de actuele main; redeploy is de expliciete oudere-SHA-modus.
+        required: true
+        default: current
+        type: choice
+        options:
+          - current
+          - redeploy
+      release_sha:
+        description: Volledige oudere main-SHA; uitsluitend verplicht bij redeploy.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-duindorpteneu-main
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  preflight:
+    name: Preflight and quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      deployment_mode: ${{ steps.release.outputs.deployment_mode }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: true
+
+      - name: Resolve release SHA
+        id: release
+        env:
+          REQUESTED_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.deployment_mode || 'current' }}
+          REQUESTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || '' }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          git fetch origin main --no-tags
+          current_main="$(git rev-parse origin/main)"
+          if [[ "$REQUESTED_MODE" == "current" ]]; then
+            [[ -z "$REQUESTED_SHA" ]]
+            release_sha="${GITHUB_SHA}"
+            [[ "$release_sha" == "$current_main" ]]
+          elif [[ "$REQUESTED_MODE" == "redeploy" ]]; then
+            [[ "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+            git cat-file -e "${REQUESTED_SHA}^{commit}"
+            git merge-base --is-ancestor "$REQUESTED_SHA" origin/main
+            release_sha="$REQUESTED_SHA"
+          else
+            exit 1
+          fi
+          printf 'release_sha=%s\n' "$release_sha" >> "$GITHUB_OUTPUT"
+          printf 'deployment_mode=%s\n' "$REQUESTED_MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact release commit
+        run: git checkout --force "${{ steps.release.outputs.release_sha }}"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository gates
+        run: |
+          pnpm security:secrets
+          pnpm security:migrations
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+  build-release:
+    name: Build immutable release image
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          clean: true
+
+      - name: Build release artifact
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+        run: bash scripts/deploy-vps.sh build-release
+
+      - name: Upload immutable image and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-image-${{ needs.preflight.outputs.release_sha }}
+          path: .release/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-staging:
+    name: Deploy and verify staging
+    needs:
+      - preflight
+      - build-release
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+    timeout-minutes: 45
+    environment:
+      name: staging
+      url: https://staging-duindorp.dgwebservices.nl
+    outputs:
+      release_sha: ${{ needs.preflight.outputs.release_sha }}
+      deployment_mode: ${{ needs.preflight.outputs.deployment_mode }}
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          clean: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked deployment dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download immutable release
+        uses: actions/download-artifact@v4
+        with:
+          name: release-image-${{ needs.preflight.outputs.release_sha }}
+          path: .release
+
+      - name: Deploy, migrate and verify all staging routes
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          DEPLOYMENT_MODE: ${{ needs.preflight.outputs.deployment_mode }}
+          APP_HOST: ${{ vars.APP_HOST }}
+          APP_BIND_PORT: ${{ vars.APP_BIND_PORT }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
+          EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
+          SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
+          SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+          PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
+          RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
+        run: bash scripts/deploy-vps.sh staging
+
+      - name: Upload verified staging manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-${{ needs.preflight.outputs.release_sha }}
+          path: /srv/apps/duindorpteneu/staging/RELEASE_MANIFEST
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-production:
+    name: Approve, deploy and verify production
+    needs:
+      - deploy-staging
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - production
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://duindorp.dgwebservices.nl
+    steps:
+      - name: Checkout exact staged release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.deploy-staging.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked deployment dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download exact staged image
+        uses: actions/download-artifact@v4
+        with:
+          name: release-image-${{ needs.deploy-staging.outputs.release_sha }}
+          path: .release
+
+      - name: Download staging release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-release-${{ needs.deploy-staging.outputs.release_sha }}
+          path: .staging-release
+
+      - name: Verify main freshness, deploy and verify production
+        env:
+          RELEASE_SHA: ${{ needs.deploy-staging.outputs.release_sha }}
+          DEPLOYMENT_MODE: ${{ needs.deploy-staging.outputs.deployment_mode }}
+          APP_HOST: ${{ vars.APP_HOST }}
+          APP_BIND_PORT: ${{ vars.APP_BIND_PORT }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
+          EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
+          SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
+          SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+          PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
+          RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
+          STAGING_RELEASE_MANIFEST: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
+        run: bash scripts/deploy-vps.sh production

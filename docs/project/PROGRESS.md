@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Exports, instellingen, audit, operationele health/retentie, securityheaders, rate limits, CI en release-runbooks zijn afgerond. Een gescheiden self-hosted VPS-deploypad met GitHub-configuratiecontract, Supabase-migraties, standalone releases, systemd en Caddy is toegevoegd; VPS-bootstrap en providerverificatie blijven extern.
+De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Het definitieve repositorydeploypad bouwt één immutable Rootless-Dockerimage, verifieert staging en promoveert exact dezelfde digest na GitHub productionapproval. De eerste echte run wacht op twee verplichte secrets en de production required-reviewerregel.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -67,9 +67,11 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - CI, secret scan, forward-only migratielint, omgevingsmatrix, operationsrunbook, releasechecklist, securityacceptatie en stagingverificatieprocedure zijn toegevoegd.
 - Definitieve lokale gates: 36 migrations schoon toegepast; 15 pgTAP-bestanden/383 assertions, 35 Vitest-bestanden/158 tests, concurrency, echte staff-MFA, lint, TypeScript, productiebuild en dependency-audit zijn groen.
 - De volledige productie-browserflow is tweemaal achtereen groen en ruimt Auth, MFA en alle fictieve database-/e-mailfixtures aantoonbaar op.
+- Eén `deploy.yml`, Dockerfile, veilige Composeconfiguratie, centrale `deploy-vps.sh`, atomische revision/manifests, runtime-Supabasebootstrap, `/admin`-alias en releasebewuste healthchecks toegevoegd.
+- Rootrouting hersteld naar het ouderportaal; OTP-verificatie bevat geen e-mailadres meer in URL/history en gebruikt een versleutelde korte HttpOnly challengecookie.
 
 ## In progress
-- Deploy van de exact gecommitte releasecandidate naar een afzonderlijke publieke HTTPS-stagingomgeving.
+- Eerste main → staging → approval → productionrun van de exact gecommitte releasecandidate.
 - Live SendGrid- en Mollie-testmodeverificatie, scheduler/alerts en geïsoleerde restore-oefening wachten op staginginfrastructuur en credentials.
 
 ## Next
@@ -79,4 +81,4 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 
 ## Blockers
 - Geen lokale codeblocker.
-- Externe staging-URL, afzonderlijk Supabase-project, secretstore, Mollie-testkey, SendGrid-configuratie en operationele eigenaren zijn nodig voor de resterende stagingverificatie.
+- `PARENT_TOKEN_PEPPER` en `CRON_SECRET` ontbreken in beide GitHub environments; production heeft nog geen required reviewer. Providerconfiguratie blijft pas nodig wanneer de bijbehorende flag wordt geactiveerd.
