@@ -17,7 +17,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
 | `SENDGRID_REPLY_TO_EMAIL` | `danny.goldenbelt@duindorpsv.nl` | `danny.goldenbelt@duindorpsv.nl` | geldig e-mailadres | SendGrid | door eigenaar bevestigd |
 | `SENDGRID_WEBHOOK_ID` | `fd290462-…` | `84500cb8-…` | UUID, omgevingsuniek | provider-smoke | production blijft ongevalideerd en uit |
-| `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | nee | nee | niet leeg | webhookvalidatie | vereist bij `EMAIL_ENABLED=true` |
+| `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | ja | nee | geldige P-256 public key | webhookvalidatie | staging via de exacte signed-webhookconfiguratie opgehaald; production blijft uit |
 
 ## Secrets
 
