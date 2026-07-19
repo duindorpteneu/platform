@@ -66,12 +66,15 @@ async function providerRequest(input, path, method = "GET", body) {
 }
 
 function assertSettings(settings, input) {
-  if (settings?.id !== input.webhookId || settings.enabled !== true || settings.url !== input.webhookUrl) {
-    throw new Error("SENDGRID_WEBHOOK_SETTINGS_INVALID");
-  }
+  const invalidFields = [];
+  if (settings?.id !== input.webhookId) invalidFields.push("id");
+  if (settings?.enabled !== true) invalidFields.push("enabled");
+  if (settings?.url !== input.webhookUrl) invalidFields.push("url");
   for (const [name, expected] of Object.entries(expectedEventSettings)) {
-    if (settings[name] !== expected) throw new Error("SENDGRID_WEBHOOK_SETTINGS_INVALID");
+    const actual = settings?.[name] ?? false;
+    if (actual !== expected) invalidFields.push(name);
   }
+  if (invalidFields.length > 0) throw new Error(`SENDGRID_WEBHOOK_SETTINGS_INVALID:${invalidFields.join(",")}`);
 }
 
 export async function configureSendGridWebhook(rawInput) {
