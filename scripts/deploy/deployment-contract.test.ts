@@ -73,8 +73,10 @@ describe("deployment environment isolation", () => {
 
   it("keeps public browser configuration runtime-injected", () => {
     const dockerfile = readFileSync(path.join(repositoryRoot, "Dockerfile"), "utf8");
+    const dockerignore = readFileSync(path.join(repositoryRoot, ".dockerignore"), "utf8");
     const layout = readFileSync(path.join(repositoryRoot, "src/app/layout.tsx"), "utf8");
     expect(dockerfile).not.toMatch(/\b(?:ARG|ENV)\s+NEXT_PUBLIC_/);
+    expect(dockerignore.split(/\r?\n/)).toContain(".release");
     expect(layout).toContain("globalThis.__DUINDORP_RUNTIME_CONFIG__");
   });
 });
