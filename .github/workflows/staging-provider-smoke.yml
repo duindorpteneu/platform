@@ -76,6 +76,26 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Verify Mail Send permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          scopes="${RUNNER_TEMP}/sendgrid-scopes.json"
+          trap 'rm -f "${scopes}"' EXIT
+          status="$(curl --silent --show-error --max-time 20 \
+            --output "${scopes}" --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SENDGRID_API_KEY}" \
+            "${SENDGRID_API_BASE_URL}/v3/scopes")"
+          if [[ "${status}" != "200" ]]; then
+            echo "SendGrid scopecontrole gaf HTTP ${status}." >&2
+            exit 1
+          fi
+          if ! jq -e '.scopes | arrays | index("mail.send") != null' "${scopes}" >/dev/null; then
+            echo "De staging-API-key mist de vereiste mail.send-scope." >&2
+            exit 1
+          fi
+          echo "De staging-API-key heeft de vereiste mail.send-scope."
+
       - name: Send one controlled staging message
         shell: bash
         run: |

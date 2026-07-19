@@ -217,3 +217,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Publieke onafhankelijke verificatie: `/api/health` HTTP 200 met uitsluitend `status=ok`, `service=duindorpteneu`, `environment=staging` en de verwachte revision; `/` HTTP 200; `/admin` en `/uitgifte` HTTP 307 naar dezelfde-host `/staff/login`, daarna HTTP 200.
 - Geverifieerd manifest v2: image `duindorpteneu-app:dee16f14220ccb6bedb16fcfb449f627ef222866`, OCI-digest `sha256:a795e370971a2cd3d63809652c77ea43b2bc62bb8433c6c2b9c56c2be446665d`, configdigest `sha256:5893ba0229b54de44449cc662eb110e1d227d2af7ee2d3e9315965be4a2e8802` en transportdigest `sha256:7e7b4c5047196f03f203f78a48ebe004c55168271b000400f60e776c92e4b8a3`.
 - De productionjob is niet uitgevoerd en staat achter de required-reviewer-gate voor `TIXOCEO`; er is geen approval verleend.
+
+## Stagingproviderconfiguratie — 2026-07-19
+
+- Mollie staging gebruikt uitsluitend de aanwezige `test_`-key; de read-only profielprobe is groen en de runtimegate staat alleen in staging aan.
+- SendGrid staging gebruikt EU-regional `https://api.eu.sendgrid.com`, het bevestigde afzender-/reply-to-adres en webhook-ID `fd290462-a274-4899-82bd-4777cc382bae` op de exacte stagingroute.
+- Actions-run `29702162241` wijzigde en herlas de Event Webhook succesvol, zette ECDSA-ondertekening aan, haalde dezelfde P-256 public key terug en leverde die als kortlevend artifact. De key staat nu als publieke GitHub stagingvariable; er is geen secretwaarde uitgelezen.
+- Actions-run `29702474022` bevestigde dezelfde webhookconfiguratie opnieuw, maar Mail Send retourneerde veilig gerapporteerd HTTP 401 voordat de runtimeflag werd aangezet. Er is geen mail geaccepteerd en `EMAIL_ENABLED` blijft in staging en production uit.
+- De workflow controleert nu vóór Mail Send via `GET /v3/scopes` expliciet of de gebruikte EU-key `mail.send` heeft. Productionwebhook, productiondeploy en productionproviderflags zijn niet aangeraakt of goedgekeurd.
