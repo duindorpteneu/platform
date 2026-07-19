@@ -95,7 +95,7 @@ deploy_environment() {
   flock -n 9 || die "Er draait al een deployment voor ${environment}."
 
   local image_tag="${repository_image}:${RELEASE_SHA}" expected_digest expected_config_digest expected_artifact_digest loaded_digest loaded_label archive_digest archive_manifest_digest archive_config_path archive_config_digest
-  read -r expected_digest expected_config_digest expected_artifact_digest < <(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(x.imageDigest+" "+x.imageConfigDigest+" "+x.artifactDigest)' "$RELEASE_MANIFEST_SOURCE")
+  read -r expected_digest expected_config_digest expected_artifact_digest < <(node scripts/deploy/release-manifest.mjs fields "$RELEASE_MANIFEST_SOURCE")
   node scripts/deploy/release-manifest.mjs verify "$RELEASE_MANIFEST_SOURCE" "$RELEASE_SHA" "$expected_digest" "$expected_config_digest" "$expected_artifact_digest" >/dev/null
   archive_digest="sha256:$(sha256sum "$RELEASE_ARTIFACT" | cut -d' ' -f1)"
   [[ "$archive_digest" == "$expected_artifact_digest" ]] || die "Release-artefact wijkt af van het buildmanifest."
