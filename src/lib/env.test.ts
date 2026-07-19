@@ -8,6 +8,24 @@ describe("server provider configuration", () => {
     expect(env.EMAIL_ENABLED).toBe("false");
   });
 
+  it("treats explicitly empty optional provider values as unset while disabled", () => {
+    const env = parseServerEnv({
+      APP_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
+      MOLLIE_ENABLED: "false",
+      MOLLIE_API_KEY: "",
+      EMAIL_ENABLED: "false",
+      SENDGRID_API_KEY: "",
+      SENDGRID_FROM_EMAIL: "",
+      SENDGRID_REPLY_TO_EMAIL: "   ",
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "",
+    });
+    expect(env.MOLLIE_API_KEY).toBeUndefined();
+    expect(env.SENDGRID_API_KEY).toBeUndefined();
+    expect(env.SENDGRID_FROM_EMAIL).toBeUndefined();
+    expect(env.SENDGRID_REPLY_TO_EMAIL).toBeUndefined();
+    expect(env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY).toBeUndefined();
+  });
+
   it("fails closed when Mollie is enabled without HTTPS and credentials", () => {
     expect(() => parseServerEnv({ MOLLIE_ENABLED: "true", APP_BASE_URL: "http://localhost:3100" })).toThrow();
   });

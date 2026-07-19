@@ -1,20 +1,30 @@
 import { z } from "zod";
 
+const emptyStringToUndefined = (value: unknown) => (
+  typeof value === "string" && value.trim() === "" ? undefined : value
+);
+const optionalText = (minimum = 1) => z.preprocess(
+  emptyStringToUndefined,
+  z.string().min(minimum).optional(),
+);
+const optionalUrl = z.preprocess(emptyStringToUndefined, z.string().url().optional());
+const optionalEmail = z.preprocess(emptyStringToUndefined, z.string().email().optional());
+
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
-  SUPABASE_SECRET_KEY: z.string().min(1).optional(),
-  PARENT_TOKEN_PEPPER: z.string().min(32).optional(),
-  CRON_SECRET: z.string().min(16).optional(),
+  NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalText(),
+  SUPABASE_SECRET_KEY: optionalText(),
+  PARENT_TOKEN_PEPPER: optionalText(32),
+  CRON_SECRET: optionalText(16),
   APP_BASE_URL: z.string().url().default("http://localhost:3100"),
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
-  MOLLIE_API_KEY: z.string().min(1).optional(),
+  MOLLIE_API_KEY: optionalText(),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
-  SENDGRID_API_KEY: z.string().min(1).optional(),
-  SENDGRID_FROM_EMAIL: z.string().email().optional(),
-  SENDGRID_REPLY_TO_EMAIL: z.string().email().optional(),
-  SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: z.string().min(1).optional(),
+  SENDGRID_API_KEY: optionalText(),
+  SENDGRID_FROM_EMAIL: optionalEmail,
+  SENDGRID_REPLY_TO_EMAIL: optionalEmail,
+  SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: optionalText(),
 }).superRefine((env, context) => {
   if (env.MOLLIE_ENABLED === "true") {
     if (!env.MOLLIE_API_KEY) {

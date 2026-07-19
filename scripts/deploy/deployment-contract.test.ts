@@ -92,6 +92,13 @@ describe("deployment environment isolation", () => {
     );
     expect(migration).not.toMatch(/\bprivate\b[^\n]*pgrst\.db_schemas/i);
   });
+
+  it("does not serialize empty optional provider values into runtime", () => {
+    const source = readFileSync(configureRuntime, "utf8");
+    expect(source).toContain('].filter(([, value]) => value)');
+    expect(source).not.toMatch(/\n\s*MOLLIE_API_KEY:\s*mollieKey/);
+    expect(source).not.toMatch(/\n\s*SENDGRID_FROM_EMAIL:\s*fromEmail/);
+  });
 });
 
 describe("immutable release manifest", () => {
