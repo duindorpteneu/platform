@@ -115,11 +115,14 @@ export const teamMemberStatusRequestSchema = z.object({
   team: z.string().trim().min(1).max(120),
   active: z.boolean(),
   reason: z.string().trim().max(240).optional(),
+  previewToken: z.string().min(64).max(4_000).optional(),
   commit: z.boolean(),
 }).strict().superRefine((value, context) => {
   if (value.commit && (!value.reason || value.reason.length < 3)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "Een reden van minimaal drie tekens is verplicht." });
   }
+  if (value.commit && !value.previewToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "Controleer de wijzigingen opnieuw." });
+  if (!value.commit && value.previewToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "Een previewtoken hoort niet bij een previewaanvraag." });
 });
 
 export const teamMemberStatusResponseSchema = z.object({
@@ -130,6 +133,7 @@ export const teamMemberStatusResponseSchema = z.object({
   unchangedMembers: nonNegativeInteger,
   activeForSeason: z.boolean(),
   committed: z.boolean(),
+  previewToken: z.string().min(64).max(4_000).optional(),
 }).strict();
 
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;

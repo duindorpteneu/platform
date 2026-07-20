@@ -66,7 +66,7 @@ describe("member overview contract", () => {
   it("requires a reason only when a team status change is committed", () => {
     expect(teamMemberStatusRequestSchema.safeParse({ team: " JO11-1 ", active: false, commit: false }).success).toBe(true);
     expect(teamMemberStatusRequestSchema.safeParse({ team: "JO11-1", active: false, commit: true }).success).toBe(false);
-    expect(teamMemberStatusRequestSchema.safeParse({ team: "JO11-1", active: true, reason: "Nieuwe teamindeling", commit: true }).success).toBe(true);
+    expect(teamMemberStatusRequestSchema.safeParse({ team: "JO11-1", active: true, reason: "Nieuwe teamindeling", previewToken: "x".repeat(64), commit: true }).success).toBe(true);
     expect(teamMemberStatusResponseSchema.safeParse({ seasonId: season.id, team: "JO11-1", totalMembers: 18, changedMembers: 17, unchangedMembers: 1, activeForSeason: true, committed: true }).success).toBe(true);
   });
   it("normalizes safe URL filters", () => {

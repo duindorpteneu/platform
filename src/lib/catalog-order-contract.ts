@@ -130,9 +130,12 @@ export const saveMemberOrderResponseSchema = z.object({
 export const teamOrderArticlesRequestSchema = z.object({
   team: z.string().trim().min(1).max(120),
   variantIds: z.array(uuid).min(1).max(25),
+  previewToken: z.string().min(64).max(4_000).optional(),
   commit: z.boolean(),
 }).strict().superRefine((value, context) => {
   if (!uniqueValues(value.variantIds)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["variantIds"], message: "Varianten moeten uniek zijn." });
+  if (value.commit && !value.previewToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "Controleer de toewijzing opnieuw." });
+  if (!value.commit && value.previewToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "Een previewtoken hoort niet bij een previewaanvraag." });
 });
 
 export const teamOrderArticlesResponseSchema = z.object({
@@ -148,6 +151,7 @@ export const teamOrderArticlesResponseSchema = z.object({
   unchangedMembers: nonNegativeInteger,
   linesAdded: nonNegativeInteger,
   committed: z.boolean(),
+  previewToken: z.string().min(64).max(4_000).optional(),
 }).strict();
 
 export function parseEuroAmountToCents(value: string): number | null {

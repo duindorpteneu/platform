@@ -37,7 +37,7 @@ export function TeamMemberStatusPanel({ teams, initialTeam, disabled }: { teams:
     setBusy(true);
     setNotice(null);
     try {
-      const result = await requestTeamStatus({ team, active, reason: reason || undefined, commit });
+      const result = await requestTeamStatus({ team, active, reason: reason || undefined, previewToken: commit ? preview?.previewToken : undefined, commit });
       setPreview(result);
       if (commit) {
         setNotice({ tone: "success", text: `${result.changedMembers} leden in ${result.team} zijn ${active ? "actief" : "inactief"} gemaakt. ${result.unchangedMembers} waren al ongewijzigd.` });
@@ -63,7 +63,7 @@ export function TeamMemberStatusPanel({ teams, initialTeam, disabled }: { teams:
 
     <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
       <button type="button" disabled={disabled || busy || !team} onClick={() => run(false)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-3 text-xs font-semibold text-brand-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="size-4 animate-spin" /> : null}Wijzigingen controleren</button>
-      <button type="button" disabled={disabled || busy || !preview || preview.committed || preview.changedMembers === 0 || reason.trim().length < 3} onClick={() => run(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle2 className="size-4" /> Definitief uitvoeren</button>
+      <button type="button" disabled={disabled || busy || !preview?.previewToken || preview.committed || preview.changedMembers === 0 || reason.trim().length < 3} onClick={() => run(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle2 className="size-4" /> Definitief uitvoeren</button>
     </div>
     {disabled && <p className="mt-3 text-[10px] leading-4 text-amber-700">Een open actief seizoen is verplicht voor deze actie.</p>}
   </section>;

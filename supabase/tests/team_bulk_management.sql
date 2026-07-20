@@ -46,9 +46,32 @@ select is((app.preview_team_order_articles(
   'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid]
 )->>'inactiveMembersSkipped')::integer, 1, 'preview slaat inactieve leden over');
 
-select lives_ok($$select app.bulk_add_team_order_articles(
+select throws_ok($$select app.bulk_add_team_order_articles_v2(
+  'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid],
+  'cb100000-0000-4000-8000-000000000001', repeat('0', 64), null
+)$$, '40001', 'TEAM_BULK_SNAPSHOT_CHANGED', 'commit met een verouderde snapshot wordt geweigerd');
+
+select set_config('test.team_bulk_revision', app.preview_team_order_articles_v2(
+  'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid]
+)->>'revision', false);
+reset role;
+update app.seasons set default_amount_cents = 8850 where id = 'cb100000-0000-4000-8000-000000000001';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"cb000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
+select throws_ok($$select app.bulk_add_team_order_articles_v2(
+  'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid],
+  'cb100000-0000-4000-8000-000000000001', current_setting('test.team_bulk_revision'), null
+)$$, '40001', 'TEAM_BULK_SNAPSHOT_CHANGED', 'gewijzigd standaardbedrag maakt de artikelpreview ongeldig');
+reset role;
+update app.seasons set default_amount_cents = 8750 where id = 'cb100000-0000-4000-8000-000000000001';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"cb000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
+
+select lives_ok($$select app.bulk_add_team_order_articles_v2(
   'JO15-BULK',
   array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid],
+  (app.preview_team_order_articles_v2('JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid])->>'seasonId')::uuid,
+  app.preview_team_order_articles_v2('JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid, 'cb400000-0000-4000-8000-000000000002'::uuid])->>'revision',
   'cbf00000-0000-4000-8000-000000000001'
 )$$, 'kledingcommissie kan artikelen veilig aan een team toevoegen');
 select is((select amount_due_cents from app.member_orders where member_id = 'cb200000-0000-4000-8000-000000000001'), 8750, 'nieuwe order gebruikt het standaardbedrag');
@@ -57,10 +80,17 @@ select is((select count(*)::integer from app.order_lines where order_id = 'cb500
 select is((select count(*)::integer from app.order_lines where order_id = 'cb500000-0000-4000-8000-000000000003'), 0, 'betaalde bestelling blijft onaangeraakt');
 select ok(not exists(select 1 from app.member_orders where member_id = 'cb200000-0000-4000-8000-000000000004'), 'inactief lid krijgt geen bestelling');
 select ok(exists(select 1 from app.audit_logs where action = 'order.team_bulk_articles_completed' and correlation_id = 'cbf00000-0000-4000-8000-000000000001'), 'teamtoewijzing is geaudit');
+select is(jsonb_array_length((select metadata->'addedVariantIds' from app.audit_logs where action = 'order.team_bulk_articles_added' and entity_id = 'cb500000-0000-4000-8000-000000000002' order by id desc limit 1)), 1, 'orderaudit bevat uitsluitend werkelijk toegevoegde varianten');
 
 select is((app.preview_team_member_status('JO15-BULK', false)->>'changedMembers')::integer, 3, 'statuspreview telt alleen leden die wijzigen');
-select lives_ok($$select app.bulk_set_team_member_status(
-  'JO15-BULK', false, 'Team afgemeld voor dit seizoen', 'cbf00000-0000-4000-8000-000000000002'
+select throws_ok($$select app.bulk_set_team_member_status_v2(
+  'JO15-BULK', false, null, 'cb100000-0000-4000-8000-000000000001', repeat('0', 64), null
+)$$, '22023', 'TEAM_STATUS_INPUT_INVALID', 'null auditreden wordt ook bij directe RPC-aanroep geweigerd');
+select lives_ok($$select app.bulk_set_team_member_status_v2(
+  'JO15-BULK', false, 'Team afgemeld voor dit seizoen',
+  (app.preview_team_member_status_v2('JO15-BULK', false)->>'seasonId')::uuid,
+  app.preview_team_member_status_v2('JO15-BULK', false)->>'revision',
+  'cbf00000-0000-4000-8000-000000000002'
 )$$, 'team kan in bulk inactief worden gemaakt');
 select is((select count(*)::integer from app.members where team = 'JO15-BULK' and active_for_season), 0, 'alle teamleden zijn inactief');
 select is((select count(*)::integer from app.audit_logs where action = 'member.deactivated' and correlation_id = 'cbf00000-0000-4000-8000-000000000002'), 3, 'ieder gewijzigd lid heeft een auditregel');
@@ -73,13 +103,21 @@ select throws_ok($$select app.preview_team_order_articles(
 select set_config('request.jwt.claims', '{"sub":"cb000000-0000-4000-8000-000000000003","aal":"aal2"}', true);
 select throws_ok($$select app.preview_team_member_status('JO15-BULK', true)$$,
   '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifte kan geen teamstatus bekijken');
-select throws_ok($$select app.bulk_add_team_order_articles(
-  'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid], null
+select throws_ok($$select app.bulk_add_team_order_articles_v2(
+  'JO15-BULK', array['cb400000-0000-4000-8000-000000000001'::uuid],
+  'cb100000-0000-4000-8000-000000000001', repeat('0', 64), null
 )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifte kan geen teamartikelen toevoegen');
 
 select set_config('request.jwt.claims', '{"sub":"cb000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
-select throws_ok($$select app.bulk_set_team_member_status('JO15-BULK', true, 'Niet toegestaan op AAL1', null)$$,
+select throws_ok($$select app.bulk_set_team_member_status_v2(
+  'JO15-BULK', true, 'Niet toegestaan op AAL1',
+  'cb100000-0000-4000-8000-000000000001', repeat('0', 64), null
+)$$,
   '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'AAL1 kan geen teamstatus wijzigen');
+
+reset role;
+select ok(not has_function_privilege('authenticated', 'app.bulk_set_team_member_status(text,boolean,text,uuid)', 'execute'), 'oude statuscommit is niet meer rechtstreeks uitvoerbaar');
+select ok(not has_function_privilege('authenticated', 'app.bulk_add_team_order_articles(text,uuid[],uuid)', 'execute'), 'oude artikelcommit is niet meer rechtstreeks uitvoerbaar');
 
 select * from finish();
 rollback;
