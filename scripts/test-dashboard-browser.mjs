@@ -261,6 +261,39 @@ async function verifyDashboard(page, viewport, screenshotPath) {
   if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: true });
 }
 
+async function verifyMobileNavigation(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/backoffice`);
+  const openButton = page.getByRole("button", { name: "Menu openen" });
+  await openButton.waitFor({ state: "visible", timeout: 5_000 });
+  await openButton.click();
+
+  const navigation = page.getByRole("dialog", { name: "Mobiele navigatie" });
+  await navigation.waitFor({ state: "visible", timeout: 5_000 });
+  for (const label of ["Dashboard", "Leden", "Artikelen", "Instellingen", "Uitloggen"]) {
+    await navigation.getByRole(label === "Uitloggen" ? "button" : "link", { name: label, exact: true }).waitFor({ state: "visible" });
+  }
+  if (await page.evaluate(() => document.body.style.overflow) !== "hidden") {
+    throw new Error("De pagina blijft scrollbaar terwijl het mobiele menu open is.");
+  }
+  await navigation.getByRole("button", { name: "Uitloggen" }).focus();
+  await page.keyboard.press("Tab");
+  if (await page.evaluate(() => document.activeElement?.getAttribute("aria-label")) !== "Menu sluiten") {
+    throw new Error("De toetsenbordfocus verlaat het mobiele menu.");
+  }
+
+  await page.keyboard.press("Escape");
+  await navigation.waitFor({ state: "detached" });
+  if (await openButton.getAttribute("aria-expanded") !== "false") {
+    throw new Error("De mobiele menuknop houdt na Escape een onjuiste open-status.");
+  }
+
+  await openButton.click();
+  await page.getByRole("dialog", { name: "Mobiele navigatie" }).getByRole("link", { name: "Leden", exact: true }).click();
+  await page.waitForURL(`${baseUrl}/backoffice/leden`);
+  await page.getByRole("dialog", { name: "Mobiele navigatie" }).waitFor({ state: "detached" });
+}
+
 async function verifyMemberOverview(page, screenshotDir) {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${baseUrl}/backoffice/leden`);
@@ -756,6 +789,7 @@ try {
     { width: 390, height: 844 },
     screenshotDir ? path.join(screenshotDir, "after-dashboard-mobile.png") : null,
   );
+  await verifyMobileNavigation(page);
   process.stdout.write("Backoffice-browsertest: ledenlijst, detail, filters en import controleren…\n");
   await verifyMemberOverview(page, screenshotDir);
   await verifyOperationsSprint(page, screenshotDir);
