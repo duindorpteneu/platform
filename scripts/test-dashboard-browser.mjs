@@ -121,6 +121,7 @@ function cleanupSql(userId) {
     delete from app.article_seasons where article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
     delete from app.article_variants where article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
     delete from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK');
+    delete from app.seasons where name = 'Browser 2039/2040';
     delete from app.staff_profiles where auth_user_id = '${userId}';
   `;
 }
@@ -487,6 +488,26 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
   if (!paymentResponse.ok()) throw new Error(`Handmatige betaling gaf HTTP ${paymentResponse.status()}: ${await paymentResponse.text()}`);
   await page.getByText("De exacte kasbetaling van € 130,00 is geregistreerd.", { exact: true }).waitFor({ timeout: 5_000 });
 
+  process.stdout.write("Release-browsertest: lid inactiveren en opnieuw activeren…\n");
+  await page.getByRole("button", { name: "Lid inactief maken" }).click();
+  await page.getByLabel("Reden", { exact: true }).fill("Browsercontrole inactief");
+  const [inactiveResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/status") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Inactiveren", exact: true }).click(),
+  ]);
+  if (!inactiveResponse.ok()) throw new Error(`Lid inactiveren gaf HTTP ${inactiveResponse.status()}: ${await inactiveResponse.text()}`);
+  await page.reload();
+  await page.getByRole("button", { name: "Lid weer activeren" }).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Lid weer activeren" }).click();
+  await page.getByLabel("Reden", { exact: true }).fill("Browsercontrole afgerond");
+  const [activeResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/status") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Activeren", exact: true }).click(),
+  ]);
+  if (!activeResponse.ok()) throw new Error(`Lid activeren gaf HTTP ${activeResponse.status()}: ${await activeResponse.text()}`);
+  await page.reload();
+  await page.getByRole("button", { name: "Lid inactief maken" }).waitFor({ timeout: 5_000 });
+
   process.stdout.write("Release-browsertest: settings en audit controleren…\n");
   const settingsResponse = await page.goto(`${baseUrl}/backoffice/instellingen`);
   await page.getByRole("heading", { name: "Instellingen", exact: true }).waitFor({ timeout: 5_000 });
@@ -498,7 +519,32 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
     if (!securityHeaders[name]) throw new Error(`Productieresponse mist securityheader ${name}.`);
   }
   if (!securityHeaders["content-security-policy"].includes("frame-ancestors 'none'")) throw new Error("CSP mist frame-ancestors none.");
+  const seasonPanel = page.locator("div").filter({ hasText: "Nieuw seizoen toevoegen" }).filter({ has: page.getByRole("button", { name: "Seizoen toevoegen" }) }).last();
+  await seasonPanel.getByLabel("Naam").fill("Browser 2039/2040");
+  await seasonPanel.getByLabel("Standaardbedrag").fill("99,00");
+  await seasonPanel.getByLabel("Startdatum").fill("2039-07-01");
+  await seasonPanel.getByLabel("Einddatum").fill("2040-06-30");
+  await seasonPanel.getByLabel("Direct als actief seizoen instellen").uncheck();
+  const [seasonResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/settings/seasons") && response.request().method() === "POST"),
+    seasonPanel.getByRole("button", { name: "Seizoen toevoegen" }).click(),
+  ]);
+  if (!seasonResponse.ok()) throw new Error(`Seizoen toevoegen gaf HTTP ${seasonResponse.status()}: ${await seasonResponse.text()}`);
+  await page.getByText("Seizoen Browser 2039/2040 is toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-settings-desktop.png"), fullPage: true });
+
+  process.stdout.write("Release-browsertest: artikelen in bulk aan seizoen koppelen…\n");
+  await page.goto(`${baseUrl}/backoffice/artikelen`);
+  const bulkPanel = page.locator("section").filter({ hasText: "Artikelen in bulk per seizoen" }).first();
+  await bulkPanel.getByLabel("Open seizoen").selectOption({ label: "Browser 2039/2040" });
+  await bulkPanel.getByLabel(/Sprint testartikel/).check();
+  await bulkPanel.getByLabel(/Browser trainingsjack/).check();
+  const [bulkResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/catalog/article-seasons") && response.request().method() === "POST"),
+    bulkPanel.getByRole("button", { name: "Koppelen aan seizoen" }).click(),
+  ]);
+  if (!bulkResponse.ok()) throw new Error(`Bulk koppelen gaf HTTP ${bulkResponse.status()}: ${await bulkResponse.text()}`);
+  await page.getByText("2 artikelen gekoppeld aan Browser 2039/2040.", { exact: true }).waitFor({ timeout: 5_000 });
 
   await page.goto(`${baseUrl}/backoffice/audit`);
   await page.getByRole("heading", { name: "Auditlog", exact: true }).waitFor({ timeout: 5_000 });
@@ -643,7 +689,7 @@ try {
   }
 
   process.stdout.write(
-    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, catalogus, bestellingen, exacte kasbetaling, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, exports, settings, audit, securityheaders, CSRF, responsive layout en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, seizoenen, bulk-artikelkoppelingen, lidstatus, catalogus, bestellingen, exacte kasbetaling, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, exports, settings, audit, securityheaders, CSRF, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);

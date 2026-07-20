@@ -74,6 +74,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - De staffuitnodiging verwerkt Supabase's invite-fragment client-side, wist het fragment direct, biedt een veilige wachtwoordinstelpagina en stroomt verplicht door naar TOTP; de eerste stagingbeheerder blijft een expliciete eenmalige Supabase-bootstrap.
 - Staging heeft repository-native operationele en provider-smokeworkflows; production wordt hierdoor niet aangeraakt.
 - Native Sportlink-ledenexports met `Rel. code`, `Roepnaam` en `Lokale teams` worden ondersteund; ontbrekende seizoenstatus, team en roepnaam krijgen expliciete previewdefaults. De aangeleverde 528-rijen-CSV valideert volledig zonder persoonsgegevens in testartefacten.
+- Beheerders kunnen open seizoenen met datums en standaardbedrag aanmaken en optioneel direct activeren; beheerder en kledingcommissie kunnen artikelen per open seizoen in bulk koppelen/ontkoppelen en leden met verplichte auditreden activeren/inactiveren. Inactieve leden behouden alle historie maar kunnen geen nieuwe bestelling, handmatige betaling of Mollie-poging krijgen.
 
 ## In progress
 - Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.

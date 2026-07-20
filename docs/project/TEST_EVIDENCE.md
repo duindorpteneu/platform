@@ -240,3 +240,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - De echte aangeleverde CSV geeft lokaal exact 528 geldig, 0 ongeldig en 0 dubbel. Previewwaarschuwingen maken 528 ontbrekende seizoenstatussen, 517 lege teams (`Niet ingedeeld`) en 1 roepnaamfallback naar voorletters expliciet vóór commit.
 - De importpreview toont geen misleidende groene status meer bij fouten, laat maximaal vijf concrete rijmeldingen zien en bewaart toegepaste fallbacks in de batchmapping.
 - `pnpm test` is groen met 41 Vitestbestanden/187 tests; ESLint, TypeScript en `next build` zijn groen. De opnieuw gebouwde productie-app doorliep de volledige zelfopruimende AAL2-browserflow inclusief native Sportlink-preview, fallbackmeldingen en transactionele commit.
+
+## Seizoen-, bulkartikel- en lidstatusbeheer — 2026-07-20
+
+- Forward migration `20260720130000_season_article_member_management.sql` is vanaf nul toegepast als migration 40, samen met alle eerdere migrations en seed.
+- `pnpm test:db` — 16 pgTAP-bestanden en 412 assertions passed. Nieuwe dekking omvat seizoenaanmaak/duplicaat, directe activatie, bulk koppelen/ontkoppelen, beheerder/kledingcommissie/uitgifte-RBAC, auditcorrelatie, reversibele lidstatus en blokkade van nieuwe handmatige en Mollie-betalingen voor inactieve leden.
+- `pnpm test` — 41 Vitestbestanden en 190 tests passed; de strikte request-/responsecontracten en datum-, selectie- en redenvalidatie zijn gedekt.
+- `pnpm lint`, `pnpm typecheck`, `pnpm security:migrations`, `pnpm security:secrets` en `pnpm build` — passed.
+- `pnpm test:db:concurrency` — passed; de bestaande dubbele-uitgiftebescherming blijft intact.
+- `pnpm test:dashboard-browser` — passed met echte wachtwoord/TOTP/AAL2-flow. De browser maakt een niet-actief testseizoen aan, koppelt twee artikelen in bulk, inactiveert en reactiveert een lid en verifieert de beveiligde API-responses; alle tijdelijke seizoens-, catalogus-, lid-, Auth- en auditfixtures worden opgeruimd.
