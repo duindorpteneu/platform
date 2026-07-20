@@ -259,3 +259,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:dashboard-browser` — opnieuw passed na de snapshot-hardening met een volledige zelfopruimende wachtwoord/TOTP/AAL2-flow. De bestaande server-side teamfilter, ondertekende teamartikelpreview/commit, nieuwe en uitgebreide orders, ondertekende teamstatuspreview/commit, bestaande operationele flows, mobiel/desktop, CSRF en anonieme routebeveiliging zijn gecontroleerd.
 - Een onafhankelijke read-only securityreview hercontroleerde previewbinding, phantom-races, NULL-redenen, exacte variantaudit en standaardbedragdrift; alle vijf punten zijn na de forward hardening gesloten.
 - Geen productiegegevens, providercredentials of externe productieacties gebruikt.
+
+## Adres-, seizoen- en individuele-matenherstel — 2026-07-20
+
+- Schone lokale reset past 47 forward migrations en seed zonder fout toe; de instellingensingleton wordt nu door migrations zelf gegarandeerd.
+- `pnpm test:db` is groen met 19 pgTAP-bestanden en 494 assertions. Nieuwe dekking bewijst gestructureerde verenigings-/afhaaladressen, opslaan zonder actief seizoen, een direct actuele seizoenresponse, maatprofiel-RBAC/AAL2/RLS, stale-writeblokkade, seizoens- en variantconstraints, audit en leidende bestelregels.
+- `pnpm test` is groen met 45 Vitestbestanden en 205 tests; instellingen-, maatprofiel- en API-contracten zijn strikt gedekt.
+- `pnpm lint`, `pnpm typecheck`, `pnpm security:secrets`, `pnpm security:migrations` en de productiebuild zijn groen; de build bevat de nieuwe beveiligde `/api/members/sizes`-route.
+- Concurrency- en echte staff-MFA-integratietests zijn groen. De volledige zelfopruimende AAL2-browserflow slaat een individuele maat op en leest die na reload terug, bewaart verenigings- en afwijkend afhaaladres, ziet een nieuw seizoen direct terug en doorloopt daarna alle bestaande order-, betaling-, QR-, uitgifte-, export- en securityflows.
