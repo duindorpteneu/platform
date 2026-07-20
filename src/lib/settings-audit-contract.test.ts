@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   auditFiltersSchema,
+  createSeasonRequestSchema,
   inviteStaffRequestSchema,
   settingsWorkspaceSchema,
   staffRoleSchema,
@@ -28,6 +29,11 @@ describe("settings and audit contracts", () => {
     const input = { contactEmail: "kleding@duindorpsv.nl", pickupLocation: "Clubhuis", activeSeasonId: id, seasonAmounts: [{ seasonId: id, amountCents: 12500 }, { seasonId: id, amountCents: 13000 }], mollieEnabled: false, emailEnabled: false };
     expect(updateSettingsRequestSchema.safeParse(input).success).toBe(false);
     expect(updateSettingsRequestSchema.safeParse({ ...input, seasonAmounts: input.seasonAmounts.slice(0, 1), clubName: "Duindorp SV" }).success).toBe(false);
+  });
+
+  it("validates a new season and chronological dates", () => {
+    expect(createSeasonRequestSchema.parse({ name: " 2027/2028 ", startsOn: "2027-07-01", endsOn: "2028-06-30", defaultAmountCents: 8_700, makeActive: true }).name).toBe("2027/2028");
+    expect(createSeasonRequestSchema.safeParse({ name: "2027/2028", startsOn: "2028-07-01", endsOn: "2028-06-30", defaultAmountCents: 8_700, makeActive: true }).success).toBe(false);
   });
 
   it("normalizes safe staff invitations", () => {

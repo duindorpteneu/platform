@@ -100,6 +100,17 @@ export const memberDetailResponseSchema = z.object({
   }).strict()).max(10),
 }).strict();
 
+export const memberStatusRequestSchema = z.object({
+  memberId: z.string().uuid(),
+  active: z.boolean(),
+  reason: z.string().trim().min(3).max(240),
+}).strict();
+
+export const memberStatusResponseSchema = z.object({
+  memberId: z.string().uuid(),
+  activeForSeason: z.boolean(),
+}).strict();
+
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
 export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
 export type MemberDetailResponse = z.infer<typeof memberDetailResponseSchema>;

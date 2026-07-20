@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze betaling." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Bestelling niet gevonden." }, { status: 404 });
+      if (error.code === "23514" && error.message.includes("MEMBER_NOT_ACTIVE")) return NextResponse.json({ error: "Dit lid is inactief; een nieuwe betaling is niet toegestaan." }, { status: 409 });
       return NextResponse.json({ error: "De betaling kon niet veilig worden geregistreerd." }, { status: 409 });
     }
     return NextResponse.json(data, { status: 201 });

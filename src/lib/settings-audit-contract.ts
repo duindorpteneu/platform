@@ -67,6 +67,23 @@ export const updateSettingsRequestSchema = z.object({
   emailEnabled: z.boolean(),
 }).strict();
 
+const optionalDate = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? null : value,
+  z.string().date().nullable(),
+);
+
+export const createSeasonRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  startsOn: optionalDate,
+  endsOn: optionalDate,
+  defaultAmountCents: z.number().int().min(0).max(10_000_000),
+  makeActive: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (value.startsOn && value.endsOn && value.startsOn > value.endsOn) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endsOn"], message: "De einddatum moet na de startdatum liggen." });
+  }
+});
+
 export const updateStaffRequestSchema = z.object({
   authUserId: uuid,
   displayName: z.string().trim().min(2).max(100),
@@ -124,6 +141,7 @@ export const auditFiltersSchema = z.object({
 }).strict();
 
 export type SettingsWorkspace = z.infer<typeof settingsWorkspaceSchema>;
+export type CreateSeasonRequest = z.infer<typeof createSeasonRequestSchema>;
 export type AuditWorkspace = z.infer<typeof auditWorkspaceSchema>;
 export type AuditFilters = z.infer<typeof auditFiltersSchema>;
 export type StaffRole = z.infer<typeof staffRoleSchema>;

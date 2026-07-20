@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bulkArticleSeasonRequestSchema,
   catalogArticleRequestSchema,
   catalogOrderWorkspaceSchema,
   catalogVariantRequestSchema,
@@ -39,8 +40,13 @@ describe("catalogus- en bestelcontract", () => {
     expect(saveMemberOrderRequestSchema.safeParse({ ...input, lines: [{ variantId: id, quantity: 0 }] }).success).toBe(false);
   });
 
+  it("weigert dubbele artikelen in een bulk-seizoenskoppeling", () => {
+    expect(bulkArticleSeasonRequestSchema.safeParse({ seasonId: id, articleIds: [id, secondId], linked: true }).success).toBe(true);
+    expect(bulkArticleSeasonRequestSchema.safeParse({ seasonId: id, articleIds: [secondId, secondId], linked: false }).success).toBe(false);
+  });
+
   it("valideert de workspace strikt en weigert onverwachte PII", () => {
-    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, articles: [], members: [] };
+    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], articles: [], members: [] };
     expect(catalogOrderWorkspaceSchema.safeParse(workspace).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
   });

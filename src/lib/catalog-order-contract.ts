@@ -49,6 +49,12 @@ export const catalogOrderWorkspaceSchema = z.object({
     name: z.string().trim().min(1).max(120),
     defaultAmountCents: nonNegativeInteger,
   }).strict().nullable(),
+  seasons: z.array(z.object({
+    id: uuid,
+    name: z.string().trim().min(1).max(120),
+    status: z.enum(["open", "archived"]),
+    active: z.boolean(),
+  }).strict()).max(100),
   articles: z.array(catalogArticleSchema).max(500),
   members: z.array(z.object({
     id: uuid,
@@ -101,6 +107,19 @@ export const saveMemberOrderRequestSchema = z.object({
 });
 
 export const catalogMutationResponseSchema = z.string().uuid();
+export const bulkArticleSeasonRequestSchema = z.object({
+  seasonId: uuid,
+  articleIds: z.array(uuid).min(1).max(500),
+  linked: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (!uniqueValues(value.articleIds)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["articleIds"], message: "Artikelen moeten uniek zijn." });
+});
+export const bulkArticleSeasonResponseSchema = z.object({
+  seasonId: uuid,
+  linked: z.boolean(),
+  requestedCount: z.number().int().min(1).max(500),
+  changedCount: z.number().int().min(0).max(500),
+}).strict();
 export const saveMemberOrderResponseSchema = z.object({
   orderId: uuid,
   amountDueCents: nonNegativeInteger,
@@ -123,4 +142,5 @@ export function formatCentsForEuroInput(cents: number) {
 export type CatalogOrderWorkspace = z.infer<typeof catalogOrderWorkspaceSchema>;
 export type CatalogArticleRequest = z.infer<typeof catalogArticleRequestSchema>;
 export type CatalogVariantRequest = z.infer<typeof catalogVariantRequestSchema>;
+export type BulkArticleSeasonRequest = z.infer<typeof bulkArticleSeasonRequestSchema>;
 export type SaveMemberOrderRequest = z.infer<typeof saveMemberOrderRequestSchema>;

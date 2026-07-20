@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleDot, Edit3, Loader2, Package, Plus, Power, Shirt } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDot, Edit3, Layers3, Link2, Loader2, Package, Plus, Power, Shirt, Unlink2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-contract";
@@ -63,15 +63,39 @@ export function CatalogWorkspace({ workspace }: { workspace: Workspace }) {
     <div className="mt-6 grid items-start gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
       <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
         <div className="border-b border-line px-5 py-4"><h2 className="text-sm font-bold text-brand-900">Catalogus</h2><p className="mt-1 text-[11px] text-slate-400">{workspace.activeSeason ? "Gekoppeld aan " + workspace.activeSeason.name : "Alle bekende artikelen"}</p></div>
-        {workspace.articles.length === 0 ? <div className="px-6 py-16 text-center"><Package className="mx-auto size-8 text-slate-300" /><p className="mt-4 text-sm font-semibold text-slate-600">Nog geen artikelen</p><p className="mt-1 text-xs leading-5 text-slate-400">Voeg het eerste tenueonderdeel toe zodra een seizoen actief is.</p></div> : <div className="divide-y divide-line">{workspace.articles.map((article) => <button key={article.id} type="button" onClick={() => { setSelectedId(article.id); setVariantId("new"); setNotice(null); }} className={"flex w-full items-center gap-3 px-4 py-4 text-left transition " + (selectedId === article.id ? "bg-brand-50" : "hover:bg-slate-50")}><span className={"flex size-10 shrink-0 items-center justify-center rounded-xl " + (article.active ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-400")}><ArticleIcon type={article.iconType} /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-sm font-bold text-brand-900">{article.name}</span>{!article.active && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Inactief</span>}</span><span className="mt-1 block text-[11px] text-slate-400">{article.code} · {article.variants.length} maten</span></span></button>)}</div>}
+        {workspace.articles.length === 0 ? <div className="px-6 py-16 text-center"><Package className="mx-auto size-8 text-slate-300" /><p className="mt-4 text-sm font-semibold text-slate-600">Nog geen artikelen</p><p className="mt-1 text-xs leading-5 text-slate-400">Voeg het eerste tenueonderdeel toe zodra een seizoen actief is.</p></div> : <div className="divide-y divide-line">{workspace.articles.map((article) => <button key={article.id} type="button" onClick={() => { setSelectedId(article.id); setVariantId("new"); setNotice(null); }} className={"flex w-full items-center gap-3 px-4 py-4 text-left transition " + (selectedId === article.id ? "bg-brand-50" : "hover:bg-slate-50")}><span className={"flex size-10 shrink-0 items-center justify-center rounded-xl " + (article.active ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-400")}><ArticleIcon type={article.iconType} /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-sm font-bold text-brand-900">{article.name}</span>{!article.active && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Inactief</span>}</span><span className="mt-1 block text-[11px] text-slate-400">{article.code} · {article.variants.length} maten · {article.seasonIds.length} seizoen{article.seasonIds.length === 1 ? "" : "en"}</span></span></button>)}</div>}
       </aside>
 
       <div className="space-y-6">
+        <BulkSeasonManager workspace={workspace} saving={saving} onSave={(body, message) => void mutate("/api/catalog/article-seasons", body, message)} />
         <ArticleEditor article={selected} activeSeasonId={workspace.activeSeason?.id ?? null} saving={saving} onSave={(body, message) => void mutate("/api/catalog/articles", body, message)} />
         {selected && <VariantManager article={selected} selected={variant} selectedId={variantId} saving={saving} onSelect={setVariantId} onSave={(body, message) => void mutate("/api/catalog/variants", body, message)} />}
       </div>
     </div>
   </div>;
+}
+
+function BulkSeasonManager({ workspace, saving, onSave }: { workspace: Workspace; saving: boolean; onSave: (body: unknown, message: string) => void }) {
+  const openSeasons = workspace.seasons.filter((season) => season.status === "open");
+  const [seasonId, setSeasonId] = useState(workspace.activeSeason?.id ?? openSeasons[0]?.id ?? "");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedSeason = workspace.seasons.find((season) => season.id === seasonId);
+  const linkedCount = workspace.articles.filter((article) => article.seasonIds.includes(seasonId)).length;
+  function toggle(articleId: string, checked: boolean) {
+    setSelectedIds((current) => checked ? [...new Set([...current, articleId])] : current.filter((id) => id !== articleId));
+  }
+  function save(linked: boolean) {
+    onSave({ seasonId, articleIds: selectedIds, linked }, `${selectedIds.length} artikel${selectedIds.length === 1 ? "" : "en"} ${linked ? "gekoppeld aan" : "ontkoppeld van"} ${selectedSeason?.name ?? "het seizoen"}.`);
+  }
+
+  return <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+    <div className="flex flex-col gap-3 border-b border-line px-6 py-5 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><Layers3 className="size-5" /></span><div><h2 className="text-base font-bold text-brand-900">Artikelen in bulk per seizoen</h2><p className="mt-1 text-xs text-slate-500">Koppel of ontkoppel meerdere artikelen tegelijk. Bestaande bestellingen en artikelregels blijven behouden.</p></div></div><span className="shrink-0 rounded-full bg-brand-50 px-3 py-1 text-[10px] font-bold text-brand-700">{linkedCount} gekoppeld</span></div>
+    {openSeasons.length === 0 ? <p className="p-6 text-xs text-slate-500">Maak eerst een open seizoen aan via Instellingen.</p> : <div className="p-6">
+      <label className="block text-xs font-semibold text-ink">Open seizoen<select className={fieldClass} value={seasonId} onChange={(event) => { setSeasonId(event.target.value); setSelectedIds([]); }}>{openSeasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.active ? " · actief" : ""}</option>)}</select></label>
+      {workspace.articles.length === 0 ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-xs text-slate-500">Er zijn nog geen artikelen om te koppelen.</p> : <fieldset disabled={saving} className="mt-4"><div className="flex items-center justify-between border-b border-line pb-3"><label className="flex items-center gap-2 text-xs font-bold text-brand-900"><input type="checkbox" checked={selectedIds.length === workspace.articles.length} onChange={(event) => setSelectedIds(event.target.checked ? workspace.articles.map((article) => article.id) : [])} className="size-4 accent-brand-700" />Alles selecteren</label><span className="text-[10px] text-slate-400">{selectedIds.length} geselecteerd</span></div><div className="grid max-h-64 gap-2 overflow-y-auto py-3 sm:grid-cols-2">{workspace.articles.map((article) => { const linked = article.seasonIds.includes(seasonId); return <label key={article.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-line p-3 hover:bg-slate-50"><input type="checkbox" checked={selectedIds.includes(article.id)} onChange={(event) => toggle(article.id, event.target.checked)} className="size-4 shrink-0 accent-brand-700" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-ink">{article.name}</span><span className={"mt-0.5 block text-[10px] font-semibold " + (linked ? "text-success" : "text-slate-400")}>{linked ? "Al gekoppeld" : "Niet gekoppeld"}</span></span></label>; })}</div></fieldset>}
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => save(false)} disabled={saving || selectedIds.length === 0 || !seasonId} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line px-4 text-xs font-semibold text-slate-600 hover:border-red-200 hover:text-danger disabled:opacity-50"><Unlink2 className="size-4" />Ontkoppelen</button><button type="button" onClick={() => save(true)} disabled={saving || selectedIds.length === 0 || !seasonId} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:opacity-50">{saving ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}Koppelen aan seizoen</button></div>
+    </div>}
+  </section>;
 }
 
 function ArticleEditor({ article, activeSeasonId, saving, onSave }: { article: Article | null; activeSeasonId: string | null; saving: boolean; onSave: (body: unknown, message: string) => void }) {

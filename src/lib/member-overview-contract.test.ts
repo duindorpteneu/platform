@@ -3,6 +3,7 @@ import {
   memberDetailResponseSchema,
   memberListQuerySchema,
   memberListResponseSchema,
+  memberStatusRequestSchema,
 } from "@/lib/member-overview-contract";
 
 const season = { id: "71000000-0000-4000-8000-000000000001", name: "2026/27" };
@@ -56,6 +57,10 @@ const detail = {
 };
 
 describe("member overview contract", () => {
+  it("requires an explicit reason for a member status change", () => {
+    expect(memberStatusRequestSchema.safeParse({ memberId: list.members[0].id, active: false, reason: "Afgemeld voor dit seizoen" }).success).toBe(true);
+    expect(memberStatusRequestSchema.safeParse({ memberId: list.members[0].id, active: false, reason: "" }).success).toBe(false);
+  });
   it("normalizes safe URL filters", () => {
     expect(memberListQuerySchema.parse({ search: "  Sophie ", page: "2" })).toMatchObject({ search: "Sophie", page: 2 });
     expect(memberListQuerySchema.parse({ team: "JO13-2", payment: "", orderStatus: "", articleId: "", lineStatus: "" })).toMatchObject({ team: "JO13-2" });

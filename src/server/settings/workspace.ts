@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import {
   settingsWorkspaceSchema,
   staffMutationResponseSchema,
+  type CreateSeasonRequest,
   type SettingsWorkspace,
 } from "@/lib/settings-audit-contract";
 import { requireStaffRole } from "@/server/auth/staff";
@@ -50,6 +51,24 @@ export async function updateSettings(input: SettingsInput, correlationId: string
   return { data: parsed.data, error: null };
 }
 
+export async function createSeason(input: CreateSeasonRequest, correlationId: string | null) {
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc("create_season", {
+    p_name: input.name,
+    p_starts_on: input.startsOn,
+    p_ends_on: input.endsOn,
+    p_default_amount_cents: input.defaultAmountCents,
+    p_make_active: input.makeActive,
+    p_correlation_id: correlationId,
+  });
+  if (error) return { data: null, error };
+  const parsed = settingsWorkspaceSchema.safeParse(data);
+  if (!parsed.success) throw new Error("SETTINGS_WORKSPACE_RESPONSE_INVALID");
+  return { data: parsed.data, error: null };
+}
+
 export async function updateStaffProfile(input: { authUserId: string; displayName: string; role: string; active: boolean }, correlationId: string | null) {
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
@@ -66,4 +85,3 @@ export async function updateStaffProfile(input: { authUserId: string; displayNam
   if (!parsed.success) throw new Error("STAFF_MUTATION_RESPONSE_INVALID");
   return { data: parsed.data, error: null };
 }
-

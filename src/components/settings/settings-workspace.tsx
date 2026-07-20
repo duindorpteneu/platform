@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Loader2, LockKeyhole, MailPlus, MapPin, Power, Save, ShieldCheck, UserCog, Users } from "lucide-react";
+import { AlertTriangle, CalendarPlus, CheckCircle2, Loader2, LockKeyhole, MailPlus, MapPin, Power, Save, ShieldCheck, UserCog, Users } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SettingsWorkspace as Workspace, StaffRole } from "@/lib/settings-audit-contract";
@@ -47,6 +47,8 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
   const [emailEnabled, setEmailEnabled] = useState(workspace.settings.emailEnabled);
   const [notice, setNotice] = useState<Notice>(null);
   const [saving, setSaving] = useState(false);
+  const [creatingSeason, setCreatingSeason] = useState(false);
+  const [seasonDraft, setSeasonDraft] = useState({ name: "", startsOn: "", endsOn: "", amount: "", makeActive: true });
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
@@ -67,6 +69,29 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Opslaan mislukt." });
     } finally { setSaving(false); }
+  }
+
+  async function createSeason() {
+    const defaultAmountCents = parseEuro(seasonDraft.amount);
+    if (!seasonDraft.name.trim() || defaultAmountCents === null || (seasonDraft.startsOn && seasonDraft.endsOn && seasonDraft.startsOn > seasonDraft.endsOn)) {
+      setNotice({ tone: "error", text: "Controleer de seizoensnaam, datums en het standaardbedrag." });
+      return;
+    }
+    setCreatingSeason(true); setNotice(null);
+    try {
+      await postJson("/api/settings/seasons", {
+        name: seasonDraft.name,
+        startsOn: seasonDraft.startsOn,
+        endsOn: seasonDraft.endsOn,
+        defaultAmountCents,
+        makeActive: seasonDraft.makeActive,
+      });
+      setNotice({ tone: "success", text: `Seizoen ${seasonDraft.name.trim()} is toegevoegd${seasonDraft.makeActive ? " en direct actief gemaakt" : ""}.` });
+      setSeasonDraft({ name: "", startsOn: "", endsOn: "", amount: "", makeActive: true });
+      router.refresh();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Seizoen toevoegen mislukt." });
+    } finally { setCreatingSeason(false); }
   }
 
   return <div className="mx-auto max-w-[1400px]">
@@ -92,7 +117,12 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
 
         <section className="rounded-xl border border-line bg-white p-6 shadow-card">
           <div className="border-b border-line pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">Seizoenen</p><h2 className="mt-1 text-lg font-bold text-brand-900">Actief seizoen en standaardbedragen</h2><p className="mt-1 text-xs text-slate-500">Bedragen worden in eurocenten opgeslagen; bestaande bestellingen wijzigen nooit mee.</p></div>
-          {workspace.seasons.length === 0 ? <p className="mt-5 rounded-lg bg-amber-50 p-4 text-xs text-amber-800">Er is nog geen seizoen beschikbaar. Initialiseer eerst de canonieke seed.</p> : <><label className="mt-5 block text-xs font-semibold text-ink">Actief open seizoen<select className={fieldClass} value={activeSeasonId} onChange={(event) => setActiveSeasonId(event.target.value)} required>{workspace.seasons.filter((season) => season.status === "open").map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}</select></label><div className="mt-5 divide-y divide-line rounded-xl border border-line">{workspace.seasons.map((season) => <div key={season.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-brand-900">{season.name}</p><p className="mt-1 text-[10px] text-slate-400">{season.status === "open" ? "Open" : "Gearchiveerd"}{season.active ? " · Actief" : ""}</p></div><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative mt-2"><span className="absolute left-3 top-2.5 text-sm text-slate-400">€</span><input className="h-10 w-40 rounded-lg border border-line pl-8 pr-3 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" inputMode="decimal" value={amounts[season.id] ?? ""} onChange={(event) => setAmounts((current) => ({ ...current, [season.id]: event.target.value }))} aria-label={`Standaardbedrag ${season.name}`} /></div></label></div>)}</div></>}
+          {workspace.seasons.length === 0 ? <p className="mt-5 rounded-lg bg-amber-50 p-4 text-xs text-amber-800">Er is nog geen seizoen beschikbaar. Voeg hieronder het eerste seizoen toe.</p> : <><label className="mt-5 block text-xs font-semibold text-ink">Actief open seizoen<select className={fieldClass} value={activeSeasonId} onChange={(event) => setActiveSeasonId(event.target.value)} required>{workspace.seasons.filter((season) => season.status === "open").map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}</select></label><div className="mt-5 divide-y divide-line rounded-xl border border-line">{workspace.seasons.map((season) => <div key={season.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-brand-900">{season.name}</p><p className="mt-1 text-[10px] text-slate-400">{season.status === "open" ? "Open" : "Gearchiveerd"}{season.active ? " · Actief" : ""}{season.startsOn ? ` · vanaf ${season.startsOn}` : ""}</p></div><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative mt-2"><span className="absolute left-3 top-2.5 text-sm text-slate-400">€</span><input className="h-10 w-40 rounded-lg border border-line pl-8 pr-3 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" inputMode="decimal" value={amounts[season.id] ?? ""} onChange={(event) => setAmounts((current) => ({ ...current, [season.id]: event.target.value }))} aria-label={`Standaardbedrag ${season.name}`} /></div></label></div>)}</div></>}
+          <div className="mt-5 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
+            <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-white text-brand-700"><CalendarPlus className="size-4" /></span><div><h3 className="text-xs font-bold text-brand-900">Nieuw seizoen toevoegen</h3><p className="mt-0.5 text-[10px] text-slate-500">Het seizoen wordt open aangemaakt. Historische bestellingen blijven ongewijzigd.</p></div></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-ink">Naam<input className={fieldClass} value={seasonDraft.name} onChange={(event) => setSeasonDraft((current) => ({ ...current, name: event.target.value }))} maxLength={120} placeholder="2027/2028" /></label><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative"><span className="absolute left-3 top-[22px] text-sm text-slate-400">€</span><input className={`${fieldClass} pl-8`} inputMode="decimal" value={seasonDraft.amount} onChange={(event) => setSeasonDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="87,00" /></div></label><label className="text-xs font-semibold text-ink">Startdatum<input className={fieldClass} type="date" value={seasonDraft.startsOn} onChange={(event) => setSeasonDraft((current) => ({ ...current, startsOn: event.target.value }))} /></label><label className="text-xs font-semibold text-ink">Einddatum<input className={fieldClass} type="date" value={seasonDraft.endsOn} min={seasonDraft.startsOn || undefined} onChange={(event) => setSeasonDraft((current) => ({ ...current, endsOn: event.target.value }))} /></label></div>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><label className="flex items-center gap-2 text-xs font-semibold text-ink"><input type="checkbox" checked={seasonDraft.makeActive} onChange={(event) => setSeasonDraft((current) => ({ ...current, makeActive: event.target.checked }))} className="size-4 accent-brand-700" /> Direct als actief seizoen instellen</label><button type="button" onClick={() => void createSeason()} disabled={creatingSeason || !seasonDraft.name.trim() || !seasonDraft.amount.trim()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-bold text-brand-700 hover:border-brand-500 disabled:opacity-50">{creatingSeason ? <Loader2 className="size-4 animate-spin" /> : <CalendarPlus className="size-4" />}Seizoen toevoegen</button></div>
+          </div>
         </section>
 
         <section className="rounded-xl border border-line bg-white p-6 shadow-card">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { MemberDetailResponse } from "@/lib/member-overview-contract";
 import { cn } from "@/lib/utils";
 import { OrderAdminActions } from "@/components/members/order-admin-actions";
+import { MemberStatusAction } from "@/components/members/member-status-action";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -20,6 +21,8 @@ const activityLabels: Record<string, string> = {
   "fulfilment.corrected": "Uitgifte gecorrigeerd",
   "order.created": "Bestelling aangemaakt",
   "order.updated": "Bestelling bijgewerkt",
+  "member.activated": "Lid geactiveerd voor het seizoen",
+  "member.deactivated": "Lid geïnactiveerd voor het seizoen",
 };
 
 function euro(cents: number) {
@@ -56,6 +59,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
             <div className="flex items-start gap-3"><Mail className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">E-mailadres</dt><dd className="mt-0.5 break-all font-semibold text-ink">{detail.email}</dd></div></div>
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Seizoen</dt><dd className="mt-0.5 font-semibold text-ink">{detail.activeSeason?.name ?? "Geen actief seizoen"}</dd></div></div>
           </dl>
+          <MemberStatusAction memberId={detail.id} active={detail.activeForSeason} />
         </section>
 
         {detail.order && <OrderAdminActions
