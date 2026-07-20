@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, CircleOff, ClipboardList, Loader2, LockKey
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCentsForEuroInput, parseEuroAmountToCents, type CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-contract";
+import { TeamArticleBulkPanel } from "@/components/orders/team-article-bulk-panel";
 
 type Member = Workspace["members"][number];
 type Article = Workspace["articles"][number];
@@ -104,6 +105,12 @@ export function OrdersWorkspace({ workspace }: { workspace: Workspace }) {
     <section className="mt-6 grid gap-4 sm:grid-cols-3">
       {[{ label: "Actieve leden", value: counts.total }, { label: "Met bestelling", value: counts.ordered }, { label: "Betaald", value: counts.paid }].map((metric) => <div key={metric.label} className="rounded-xl border border-line bg-white px-5 py-4 shadow-card"><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{metric.label}</p><p className="mt-2 text-2xl font-bold text-brand-900">{metric.value.toLocaleString("nl-NL")}</p></div>)}
     </section>
+
+    <TeamArticleBulkPanel
+      teams={workspace.teamOptions}
+      articles={workspace.activeSeason ? workspace.articles.filter((article) => article.active && article.seasonIds.includes(workspace.activeSeason!.id)).map((article) => ({ ...article, variants: article.variants.filter((variant) => variant.active) })).filter((article) => article.variants.length > 0) : []}
+      disabled={!workspace.activeSeason}
+    />
 
     <div className="mt-6 grid items-start gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
       <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card">

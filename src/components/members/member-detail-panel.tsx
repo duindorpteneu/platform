@@ -21,6 +21,7 @@ const activityLabels: Record<string, string> = {
   "fulfilment.corrected": "Uitgifte gecorrigeerd",
   "order.created": "Bestelling aangemaakt",
   "order.updated": "Bestelling bijgewerkt",
+  "order.team_bulk_articles_added": "Teamartikelen aan bestelling toegevoegd",
   "member.activated": "Lid geactiveerd voor het seizoen",
   "member.deactivated": "Lid geïnactiveerd voor het seizoen",
 };

@@ -111,7 +111,29 @@ export const memberStatusResponseSchema = z.object({
   activeForSeason: z.boolean(),
 }).strict();
 
+export const teamMemberStatusRequestSchema = z.object({
+  team: z.string().trim().min(1).max(120),
+  active: z.boolean(),
+  reason: z.string().trim().max(240).optional(),
+  commit: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (value.commit && (!value.reason || value.reason.length < 3)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "Een reden van minimaal drie tekens is verplicht." });
+  }
+});
+
+export const teamMemberStatusResponseSchema = z.object({
+  seasonId: z.string().uuid(),
+  team: z.string().min(1).max(120),
+  totalMembers: nonNegativeInteger,
+  changedMembers: nonNegativeInteger,
+  unchangedMembers: nonNegativeInteger,
+  activeForSeason: z.boolean(),
+  committed: z.boolean(),
+}).strict();
+
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
 export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
 export type MemberDetailResponse = z.infer<typeof memberDetailResponseSchema>;
 export type MemberLineStatus = z.infer<typeof memberLineStatusSchema>;
+export type TeamMemberStatusResponse = z.infer<typeof teamMemberStatusResponseSchema>;

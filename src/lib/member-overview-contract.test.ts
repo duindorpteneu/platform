@@ -4,6 +4,8 @@ import {
   memberListQuerySchema,
   memberListResponseSchema,
   memberStatusRequestSchema,
+  teamMemberStatusRequestSchema,
+  teamMemberStatusResponseSchema,
 } from "@/lib/member-overview-contract";
 
 const season = { id: "71000000-0000-4000-8000-000000000001", name: "2026/27" };
@@ -60,6 +62,12 @@ describe("member overview contract", () => {
   it("requires an explicit reason for a member status change", () => {
     expect(memberStatusRequestSchema.safeParse({ memberId: list.members[0].id, active: false, reason: "Afgemeld voor dit seizoen" }).success).toBe(true);
     expect(memberStatusRequestSchema.safeParse({ memberId: list.members[0].id, active: false, reason: "" }).success).toBe(false);
+  });
+  it("requires a reason only when a team status change is committed", () => {
+    expect(teamMemberStatusRequestSchema.safeParse({ team: " JO11-1 ", active: false, commit: false }).success).toBe(true);
+    expect(teamMemberStatusRequestSchema.safeParse({ team: "JO11-1", active: false, commit: true }).success).toBe(false);
+    expect(teamMemberStatusRequestSchema.safeParse({ team: "JO11-1", active: true, reason: "Nieuwe teamindeling", commit: true }).success).toBe(true);
+    expect(teamMemberStatusResponseSchema.safeParse({ seasonId: season.id, team: "JO11-1", totalMembers: 18, changedMembers: 17, unchangedMembers: 1, activeForSeason: true, committed: true }).success).toBe(true);
   });
   it("normalizes safe URL filters", () => {
     expect(memberListQuerySchema.parse({ search: "  Sophie ", page: "2" })).toMatchObject({ search: "Sophie", page: 2 });

@@ -7,6 +7,8 @@ import {
   formatCentsForEuroInput,
   parseEuroAmountToCents,
   saveMemberOrderRequestSchema,
+  teamOrderArticlesRequestSchema,
+  teamOrderArticlesResponseSchema,
 } from "@/lib/catalog-order-contract";
 
 const id = "10000000-0000-4000-8000-000000000001";
@@ -45,8 +47,14 @@ describe("catalogus- en bestelcontract", () => {
     expect(bulkArticleSeasonRequestSchema.safeParse({ seasonId: id, articleIds: [secondId, secondId], linked: false }).success).toBe(false);
   });
 
+  it("valideert preview-first teamtoewijzingen", () => {
+    expect(teamOrderArticlesRequestSchema.safeParse({ team: "JO11-1", variantIds: [id, secondId], commit: false }).success).toBe(true);
+    expect(teamOrderArticlesRequestSchema.safeParse({ team: "JO11-1", variantIds: [id, id], commit: true }).success).toBe(false);
+    expect(teamOrderArticlesResponseSchema.safeParse({ seasonId: id, team: "JO11-1", selectedVariantCount: 2, totalMembers: 18, activeMembers: 17, inactiveMembersSkipped: 1, paidOrdersSkipped: 2, ordersCreated: 4, ordersExtended: 10, unchangedMembers: 1, linesAdded: 23, committed: false }).success).toBe(true);
+  });
+
   it("valideert de workspace strikt en weigert onverwachte PII", () => {
-    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], articles: [], members: [] };
+    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], teamOptions: ["JO9-1"], articles: [], members: [] };
     expect(catalogOrderWorkspaceSchema.safeParse(workspace).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
   });

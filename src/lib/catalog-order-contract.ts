@@ -55,6 +55,7 @@ export const catalogOrderWorkspaceSchema = z.object({
     status: z.enum(["open", "archived"]),
     active: z.boolean(),
   }).strict()).max(100),
+  teamOptions: z.array(z.string().min(1).max(120)).max(500),
   articles: z.array(catalogArticleSchema).max(500),
   members: z.array(z.object({
     id: uuid,
@@ -126,6 +127,29 @@ export const saveMemberOrderResponseSchema = z.object({
   lineCount: z.number().int().min(1).max(25),
 }).strict();
 
+export const teamOrderArticlesRequestSchema = z.object({
+  team: z.string().trim().min(1).max(120),
+  variantIds: z.array(uuid).min(1).max(25),
+  commit: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (!uniqueValues(value.variantIds)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["variantIds"], message: "Varianten moeten uniek zijn." });
+});
+
+export const teamOrderArticlesResponseSchema = z.object({
+  seasonId: uuid,
+  team: z.string().min(1).max(120),
+  selectedVariantCount: z.number().int().min(1).max(25),
+  totalMembers: nonNegativeInteger,
+  activeMembers: nonNegativeInteger,
+  inactiveMembersSkipped: nonNegativeInteger,
+  paidOrdersSkipped: nonNegativeInteger,
+  ordersCreated: nonNegativeInteger,
+  ordersExtended: nonNegativeInteger,
+  unchangedMembers: nonNegativeInteger,
+  linesAdded: nonNegativeInteger,
+  committed: z.boolean(),
+}).strict();
+
 export function parseEuroAmountToCents(value: string): number | null {
   const normalized = value.trim();
   if (!/^\d{1,7}(?:[,.]\d{1,2})?$/.test(normalized)) return null;
@@ -144,3 +168,4 @@ export type CatalogArticleRequest = z.infer<typeof catalogArticleRequestSchema>;
 export type CatalogVariantRequest = z.infer<typeof catalogVariantRequestSchema>;
 export type BulkArticleSeasonRequest = z.infer<typeof bulkArticleSeasonRequestSchema>;
 export type SaveMemberOrderRequest = z.infer<typeof saveMemberOrderRequestSchema>;
+export type TeamOrderArticlesResponse = z.infer<typeof teamOrderArticlesResponseSchema>;
