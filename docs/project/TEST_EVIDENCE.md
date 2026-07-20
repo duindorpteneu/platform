@@ -267,3 +267,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test` is groen met 45 Vitestbestanden en 205 tests; instellingen-, maatprofiel- en API-contracten zijn strikt gedekt.
 - `pnpm lint`, `pnpm typecheck`, `pnpm security:secrets`, `pnpm security:migrations` en de productiebuild zijn groen; de build bevat de nieuwe beveiligde `/api/members/sizes`-route.
 - Concurrency- en echte staff-MFA-integratietests zijn groen. De volledige zelfopruimende AAL2-browserflow slaat een individuele maat op en leest die na reload terug, bewaart verenigings- en afwijkend afhaaladres, ziet een nieuw seizoen direct terug en doorloopt daarna alle bestaande order-, betaling-, QR-, uitgifte-, export- en securityflows.
+
+## Settings/PostgREST staginghotfix — 2026-07-20
+
+- De stagingrelease had migrations `20260720140000` en `20260720141000` aantoonbaar toegepast, maar de settingspagina kon de nieuwe `*_v2`-RPC's niet laden. De bestaande AAL2-layout en uitsluitend voor `beheerder` zichtbare instellingenlink bewezen dat dit geen gewone logout was.
+- Forward migration `20260720142000_refresh_postgrest_settings_contract.sql` wijzigt geen settings- of seizoensrijen, publiceert een gegevensvrije service-only contractversie en triggert expliciet `notify pgrst, 'reload schema'`.
+- De deploy voert na `supabase db push` en vóór applicatie-activatie maximaal 15 begrensde probes uit. De probe slaagt alleen als PostgREST de actuele contractversie kent en alle drie settings-RPC's voor `authenticated` uitvoerbaar zijn; responsebody's en credentials worden niet gelogd.
+- Een schone lokale reset paste alle 48 migrations en seed toe. De echte lokale PostgREST-probe slaagde; `pnpm test:db` gaf 19 bestanden/494 assertions groen en de fulfilment-concurrencytest bleef groen.
+- `pnpm test` gaf 46 bestanden/209 tests groen. ESLint, TypeScript, secret- en migrationlint en de productiebuild slaagden.
+- De echte staff-MFA-integratie bewees opnieuw AAL2 toegestaan/AAL1 geblokkeerd. De volledige zelfopruimende Playwrightflow bewees settings opslaan, seizoen aanmaken en direct terugzien, artikel-seizoenskoppeling, alle overige kernflows en desktop/mobiele routebeveiliging.
