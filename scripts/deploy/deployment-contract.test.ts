@@ -103,9 +103,13 @@ describe("deployment environment isolation", () => {
     const contractScript = readFileSync(path.join(repositoryRoot, "scripts/deploy/check-postgrest-rpcs.mjs"), "utf8");
     expect(refreshMigration).toContain("notify pgrst, 'reload schema'");
     expect(refreshMigration).not.toMatch(/\b(?:insert|update|delete|truncate)\b/i);
-    expect(contractScript).toContain('"/rpc/get_settings_workspace_v2"');
-    expect(contractScript).toContain('"/rpc/update_settings_v2"');
-    expect(contractScript).toContain('"/rpc/create_season_v2"');
+    expect(refreshMigration).toContain("get_settings_rpc_contract_version");
+    expect(refreshMigration).toContain("'get_settings_workspace_v2'");
+    expect(refreshMigration).toContain("'update_settings_v2'");
+    expect(refreshMigration).toContain("'create_season_v2'");
+    expect(refreshMigration).toContain("grant execute on function app.get_settings_rpc_contract_version() to service_role");
+    expect(contractScript).toContain("/rest/v1/rpc/get_settings_rpc_contract_version");
+    expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
   });

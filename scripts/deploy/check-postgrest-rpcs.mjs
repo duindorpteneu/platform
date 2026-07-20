@@ -1,11 +1,6 @@
-const requiredRpcPaths = [
-  "/rpc/get_settings_workspace_v2",
-  "/rpc/update_settings_v2",
-  "/rpc/create_season_v2",
-];
-
 const attempts = 15;
 const retryDelayMs = 2_000;
+const expectedVersion = "20260720142000";
 
 function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
@@ -17,17 +12,19 @@ function safeRemoteCode(value) {
   return typeof value === "string" && /^[A-Z0-9_]{2,32}$/.test(value) ? value : "UNKNOWN";
 }
 
-async function loadOpenApiDocument(url, serviceRoleKey) {
+async function loadContractVersion(url, serviceRoleKey) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetch(new URL("/rest/v1/", url), {
+    const response = await fetch(new URL("/rest/v1/rpc/get_settings_rpc_contract_version", url), {
+      method: "POST",
       headers: {
-        Accept: "application/openapi+json",
-        "Accept-Profile": "app",
+        "Content-Profile": "app",
+        "Content-Type": "application/json",
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
       },
+      body: "{}",
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -39,7 +36,8 @@ async function loadOpenApiDocument(url, serviceRoleKey) {
       }
       throw new Error(`HTTP_${response.status}_${code}`);
     }
-    return response.json();
+    const contract = await response.json();
+    return contract && typeof contract === "object" ? contract : {};
   } finally {
     clearTimeout(timeout);
   }
@@ -52,16 +50,12 @@ async function main() {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const document = await loadOpenApiDocument(url, serviceRoleKey);
-      const paths = document && typeof document === "object" && document.paths && typeof document.paths === "object"
-        ? document.paths
-        : {};
-      const missing = requiredRpcPaths.filter((path) => !(path in paths));
-      if (missing.length === 0) {
-        process.stdout.write(`PostgREST-contract geslaagd: ${requiredRpcPaths.length} instellingen-RPC's zichtbaar.\n`);
+      const contract = await loadContractVersion(url, serviceRoleKey);
+      if (contract.version === expectedVersion && contract.ready === true) {
+        process.stdout.write("PostgREST-contract geslaagd: instellingen-RPC's zijn actueel en uitvoerbaar.\n");
         return;
       }
-      lastCode = `MISSING_${missing.length}`;
+      lastCode = contract.version === expectedVersion ? "RPC_PRIVILEGES_INVALID" : "VERSION_NOT_VISIBLE";
     } catch (error) {
       lastCode = error instanceof Error && /^[A-Z0-9_]{2,64}$/.test(error.message)
         ? error.message
