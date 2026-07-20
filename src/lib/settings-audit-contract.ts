@@ -15,6 +15,14 @@ export const auditCategorySchema = z.enum([
 const settingsSchema = z.object({
   clubName: z.literal("Duindorp SV"),
   contactEmail: z.string().email().max(254).nullable(),
+  clubAddressLine: z.string().min(1).max(160).nullable(),
+  clubPostalCode: z.string().regex(/^[0-9]{4} [A-Z]{2}$/).nullable(),
+  clubCity: z.string().min(1).max(120).nullable(),
+  pickupAddressDiffers: z.boolean(),
+  pickupName: z.string().min(1).max(120).nullable(),
+  pickupAddressLine: z.string().min(1).max(160).nullable(),
+  pickupPostalCode: z.string().regex(/^[0-9]{4} [A-Z]{2}$/).nullable(),
+  pickupCity: z.string().min(1).max(120).nullable(),
   pickupLocation: z.string().min(1).max(240).nullable(),
   activeSeasonId: nullableUuid,
   mollieEnabled: z.boolean(),
@@ -57,15 +65,39 @@ export const settingsWorkspaceSchema = z.object({
 
 export const updateSettingsRequestSchema = z.object({
   contactEmail: z.union([z.string().trim().email().max(254), z.literal("")]),
-  pickupLocation: z.string().trim().max(240),
-  activeSeasonId: uuid,
+  clubAddressLine: z.string().trim().max(160),
+  clubPostalCode: z.string().trim().toUpperCase().max(7),
+  clubCity: z.string().trim().max(120),
+  pickupAddressDiffers: z.boolean(),
+  pickupName: z.string().trim().max(120),
+  pickupAddressLine: z.string().trim().max(160),
+  pickupPostalCode: z.string().trim().toUpperCase().max(7),
+  pickupCity: z.string().trim().max(120),
+  activeSeasonId: nullableUuid,
   seasonAmounts: z.array(z.object({
     seasonId: uuid,
     amountCents: z.number().int().min(0).max(10_000_000),
   }).strict()).max(50).refine((items) => new Set(items.map((item) => item.seasonId)).size === items.length, "Seizoenen moeten uniek zijn."),
   mollieEnabled: z.boolean(),
   emailEnabled: z.boolean(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const clubParts = [value.clubAddressLine, value.clubPostalCode, value.clubCity];
+  if (clubParts.some(Boolean) && !clubParts.every(Boolean)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["clubAddressLine"], message: "Vul het verenigingsadres volledig in." });
+  }
+  if (value.clubPostalCode && !/^[0-9]{4} [A-Z]{2}$/.test(value.clubPostalCode)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["clubPostalCode"], message: "Gebruik een postcode zoals 2584 AB." });
+  }
+  if (value.pickupAddressDiffers) {
+    const pickupParts = [value.pickupName, value.pickupAddressLine, value.pickupPostalCode, value.pickupCity];
+    if (!pickupParts.every(Boolean)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["pickupName"], message: "Vul het afwijkende afhaaladres volledig in." });
+    }
+    if (value.pickupPostalCode && !/^[0-9]{4} [A-Z]{2}$/.test(value.pickupPostalCode)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["pickupPostalCode"], message: "Gebruik een postcode zoals 2584 AB." });
+    }
+  }
+});
 
 const optionalDate = z.preprocess(
   (value) => typeof value === "string" && value.trim() === "" ? null : value,
@@ -141,6 +173,7 @@ export const auditFiltersSchema = z.object({
 }).strict();
 
 export type SettingsWorkspace = z.infer<typeof settingsWorkspaceSchema>;
+export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 export type CreateSeasonRequest = z.infer<typeof createSeasonRequestSchema>;
 export type AuditWorkspace = z.infer<typeof auditWorkspaceSchema>;
 export type AuditFilters = z.infer<typeof auditFiltersSchema>;

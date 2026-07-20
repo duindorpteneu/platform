@@ -4,6 +4,7 @@ import type { MemberDetailResponse } from "@/lib/member-overview-contract";
 import { cn } from "@/lib/utils";
 import { OrderAdminActions } from "@/components/members/order-admin-actions";
 import { MemberStatusAction } from "@/components/members/member-status-action";
+import { MemberSizeProfile } from "@/components/members/member-size-profile";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -24,6 +25,7 @@ const activityLabels: Record<string, string> = {
   "order.team_bulk_articles_added": "Teamartikelen aan bestelling toegevoegd",
   "member.activated": "Lid geactiveerd voor het seizoen",
   "member.deactivated": "Lid geïnactiveerd voor het seizoen",
+  "member.sizes.updated": "Kledingmaten bijgewerkt",
 };
 
 function euro(cents: number) {
@@ -70,6 +72,8 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
           qrStatus={detail.order.qrStatus}
           pickedLines={detail.order.lines.filter((line) => line.status === "picked_up").map((line) => ({ id: line.id, article: line.article, size: line.size }))}
         />}
+
+        <MemberSizeProfile memberId={detail.id} profile={detail.sizeProfile} />
 
         <section className="p-5">
           <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Bestelling</h3>

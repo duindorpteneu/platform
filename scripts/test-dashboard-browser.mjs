@@ -112,6 +112,11 @@ function cleanupSql(userId) {
     delete from app.payments where order_id in (${sqlList(orderIds)});
     delete from app.order_lines where order_id in (${sqlList(orderIds)});
     delete from app.member_orders where id in (${sqlList(orderIds)});
+    delete from app.member_article_sizes
+    where member_id in (
+      select id from app.members
+      where relation_number = 'DSV-BROWSER-IMPORT' or id = '${formulaMemberId}' or id in (${sqlList(memberIds)})
+    ) or article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
     delete from app.members where relation_number = 'DSV-BROWSER-IMPORT';
     delete from app.members where id = '${formulaMemberId}';
     delete from app.members where id in (${sqlList(memberIds)});
@@ -122,6 +127,18 @@ function cleanupSql(userId) {
     delete from app.article_variants where article_id in (select id from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK'));
     delete from app.articles where code in ('SPRINT-TEST', 'SPRINT-BROEK', 'BROWSER-JACK');
     delete from app.seasons where name = 'Browser 2039/2040';
+    update app.app_settings set
+      contact_email = null,
+      club_address_line = null,
+      club_postal_code = null,
+      club_city = null,
+      pickup_address_differs = false,
+      pickup_name = null,
+      pickup_address_line = null,
+      pickup_postal_code = null,
+      pickup_city = null,
+      pickup_location = null
+    where id = true;
     delete from app.staff_profiles where auth_user_id = '${userId}';
   `;
 }
@@ -320,6 +337,20 @@ async function verifyMemberOverview(page, screenshotDir) {
   await page.goto(`${baseUrl}/backoffice/leden?search=DSV-BROWSER-IMPORT`);
   await page.getByRole("heading", { name: "Leden", exact: true }).waitFor({ timeout: 5_000 });
   await page.getByText("Browser Importlid", { exact: true }).waitFor({ timeout: 5_000 });
+  const importedDetailHref = await page.getByRole("link", { name: "Open detail van Browser Importlid" }).getAttribute("href");
+  if (!importedDetailHref) throw new Error("Geïmporteerd lid heeft geen detaillink.");
+  await page.goto(new URL(importedDetailHref, baseUrl).toString());
+  await page.getByLabel("Liddetail", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Maat Sprint testartikel").selectOption(articleIds[0]);
+  const [sizesResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/sizes") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Maten opslaan" }).click(),
+  ]);
+  if (!sizesResponse.ok()) throw new Error(`Individuele maat opslaan gaf HTTP ${sizesResponse.status()}: ${await sizesResponse.text()}`);
+  await page.getByText("De kledingmaten zijn opgeslagen en geaudit.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.reload();
+  await page.getByLabel("Maat Sprint testartikel").waitFor({ timeout: 5_000 });
+  if (await page.getByLabel("Maat Sprint testartikel").inputValue() !== articleIds[0]) throw new Error("Opgeslagen individuele maat bleef na herladen niet geselecteerd.");
 }
 
 async function verifyOperationsSprint(page, screenshotDir) {
@@ -561,6 +592,22 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
     if (!securityHeaders[name]) throw new Error(`Productieresponse mist securityheader ${name}.`);
   }
   if (!securityHeaders["content-security-policy"].includes("frame-ancestors 'none'")) throw new Error("CSP mist frame-ancestors none.");
+  await page.getByLabel("Contactmail").fill("kleding@duindorpsv.nl");
+  await page.getByLabel("Verenigingsadres", { exact: true }).fill("Duinlaan 1");
+  await page.getByLabel("Postcode").first().fill("2584 AB");
+  await page.getByLabel("Plaats").first().fill("Den Haag");
+  await page.getByLabel("Afhaaladres wijkt af van het verenigingsadres").check();
+  await page.getByLabel("Naam afhaallocatie").fill("Tenuepunt");
+  await page.getByLabel("Adres", { exact: true }).fill("Markt 2");
+  await page.getByLabel("Postcode").last().fill("2511 AA");
+  await page.getByLabel("Plaats").last().fill("Den Haag");
+  if (!(await page.getByRole("button", { name: "Instellingen opslaan" }).isEnabled())) throw new Error("Instellingen opslaan is ten onrechte inactief.");
+  const [settingsSaveResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/settings") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Instellingen opslaan" }).click(),
+  ]);
+  if (!settingsSaveResponse.ok()) throw new Error(`Instellingen opslaan gaf HTTP ${settingsSaveResponse.status()}: ${await settingsSaveResponse.text()}`);
+  await page.getByText("De clubinstellingen zijn server-side gevalideerd, opgeslagen en geaudit.", { exact: true }).waitFor({ timeout: 5_000 });
   const seasonPanel = page.locator("div").filter({ hasText: "Nieuw seizoen toevoegen" }).filter({ has: page.getByRole("button", { name: "Seizoen toevoegen" }) }).last();
   await seasonPanel.getByLabel("Naam").fill("Browser 2039/2040");
   await seasonPanel.getByLabel("Standaardbedrag").fill("99,00");
@@ -573,6 +620,7 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
   ]);
   if (!seasonResponse.ok()) throw new Error(`Seizoen toevoegen gaf HTTP ${seasonResponse.status()}: ${await seasonResponse.text()}`);
   await page.getByText("Seizoen Browser 2039/2040 is toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.getByLabel("Standaardbedrag Browser 2039/2040").waitFor({ timeout: 5_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-settings-desktop.png"), fullPage: true });
 
   process.stdout.write("Release-browsertest: artikelen in bulk aan seizoen koppelen…\n");

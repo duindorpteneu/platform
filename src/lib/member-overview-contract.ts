@@ -8,6 +8,37 @@ const activeSeasonSchema = z.object({
 const nonNegativeInteger = z.number().int().nonnegative();
 const paymentStatusSchema = z.enum(["Betaald", "Nog te betalen"]);
 export const memberLineStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]);
+const uuid = z.string().uuid();
+
+export const memberSizeProfileSchema = z.object({
+  seasonId: uuid,
+  seasonName: z.string().min(1).max(120),
+  editable: z.boolean(),
+  revision: z.string().regex(/^[0-9a-f]{64}$/),
+  articles: z.array(z.object({
+    id: uuid,
+    name: z.string().min(1).max(120),
+    code: z.string().min(2).max(24),
+    active: z.boolean(),
+    selectedVariantId: uuid.nullable(),
+    ordered: z.boolean(),
+    orderLineStatus: memberLineStatusSchema.nullable(),
+    variants: z.array(z.object({
+      id: uuid,
+      size: z.string().min(1).max(80),
+      active: z.boolean(),
+    }).strict()).max(500),
+  }).strict()).max(500),
+}).strict().superRefine((profile, context) => {
+  profile.articles.forEach((article, index) => {
+    if (article.selectedVariantId && !article.variants.some((variant) => variant.id === article.selectedVariantId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["articles", index, "selectedVariantId"], message: "De geselecteerde maat ontbreekt." });
+    }
+    if (article.ordered !== Boolean(article.orderLineStatus)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["articles", index, "ordered"], message: "Bestelstatus en orderregel komen niet overeen." });
+    }
+  });
+});
 
 const optionalTrimmedString = (maximum: number) => z.preprocess(
   (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
@@ -72,6 +103,7 @@ export const memberDetailResponseSchema = z.object({
   activeForSeason: z.boolean(),
   updatedAt: z.string().datetime({ offset: true }),
   activeSeason: activeSeasonSchema.nullable(),
+  sizeProfile: memberSizeProfileSchema.nullable(),
   parentLinks: z.array(z.object({
     id: z.string().uuid(),
     email: z.string().email().max(320),
@@ -111,6 +143,20 @@ export const memberStatusResponseSchema = z.object({
   activeForSeason: z.boolean(),
 }).strict();
 
+export const memberSizesRequestSchema = z.object({
+  memberId: uuid,
+  seasonId: uuid,
+  revision: z.string().regex(/^[0-9a-f]{64}$/),
+  sizes: z.array(z.object({
+    articleId: uuid,
+    variantId: uuid.nullable(),
+  }).strict()).max(25),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.sizes.map((size) => size.articleId)).size !== value.sizes.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["sizes"], message: "Een artikel mag maar één maat hebben." });
+  }
+});
+
 export const teamMemberStatusRequestSchema = z.object({
   team: z.string().trim().min(1).max(120),
   active: z.boolean(),
@@ -139,5 +185,6 @@ export const teamMemberStatusResponseSchema = z.object({
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
 export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
 export type MemberDetailResponse = z.infer<typeof memberDetailResponseSchema>;
+export type MemberSizeProfile = z.infer<typeof memberSizeProfileSchema>;
 export type MemberLineStatus = z.infer<typeof memberLineStatusSchema>;
 export type TeamMemberStatusResponse = z.infer<typeof teamMemberStatusResponseSchema>;

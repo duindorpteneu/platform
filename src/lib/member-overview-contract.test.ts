@@ -3,6 +3,7 @@ import {
   memberDetailResponseSchema,
   memberListQuerySchema,
   memberListResponseSchema,
+  memberSizesRequestSchema,
   memberStatusRequestSchema,
   teamMemberStatusRequestSchema,
   teamMemberStatusResponseSchema,
@@ -45,6 +46,7 @@ const detail = {
   activeForSeason: true,
   updatedAt: "2026-07-18T12:00:00.000Z",
   activeSeason: season,
+  sizeProfile: null,
   parentLinks: [{ id: "77000000-0000-4000-8000-000000000001", email: "ouder@example.invalid", linkedAt: "2026-07-18T12:00:00.000Z" }],
   order: {
     id: order.id,
@@ -90,5 +92,17 @@ describe("member overview contract", () => {
   it("accepts operationele detaildata but rejects a QR token", () => {
     expect(memberDetailResponseSchema.safeParse(detail).success).toBe(true);
     expect(memberDetailResponseSchema.safeParse({ ...detail, order: { ...detail.order, qrToken: "secret" } }).success).toBe(false);
+  });
+
+  it("validates season-bound individual size changes", () => {
+    const request = {
+      memberId: list.members[0].id,
+      seasonId: season.id,
+      revision: "a".repeat(64),
+      sizes: [{ articleId: "72000000-0000-4000-8000-000000000001", variantId: "73000000-0000-4000-8000-000000000001" }],
+    };
+    expect(memberSizesRequestSchema.safeParse(request).success).toBe(true);
+    expect(memberSizesRequestSchema.safeParse({ ...request, sizes: [...request.sizes, { ...request.sizes[0], variantId: null }] }).success).toBe(false);
+    expect(memberSizesRequestSchema.safeParse({ ...request, revision: "stale" }).success).toBe(false);
   });
 });
