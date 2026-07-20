@@ -232,3 +232,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Een geldige AAL2-sessie zonder actief `app.staff_profiles`-record blijft op `/staff/mfa` met een concrete activatiemelding; de eerdere stille lus terug naar `/staff/login` is daarmee afgevangen zonder automatisch medewerkersrechten toe te kennen.
 - Gerichte routetests dekken fail-closed weigering, private/no-store caching en alle drie rollen. De volledige suite is groen met 41 Vitestbestanden/184 tests, ESLint, TypeScript en de productiebuild.
 - De opnieuw gebouwde productie-app doorliep de volledige zelfopruimende browserflow. Die test deactiveert aanvullend het testprofiel na een echte TOTP/AAL2-login en bewijst dat de browser op `/staff/mfa` blijft met de verwachte melding.
+
+## Native Sportlink-ledenexport — 2026-07-20
+
+- De aangeleverde productieachtige CSV is uitsluitend lokaal en geaggregeerd onderzocht; er zijn geen persoonsgegevens gelogd, gekopieerd of gecommit. Structuur: 528 datarijen, 16 kolommen per rij, UTF-8 BOM, geen ongeldige e-mailadressen en geen dubbele relatiecodes.
+- De parser herkent nu de native headers `Rel. code`, `Roepnaam` en `Lokale teams`. Formule-injectiecontrole blijft fail-closed op geïmporteerde velden, maar negeert telefoon-/adreskolommen die conform canon niet worden geïmporteerd.
+- De echte aangeleverde CSV geeft lokaal exact 528 geldig, 0 ongeldig en 0 dubbel. Previewwaarschuwingen maken 528 ontbrekende seizoenstatussen, 517 lege teams (`Niet ingedeeld`) en 1 roepnaamfallback naar voorletters expliciet vóór commit.
+- De importpreview toont geen misleidende groene status meer bij fouten, laat maximaal vijf concrete rijmeldingen zien en bewaart toegepaste fallbacks in de batchmapping.
+- `pnpm test` is groen met 41 Vitestbestanden/187 tests; ESLint, TypeScript en `next build` zijn groen. De opnieuw gebouwde productie-app doorliep de volledige zelfopruimende AAL2-browserflow inclusief native Sportlink-preview, fallbackmeldingen en transactionele commit.

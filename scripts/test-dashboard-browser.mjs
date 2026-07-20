@@ -295,12 +295,14 @@ async function verifyMemberOverview(page, screenshotDir) {
     name: "browser-import.csv",
     mimeType: "text/csv",
     buffer: Buffer.from([
-      "Relatienummer;Voornaam;Achternaam;E-mailadres;Team;Actief voor seizoen",
-      "DSV-BROWSER-IMPORT;Browser;Importlid;browser-import@example.invalid;JO19-1;Ja",
+      "Naam;Roepnaam;Voorletter(s);Achternaam;Rel. code;E-mailadres;Mobiel nummer;Lokale teams",
+      "Importlid, Browser;Browser;B.;Importlid;DSV-BROWSER-IMPORT;browser-import@example.invalid;+31612345678;",
     ].join("\n")),
   });
   await page.getByRole("button", { name: "Kolommen en preview controleren", exact: true }).click();
   await page.getByText("Kolommen gekoppeld en preview gereed").waitFor({ timeout: 5_000 });
+  await page.getByText("Geen seizoenstatuskolom gevonden", { exact: false }).waitFor({ timeout: 5_000 });
+  await page.getByText("Niet ingedeeld", { exact: false }).waitFor({ timeout: 5_000 });
   const previewText = await page.locator("section").filter({ hasText: "Sportlink importeren" }).innerText();
   if (!previewText.includes("Nieuw") || !previewText.match(/Nieuw\s+1|1\s+Nieuw/)) {
     throw new Error("Sportlink-preview toont het nieuwe lid niet.");

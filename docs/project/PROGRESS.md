@@ -73,6 +73,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - SendGrid-events correleren via de bestaande niet-persoonlijke `email_job_id` in plaats van de afwijkende HTTP- en webhook-message-ID's; events zonder `sg_message_id` blijven idempotent verwerkbaar.
 - De staffuitnodiging verwerkt Supabase's invite-fragment client-side, wist het fragment direct, biedt een veilige wachtwoordinstelpagina en stroomt verplicht door naar TOTP; de eerste stagingbeheerder blijft een expliciete eenmalige Supabase-bootstrap.
 - Staging heeft repository-native operationele en provider-smokeworkflows; production wordt hierdoor niet aangeraakt.
+- Native Sportlink-ledenexports met `Rel. code`, `Roepnaam` en `Lokale teams` worden ondersteund; ontbrekende seizoenstatus, team en roepnaam krijgen expliciete previewdefaults. De aangeleverde 528-rijen-CSV valideert volledig zonder persoonsgegevens in testartefacten.
 
 ## In progress
 - Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.

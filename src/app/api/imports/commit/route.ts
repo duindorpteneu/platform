@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { previewSportlinkImport, SPORTLINK_MAX_REQUEST_BYTES, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
+import { normalizeSportlinkFileName, previewSportlinkImport, SPORTLINK_MAX_REQUEST_BYTES, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
 import { guardBrowserMutation } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
@@ -28,9 +28,9 @@ export async function POST(request: Request) {
 
     const checksum = createHash("sha256").update(Buffer.from(input, "utf8")).digest("hex");
     const { data, error } = await supabase.schema("app").rpc("commit_sportlink_import", {
-      p_file_name: "sportlink.csv",
+      p_file_name: normalizeSportlinkFileName(file.name),
       p_checksum: checksum,
-      p_mapping: { delimiter: preview.delimiter, source: "Sportlink CSV", columns: preview.mapping },
+      p_mapping: { delimiter: preview.delimiter, source: "Sportlink CSV", columns: preview.mapping, fallbacks: preview.warnings },
       p_members: toSportlinkDatabaseRows(preview.members),
     });
     if (error) {

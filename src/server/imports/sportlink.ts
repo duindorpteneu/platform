@@ -28,9 +28,11 @@ export type SportlinkDatabaseRow = {
   active_for_season: boolean;
 };
 export type ImportIssue = { row: number; field?: string; message: string };
+export type ImportWarning = { field: keyof SportlinkMember; count: number; message: string };
 export type ImportPreview = {
   members: SportlinkMember[];
   issues: ImportIssue[];
+  warnings: ImportWarning[];
   summary: { total: number; valid: number; invalid: number; duplicates: number };
   delimiter: "," | ";";
   mapping: SportlinkColumnMapping;
@@ -44,13 +46,20 @@ export function validateSportlinkUpload(file: File) {
   if (file.size > SPORTLINK_MAX_BYTES) throw new Error("CSV_FILE_TOO_LARGE");
 }
 
+export function normalizeSportlinkFileName(fileName: string) {
+  let normalized = fileName.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  normalized = normalized.replace(/[^\p{L}\p{N} ._()-]/gu, "_").slice(0, 255).trim();
+  if (!normalized.toLocaleLowerCase("nl-NL").endsWith(".csv")) return "sportlink.csv";
+  return isFormulaLike(normalized) ? `_${normalized}` : normalized;
+}
+
 const headerAliases: Record<keyof SportlinkMember, string[]> = {
-  relationNumber: ["relatienummer", "relatienr", "relatie nr", "relatiecode"],
-  firstName: ["voornaam", "first name"],
+  relationNumber: ["relatienummer", "relatienr", "relatie nr", "relatiecode", "rel. code", "rel code"],
+  firstName: ["voornaam", "roepnaam", "first name"],
   insertion: ["tussenvoegsel", "insertion"],
   lastName: ["achternaam", "last name"],
   email: ["e-mailadres", "emailadres", "e-mail", "email"],
-  team: ["team", "teamnaam", "team naam"],
+  team: ["team", "teamnaam", "team naam", "lokale teams", "lokaal team"],
   activeForSeason: ["actief voor seizoen", "actief", "active for season"],
 };
 
@@ -132,7 +141,22 @@ function parseRecords(input: string, delimiter: "," | ";") {
 
 function headerIndex(headers: string[]) {
   const normalized = headers.map(normalizeHeader);
-  return (field: keyof SportlinkMember) => normalized.findIndex((header) => headerAliases[field].includes(header));
+  return (field: keyof SportlinkMember) => {
+    for (const alias of headerAliases[field]) {
+      const index = normalized.indexOf(alias);
+      if (index >= 0) return index;
+    }
+    return -1;
+  };
+}
+
+function indexForAliases(headers: string[], aliases: string[]) {
+  const normalized = headers.map(normalizeHeader);
+  for (const alias of aliases) {
+    const index = normalized.indexOf(alias);
+    if (index >= 0) return index;
+  }
+  return -1;
 }
 
 function parseActive(value: string) {
@@ -159,34 +183,44 @@ export function previewSportlinkImport(input: string): ImportPreview {
       return [field, index >= 0 ? headers[index].trim() : null];
     }),
   ) as SportlinkColumnMapping;
-  const required: (keyof SportlinkMember)[] = ["relationNumber", "firstName", "lastName", "email", "team", "activeForSeason"];
+  const required: (keyof SportlinkMember)[] = ["relationNumber", "firstName", "lastName", "email", "team"];
   const issues: ImportIssue[] = [];
+  const warnings: ImportWarning[] = [];
   for (const field of required) {
     if (indexFor(field) === -1) issues.push({ row: 1, field, message: "Verplichte kolom ontbreekt." });
   }
-  if (issues.length > 0) return { members: [], issues, summary: { total: records.length - 1, valid: 0, invalid: records.length - 1, duplicates: 0 }, delimiter, mapping };
+  if (issues.length > 0) return { members: [], issues, warnings, summary: { total: records.length - 1, valid: 0, invalid: records.length - 1, duplicates: 0 }, delimiter, mapping };
 
   const members: SportlinkMember[] = [];
   const seenRelations = new Set<string>();
+  const initialsIndex = indexForAliases(headers, ["voorletter(s)", "voorletters", "initialen"]);
+  let defaultedFirstNames = 0;
+  let defaultedTeams = 0;
   let duplicates = 0;
   records.slice(1).forEach((record, offset) => {
     const rowNumber = offset + 2;
     const value = (field: keyof SportlinkMember) => record[indexFor(field)]?.trim() ?? "";
-    const rawValues = record.filter((cell) => cell.trim() !== "");
-    const formulaCell = rawValues.find((cell) => isFormulaLike(cell));
+    const firstName = value("firstName") || record[initialsIndex]?.trim() || "";
+    const team = value("team") || "Niet ingedeeld";
+    const activeForSeason = indexFor("activeForSeason") === -1 ? true : parseActive(value("activeForSeason"));
+    const importedValues = [value("relationNumber"), firstName, value("insertion"), value("lastName"), value("email"), team, value("activeForSeason")];
+    const formulaCell = importedValues.find((cell) => isFormulaLike(cell));
     if (formulaCell) {
       issues.push({ row: rowNumber, message: "Formuleachtige waarden zijn niet toegestaan." });
       return;
     }
 
+    if (!value("firstName") && firstName) defaultedFirstNames += 1;
+    if (!value("team")) defaultedTeams += 1;
+
     const candidate = {
       relationNumber: normalizeRelationNumber(value("relationNumber")),
-      firstName: value("firstName"),
+      firstName,
       insertion: value("insertion") || null,
       lastName: value("lastName"),
       email: normalizeEmail(value("email")),
-      team: value("team"),
-      activeForSeason: parseActive(value("activeForSeason")),
+      team,
+      activeForSeason,
     };
     const parsed = memberSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -202,9 +236,20 @@ export function previewSportlinkImport(input: string): ImportPreview {
     members.push(parsed.data);
   });
 
+  if (indexFor("activeForSeason") === -1) {
+    warnings.push({ field: "activeForSeason", count: records.length - 1, message: "Geen seizoenstatuskolom gevonden; de leden worden als actief voor het seizoen verwerkt." });
+  }
+  if (defaultedTeams > 0) {
+    warnings.push({ field: "team", count: defaultedTeams, message: "Lege lokale teams worden als ‘Niet ingedeeld’ verwerkt." });
+  }
+  if (defaultedFirstNames > 0) {
+    warnings.push({ field: "firstName", count: defaultedFirstNames, message: "Een ontbrekende roepnaam is aangevuld met de voorletters uit Sportlink." });
+  }
+
   return {
     members,
     issues,
+    warnings,
     summary: { total: records.length - 1, valid: members.length, invalid: issues.length, duplicates },
     delimiter,
     mapping,
