@@ -7,7 +7,16 @@ import {
   type UpdateSettingsRequest,
 } from "@/lib/settings-audit-contract";
 import { requireStaffRole } from "@/server/auth/staff";
+import { operationalLogger } from "@/server/security/logger";
 import { getSupabaseServerClient } from "@/server/supabase/server";
+
+function logWorkspaceFailure(code: string) {
+  operationalLogger.error("settings.workspace_load_failed", {
+    code: code.toLowerCase(),
+    provider: "supabase",
+    route: "/backoffice/instellingen",
+  });
+}
 
 export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
   noStore();
@@ -16,11 +25,16 @@ export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
   const { data, error } = await supabase.schema("app").rpc("get_settings_workspace_v2");
   if (error) {
+    logWorkspaceFailure(error.code || "query_failed");
     if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+    if (error.code === "PGRST106" || error.code === "PGRST202") throw new Error("SETTINGS_SCHEMA_CONTRACT_STALE");
     throw new Error("SETTINGS_WORKSPACE_QUERY_FAILED");
   }
   const parsed = settingsWorkspaceSchema.safeParse(data);
-  if (!parsed.success) throw new Error("SETTINGS_WORKSPACE_RESPONSE_INVALID");
+  if (!parsed.success) {
+    logWorkspaceFailure("response_invalid");
+    throw new Error("SETTINGS_WORKSPACE_RESPONSE_INVALID");
+  }
   return parsed.data;
 }
 
