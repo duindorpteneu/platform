@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRight, Loader2, LockKeyhole, Mail } from "lucide-re
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStaffLandingPath } from "@/lib/staff-session";
 
 export function StaffLoginForm() {
   const router = useRouter();
@@ -32,7 +33,19 @@ export function StaffLoginForm() {
     }
 
     const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    router.replace(assurance?.currentLevel === "aal2" ? "/backoffice" : "/staff/mfa");
+    if (assurance?.currentLevel !== "aal2") {
+      router.replace("/staff/mfa");
+      router.refresh();
+      return;
+    }
+
+    const landingPath = await resolveStaffLandingPath();
+    if (!landingPath) {
+      setError("Je account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
+      setBusy(false);
+      return;
+    }
+    router.replace(landingPath);
     router.refresh();
   }
 

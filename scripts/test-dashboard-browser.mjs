@@ -624,6 +624,15 @@ try {
   await verifyProviderSprint(page, screenshotDir);
   await verifyReleaseHardening(page, local.DB_URL, screenshotDir);
 
+  process.stdout.write("Dashboard-browsertest: ontbrekend actief medewerkersprofiel controleren…\n");
+  runSql(local.DB_URL, `update app.staff_profiles set active = false where auth_user_id = '${userId}';`);
+  await page.goto(`${baseUrl}/staff/mfa`);
+  await page.getByRole("alert").getByText("geen actief medewerkersprofiel", { exact: false }).waitFor({ timeout: 5_000 });
+  if (page.url() !== `${baseUrl}/staff/mfa`) {
+    throw new Error("Een AAL2-sessie zonder actief medewerkersprofiel bleef niet op de MFA-pagina.");
+  }
+  runSql(local.DB_URL, `update app.staff_profiles set active = true where auth_user_id = '${userId}';`);
+
   const unauthenticatedPage = await browser.newPage();
   process.stdout.write("Dashboard-browsertest: anonieme routebeveiliging controleren…\n");
   const response = await unauthenticatedPage.goto(`${baseUrl}/backoffice`, { waitUntil: "domcontentloaded" });

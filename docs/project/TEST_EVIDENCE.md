@@ -225,3 +225,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - Actions-run `29702162241` wijzigde en herlas de Event Webhook succesvol, zette ECDSA-ondertekening aan, haalde dezelfde P-256 public key terug en leverde die als kortlevend artifact. De key staat nu als publieke GitHub stagingvariable; er is geen secretwaarde uitgelezen.
 - Actions-run `29702474022` bevestigde dezelfde webhookconfiguratie opnieuw, maar Mail Send retourneerde veilig gerapporteerd HTTP 401 voordat de runtimeflag werd aangezet. Er is geen mail geaccepteerd en `EMAIL_ENABLED` blijft in staging en production uit.
 - De workflow controleert nu vóór Mail Send via `GET /v3/scopes` expliciet of de gebruikte EU-key `mail.send` heeft. Productionwebhook, productiondeploy en productionproviderflags zijn niet aangeraakt of goedgekeurd.
+
+## Medewerker-MFA redirectregressie — 2026-07-20
+
+- De stafflogin en MFA-flow bevestigen na AAL2 voortaan server-side het actieve medewerkersprofiel en bepalen op basis van de canonieke rol het landingspad `/backoffice` of `/uitgifte`.
+- Een geldige AAL2-sessie zonder actief `app.staff_profiles`-record blijft op `/staff/mfa` met een concrete activatiemelding; de eerdere stille lus terug naar `/staff/login` is daarmee afgevangen zonder automatisch medewerkersrechten toe te kennen.
+- Gerichte routetests dekken fail-closed weigering, private/no-store caching en alle drie rollen. De volledige suite is groen met 41 Vitestbestanden/184 tests, ESLint, TypeScript en de productiebuild.
+- De opnieuw gebouwde productie-app doorliep de volledige zelfopruimende browserflow. Die test deactiveert aanvullend het testprofiel na een echte TOTP/AAL2-login en bewijst dat de browser op `/staff/mfa` blijft met de verwachte melding.

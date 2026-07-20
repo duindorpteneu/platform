@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, KeyRound, Loader2, LogOut, ShieldCheck } f
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStaffLandingPath } from "@/lib/staff-session";
 
 type Enrollment = { factorId: string; qrCode: string; secret: string };
 
@@ -34,7 +35,15 @@ export function StaffMfaForm() {
       if (!userData.user) { router.replace("/staff/login"); return; }
 
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (assurance?.currentLevel === "aal2") { router.replace("/backoffice"); return; }
+      if (assurance?.currentLevel === "aal2") {
+        const landingPath = await resolveStaffLandingPath();
+        if (landingPath) { router.replace(landingPath); return; }
+        if (active) {
+          setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
+          setLoading(false);
+        }
+        return;
+      }
 
       const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
       if (factorsError || !factors) {
@@ -92,7 +101,13 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    router.replace("/backoffice");
+    const landingPath = await resolveStaffLandingPath();
+    if (!landingPath) {
+      setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
+      setBusy(false);
+      return;
+    }
+    router.replace(landingPath);
     router.refresh();
   }
 
