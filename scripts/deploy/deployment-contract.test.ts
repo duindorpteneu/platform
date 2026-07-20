@@ -94,6 +94,22 @@ describe("deployment environment isolation", () => {
     expect(migration).not.toMatch(/\bprivate\b[^\n]*pgrst\.db_schemas/i);
   });
 
+  it("refreshes and verifies the settings RPC contract before application activation", () => {
+    const refreshMigration = readFileSync(
+      path.join(repositoryRoot, "supabase/migrations/20260720142000_refresh_postgrest_settings_contract.sql"),
+      "utf8",
+    );
+    const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
+    const contractScript = readFileSync(path.join(repositoryRoot, "scripts/deploy/check-postgrest-rpcs.mjs"), "utf8");
+    expect(refreshMigration).toContain("notify pgrst, 'reload schema'");
+    expect(refreshMigration).not.toMatch(/\b(?:insert|update|delete|truncate)\b/i);
+    expect(contractScript).toContain('"/rpc/get_settings_workspace_v2"');
+    expect(contractScript).toContain('"/rpc/update_settings_v2"');
+    expect(contractScript).toContain('"/rpc/create_season_v2"');
+    expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
+      .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
+  });
+
   it("does not serialize empty optional provider values into runtime", () => {
     const source = readFileSync(configureRuntime, "utf8");
     expect(source).toContain('].filter(([, value]) => value)');

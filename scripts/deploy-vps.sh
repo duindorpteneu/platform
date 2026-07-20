@@ -149,6 +149,7 @@ deploy_environment() {
   echo "Controleer remote migratievolgorde en drift."
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes
+  node scripts/deploy/check-postgrest-rpcs.mjs
 
   local previous_revision="" previous_image="" runtime_backup="${runtime_directory}/.env.runtime.previous" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
