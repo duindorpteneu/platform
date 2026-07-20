@@ -77,6 +77,7 @@ select lives_ok($$select app.set_member_active_for_season(
 select ok(not (select active_for_season from app.members where id = 'ca100000-0000-4000-8000-000000000001'), 'lidstatus is inactief');
 select ok(exists(select 1 from app.member_orders where id = 'ca300000-0000-4000-8000-000000000001'), 'bestaande bestelling blijft behouden');
 select ok(exists(select 1 from app.audit_logs where action = 'member.deactivated' and correlation_id = 'caf00000-0000-4000-8000-000000000003'), 'inactiveren is met reden geaudit');
+select is((select metadata->>'seasonId' from app.audit_logs where correlation_id = 'caf00000-0000-4000-8000-000000000003'), (select id::text from app.seasons where name = '2038/2039 beheer'), 'lidstatusaudit bevat het concrete actieve seizoen');
 
 reset role;
 select throws_ok($$select app.record_manual_payment_with_qr_trusted(
@@ -105,7 +106,27 @@ select throws_ok($$select app.set_member_active_for_season(
   'ca100000-0000-4000-8000-000000000001', false, 'Niet toegestaan', null
 )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifte kan geen lidstatus wijzigen');
 
+select set_config('request.jwt.claims', '{"sub":"ca000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
+select throws_ok($$select app.create_season('AAL1 verboden', null, null, 9900, false, null)$$,
+  '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'beheerder op AAL1 kan geen seizoen aanmaken');
+select set_config('request.jwt.claims', '{"sub":"ca000000-0000-4000-8000-000000000002","aal":"aal1"}', true);
+select throws_ok($$select app.bulk_set_article_season(
+  (select id from app.seasons where name = '2038/2039 beheer'),
+  array['ca200000-0000-4000-8000-000000000001'::uuid], true, null
+)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie op AAL1 kan geen artikelen koppelen');
+select throws_ok($$select app.set_member_active_for_season(
+  'ca100000-0000-4000-8000-000000000001', false, 'AAL1 niet toegestaan', null
+)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie op AAL1 kan geen lidstatus wijzigen');
+
 reset role;
+select throws_ok($$insert into app.seasons(name, default_amount_cents, status)
+  values('Ongeldig maximumbedrag', 10000001, 'open')$$,
+  '23514', 'new row for relation "seasons" violates check constraint "seasons_default_amount_upper"',
+  'tabelconstraint bewaakt het maximale standaardbedrag');
+select throws_ok($$insert into app.seasons(name, starts_on, ends_on, default_amount_cents, status)
+  values('Ongeldige datums', '2042-07-01', '2042-06-30', 9900, 'open')$$,
+  '23514', 'new row for relation "seasons" violates check constraint "seasons_dates_order"',
+  'tabelconstraint bewaakt chronologische seizoensdatums');
 select throws_ok($$select app.record_manual_payment_with_qr_trusted(
   'ca000000-0000-4000-8000-000000000002', 'ca300000-0000-4000-8000-000000000002',
   'card', 'historical-member-payment', repeat('e', 64)

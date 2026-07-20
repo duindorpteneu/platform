@@ -8,6 +8,8 @@ import type { CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-con
 type Article = Workspace["articles"][number];
 type Variant = Article["variants"][number];
 type Notice = { tone: "error" | "success"; text: string } | null;
+type MutationPayload = { error?: string; changedCount?: number };
+type SuccessMessage = string | ((payload: MutationPayload) => string);
 
 const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
 
@@ -18,8 +20,9 @@ function ArticleIcon({ type }: { type: Article["iconType"] }) {
 
 async function postJson(path: string, body: unknown) {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify(body) });
-  const payload = await response.json() as { error?: string };
+  const payload = await response.json() as MutationPayload;
   if (!response.ok) throw new Error(payload.error ?? "De wijziging kon niet worden opgeslagen.");
+  return payload;
 }
 
 export function CatalogWorkspace({ workspace }: { workspace: Workspace }) {
@@ -33,12 +36,12 @@ export function CatalogWorkspace({ workspace }: { workspace: Workspace }) {
   const totalVariants = workspace.articles.reduce((sum, article) => sum + article.variants.length, 0);
   const available = workspace.articles.reduce((sum, article) => sum + article.variants.reduce((subtotal, item) => subtotal + Math.max(0, item.availableQuantity), 0), 0);
 
-  async function mutate(path: string, body: unknown, success: string) {
+  async function mutate(path: string, body: unknown, success: SuccessMessage) {
     setSaving(true);
     setNotice(null);
     try {
-      await postJson(path, body);
-      setNotice({ tone: "success", text: success });
+      const payload = await postJson(path, body);
+      setNotice({ tone: "success", text: typeof success === "function" ? success(payload) : success });
       router.refresh();
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "De wijziging kon niet worden opgeslagen." });
@@ -75,7 +78,7 @@ export function CatalogWorkspace({ workspace }: { workspace: Workspace }) {
   </div>;
 }
 
-function BulkSeasonManager({ workspace, saving, onSave }: { workspace: Workspace; saving: boolean; onSave: (body: unknown, message: string) => void }) {
+function BulkSeasonManager({ workspace, saving, onSave }: { workspace: Workspace; saving: boolean; onSave: (body: unknown, message: SuccessMessage) => void }) {
   const openSeasons = workspace.seasons.filter((season) => season.status === "open");
   const [seasonId, setSeasonId] = useState(workspace.activeSeason?.id ?? openSeasons[0]?.id ?? "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -85,7 +88,10 @@ function BulkSeasonManager({ workspace, saving, onSave }: { workspace: Workspace
     setSelectedIds((current) => checked ? [...new Set([...current, articleId])] : current.filter((id) => id !== articleId));
   }
   function save(linked: boolean) {
-    onSave({ seasonId, articleIds: selectedIds, linked }, `${selectedIds.length} artikel${selectedIds.length === 1 ? "" : "en"} ${linked ? "gekoppeld aan" : "ontkoppeld van"} ${selectedSeason?.name ?? "het seizoen"}.`);
+    onSave({ seasonId, articleIds: selectedIds, linked }, (payload) => {
+      const changedCount = payload.changedCount ?? selectedIds.length;
+      return `${changedCount} artikel${changedCount === 1 ? "" : "en"} ${linked ? "gekoppeld aan" : "ontkoppeld van"} ${selectedSeason?.name ?? "het seizoen"}.`;
+    });
   }
 
   return <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card">

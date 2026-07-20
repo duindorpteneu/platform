@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot ledenbeheer." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Dit lid bestaat niet meer." }, { status: 404 });
+      if (error.code === "23514") return NextResponse.json({ error: "Er is geen open actief seizoen voor deze wijziging." }, { status: 409 });
       return NextResponse.json({ error: "De lidstatus kon niet veilig worden opgeslagen." }, { status: 422 });
     }
     const response = memberStatusResponseSchema.safeParse(data);

@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Power, RotateCcw } from "lucide-r
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function MemberStatusAction({ memberId, active }: { memberId: string; active: boolean }) {
+export function MemberStatusAction({ memberId, active, enabled }: { memberId: string; active: boolean; enabled: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -30,7 +30,7 @@ export function MemberStatusAction({ memberId, active }: { memberId: string; act
     } finally { setSaving(false); }
   }
 
-  if (!open) return <button type="button" onClick={() => setOpen(true)} className={"mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold " + (active ? "border-red-100 text-danger hover:bg-red-50" : "border-emerald-200 text-success hover:bg-emerald-50")}>{active ? <Power className="size-3.5" /> : <RotateCcw className="size-3.5" />}{active ? "Lid inactief maken" : "Lid weer activeren"}</button>;
+  if (!open) return <div className="mt-4"><button type="button" onClick={() => setOpen(true)} disabled={!enabled} className={"inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:cursor-not-allowed disabled:border-line disabled:bg-slate-50 disabled:text-slate-400 " + (active ? "border-red-100 text-danger hover:bg-red-50" : "border-emerald-200 text-success hover:bg-emerald-50")}>{active ? <Power className="size-3.5" /> : <RotateCcw className="size-3.5" />}{active ? "Lid inactief maken" : "Lid weer activeren"}</button>{!enabled && <p className="mt-2 text-[10px] leading-4 text-slate-400">Activeer eerst een open seizoen via Instellingen.</p>}</div>;
 
   return <form onSubmit={submit} className="mt-4 rounded-lg border border-line bg-slate-50 p-3">
     <div className="flex items-start gap-2">{active ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />}<p className="text-[11px] leading-5 text-slate-600">{active ? "Nieuwe bestellingen en betalingen worden geblokkeerd. Bestaande historie blijft bewaard." : "Dit lid wordt weer beschikbaar voor nieuwe bestellingen en betalingen."}</p></div>

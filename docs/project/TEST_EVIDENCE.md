@@ -243,8 +243,8 @@ Record commands, results and relevant screenshots/notes per phase.
 
 ## Seizoen-, bulkartikel- en lidstatusbeheer — 2026-07-20
 
-- Forward migrations `20260720130000_season_article_member_management.sql` en `20260720131000_season_management_hardening.sql` zijn vanaf nul toegepast als migrations 40 en 41, samen met alle eerdere migrations en seed.
-- `pnpm test:db` — 16 pgTAP-bestanden en 420 assertions passed. Nieuwe dekking omvat seizoenaanmaak/duplicaat, exact gerespecteerde directe activatie, bulk koppelen/ontkoppelen met herleidbare operationele audit, beheerder/kledingcommissie/uitgifte-RBAC, reversibele lidstatus en blokkade van nieuwe handmatige en Mollie-betalingen voor inactieve én historische seizoensbestellingen.
+- Forward migrations `20260720130000_season_article_member_management.sql`, `20260720131000_season_management_hardening.sql` en `20260720132000_season_invariant_hardening.sql` zijn vanaf nul toegepast als migrations 40–42, samen met alle eerdere migrations en seed.
+- `pnpm test:db` — 16 pgTAP-bestanden en 426 assertions passed. Nieuwe dekking omvat seizoenaanmaak/duplicaat, datum- en bedragconstraints, exact gerespecteerde directe activatie, bulk koppelen/ontkoppelen met herleidbare operationele audit, expliciete AAL1-negatieve tests, beheerder/kledingcommissie/uitgifte-RBAC, actieve-seizoencontext in de lidstatusaudit en blokkade van nieuwe handmatige en Mollie-betalingen voor inactieve én historische seizoensbestellingen.
 - `pnpm test` — 41 Vitestbestanden en 190 tests passed; de strikte request-/responsecontracten en datum-, selectie- en redenvalidatie zijn gedekt.
 - `pnpm lint`, `pnpm typecheck`, `pnpm security:migrations`, `pnpm security:secrets` en `pnpm build` — passed.
 - `pnpm test:db:concurrency` — passed; de bestaande dubbele-uitgiftebescherming blijft intact.

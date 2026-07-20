@@ -59,7 +59,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
             <div className="flex items-start gap-3"><Mail className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">E-mailadres</dt><dd className="mt-0.5 break-all font-semibold text-ink">{detail.email}</dd></div></div>
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Seizoen</dt><dd className="mt-0.5 font-semibold text-ink">{detail.activeSeason?.name ?? "Geen actief seizoen"}</dd></div></div>
           </dl>
-          <MemberStatusAction memberId={detail.id} active={detail.activeForSeason} />
+          <MemberStatusAction memberId={detail.id} active={detail.activeForSeason} enabled={Boolean(detail.activeSeason)} />
         </section>
 
         {detail.order && <OrderAdminActions
