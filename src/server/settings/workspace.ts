@@ -4,25 +4,17 @@ import {
   staffMutationResponseSchema,
   type CreateSeasonRequest,
   type SettingsWorkspace,
+  type UpdateSettingsRequest,
 } from "@/lib/settings-audit-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-
-type SettingsInput = {
-  contactEmail: string;
-  pickupLocation: string;
-  activeSeasonId: string;
-  seasonAmounts: { seasonId: string; amountCents: number }[];
-  mollieEnabled: boolean;
-  emailEnabled: boolean;
-};
 
 export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
   noStore();
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("get_settings_workspace");
+  const { data, error } = await supabase.schema("app").rpc("get_settings_workspace_v2");
   if (error) {
     if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
     throw new Error("SETTINGS_WORKSPACE_QUERY_FAILED");
@@ -32,13 +24,20 @@ export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
   return parsed.data;
 }
 
-export async function updateSettings(input: SettingsInput, correlationId: string | null) {
+export async function updateSettings(input: UpdateSettingsRequest, correlationId: string | null) {
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("update_settings", {
+  const { data, error } = await supabase.schema("app").rpc("update_settings_v2", {
     p_contact_email: input.contactEmail,
-    p_pickup_location: input.pickupLocation,
+    p_club_address_line: input.clubAddressLine,
+    p_club_postal_code: input.clubPostalCode,
+    p_club_city: input.clubCity,
+    p_pickup_address_differs: input.pickupAddressDiffers,
+    p_pickup_name: input.pickupName,
+    p_pickup_address_line: input.pickupAddressLine,
+    p_pickup_postal_code: input.pickupPostalCode,
+    p_pickup_city: input.pickupCity,
     p_active_season_id: input.activeSeasonId,
     p_season_amounts: input.seasonAmounts,
     p_mollie_enabled: input.mollieEnabled,
@@ -55,7 +54,7 @@ export async function createSeason(input: CreateSeasonRequest, correlationId: st
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("create_season", {
+  const { data, error } = await supabase.schema("app").rpc("create_season_v2", {
     p_name: input.name,
     p_starts_on: input.startsOn,
     p_ends_on: input.endsOn,

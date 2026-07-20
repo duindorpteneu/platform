@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CalendarPlus, CheckCircle2, Loader2, LockKeyhole, MailPlus, MapPin, Power, Save, ShieldCheck, UserCog, Users } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SettingsWorkspace as Workspace, StaffRole } from "@/lib/settings-audit-contract";
 
@@ -39,8 +39,16 @@ function parseEuro(value: string) {
 
 export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
   const router = useRouter();
+  const [currentWorkspace, setCurrentWorkspace] = useState(workspace);
   const [contactEmail, setContactEmail] = useState(workspace.settings.contactEmail ?? "");
-  const [pickupLocation, setPickupLocation] = useState(workspace.settings.pickupLocation ?? "");
+  const [clubAddressLine, setClubAddressLine] = useState(workspace.settings.clubAddressLine ?? "");
+  const [clubPostalCode, setClubPostalCode] = useState(workspace.settings.clubPostalCode ?? "");
+  const [clubCity, setClubCity] = useState(workspace.settings.clubCity ?? "");
+  const [pickupAddressDiffers, setPickupAddressDiffers] = useState(workspace.settings.pickupAddressDiffers);
+  const [pickupName, setPickupName] = useState(workspace.settings.pickupName ?? "");
+  const [pickupAddressLine, setPickupAddressLine] = useState(workspace.settings.pickupAddressLine ?? "");
+  const [pickupPostalCode, setPickupPostalCode] = useState(workspace.settings.pickupPostalCode ?? "");
+  const [pickupCity, setPickupCity] = useState(workspace.settings.pickupCity ?? "");
   const [activeSeasonId, setActiveSeasonId] = useState(workspace.settings.activeSeasonId ?? workspace.seasons.find((season) => season.status === "open")?.id ?? "");
   const [amounts, setAmounts] = useState<Record<string, string>>(Object.fromEntries(workspace.seasons.map((season) => [season.id, euroString(season.defaultAmountCents)])));
   const [mollieEnabled, setMollieEnabled] = useState(workspace.settings.mollieEnabled);
@@ -50,20 +58,40 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
   const [creatingSeason, setCreatingSeason] = useState(false);
   const [seasonDraft, setSeasonDraft] = useState({ name: "", startsOn: "", endsOn: "", amount: "", makeActive: true });
 
+  useEffect(() => {
+    setCurrentWorkspace(workspace);
+    setContactEmail(workspace.settings.contactEmail ?? "");
+    setClubAddressLine(workspace.settings.clubAddressLine ?? "");
+    setClubPostalCode(workspace.settings.clubPostalCode ?? "");
+    setClubCity(workspace.settings.clubCity ?? "");
+    setPickupAddressDiffers(workspace.settings.pickupAddressDiffers);
+    setPickupName(workspace.settings.pickupName ?? "");
+    setPickupAddressLine(workspace.settings.pickupAddressLine ?? "");
+    setPickupPostalCode(workspace.settings.pickupPostalCode ?? "");
+    setPickupCity(workspace.settings.pickupCity ?? "");
+    setActiveSeasonId(workspace.settings.activeSeasonId ?? workspace.seasons.find((season) => season.status === "open")?.id ?? "");
+    setAmounts(Object.fromEntries(workspace.seasons.map((season) => [season.id, euroString(season.defaultAmountCents)])));
+    setMollieEnabled(workspace.settings.mollieEnabled);
+    setEmailEnabled(workspace.settings.emailEnabled);
+  }, [workspace]);
+
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
-    const seasonAmounts = workspace.seasons.map((season) => ({ seasonId: season.id, amountCents: parseEuro(amounts[season.id] ?? "") }));
+    const seasonAmounts = currentWorkspace.seasons.map((season) => ({ seasonId: season.id, amountCents: parseEuro(amounts[season.id] ?? "") }));
     if (seasonAmounts.some((item) => item.amountCents === null)) {
       setNotice({ tone: "error", text: "Gebruik per seizoen een geldig eurobedrag met maximaal twee decimalen." });
       return;
     }
     setSaving(true); setNotice(null);
     try {
-      await postJson("/api/settings", {
-        contactEmail, pickupLocation, activeSeasonId,
+      const payload = await postJson("/api/settings", {
+        contactEmail, clubAddressLine, clubPostalCode, clubCity,
+        pickupAddressDiffers, pickupName, pickupAddressLine, pickupPostalCode, pickupCity,
+        activeSeasonId: activeSeasonId || null,
         seasonAmounts: seasonAmounts.map((item) => ({ ...item, amountCents: item.amountCents as number })),
         mollieEnabled, emailEnabled,
       });
+      if (payload.settings) setCurrentWorkspace(payload.settings);
       setNotice({ tone: "success", text: "De clubinstellingen zijn server-side gevalideerd, opgeslagen en geaudit." });
       router.refresh();
     } catch (error) {
@@ -87,7 +115,9 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
         makeActive: seasonDraft.makeActive,
       });
       const createdSeason = payload.settings?.seasons.find((season) => season.name === seasonDraft.name.trim());
+      if (!payload.settings || !createdSeason) throw new Error("Het seizoen is aangemaakt, maar kon niet direct worden teruggelezen. Vernieuw de pagina en controleer het seizoen.");
       if (payload.settings) {
+        setCurrentWorkspace(payload.settings);
         setActiveSeasonId(payload.settings.settings.activeSeasonId ?? "");
         setAmounts(Object.fromEntries(payload.settings.seasons.map((season) => [season.id, euroString(season.defaultAmountCents)])));
       }
@@ -107,7 +137,7 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
 
     <section className="mt-6 grid gap-4 md:grid-cols-3">
       <Summary icon={LockKeyhole} label="Clubidentiteit" value="Duindorp SV" detail="Vast volgens designcanon" />
-      <Summary icon={Users} label="Medewerkers" value={String(workspace.staff.filter((staff) => staff.active).length)} detail="Actieve beveiligde accounts" />
+      <Summary icon={Users} label="Medewerkers" value={String(currentWorkspace.staff.filter((staff) => staff.active).length)} detail="Actieve beveiligde accounts" />
       <Summary icon={Power} label="Providers" value={`${mollieEnabled ? "Mollie" : "—"} · ${emailEnabled ? "E-mail" : "—"}`} detail="Operationeel toegestaan" />
     </section>
 
@@ -116,13 +146,14 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
         <NoticeBox notice={notice} />
         <section className="rounded-xl border border-line bg-white p-6 shadow-card">
           <div className="border-b border-line pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">Clubprofiel</p><h2 className="mt-1 text-lg font-bold text-brand-900">Vaste Duindorp SV-context</h2><p className="mt-1 text-xs leading-5 text-slate-500">De clubnaam en het originele logo zijn bindend. Het logo wordt niet geüpload, hertekend of geïnterpreteerd vanuit deze beheerpagina.</p></div>
-          <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-xs font-semibold text-ink">Clubnaam<input className={fieldClass} value="Duindorp SV" disabled /></label><label className="text-xs font-semibold text-ink">Contactmail<input className={fieldClass} type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="kleding@duindorpsv.nl" /></label></div>
-          <label className="mt-4 block text-xs font-semibold text-ink">Afhaallocatie<span className="relative block"><MapPin className="absolute left-3 top-[22px] size-4 text-slate-400" /><input className={`${fieldClass} pl-9`} value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} maxLength={240} placeholder="Clubhuis, Duinlaan 1" /></span></label>
+          <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-xs font-semibold text-ink">Verenigingsnaam<input className={fieldClass} value="Duindorp SV" disabled /></label><label className="text-xs font-semibold text-ink">Contactmail<input className={fieldClass} type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="kleding@duindorpsv.nl" /></label></div>
+          <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_150px_220px]"><label className="text-xs font-semibold text-ink">Verenigingsadres<input className={fieldClass} value={clubAddressLine} onChange={(event) => setClubAddressLine(event.target.value)} maxLength={160} placeholder="Straat en huisnummer" /></label><label className="text-xs font-semibold text-ink">Postcode<input className={fieldClass} value={clubPostalCode} onChange={(event) => setClubPostalCode(event.target.value.toUpperCase())} maxLength={7} placeholder="2584 AB" /></label><label className="text-xs font-semibold text-ink">Plaats<input className={fieldClass} value={clubCity} onChange={(event) => setClubCity(event.target.value)} maxLength={120} placeholder="Den Haag" /></label></div>
+          <div className="mt-5 border-t border-line pt-5"><label className="flex items-center gap-3 text-xs font-semibold text-ink"><input type="checkbox" checked={pickupAddressDiffers} onChange={(event) => setPickupAddressDiffers(event.target.checked)} className="size-4 accent-brand-700" />Afhaaladres wijkt af van het verenigingsadres</label>{pickupAddressDiffers ? <div className="mt-4 rounded-xl border border-brand-100 bg-brand-50/40 p-4"><div className="flex items-center gap-2 text-xs font-bold text-brand-900"><MapPin className="size-4" />Afhaaladres</div><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-xs font-semibold text-ink">Naam afhaallocatie<input className={fieldClass} value={pickupName} onChange={(event) => setPickupName(event.target.value)} maxLength={120} placeholder="Sportwinkel of locatie" /></label><label className="text-xs font-semibold text-ink">Adres<input className={fieldClass} value={pickupAddressLine} onChange={(event) => setPickupAddressLine(event.target.value)} maxLength={160} placeholder="Straat en huisnummer" /></label><label className="text-xs font-semibold text-ink">Postcode<input className={fieldClass} value={pickupPostalCode} onChange={(event) => setPickupPostalCode(event.target.value.toUpperCase())} maxLength={7} placeholder="2584 AB" /></label><label className="text-xs font-semibold text-ink">Plaats<input className={fieldClass} value={pickupCity} onChange={(event) => setPickupCity(event.target.value)} maxLength={120} placeholder="Den Haag" /></label></div></div> : <p className="mt-3 rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">Voor afhalen wordt het verenigingsadres gebruikt.</p>}</div>
         </section>
 
         <section className="rounded-xl border border-line bg-white p-6 shadow-card">
           <div className="border-b border-line pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">Seizoenen</p><h2 className="mt-1 text-lg font-bold text-brand-900">Actief seizoen en standaardbedragen</h2><p className="mt-1 text-xs text-slate-500">Bedragen worden in eurocenten opgeslagen; bestaande bestellingen wijzigen nooit mee.</p></div>
-          {workspace.seasons.length === 0 ? <p className="mt-5 rounded-lg bg-amber-50 p-4 text-xs text-amber-800">Er is nog geen seizoen beschikbaar. Voeg hieronder het eerste seizoen toe.</p> : <><label className="mt-5 block text-xs font-semibold text-ink">Actief open seizoen<select className={fieldClass} value={activeSeasonId} onChange={(event) => setActiveSeasonId(event.target.value)} required>{workspace.seasons.filter((season) => season.status === "open").map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}</select></label><div className="mt-5 divide-y divide-line rounded-xl border border-line">{workspace.seasons.map((season) => <div key={season.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-brand-900">{season.name}</p><p className="mt-1 text-[10px] text-slate-400">{season.status === "open" ? "Open" : "Gearchiveerd"}{season.active ? " · Actief" : ""}{season.startsOn ? ` · vanaf ${season.startsOn}` : ""}</p></div><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative mt-2"><span className="absolute left-3 top-2.5 text-sm text-slate-400">€</span><input className="h-10 w-40 rounded-lg border border-line pl-8 pr-3 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" inputMode="decimal" value={amounts[season.id] ?? ""} onChange={(event) => setAmounts((current) => ({ ...current, [season.id]: event.target.value }))} aria-label={`Standaardbedrag ${season.name}`} /></div></label></div>)}</div></>}
+          {currentWorkspace.seasons.length === 0 ? <p className="mt-5 rounded-lg bg-amber-50 p-4 text-xs text-amber-800">Er is nog geen seizoen beschikbaar. Voeg hieronder het eerste seizoen toe.</p> : <><label className="mt-5 block text-xs font-semibold text-ink">Actief open seizoen<select className={fieldClass} value={activeSeasonId} onChange={(event) => setActiveSeasonId(event.target.value)}><option value="">Geen actief seizoen</option>{currentWorkspace.seasons.filter((season) => season.status === "open").map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}</select></label><div className="mt-5 divide-y divide-line rounded-xl border border-line">{currentWorkspace.seasons.map((season) => <div key={season.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-brand-900">{season.name}</p><p className="mt-1 text-[10px] text-slate-400">{season.status === "open" ? "Open" : "Gearchiveerd"}{season.active ? " · Actief" : ""}{season.startsOn ? ` · vanaf ${season.startsOn}` : ""}</p></div><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative mt-2"><span className="absolute left-3 top-2.5 text-sm text-slate-400">€</span><input className="h-10 w-40 rounded-lg border border-line pl-8 pr-3 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" inputMode="decimal" value={amounts[season.id] ?? ""} onChange={(event) => setAmounts((current) => ({ ...current, [season.id]: event.target.value }))} aria-label={`Standaardbedrag ${season.name}`} /></div></label></div>)}</div></>}
           <div className="mt-5 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
             <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-white text-brand-700"><CalendarPlus className="size-4" /></span><div><h3 className="text-xs font-bold text-brand-900">Nieuw seizoen toevoegen</h3><p className="mt-0.5 text-[10px] text-slate-500">Het seizoen wordt open aangemaakt. Historische bestellingen blijven ongewijzigd.</p></div></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-ink">Naam<input className={fieldClass} value={seasonDraft.name} onChange={(event) => setSeasonDraft((current) => ({ ...current, name: event.target.value }))} maxLength={120} placeholder="2027/2028" /></label><label className="text-xs font-semibold text-ink">Standaardbedrag<div className="relative"><span className="absolute left-3 top-[22px] text-sm text-slate-400">€</span><input className={`${fieldClass} pl-8`} inputMode="decimal" value={seasonDraft.amount} onChange={(event) => setSeasonDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="87,00" /></div></label><label className="text-xs font-semibold text-ink">Startdatum<input className={fieldClass} type="date" value={seasonDraft.startsOn} onChange={(event) => setSeasonDraft((current) => ({ ...current, startsOn: event.target.value }))} /></label><label className="text-xs font-semibold text-ink">Einddatum<input className={fieldClass} type="date" value={seasonDraft.endsOn} min={seasonDraft.startsOn || undefined} onChange={(event) => setSeasonDraft((current) => ({ ...current, endsOn: event.target.value }))} /></label></div>
@@ -133,11 +164,11 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
         <section className="rounded-xl border border-line bg-white p-6 shadow-card">
           <div className="border-b border-line pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">Safety switches</p><h2 className="mt-1 text-lg font-bold text-brand-900">Operationele providerstatus</h2><p className="mt-1 text-xs leading-5 text-slate-500">Deze schakelaars blokkeren nieuwe provideracties in de database. Omgevingsconfiguratie en geldige credentials blijven altijd de harde bovengrens.</p></div>
           <div className="mt-5 space-y-3"><Switch checked={mollieEnabled} onChange={setMollieEnabled} title="Mollie-betalingen toestaan" text="Nieuwe online betaalpogingen operationeel vrijgeven." /><Switch checked={emailEnabled} onChange={setEmailEnabled} title="E-mailverzending toestaan" text="De verzendworker mag nieuwe jobs claimen en versturen." /></div>
-          <div className="mt-6 flex justify-end"><button type="submit" disabled={saving || !activeSeasonId} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-5 text-xs font-bold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50">{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Instellingen opslaan</button></div>
+          <div className="mt-6 flex justify-end"><button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-5 text-xs font-bold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50">{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Instellingen opslaan</button></div>
         </section>
       </form>
 
-      <StaffPanel workspace={workspace} />
+      <StaffPanel workspace={currentWorkspace} />
     </div>
   </div>;
 }

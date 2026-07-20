@@ -18,7 +18,12 @@ describe("settings and audit contracts", () => {
 
   it("keeps the club identity fixed", () => {
     const base = {
-      settings: { clubName: "Andere club", contactEmail: null, pickupLocation: null, activeSeasonId: null, mollieEnabled: false, emailEnabled: false },
+      settings: {
+        clubName: "Andere club", contactEmail: null,
+        clubAddressLine: null, clubPostalCode: null, clubCity: null,
+        pickupAddressDiffers: false, pickupName: null, pickupAddressLine: null, pickupPostalCode: null, pickupCity: null,
+        pickupLocation: null, activeSeasonId: null, mollieEnabled: false, emailEnabled: false,
+      },
       seasons: [], staff: [], roles: ["beheerder", "kledingcommissie", "uitgifte"],
     };
     expect(settingsWorkspaceSchema.safeParse(base).success).toBe(false);
@@ -26,9 +31,25 @@ describe("settings and audit contracts", () => {
   });
 
   it("rejects duplicate season amounts and unknown fields", () => {
-    const input = { contactEmail: "kleding@duindorpsv.nl", pickupLocation: "Clubhuis", activeSeasonId: id, seasonAmounts: [{ seasonId: id, amountCents: 12500 }, { seasonId: id, amountCents: 13000 }], mollieEnabled: false, emailEnabled: false };
+    const input = {
+      contactEmail: "kleding@duindorpsv.nl", clubAddressLine: "Duinlaan 1", clubPostalCode: "2584 AB", clubCity: "Den Haag",
+      pickupAddressDiffers: false, pickupName: "", pickupAddressLine: "", pickupPostalCode: "", pickupCity: "",
+      activeSeasonId: id, seasonAmounts: [{ seasonId: id, amountCents: 12500 }, { seasonId: id, amountCents: 13000 }], mollieEnabled: false, emailEnabled: false,
+    };
     expect(updateSettingsRequestSchema.safeParse(input).success).toBe(false);
     expect(updateSettingsRequestSchema.safeParse({ ...input, seasonAmounts: input.seasonAmounts.slice(0, 1), clubName: "Duindorp SV" }).success).toBe(false);
+  });
+
+  it("allows association settings before the first season and validates a different pickup address", () => {
+    const base = {
+      contactEmail: "kleding@duindorpsv.nl", clubAddressLine: "Duinlaan 1", clubPostalCode: "2584 AB", clubCity: "Den Haag",
+      pickupAddressDiffers: false, pickupName: "", pickupAddressLine: "", pickupPostalCode: "", pickupCity: "",
+      activeSeasonId: null, seasonAmounts: [], mollieEnabled: false, emailEnabled: false,
+    };
+    expect(updateSettingsRequestSchema.safeParse(base).success).toBe(true);
+    expect(updateSettingsRequestSchema.safeParse({ ...base, clubCity: "" }).success).toBe(false);
+    expect(updateSettingsRequestSchema.safeParse({ ...base, pickupAddressDiffers: true, pickupName: "Sportshop" }).success).toBe(false);
+    expect(updateSettingsRequestSchema.safeParse({ ...base, pickupAddressDiffers: true, pickupName: "Sportshop", pickupAddressLine: "Markt 2", pickupPostalCode: "2511 AA", pickupCity: "Den Haag" }).success).toBe(true);
   });
 
   it("validates a new season and chronological dates", () => {
