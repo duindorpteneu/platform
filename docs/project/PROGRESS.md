@@ -75,6 +75,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Staging heeft repository-native operationele en provider-smokeworkflows; production wordt hierdoor niet aangeraakt.
 - Native Sportlink-ledenexports met `Rel. code`, `Roepnaam` en `Lokale teams` worden ondersteund; ontbrekende seizoenstatus, team en roepnaam krijgen expliciete previewdefaults. De aangeleverde 528-rijen-CSV valideert volledig zonder persoonsgegevens in testartefacten.
 - Beheerders kunnen open seizoenen met datums en standaardbedrag aanmaken en optioneel direct activeren; beheerder en kledingcommissie kunnen artikelen per open seizoen in bulk koppelen/ontkoppelen en leden met verplichte auditreden activeren/inactiveren. Inactieve leden behouden alle historie maar kunnen geen nieuwe bestelling, handmatige betaling of Mollie-poging krijgen.
+- Teamfiltering is operationeel in het ledenoverzicht. Beheerder en kledingcommissie kunnen na een server-side, kortlevend ondertekende snapshotpreview alle leden van een exact team geaudit activeren/inactiveren en expliciet gekozen artikelvarianten/maten aan geschikte teamleden toevoegen. Bestaande maten en bedragen blijven staan; betaalde orders en inactieve leden worden overgeslagen en snapshotdrift wordt vóór mutatie geweigerd.
 
 ## In progress
 - Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.

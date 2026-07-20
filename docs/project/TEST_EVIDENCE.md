@@ -249,3 +249,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm lint`, `pnpm typecheck`, `pnpm security:migrations`, `pnpm security:secrets` en `pnpm build` — passed.
 - `pnpm test:db:concurrency` — passed; de bestaande dubbele-uitgiftebescherming blijft intact.
 - `pnpm test:dashboard-browser` — passed met echte wachtwoord/TOTP/AAL2-flow. De browser maakt een niet-actief testseizoen aan, koppelt twee artikelen in bulk, inactiveert en reactiveert een lid en verifieert de beveiligde API-responses; alle tijdelijke seizoens-, catalogus-, lid-, Auth- en auditfixtures worden opgeruimd.
+
+## Teamfilter en team-bulkacties — 2026-07-20
+
+- Forward migrations `20260720133000_team_bulk_management.sql`, `20260720134000_team_bulk_snapshot_hardening.sql` en `20260720135000_team_bulk_amount_snapshot.sql` zijn als migrations 43–45 vanaf een schone lokale PostgreSQL 17-database toegepast, inclusief seed.
+- `pnpm test:db` — 17 pgTAP-bestanden en 451 assertions passed. De nieuwe tests bewijzen previewtellingen, standaardbedrag voor nieuwe orders, behoud van bestaande exacte bedragen/maten, overslaan van betaalde orders en inactieve leden, per-lid- en exacte variantaudit, rol-/AAL1-afwijzing, NULL-redengrens, ingetrokken oude RPC-rechten en afwijzing van een verouderde snapshot of tussentijds gewijzigd standaardbedrag.
+- `pnpm test` — 44 Vitestbestanden en 200 tests passed; request-/responsecontracten, HMAC-tamper/expiry en de gebonden preview/commit-RPC-routering zijn gedekt.
+- `pnpm lint`, `pnpm typecheck`, `pnpm security:migrations` en `pnpm build` — passed.
+- `pnpm test:dashboard-browser` — opnieuw passed na de snapshot-hardening met een volledige zelfopruimende wachtwoord/TOTP/AAL2-flow. De bestaande server-side teamfilter, ondertekende teamartikelpreview/commit, nieuwe en uitgebreide orders, ondertekende teamstatuspreview/commit, bestaande operationele flows, mobiel/desktop, CSRF en anonieme routebeveiliging zijn gecontroleerd.
+- Een onafhankelijke read-only securityreview hercontroleerde previewbinding, phantom-races, NULL-redenen, exacte variantaudit en standaardbedragdrift; alle vijf punten zijn na de forward hardening gesloten.
+- Geen productiegegevens, providercredentials of externe productieacties gebruikt.

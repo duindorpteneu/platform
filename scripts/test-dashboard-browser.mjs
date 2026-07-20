@@ -348,6 +348,25 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await page.getByText("BROWSER-164", { exact: true }).waitFor({ timeout: 5_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-catalog-desktop.png"), fullPage: true });
 
+  process.stdout.write("Operations-browsertest: artikelvariant preview-first aan team toevoegen…\n");
+  await page.goto(`${baseUrl}/backoffice/bestellingen`);
+  await page.getByRole("heading", { name: "Bestellingen" }).waitFor({ timeout: 5_000 });
+  const teamArticlePanel = page.locator("section").filter({ hasText: "Artikelen per team toevoegen" }).first();
+  await teamArticlePanel.getByLabel("Team").selectOption("MO15-1");
+  await teamArticlePanel.locator("label").filter({ hasText: "Browser trainingsjack" }).getByRole("combobox").selectOption({ label: "164 · BROWSER-164" });
+  const [teamPreviewResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/orders/team-articles") && response.request().method() === "POST"),
+    teamArticlePanel.getByRole("button", { name: "Toewijzing controleren" }).click(),
+  ]);
+  if (!teamPreviewResponse.ok()) throw new Error(`Teamartikel-preview gaf HTTP ${teamPreviewResponse.status()}: ${await teamPreviewResponse.text()}`);
+  await teamArticlePanel.getByText("1", { exact: true }).first().waitFor({ timeout: 5_000 });
+  const [teamCommitResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/orders/team-articles") && response.request().method() === "POST"),
+    teamArticlePanel.getByRole("button", { name: "Definitief toevoegen" }).click(),
+  ]);
+  if (!teamCommitResponse.ok()) throw new Error(`Teamartikelen toevoegen gaf HTTP ${teamCommitResponse.status()}: ${await teamCommitResponse.text()}`);
+  await teamArticlePanel.getByText(/1 artikelregels toegevoegd/).waitFor({ timeout: 5_000 });
+
   process.stdout.write("Operations-browsertest: open bestelling wijzigen en betaalde bestelling vergrendelen…\n");
   await page.goto(`${baseUrl}/backoffice/bestellingen`);
   await page.getByRole("heading", { name: "Bestellingen" }).waitFor({ timeout: 5_000 });
@@ -398,7 +417,7 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await page.getByText("Nieuwe QR-versie is actief; de oude code is direct ongeldig.", { exact: true }).waitFor({ timeout: 5_000 });
   await page.reload();
   await page.getByRole("heading", { name: "Sophie de Bruin" }).waitFor({ timeout: 5_000 });
-  await page.getByText("Actief", { exact: true }).last().waitFor({ timeout: 5_000 });
+  await page.getByLabel("Liddetail").getByText("Actief", { exact: true }).first().waitFor({ timeout: 5_000 });
   await page.setViewportSize({ width: 390, height: 844 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-member-security-mobile.png"), fullPage: true });
 
@@ -490,7 +509,7 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
 
   process.stdout.write("Release-browsertest: lid inactiveren en opnieuw activeren…\n");
   await page.getByRole("button", { name: "Lid inactief maken" }).click();
-  await page.getByLabel("Reden", { exact: true }).fill("Browsercontrole inactief");
+  await page.getByPlaceholder("Bijv. afgemeld voor dit seizoen").fill("Browsercontrole inactief");
   const [inactiveResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/api/members/status") && response.request().method() === "POST"),
     page.getByRole("button", { name: "Inactiveren", exact: true }).click(),
@@ -499,7 +518,7 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
   await page.reload();
   await page.getByRole("button", { name: "Lid weer activeren" }).waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: "Lid weer activeren" }).click();
-  await page.getByLabel("Reden", { exact: true }).fill("Browsercontrole afgerond");
+  await page.getByPlaceholder("Bijv. opnieuw aangemeld").fill("Browsercontrole afgerond");
   const [activeResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/api/members/status") && response.request().method() === "POST"),
     page.getByRole("button", { name: "Activeren", exact: true }).click(),
@@ -507,6 +526,29 @@ async function verifyReleaseHardening(page, databaseUrl, screenshotDir) {
   if (!activeResponse.ok()) throw new Error(`Lid activeren gaf HTTP ${activeResponse.status()}: ${await activeResponse.text()}`);
   await page.reload();
   await page.getByRole("button", { name: "Lid inactief maken" }).waitFor({ timeout: 5_000 });
+
+  process.stdout.write("Release-browsertest: teamstatus preview-first wijzigen…\n");
+  await page.goto(`${baseUrl}/backoffice/leden?team=JO17-1`);
+  const teamStatusPanel = page.locator("section").filter({ hasText: "Teamstatus in bulk" }).first();
+  await teamStatusPanel.getByLabel("Reden").fill("Browsercontrole teamstatus");
+  const [teamStatusPreview] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/team-status") && response.request().method() === "POST"),
+    teamStatusPanel.getByRole("button", { name: "Wijzigingen controleren" }).click(),
+  ]);
+  if (!teamStatusPreview.ok()) throw new Error(`Teamstatus-preview gaf HTTP ${teamStatusPreview.status()}: ${await teamStatusPreview.text()}`);
+  await teamStatusPanel.getByText(/1 van 1 leden worden inactief/).waitFor({ timeout: 5_000 });
+  const [teamStatusCommit] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/team-status") && response.request().method() === "POST"),
+    teamStatusPanel.getByRole("button", { name: "Definitief uitvoeren" }).click(),
+  ]);
+  if (!teamStatusCommit.ok()) throw new Error(`Teamstatus uitvoeren gaf HTTP ${teamStatusCommit.status()}: ${await teamStatusCommit.text()}`);
+  await teamStatusPanel.getByText(/1 leden in JO17-1 zijn inactief gemaakt/).waitFor({ timeout: 5_000 });
+  await teamStatusPanel.getByLabel("Nieuwe status").selectOption("active");
+  await teamStatusPanel.getByLabel("Reden").fill("Browsercontrole teamstatus afgerond");
+  await teamStatusPanel.getByRole("button", { name: "Wijzigingen controleren" }).click();
+  await teamStatusPanel.getByText(/1 van 1 leden worden actief/).waitFor({ timeout: 5_000 });
+  await teamStatusPanel.getByRole("button", { name: "Definitief uitvoeren" }).click();
+  await teamStatusPanel.getByText(/1 leden in JO17-1 zijn actief gemaakt/).waitFor({ timeout: 5_000 });
 
   process.stdout.write("Release-browsertest: settings en audit controleren…\n");
   const settingsResponse = await page.goto(`${baseUrl}/backoffice/instellingen`);
@@ -689,7 +731,7 @@ try {
   }
 
   process.stdout.write(
-    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, seizoenen, bulk-artikelkoppelingen, lidstatus, catalogus, bestellingen, exacte kasbetaling, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, exports, settings, audit, securityheaders, CSRF, responsive layout en routebeveiliging gecontroleerd.\n",
+    "Backoffice-browsertest geslaagd: AAL2, dashboard, leden, import, seizoenen, teamfilter, teamstatus, teamartikeltoewijzing, bulk-artikelkoppelingen, lidstatus, catalogus, bestellingen, exacte kasbetaling, QR-beheer, uitgiftecorrecties, e-mailcentrum, betaalregister, Mollie-retour, exports, settings, audit, securityheaders, CSRF, responsive layout en routebeveiliging gecontroleerd.\n",
   );
 } catch (error) {
   process.stderr.write(`Dashboard-browsertest mislukt: ${error instanceof Error ? error.message : String(error)}\n`);
