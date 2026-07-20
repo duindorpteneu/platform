@@ -5,6 +5,7 @@ database_url="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54339/pos
 psql_cmd=(psql "$database_url" -X -q -v ON_ERROR_STOP=1)
 first_log="/tmp/duindorp-fulfilment-race-first.log"
 second_log="/tmp/duindorp-fulfilment-race-second.log"
+previous_active_season="$("${psql_cmd[@]}" -Atc "select coalesce(active_season_id::text, '') from app.app_settings where id = true")"
 
 cleanup() {
   "${psql_cmd[@]}" <<'SQL'
@@ -26,6 +27,11 @@ delete from app.articles where id = '42000000-0000-4000-8000-000000000001';
 delete from app.seasons where id = '41000000-0000-4000-8000-000000000001';
 delete from app.staff_profiles where auth_user_id in ('40000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000002');
 SQL
+  if [[ "$previous_active_season" =~ ^[0-9a-f-]{36}$ ]]; then
+    "${psql_cmd[@]}" -c "update app.app_settings set active_season_id = '$previous_active_season'::uuid where id = true" >/dev/null
+  else
+    "${psql_cmd[@]}" -c "update app.app_settings set active_season_id = null where id = true" >/dev/null
+  fi
 }
 
 trap cleanup EXIT
@@ -38,6 +44,7 @@ values
   ('40000000-0000-4000-8000-000000000002', 'Race balie twee', 'uitgifte');
 insert into app.seasons (id, name, default_amount_cents, status)
 values ('41000000-0000-4000-8000-000000000001', 'Race-testseizoen', 12500, 'open');
+update app.app_settings set active_season_id = '41000000-0000-4000-8000-000000000001' where id = true;
 insert into app.articles (id, name, code, sort_order)
 values ('42000000-0000-4000-8000-000000000001', 'Race-testartikel', 'RACE-TEST', 100);
 insert into app.article_variants (id, article_id, size, sku)

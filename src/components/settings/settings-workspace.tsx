@@ -15,7 +15,7 @@ async function postJson(path: string, body: unknown) {
     headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
     body: JSON.stringify(body),
   });
-  const payload = await response.json() as { error?: string };
+  const payload = await response.json() as { error?: string; settings?: Workspace };
   if (!response.ok) throw new Error(payload.error ?? "De aanvraag kon niet worden verwerkt.");
   return payload;
 }
@@ -79,14 +79,19 @@ export function SettingsWorkspace({ workspace }: { workspace: Workspace }) {
     }
     setCreatingSeason(true); setNotice(null);
     try {
-      await postJson("/api/settings/seasons", {
+      const payload = await postJson("/api/settings/seasons", {
         name: seasonDraft.name,
         startsOn: seasonDraft.startsOn,
         endsOn: seasonDraft.endsOn,
         defaultAmountCents,
         makeActive: seasonDraft.makeActive,
       });
-      setNotice({ tone: "success", text: `Seizoen ${seasonDraft.name.trim()} is toegevoegd${seasonDraft.makeActive ? " en direct actief gemaakt" : ""}.` });
+      const createdSeason = payload.settings?.seasons.find((season) => season.name === seasonDraft.name.trim());
+      if (payload.settings) {
+        setActiveSeasonId(payload.settings.settings.activeSeasonId ?? "");
+        setAmounts(Object.fromEntries(payload.settings.seasons.map((season) => [season.id, euroString(season.defaultAmountCents)])));
+      }
+      setNotice({ tone: "success", text: `Seizoen ${seasonDraft.name.trim()} is toegevoegd${createdSeason?.active ? " en direct actief gemaakt" : ""}.` });
       setSeasonDraft({ name: "", startsOn: "", endsOn: "", amount: "", makeActive: true });
       router.refresh();
     } catch (error) {

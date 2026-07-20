@@ -10,6 +10,7 @@ values
 
 insert into app.seasons (id, name, default_amount_cents, status)
 values ('31000000-0000-4000-8000-000000000001', 'DB-testseizoen', 12500, 'open');
+update app.app_settings set active_season_id = '31000000-0000-4000-8000-000000000001' where id = true;
 
 insert into app.articles (id, name, code, sort_order)
 values
