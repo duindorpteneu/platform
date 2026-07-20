@@ -63,7 +63,7 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
 
   let detail = null;
   if (query.member) {
-    const { data: detailData, error: detailError } = await supabase.schema("app").rpc("get_member_detail", {
+    const { data: detailData, error: detailError } = await supabase.schema("app").rpc("get_member_detail_v2", {
       p_member_id: query.member,
     });
     if (detailError) {

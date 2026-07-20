@@ -1,0 +1,70 @@
+"use client";
+
+import { AlertTriangle, CheckCircle2, Loader2, Ruler, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { MemberSizeProfile as Profile } from "@/lib/member-overview-contract";
+
+const statusLabels = {
+  backorder: "Nalevering",
+  ready_for_pickup: "Af te halen",
+  picked_up: "Afgehaald",
+  cancelled: "Geannuleerd",
+};
+
+export function MemberSizeProfile({ memberId, profile: initialProfile }: { memberId: string; profile: Profile | null }) {
+  const router = useRouter();
+  const [profile, setProfile] = useState(initialProfile);
+  const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(initialProfile?.articles.map((article) => [article.id, article.selectedVariantId ?? ""]) ?? []));
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    setProfile(initialProfile);
+    setDraft(Object.fromEntries(initialProfile?.articles.map((article) => [article.id, article.selectedVariantId ?? ""]) ?? []));
+  }, [initialProfile]);
+
+  const changes = useMemo(() => profile?.articles.filter((article) => !article.ordered && (draft[article.id] ?? "") !== (article.selectedVariantId ?? "")) ?? [], [draft, profile]);
+
+  async function save() {
+    if (!profile || !profile.editable || changes.length === 0) return;
+    if (changes.length > 25) {
+      setNotice({ tone: "error", text: "Sla maximaal 25 gewijzigde artikelen tegelijk op." });
+      return;
+    }
+    setSaving(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/members/sizes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
+        body: JSON.stringify({
+          memberId,
+          seasonId: profile.seasonId,
+          revision: profile.revision,
+          sizes: changes.map((article) => ({ articleId: article.id, variantId: draft[article.id] || null })),
+        }),
+      });
+      const payload = await response.json() as { error?: string; sizeProfile?: Profile };
+      if (!response.ok || !payload.sizeProfile) throw new Error(payload.error ?? "De kledingmaten konden niet worden opgeslagen.");
+      setProfile(payload.sizeProfile);
+      setDraft(Object.fromEntries(payload.sizeProfile.articles.map((article) => [article.id, article.selectedVariantId ?? ""])));
+      setNotice({ tone: "success", text: "De kledingmaten zijn opgeslagen en geaudit." });
+      router.refresh();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "De kledingmaten konden niet worden opgeslagen." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className="p-5">
+    <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Ruler className="size-4 text-brand-500" /><div><h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Kledingmaten</h3><p className="mt-1 text-[10px] text-slate-400">Doorgegeven maten per artikel en seizoen</p></div></div>{profile && <span className="rounded-full bg-brand-50 px-2 py-1 text-[9px] font-bold text-brand-700">{profile.seasonName}</span>}</div>
+    {!profile ? <p className="mt-4 rounded-lg bg-amber-50 p-4 text-xs leading-5 text-amber-800">Stel eerst een open actief seizoen in om kledingmaten vast te leggen.</p> : profile.articles.length === 0 ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-xs leading-5 text-slate-500">Koppel eerst actieve artikelen en maten aan dit seizoen.</p> : <>
+      {!profile.editable && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">Dit lid of seizoen is niet actief; maten zijn daarom alleen-lezen.</p>}
+      {notice && <div role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 flex gap-2 rounded-lg border p-3 text-xs ${notice.tone === "error" ? "border-red-100 bg-red-50 text-danger" : "border-emerald-100 bg-emerald-50 text-success"}`}>{notice.tone === "error" ? <AlertTriangle className="size-4 shrink-0" /> : <CheckCircle2 className="size-4 shrink-0" />}{notice.text}</div>}
+      <div className="mt-4 space-y-3">{profile.articles.map((article) => <div key={article.id} className="rounded-lg border border-line p-3"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-ink">{article.name}</p><p className="mt-0.5 text-[9px] text-slate-400">{article.code}</p></div>{article.ordered && <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold text-success">Besteld{article.orderLineStatus ? ` · ${statusLabels[article.orderLineStatus]}` : ""}</span>}</div><label className="mt-3 block text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Maat<select aria-label={`Maat ${article.name}`} value={draft[article.id] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [article.id]: event.target.value }))} disabled={!profile.editable || article.ordered || saving || !article.active} className="mt-2 h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500"><option value="">Niet vastgelegd</option>{article.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.size}{!variant.active ? " · niet meer actief" : ""}</option>)}</select></label>{article.ordered && <p className="mt-2 text-[10px] leading-4 text-slate-400">De bestelregel is leidend. Wijzig deze maat alleen via Bestellingen.</p>}</div>)}</div>
+      <div className="mt-4 flex justify-end"><button type="button" onClick={() => void save()} disabled={!profile.editable || saving || changes.length === 0} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-bold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50">{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Maten opslaan</button></div>
+    </>}
+  </section>;
+}
