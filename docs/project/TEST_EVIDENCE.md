@@ -295,7 +295,7 @@ Record commands, results and relevant screenshots/notes per phase.
 
 ## Opaque medewerkerssessie na MFA — 2026-07-21
 
-- De browser verkrijgt het exchange-token uitsluitend via een echte Supabase TOTP/AAL2-sessie; AAL1, anoniem en inactieve staffprofielen worden in PostgreSQL geweigerd.
-- Exchange- en sessietokens bevatten 256 bits entropie, staan alleen gehasht in `private`, zijn respectievelijk twee minuten en acht uur geldig en kunnen niet door `anon` of `authenticated` worden geconsumeerd, bekeken of ingetrokken.
-- Een exchange is transactioneel single-use. Iedere apprequest valideert via service-role opnieuw vervaldatum, intrekking, actuele rol en actief profiel; application logout trekt de server-side sessie in en wist de HttpOnly-cookie.
-- Schone migrationreset, pgTAP, Vitest, ESLint, TypeScript, productiebuild, echte lokale AAL2/AAL1-MFA, concurrency en de volledige zelfopruimende dashboardbrowserflow zijn lokaal groen. Exacte staging-SHA en drie-rollenacceptatie worden na merge als externe releasegate uitgevoerd.
+- Na echte Supabase TOTP-verificatie stuurt de browser het kortlevende access-token uitsluitend naar de same-origin sessieroute. Die verifieert met `jose` de publieke ES256-handtekening, vaste issuer, audience `authenticated`, lifetime, role `authenticated`, `session_id` en exact `aal2`; iedere afwijking faalt vóór databasegebruik.
+- Alleen `service_role` kan daarna voor de geverifieerde UUID een app-sessie maken. PostgreSQL vereist een actueel actief staffprofiel en levert rol/seizoen zelf; browserclaims bepalen nooit de autorisatie. De eerdere browser-PostgREST exchangebevoegdheid is met een forward migration ingetrokken.
+- De opaque sessie bevat 256 bits entropie, staat alleen als SHA-256-hash in `private`, verloopt na acht uur en wordt via Secure/HttpOnly/SameSite-cookie gevoerd. Iedere apprequest controleert opnieuw vervaldatum, intrekking, actuele rol en actief profiel; application logout trekt de sessie server-side in.
+- Schone reset met 52 migrations, 21 pgTAP-bestanden/549 assertions, 60 Vitestbestanden/278 tests, ESLint, TypeScript, productiebuild, securityscans, echte lokale AAL2/AAL1-MFA, concurrency en de volledige zelfopruimende dashboardbrowserflow zijn groen. Exacte staging-SHA en drie-rollenacceptatie worden na merge als externe releasegate uitgevoerd.
