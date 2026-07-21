@@ -87,7 +87,7 @@ docker exec "${container_name}" createdb --username postgres --template template
 
 echo "Back-up wordt in een netwerkloze, run-unieke PostgreSQL 17-container hersteld."
 docker exec --interactive "${container_name}" \
-  pg_restore --exit-on-error --no-owner --no-acl --username postgres --dbname restore_drill \
+  pg_restore --clean --if-exists --exit-on-error --no-owner --no-acl --username postgres --dbname restore_drill \
   < "${dump_path}"
 
 docker exec --interactive "${container_name}" \
