@@ -3,14 +3,12 @@
 import Image from "next/image";
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { resolveStaffLandingPath } from "@/lib/staff-session";
+import { resolveStaffLandingPathWithRetry } from "@/lib/staff-session";
 
 type Enrollment = { factorId: string; qrCode: string; secret: string };
 
 export function StaffMfaForm() {
-  const router = useRouter();
   const started = useRef(false);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
@@ -32,12 +30,12 @@ export function StaffMfaForm() {
       }
 
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { router.replace("/staff/login"); return; }
+      if (!userData.user) { window.location.assign("/staff/login"); return; }
 
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (assurance?.currentLevel === "aal2") {
-        const landingPath = await resolveStaffLandingPath();
-        if (landingPath) { router.replace(landingPath); return; }
+        const landingPath = await resolveStaffLandingPathWithRetry();
+        if (landingPath) { window.location.assign(landingPath); return; }
         if (active) {
           setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
           setLoading(false);
@@ -76,7 +74,7 @@ export function StaffMfaForm() {
 
     void prepare();
     return () => { active = false; };
-  }, [router]);
+  }, []);
 
   async function verify(event: FormEvent) {
     event.preventDefault();
@@ -101,21 +99,19 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    const landingPath = await resolveStaffLandingPath();
+    const landingPath = await resolveStaffLandingPathWithRetry();
     if (!landingPath) {
       setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
       setBusy(false);
       return;
     }
-    router.replace(landingPath);
-    router.refresh();
+    window.location.assign(landingPath);
   }
 
   async function cancel() {
     const supabase = getSupabaseBrowserClient();
     await supabase?.auth.signOut({ scope: "local" });
-    router.replace("/staff/login");
-    router.refresh();
+    window.location.assign("/staff/login");
   }
 
   if (loading) return <div className="flex min-h-48 items-center justify-center text-sm text-slate-500"><Loader2 className="mr-2 size-4 animate-spin" /> MFA-status controleren…</div>;
