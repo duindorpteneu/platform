@@ -266,7 +266,15 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
   if (!secret) throw new Error("MFA_ENROLLMENT_SECRET_MISSING");
   process.stdout.write("MFA-formulier en enrollmentsleutel gereed.\n");
   let syncResponse;
+  let providerResponse;
   try {
+    const pendingProvider = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "POST"
+        && url.hostname === `${projectRef}.supabase.co`
+        && url.pathname.includes("/auth/v1/factors/")
+        && url.pathname.endsWith("/verify");
+    }, { timeout: 30_000 });
     const pendingSync = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return response.request().method() === "POST"
@@ -280,9 +288,10 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
       "MFA_CLICK_FAILED",
     );
     process.stdout.write("MFA-submit direct naar de pagina verstuurd.\n");
+    providerResponse = await withDeadline(pendingProvider, 35_000, "MFA_PROVIDER_RESPONSE_TIMEOUT");
     syncResponse = await withDeadline(pendingSync, 35_000, "MFA_SESSION_RESPONSE_TIMEOUT");
   } catch (error) {
-    if (error instanceof Error && ["MFA_CLICK_FAILED", "MFA_SESSION_RESPONSE_TIMEOUT"].includes(error.message)) throw error;
+    if (error instanceof Error && ["MFA_CLICK_FAILED", "MFA_PROVIDER_RESPONSE_TIMEOUT", "MFA_SESSION_RESPONSE_TIMEOUT"].includes(error.message)) throw error;
     throw new Error("MFA_SUBMIT_FAILED");
   }
   if (!syncResponse.ok()) {
@@ -297,6 +306,10 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     };
     throw new Error(errors[safeError] ?? "MFA_SYNC_REQUEST_REJECTED");
   }
+  const providerPayload = await providerResponse.json().catch(() => null);
+  const accessToken = providerPayload?.access_token;
+  if (typeof accessToken !== "string" || accessToken.split(".").length !== 3) throw new Error("MFA_ACCESS_TOKEN_INVALID");
+  return accessToken;
 }
 
 async function verifyMobileMenu(page, role) {
@@ -357,7 +370,32 @@ async function verifyAdminSettings(page, baseUrl) {
   }
 }
 
-async function verifyRole(page, target, role) {
+async function verifyAdminSettingsRpc(target, anonKey, accessToken) {
+  const response = await timedFetch(`https://${target.projectRef}.supabase.co/rest/v1/rpc/get_settings_workspace_v2`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Accept-Profile": "app",
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Profile": "app",
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const providerCode = typeof payload?.code === "string" && /^[A-Z0-9_]{2,32}$/.test(payload.code)
+      ? payload.code
+      : "UNKNOWN";
+    process.stdout.write(`Direct instellingen-RPC afgewezen (${response.status}, ${providerCode}).\n`);
+    throw new Error(`ADMIN_SETTINGS_RPC_${providerCode}`);
+  }
+  process.stdout.write("Direct instellingen-RPC geslaagd (200).\n");
+  return payload;
+}
+
+async function verifyRole(page, target, role, anonKey, accessToken) {
   if (role === "uitgifte") {
     await page.goto(`${target.baseUrl}/backoffice`);
     await page.waitForURL(`${target.baseUrl}/uitgifte`, { timeout: 15_000 });
@@ -375,6 +413,7 @@ async function verifyRole(page, target, role) {
     const sessionStatus = await page.evaluate(async () => (await fetch("/api/staff-auth/session", { headers: { accept: "application/json" } })).status);
     if (sessionStatus !== 200) throw new Error("STAFF_APP_SESSION_NOT_AVAILABLE");
     if (role === "beheerder") {
+      await verifyAdminSettingsRpc(target, anonKey, accessToken);
       await verifyAdminSettings(page, target.baseUrl);
     }
     if (role === "kledingcommissie" && await page.getByRole("link", { name: "Instellingen", exact: true }).count()) {
@@ -430,9 +469,9 @@ async function main() {
         const page = await withDeadline(context.newPage(), 10_000, "BROWSER_PAGE_CREATE_TIMEOUT");
         page.setDefaultTimeout(15_000);
         page.setDefaultNavigationTimeout(15_000);
-        await loginWithMfa(page, target.baseUrl, target.projectRef, email, password);
+        const accessToken = await loginWithMfa(page, target.baseUrl, target.projectRef, email, password);
         process.stdout.write(`${role}: MFA-code ingediend.\n`);
-        await verifyRole(page, target, role);
+        await verifyRole(page, target, role, anonKey, accessToken);
       } finally {
         await withDeadline(context.close(), 10_000, "BROWSER_CONTEXT_CLOSE_TIMEOUT").catch(() => undefined);
       }
