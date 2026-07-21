@@ -160,6 +160,10 @@ async function verifyRole(page, target, role) {
     try {
       await page.waitForURL(`${target.baseUrl}/backoffice`, { timeout: 15_000 });
     } catch {
+      const alert = await page.getByRole("alert").textContent({ timeout: 1_000 }).catch(() => "");
+      if (alert?.includes("verificatiecode is niet geldig of verlopen")) throw new Error("MFA_CODE_REJECTED");
+      if (alert?.includes("beveiligde sessie kon niet worden bevestigd")) throw new Error("MFA_AAL2_NOT_CONFIRMED");
+      if (alert?.includes("geen actief medewerkersprofiel")) throw new Error("MFA_STAFF_SESSION_REJECTED");
       throw new Error("MFA_LANDING_FAILED");
     }
     const settingsStatus = await page.evaluate(async () => (await fetch("/api/settings", { headers: { accept: "application/json" } })).status);
