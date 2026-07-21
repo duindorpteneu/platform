@@ -173,6 +173,27 @@ async function verifyHealth(target) {
 
 async function loginWithMfa(page, baseUrl, projectRef, email, password) {
   let authStatus = 0;
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (url.hostname === `${projectRef}.supabase.co` && url.pathname.includes("/auth/v1/factors/") && url.pathname.endsWith("/verify")) {
+      process.stdout.write(`MFA-providerantwoord ontvangen (${response.status()}).\n`);
+    }
+    if (url.origin === baseUrl && url.pathname === "/api/staff-auth/session") {
+      process.stdout.write(`App-sessieantwoord ontvangen (${response.status()}).\n`);
+    }
+  });
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.origin === baseUrl && url.pathname === "/api/staff-auth/session") {
+      process.stdout.write("App-sessieverzoek verzonden.\n");
+    }
+  });
+  page.on("requestfailed", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.origin === baseUrl && url.pathname === "/api/staff-auth/session") {
+      process.stdout.write("App-sessieverzoek door de browser afgebroken.\n");
+    }
+  });
   try {
     await page.goto(`${baseUrl}/staff/login`);
     const runtime = await page.evaluate(() => ({
@@ -218,6 +239,7 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     throw new Error("MFA_ENROLLMENT_FAILED");
   }
   if (!secret) throw new Error("MFA_ENROLLMENT_SECRET_MISSING");
+  process.stdout.write("MFA-formulier en enrollmentsleutel gereed.\n");
   let syncResponse;
   try {
     const pendingSync = page.waitForResponse((response) => {
@@ -227,9 +249,15 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
         && url.pathname === "/api/staff-auth/session";
     }, { timeout: 30_000 });
     await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
-    await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
-    syncResponse = await pendingSync;
-  } catch {
+    await withDeadline(
+      page.getByRole("button", { name: "Beveiligde sessie starten" }).evaluate((element) => element.click()),
+      5_000,
+      "MFA_CLICK_FAILED",
+    );
+    process.stdout.write("MFA-submit direct naar de pagina verstuurd.\n");
+    syncResponse = await withDeadline(pendingSync, 35_000, "MFA_SESSION_RESPONSE_TIMEOUT");
+  } catch (error) {
+    if (error instanceof Error && ["MFA_CLICK_FAILED", "MFA_SESSION_RESPONSE_TIMEOUT"].includes(error.message)) throw error;
     throw new Error("MFA_SUBMIT_FAILED");
   }
   if (!syncResponse.ok()) {
