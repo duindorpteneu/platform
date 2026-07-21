@@ -3,7 +3,6 @@
 import { AlertTriangle, ArrowRight, Loader2, LockKeyhole, Mail } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { resolveStaffLandingPathWithRetry } from "@/lib/staff-session";
 
 export function StaffLoginForm() {
   const [email, setEmail] = useState("");
@@ -30,19 +29,7 @@ export function StaffLoginForm() {
       return;
     }
 
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.currentLevel !== "aal2") {
-      window.location.assign("/staff/mfa");
-      return;
-    }
-
-    const landingPath = await resolveStaffLandingPathWithRetry();
-    if (!landingPath) {
-      setError("Je account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
-      setBusy(false);
-      return;
-    }
-    window.location.assign(landingPath);
+    window.location.assign("/staff/mfa");
   }
 
   return (
