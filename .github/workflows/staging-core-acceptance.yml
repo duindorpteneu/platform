@@ -26,10 +26,10 @@ jobs:
     timeout-minutes: 15
     environment: staging
     steps:
-      - name: Checkout exact staged release
+      - name: Checkout acceptance harness
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_sha }}
+          ref: ${{ github.sha }}
           clean: true
           persist-credentials: false
 
