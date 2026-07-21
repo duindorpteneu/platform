@@ -6,19 +6,15 @@ import {
   type StaffContext,
   type StaffRole,
 } from "@/lib/staff-auth-contract";
-import { fetchStaffContext } from "@/server/auth/staff-context";
-import { getSupabaseServerClient } from "@/server/supabase/server";
+import { cookies } from "next/headers";
+import { fetchStaffContext, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
 
 export { getStaffLandingPath, hasAal2, STAFF_ROLES, staffContextSchema };
 export type { StaffContext, StaffRole };
 
 export async function getStaffContext(): Promise<StaffContext | null> {
-  const supabase = await getSupabaseServerClient();
-  if (!supabase) return null;
-
-  const { data, error } = await supabase.auth.getSession();
-  if (error || !data.session?.access_token) return null;
-  return fetchStaffContext(data.session.access_token);
+  const token = (await cookies()).get(STAFF_SESSION_COOKIE)?.value;
+  return token ? fetchStaffContext(token) : null;
 }
 
 export async function requireStaffRole(allowedRoles?: readonly StaffRole[]) {
