@@ -292,3 +292,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - Echte lokale staff-MFA is groen. De volledige zelfopruimende Playwrightflow is opnieuw groen voor AAL2, mobiel menu, Sportlink, seizoenen, teams, maten, orders, exacte kasbetaling, QR, uitgifte, e-mailcentrum, exports, instellingen, audit, CSRF en anonieme routebeveiliging.
 - De staging-coreharness gebruikt uitsluitend tijdelijke `example.invalid`-staffaccounts en verwijdert Auth-users/profielen altijd. De Mollieharness is hard gepind op de staginghost, Supabase-ref, testkey, profiel-ID en release-SHA; testbetalingen bevatten geen PII. De restoreworkflow gebruikt een netwerkloze PostgreSQL 17-container op registrydigest en uploadt nooit de dump.
 - Extern bewijs voor de nieuwe merge-SHA, Mollie paid/mismatch/replay/refund, live restore-RPO/RTO en onafhankelijke heartbeat wordt pas na de afgeschermde workflowruns toegevoegd. SendGrid Mail Send blijft door de bekende 401 een aparte open providergate.
+
+## Opaque medewerkerssessie na MFA — 2026-07-21
+
+- De browser verkrijgt het exchange-token uitsluitend via een echte Supabase TOTP/AAL2-sessie; AAL1, anoniem en inactieve staffprofielen worden in PostgreSQL geweigerd.
+- Exchange- en sessietokens bevatten 256 bits entropie, staan alleen gehasht in `private`, zijn respectievelijk twee minuten en acht uur geldig en kunnen niet door `anon` of `authenticated` worden geconsumeerd, bekeken of ingetrokken.
+- Een exchange is transactioneel single-use. Iedere apprequest valideert via service-role opnieuw vervaldatum, intrekking, actuele rol en actief profiel; application logout trekt de server-side sessie in en wist de HttpOnly-cookie.
+- Schone migrationreset, pgTAP, Vitest, ESLint, TypeScript, productiebuild, echte lokale AAL2/AAL1-MFA, concurrency en de volledige zelfopruimende dashboardbrowserflow zijn lokaal groen. Exacte staging-SHA en drie-rollenacceptatie worden na merge als externe releasegate uitgevoerd.

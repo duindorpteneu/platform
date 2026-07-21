@@ -1,7 +1,6 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv } from "@/lib/env";
-import { fetchStaffContext } from "@/server/auth/staff-context";
+import { fetchStaffContext, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
 import { CORRELATION_ID_HEADER, resolveCorrelationId, withCorrelationId } from "@/server/security/correlation";
 
 function correlatedResponse(response: NextResponse, correlationId: string) {
@@ -32,30 +31,18 @@ export async function middleware(request: NextRequest) {
   if (!staffSurface) return correlatedResponse(nextResponse(), correlationId);
 
   const env = getServerEnv();
-  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
     return redirectWithCookies(request, "/staff/login", correlationId);
   }
 
-  let response = nextResponse();
-  const supabase = createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
-    cookies: {
-      getAll() { return request.cookies.getAll(); },
-      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = nextResponse();
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
-
-  const hasAuthCookie = request.cookies.getAll().some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
-  if (!hasAuthCookie) return redirectWithCookies(request, "/staff/login", correlationId, response);
-
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  const staff = sessionError || !sessionData.session?.access_token
-    ? null
-    : await fetchStaffContext(sessionData.session.access_token);
-  if (!staff) return redirectWithCookies(request, "/staff/mfa", correlationId, response);
+  const response = nextResponse();
+  const sessionToken = request.cookies.get(STAFF_SESSION_COOKIE)?.value;
+  if (!sessionToken) {
+    const hasSupabaseCookie = request.cookies.getAll().some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+    return redirectWithCookies(request, hasSupabaseCookie ? "/staff/mfa" : "/staff/login", correlationId, response);
+  }
+  const staff = await fetchStaffContext(sessionToken);
+  if (!staff) return redirectWithCookies(request, "/staff/login", correlationId, response);
 
   if (staff.role === "uitgifte" && (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice"))) {
     return redirectWithCookies(request, "/uitgifte", correlationId, response);

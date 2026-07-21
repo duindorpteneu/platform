@@ -170,6 +170,11 @@ export function AppShell({ children, staff }: { children: React.ReactNode; staff
 
   async function signOut() {
     setMobileMenuOpen(false);
+    await fetch("/api/staff-auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-Duindorp-CSRF": "same-origin" },
+    }).catch(() => undefined);
     await getSupabaseBrowserClient()?.auth.signOut({ scope: "local" });
     router.replace("/staff/login");
     router.refresh();
