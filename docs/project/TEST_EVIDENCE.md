@@ -276,3 +276,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - Een schone lokale reset paste alle 48 migrations en seed toe. De echte lokale PostgREST-probe slaagde; `pnpm test:db` gaf 19 bestanden/494 assertions groen en de fulfilment-concurrencytest bleef groen.
 - `pnpm test` gaf 46 bestanden/209 tests groen. ESLint, TypeScript, secret- en migrationlint en de productiebuild slaagden.
 - De echte staff-MFA-integratie bewees opnieuw AAL2 toegestaan/AAL1 geblokkeerd. De volledige zelfopruimende Playwrightflow bewees settings opslaan, seizoen aanmaken en direct terugzien, artikel-seizoenskoppeling, alle overige kernflows en desktop/mobiele routebeveiliging.
+
+## Mobiele medewerkersnavigatie — 2026-07-21
+
+- De gedeelde `AppShell` rendert op 390×844 een zichtbare menuknop en een modal gelabelde drawer; desktop behoudt de vaste zijbalk.
+- De bestaande RBAC-filter bepaalt ook mobiel welke werkruimte- en beheerlinks beschikbaar zijn. De drawer toont de actuele seizoencontext, medewerkersrol en uitlogactie zonder een tweede navigatiecontract te introduceren.
+- De Playwrightregressie opent het menu na een echte wachtwoord/TOTP/AAL2-login, controleert Dashboard, Leden, Artikelen, Instellingen en Uitloggen, bewijst body-scroll-lock en focus-trap, sluit met Escape en navigeert via Leden waarbij de drawer sluit.
+- `pnpm test`: 46 bestanden/209 tests groen. TypeScript, ESLint en de productiebuild zijn groen; de echte staff-MFA-integratie en volledige zelfopruimende dashboardbrowserflow slagen eveneens.

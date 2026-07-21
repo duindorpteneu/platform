@@ -79,6 +79,7 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - Verenigingsgegevens en een optioneel afwijkend afhaaladres zijn gestructureerd en geaudit beheerbaar. Instellingen kunnen ook vóór het eerste seizoen worden opgeslagen; de migrations leveren zelf de singleton-instellingenrij en seizoenaanmaak retourneert direct de actuele workspace.
 - Beheerder en kledingcommissie kunnen per actief lid, open seizoen en gekoppeld artikel een door ouders doorgegeven maat vastleggen. Bestelregels blijven leidend en alleen-lezen; maatprofielen wijzigen nooit automatisch betaling, voorraad of uitgifte.
 - De settings-release ververst hosted PostgREST nu expliciet en iedere deployment controleert vóór applicatie-activatie via een service-only, gegevensvrije contractprobe dat de drie nieuwe settings-RPC's zichtbaar zijn en hun `authenticated`-rechten behouden. De settings-foutstatus wijst niet langer ten onrechte naar MFA terwijl de AAL2-layout actief is.
+- De gedeelde medewerkersshell heeft onder `lg` een rolgefilterde mobiele drawer met dezelfde werkruimte- en beheerlinks als desktop, actuele seizoencontext en uitloggen. De 44px-menuknop, actieve linkstatus, scroll-lock, overlay, Escape, focus-terugkeer en focus-trap zijn in de echte AAL2-browserflow afgedekt.
 
 ## In progress
 - Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.
