@@ -47,12 +47,12 @@ describe("staff session landing", () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ landingPath: "/backoffice" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(synchronizeStaffSession({ accessToken: "access-token", refreshToken: "refresh-token" })).resolves.toBe("/backoffice");
+    await expect(synchronizeStaffSession("access-token")).resolves.toBe("/backoffice");
     expect(fetchMock).toHaveBeenCalledWith("/api/staff-auth/session", expect.objectContaining({
       method: "POST",
       credentials: "same-origin",
       headers: expect.objectContaining({ "X-Duindorp-CSRF": "same-origin" }),
-      body: JSON.stringify({ accessToken: "access-token", refreshToken: "refresh-token" }),
+      body: JSON.stringify({ accessToken: "access-token" }),
     }));
   });
 });

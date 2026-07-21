@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { getStaffContext, getStaffLandingPath, hasAal2, STAFF_ROLES, type StaffRole } from "@/server/auth/staff";
+import { getServerEnv } from "@/lib/env";
+import { getStaffLandingPath, staffContextSchema } from "@/lib/staff-auth-contract";
+import { getStaffContext } from "@/server/auth/staff";
 import { guardBrowserMutation } from "@/server/security/route-guard";
-import { getSupabaseServerClient } from "@/server/supabase/server";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0" };
 const sessionTokensSchema = z.object({
-  // Supabase refresh tokens can be short opaque values in local and hosted environments.
-  // Authenticity is established by auth.setSession below; this schema only bounds input size.
   accessToken: z.string().min(1).max(16_384),
-  refreshToken: z.string().min(1).max(16_384),
 }).strict();
 
 export const runtime = "nodejs";
@@ -41,37 +40,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID_SESSION_TOKENS" }, { status: 400, headers: privateHeaders });
   }
 
-  const supabase = await getSupabaseServerClient();
-  if (!supabase) {
+  const env = getServerEnv();
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
     return NextResponse.json({ error: "STAFF_AUTH_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
   }
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-    access_token: parsed.data.accessToken,
-    refresh_token: parsed.data.refreshToken,
+  const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${parsed.data.accessToken}` } },
   });
-  if (sessionError || !sessionData.session || !sessionData.user) {
-    return NextResponse.json({ error: "STAFF_SESSION_REJECTED" }, { status: 403, headers: privateHeaders });
-  }
-
-  const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError || !hasAal2(assurance?.currentLevel)) {
-    return NextResponse.json({ error: "STAFF_AAL2_REQUIRED" }, { status: 403, headers: privateHeaders });
-  }
-
-  const { data: profile } = await supabase
-    .schema("app")
-    .from("staff_profiles")
-    .select("role, active")
-    .eq("auth_user_id", sessionData.user.id)
-    .eq("active", true)
-    .maybeSingle();
-  if (!profile || !STAFF_ROLES.includes(profile.role as StaffRole)) {
-    return NextResponse.json({ error: "STAFF_PROFILE_REQUIRED" }, { status: 403, headers: privateHeaders });
-  }
+  const { data, error } = await supabase.schema("app").rpc("get_staff_auth_context");
+  const staff = staffContextSchema.safeParse(data);
+  if (error || !staff.success) return NextResponse.json({ error: "STAFF_SESSION_REJECTED" }, { status: 403, headers: privateHeaders });
 
   return NextResponse.json(
-    { landingPath: getStaffLandingPath(profile.role as StaffRole) },
+    { landingPath: getStaffLandingPath(staff.data.role) },
     { headers: privateHeaders },
   );
 }
