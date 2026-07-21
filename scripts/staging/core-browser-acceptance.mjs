@@ -138,6 +138,31 @@ async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
   throw new Error("STAFF_FIXTURE_AUTH_NOT_READY");
 }
 
+async function verifyStaffSessionRpc(admin, userId) {
+  const issued = await withDeadline(
+    admin.schema("app").rpc("create_staff_app_session_for_user", { p_auth_user_id: userId }),
+    20_000,
+    "STAFF_SESSION_RPC_TIMEOUT",
+  );
+  if (issued.error) {
+    const code = typeof issued.error.code === "string" && /^[A-Z0-9_]{2,32}$/.test(issued.error.code)
+      ? issued.error.code
+      : "UNKNOWN";
+    throw new Error(`STAFF_SESSION_RPC_${code}`);
+  }
+  const token = issued.data?.sessionToken;
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) throw new Error("STAFF_SESSION_RPC_RESPONSE_INVALID");
+  const revoked = await withDeadline(
+    admin.schema("app").rpc("revoke_staff_app_session", { p_session_token: token }),
+    20_000,
+    "STAFF_SESSION_RPC_REVOKE_TIMEOUT",
+  );
+  if (revoked.error || typeof revoked.data !== "number" || revoked.data < 1) {
+    throw new Error("STAFF_SESSION_RPC_REVOKE_FAILED");
+  }
+  process.stdout.write("Service-role sessiecontract en intrekking geslaagd.\n");
+}
+
 async function removeAcceptanceUser(admin, databaseUrl, userId) {
   await mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
   const deleted = await withDeadline(admin.auth.admin.deleteUser(userId), 20_000, "STAFF_FIXTURE_DELETE_TIMEOUT");
@@ -351,6 +376,7 @@ async function main() {
         displayName: `Staging ${role}`,
         role,
       });
+      await verifyStaffSessionRpc(admin, created.data.user.id);
       await waitForFixtureAuth(supabaseUrl, anonKey, email, password);
       process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
