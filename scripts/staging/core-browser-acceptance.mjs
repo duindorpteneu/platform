@@ -8,6 +8,20 @@ const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
 const POSTGRES_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 const roles = ["beheerder", "kledingcommissie", "uitgifte"];
+const ACCEPTANCE_EMAIL = /^staging-acceptance-.+@example\.invalid$/;
+
+function timedFetch(input, init = {}) {
+  const timeout = AbortSignal.timeout(15_000);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  return fetch(input, { ...init, signal });
+}
+
+function supabaseOptions() {
+  return {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: timedFetch },
+  };
+}
 
 function envRequired(environment, name) {
   const value = environment[name]?.trim() ?? "";
@@ -60,7 +74,7 @@ function mutateStaffProfile(action, databaseUrl, fixture) {
     "--env", "TARGET_DB_URL", "--env", "PROFILE_USER_ID", "--env", "PROFILE_DISPLAY_NAME", "--env", "PROFILE_ROLE",
     "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu",
     "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --set=user_id=\"$PROFILE_USER_ID\" --set=display_name=\"$PROFILE_DISPLAY_NAME\" --set=role=\"$PROFILE_ROLE\"",
-  ], { env: environment, input: statement, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"] });
+  ], { env: environment, input: statement, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"], timeout: 30_000 });
   if (result.status !== 0) throw new Error(action === "insert" ? "STAFF_PROFILE_CREATE_FAILED" : "STAFF_PROFILE_CLEANUP_FAILED");
 }
 
@@ -90,9 +104,7 @@ function wait(milliseconds) {
 }
 
 async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
-  const client = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
+  const client = createClient(supabaseUrl, anonKey, supabaseOptions());
   for (let attempt = 1; attempt <= 6; attempt += 1) {
     const result = await client.auth.signInWithPassword({ email, password });
     if (!result.error && result.data.session) {
@@ -102,6 +114,27 @@ async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
     if (attempt < 6) await wait(attempt * 1_000);
   }
   throw new Error("STAFF_FIXTURE_AUTH_NOT_READY");
+}
+
+async function removeAcceptanceUser(admin, databaseUrl, userId) {
+  mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
+  const deleted = await admin.auth.admin.deleteUser(userId);
+  if (deleted.error) throw new Error("STAFF_FIXTURE_CLEANUP_FAILED");
+}
+
+async function cleanupStaleFixtures(admin, databaseUrl) {
+  const staleUserIds = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const listed = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (listed.error) throw new Error("STAFF_FIXTURE_LIST_FAILED");
+    for (const user of listed.data.users) {
+      if (!ACCEPTANCE_EMAIL.test(user.email ?? "")) continue;
+      staleUserIds.push(user.id);
+    }
+    if (listed.data.users.length < 1000) break;
+  }
+  for (const userId of staleUserIds) await removeAcceptanceUser(admin, databaseUrl, userId);
+  process.stdout.write(`Staging-acceptatie: ${staleUserIds.length} achtergebleven fixture(s) opgeruimd.\n`);
 }
 
 async function verifyHealth(target) {
@@ -240,7 +273,8 @@ async function main() {
   if (anonKey.length < 20) throw new Error("SUPABASE_ANON_KEY_INVALID");
   await verifyHealth(target);
 
-  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(supabaseUrl, serviceKey, supabaseOptions());
+  await cleanupStaleFixtures(admin, databaseUrl);
   const browser = await chromium.launch({ headless: true });
   const createdUsers = [];
   try {
@@ -248,6 +282,7 @@ async function main() {
       const marker = `${process.env.GITHUB_RUN_ID ?? Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
       const email = `staging-acceptance-${marker}-${role}@example.invalid`;
       const password = `${crypto.randomBytes(24).toString("base64url")}!Aa1`;
+      process.stdout.write(`${role}: tijdelijke authfixture aanmaken…\n`);
       const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
       if (created.error || !created.data.user) throw new Error("STAFF_FIXTURE_CREATE_FAILED");
       createdUsers.push(created.data.user.id);
@@ -275,12 +310,10 @@ async function main() {
     let cleanupFailed = false;
     for (const userId of createdUsers.reverse()) {
       try {
-        mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
+        await removeAcceptanceUser(admin, databaseUrl, userId);
       } catch {
         cleanupFailed = true;
       }
-      const deleted = await admin.auth.admin.deleteUser(userId);
-      if (deleted.error) cleanupFailed = true;
     }
     if (cleanupFailed) throw new Error("STAFF_FIXTURE_CLEANUP_FAILED");
   }
