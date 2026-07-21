@@ -51,7 +51,9 @@ docker run --rm \
   --env SOURCE_DB_URL="${SUPABASE_DB_URL}" \
   --entrypoint sh \
   "${POSTGRES_IMAGE}" \
-  -ceu 'pg_dump --format=custom --compress=6 --no-owner --no-acl --dbname="$SOURCE_DB_URL"' \
+  -ceu 'pg_dump --format=custom --compress=6 --no-owner --no-acl --strict-names \
+    --schema=app --schema=private --schema=public --schema=auth --schema=supabase_migrations \
+    --dbname="$SOURCE_DB_URL"' \
   > "${dump_path}"
 
 [[ -s "${dump_path}" ]]

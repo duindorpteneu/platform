@@ -94,24 +94,41 @@ async function verifyHealth(target) {
 }
 
 async function loginWithMfa(page, baseUrl, email, password) {
-  await page.goto(`${baseUrl}/staff/login`);
-  await page.getByLabel("E-mailadres").fill(email);
-  await page.getByLabel("Wachtwoord").fill(password);
-  await page.getByRole("button", { name: "Inloggen" }).click();
-  await page.waitForURL(`${baseUrl}/staff/mfa`);
-  const secret = (await page.locator("p.font-mono").textContent())?.trim();
+  try {
+    await page.goto(`${baseUrl}/staff/login`);
+    await page.getByLabel("E-mailadres").fill(email);
+    await page.getByLabel("Wachtwoord").fill(password);
+    await page.getByRole("button", { name: "Inloggen" }).click();
+    await page.waitForURL(`${baseUrl}/staff/mfa`, { timeout: 15_000 });
+  } catch {
+    throw new Error("STAFF_PASSWORD_LOGIN_FAILED");
+  }
+  let secret;
+  try {
+    secret = (await page.locator("p.font-mono").textContent({ timeout: 15_000 }))?.trim();
+  } catch {
+    throw new Error("MFA_ENROLLMENT_FAILED");
+  }
   if (!secret) throw new Error("MFA_ENROLLMENT_SECRET_MISSING");
-  await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
-  await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
+  try {
+    await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
+    await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
+  } catch {
+    throw new Error("MFA_SUBMIT_FAILED");
+  }
 }
 
 async function verifyMobileMenu(page, role) {
   await page.setViewportSize({ width: 390, height: 844 });
   const opener = page.getByRole("button", { name: "Menu openen" });
-  await opener.waitFor({ state: "visible" });
-  await opener.click();
   const dialog = page.getByRole("dialog", { name: "Mobiele navigatie" });
-  await dialog.waitFor({ state: "visible" });
+  try {
+    await opener.waitFor({ state: "visible", timeout: 15_000 });
+    await opener.click();
+    await dialog.waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    throw new Error("MOBILE_MENU_OPEN_FAILED");
+  }
   await dialog.getByRole("link", { name: "Uitgifte", exact: true }).waitFor();
   if (role === "uitgifte") {
     if (await dialog.getByRole("link", { name: "Dashboard", exact: true }).count()) throw new Error("ISSUANCE_MENU_OVEREXPOSED");
@@ -119,17 +136,21 @@ async function verifyMobileMenu(page, role) {
     await dialog.getByRole("link", { name: "Dashboard", exact: true }).waitFor();
   }
   await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "hidden" });
+  await dialog.waitFor({ state: "hidden", timeout: 15_000 });
   if (!(await opener.evaluate((element) => element === document.activeElement))) throw new Error("MENU_FOCUS_NOT_RESTORED");
 }
 
 async function verifyRole(page, target, role) {
   if (role === "uitgifte") {
     await page.goto(`${target.baseUrl}/backoffice`);
-    await page.waitForURL(`${target.baseUrl}/uitgifte`);
+    await page.waitForURL(`${target.baseUrl}/uitgifte`, { timeout: 15_000 });
     await page.getByRole("heading", { name: "Uitgifte" }).waitFor();
   } else {
-    await page.waitForURL(`${target.baseUrl}/backoffice`);
+    try {
+      await page.waitForURL(`${target.baseUrl}/backoffice`, { timeout: 15_000 });
+    } catch {
+      throw new Error("MFA_LANDING_FAILED");
+    }
     const settingsStatus = await page.evaluate(async () => (await fetch("/api/settings", { headers: { accept: "application/json" } })).status);
     if (role === "beheerder" && settingsStatus !== 200) throw new Error("ADMIN_SETTINGS_DENIED");
     if (role === "kledingcommissie" && settingsStatus !== 403) throw new Error("COMMITTEE_SETTINGS_EXPOSED");
@@ -163,11 +184,13 @@ async function main() {
         displayName: `Staging ${role}`,
         role,
       });
+      process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
       try {
         const page = await context.newPage();
         await loginWithMfa(page, target.baseUrl, email, password);
+        process.stdout.write(`${role}: MFA bevestigd.\n`);
         await verifyRole(page, target, role);
       } finally {
         await context.close();
