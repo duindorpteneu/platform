@@ -68,12 +68,15 @@ docker run --detach \
   "${POSTGRES_IMAGE}" >/dev/null
 unset restore_password
 
-for _ in $(seq 1 90); do
-  if docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres; then
+init_complete_marker='PostgreSQL init process complete; ready for start up.'
+for _ in $(seq 1 120); do
+  if docker logs "${container_name}" 2>&1 | grep -Fq "${init_complete_marker}" \
+    && docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres; then
     break
   fi
   sleep 2
 done
+docker logs "${container_name}" 2>&1 | grep -Fq "${init_complete_marker}"
 docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres
 docker exec "${container_name}" createdb --username postgres --template template0 restore_drill
 
