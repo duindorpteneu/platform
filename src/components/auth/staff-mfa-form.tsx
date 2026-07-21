@@ -93,12 +93,6 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.currentLevel !== "aal2") {
-      setError("De beveiligde sessie kon niet worden bevestigd.");
-      setBusy(false);
-      return;
-    }
     const landingPath = await resolveStaffLandingPathWithRetry();
     if (!landingPath) {
       setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
