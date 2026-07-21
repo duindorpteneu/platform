@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv } from "@/lib/env";
-import { staffContextSchema } from "@/lib/staff-auth-contract";
+import { fetchStaffContext } from "@/server/auth/staff-context";
 import { CORRELATION_ID_HEADER, resolveCorrelationId, withCorrelationId } from "@/server/security/correlation";
 
 function correlatedResponse(response: NextResponse, correlationId: string) {
@@ -48,14 +48,16 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data, error } = await supabase.schema("app").rpc("get_staff_auth_context");
-  const staff = staffContextSchema.safeParse(data);
-  if (error || !staff.success) {
-    const hasAuthCookie = request.cookies.getAll().some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
-    return redirectWithCookies(request, hasAuthCookie ? "/staff/mfa" : "/staff/login", correlationId, response);
-  }
+  const hasAuthCookie = request.cookies.getAll().some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+  if (!hasAuthCookie) return redirectWithCookies(request, "/staff/login", correlationId, response);
 
-  if (staff.data.role === "uitgifte" && (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice"))) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const staff = sessionError || !sessionData.session?.access_token
+    ? null
+    : await fetchStaffContext(sessionData.session.access_token);
+  if (!staff) return redirectWithCookies(request, "/staff/mfa", correlationId, response);
+
+  if (staff.role === "uitgifte" && (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice"))) {
     return redirectWithCookies(request, "/uitgifte", correlationId, response);
   }
   return privateResponse(response, correlationId);
