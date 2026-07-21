@@ -36,4 +36,10 @@ describe("staff session landing", () => {
     await expect(resolveStaffLandingPathWithRetry({ attempts: 3, delayMs: 0 })).resolves.toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("rejects a non-JSON response without leaking a parsing exception", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>login</html>", { status: 200 })));
+
+    await expect(resolveStaffLandingPath()).resolves.toBeNull();
+  });
 });
