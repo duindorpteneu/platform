@@ -93,15 +93,26 @@ async function verifyHealth(target) {
   }
 }
 
-async function loginWithMfa(page, baseUrl, email, password) {
+async function loginWithMfa(page, baseUrl, projectRef, email, password) {
   try {
     await page.goto(`${baseUrl}/staff/login`);
+    const runtime = await page.evaluate(() => ({
+      supabaseUrl: globalThis.__DUINDORP_RUNTIME_CONFIG__?.supabaseUrl ?? "",
+      keyLength: globalThis.__DUINDORP_RUNTIME_CONFIG__?.supabasePublishableKey?.length ?? 0,
+    }));
+    if (runtime.supabaseUrl !== `https://${projectRef}.supabase.co` || runtime.keyLength < 20) {
+      throw new Error("STAFF_RUNTIME_CONFIG_INVALID");
+    }
     await page.getByLabel("E-mailadres").fill(email);
     await page.getByLabel("Wachtwoord").fill(password);
     await page.getByRole("button", { name: "Inloggen" }).click();
     await page.waitForURL(`${baseUrl}/staff/mfa`, { timeout: 15_000 });
-  } catch {
-    throw new Error("STAFF_PASSWORD_LOGIN_FAILED");
+  } catch (error) {
+    if (error instanceof Error && error.message === "STAFF_RUNTIME_CONFIG_INVALID") throw error;
+    const alert = await page.getByRole("alert").textContent({ timeout: 1_000 }).catch(() => "");
+    if (alert?.includes("E-mailadres of wachtwoord is niet geldig")) throw new Error("STAFF_PASSWORD_REJECTED");
+    if (alert?.includes("Medewerkerslogin is lokaal nog niet geconfigureerd")) throw new Error("STAFF_RUNTIME_CONFIG_MISSING");
+    throw new Error("STAFF_LOGIN_REDIRECT_TIMEOUT");
   }
   let secret;
   try {
@@ -186,10 +197,16 @@ async function main() {
       });
       process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
+      const credentialProbe = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+      const probeResult = await credentialProbe.auth.signInWithPassword({ email, password });
+      if (probeResult.error || !probeResult.data.user) throw new Error("STAFF_CREDENTIAL_PROBE_FAILED");
+      await credentialProbe.auth.signOut({ scope: "local" });
+      process.stdout.write(`${role}: Auth-credentialprobe geslaagd.\n`);
+
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
       try {
         const page = await context.newPage();
-        await loginWithMfa(page, target.baseUrl, email, password);
+        await loginWithMfa(page, target.baseUrl, target.projectRef, email, password);
         process.stdout.write(`${role}: MFA bevestigd.\n`);
         await verifyRole(page, target, role);
       } finally {
