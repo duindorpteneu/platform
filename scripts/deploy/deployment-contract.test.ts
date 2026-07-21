@@ -37,6 +37,7 @@ function runtimeEnvironment(environment: "staging" | "production") {
     NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PARENT_TOKEN_PEPPER: "p".repeat(32),
     CRON_SECRET: "c".repeat(32),
+    ...(staging ? {} : { OPERATIONS_HEARTBEAT_URL: "https://monitor.example/ping-secret" }),
     MOLLIE_ENABLED: "false",
     EMAIL_ENABLED: "false",
   };
@@ -119,6 +120,14 @@ describe("deployment environment isolation", () => {
     expect(source).toContain('].filter(([, value]) => value)');
     expect(source).not.toMatch(/\n\s*MOLLIE_API_KEY:\s*mollieKey/);
     expect(source).not.toMatch(/\n\s*SENDGRID_FROM_EMAIL:\s*fromEmail/);
+  });
+
+  it("requires a secret independent heartbeat target in production", () => {
+    const environment = runtimeEnvironment("production");
+    delete environment.OPERATIONS_HEARTBEAT_URL;
+    const result = spawnSync(process.execPath, [configureRuntime, "validate"], { env: environment, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("OPERATIONS_HEARTBEAT_URL");
   });
 
   it("accepts only a P-256 SendGrid webhook verification key", () => {
