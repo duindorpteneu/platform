@@ -321,6 +321,42 @@ async function verifyMobileMenu(page, role) {
   if (!(await opener.evaluate((element) => element === document.activeElement))) throw new Error("MENU_FOCUS_NOT_RESTORED");
 }
 
+async function verifyAdminSettings(page, baseUrl) {
+  const settingsUrl = `${baseUrl}/backoffice/instellingen`;
+  let responseStatus = 0;
+  const recordResponse = (response) => {
+    if (response.request().resourceType() === "document" && response.url() === settingsUrl) {
+      responseStatus = response.status();
+      process.stdout.write(`Beheerder-instellingen antwoord ontvangen (${responseStatus}).\n`);
+    }
+  };
+  page.on("response", recordResponse);
+  try {
+    await page.evaluate((url) => window.location.assign(url), settingsUrl);
+    await page.waitForURL(settingsUrl, { timeout: 15_000 });
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      if (page.url().startsWith(`${baseUrl}/staff/login`)) throw new Error("ADMIN_SETTINGS_SESSION_LOST");
+      if (await page.getByRole("heading", { name: "Instellingen", exact: true }).isVisible().catch(() => false)) {
+        process.stdout.write("Beheerder-instellingen zichtbaar.\n");
+        return;
+      }
+      const body = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
+      if (body.includes("Instellingen tijdelijk niet beschikbaar") || body.includes("Instellingen niet beschikbaar")) {
+        throw new Error("ADMIN_SETTINGS_WORKSPACE_UNAVAILABLE");
+      }
+      await wait(250);
+    }
+    if (responseStatus >= 400) throw new Error("ADMIN_SETTINGS_HTTP_REJECTED");
+    throw new Error("ADMIN_SETTINGS_RENDER_TIMEOUT");
+  } catch (error) {
+    if (error instanceof Error && /^ADMIN_SETTINGS_[A-Z_]+$/.test(error.message)) throw error;
+    throw new Error("ADMIN_SETTINGS_NAVIGATION_FAILED");
+  } finally {
+    page.off("response", recordResponse);
+  }
+}
+
 async function verifyRole(page, target, role) {
   if (role === "uitgifte") {
     await page.goto(`${target.baseUrl}/backoffice`);
@@ -339,8 +375,7 @@ async function verifyRole(page, target, role) {
     const sessionStatus = await page.evaluate(async () => (await fetch("/api/staff-auth/session", { headers: { accept: "application/json" } })).status);
     if (sessionStatus !== 200) throw new Error("STAFF_APP_SESSION_NOT_AVAILABLE");
     if (role === "beheerder") {
-      await page.goto(`${target.baseUrl}/backoffice/instellingen`);
-      await page.getByRole("heading", { name: "Instellingen", exact: true }).waitFor({ timeout: 15_000 });
+      await verifyAdminSettings(page, target.baseUrl);
     }
     if (role === "kledingcommissie" && await page.getByRole("link", { name: "Instellingen", exact: true }).count()) {
       throw new Error("COMMITTEE_SETTINGS_EXPOSED");

@@ -33,4 +33,11 @@ describe("staging core target", () => {
     expect(source).toContain('"run", "--rm", "--interactive"');
     expect(source).toContain("input: statement");
   });
+
+  it("controleert de echte instellingenpagina zonder op het document-load-event te blokkeren", () => {
+    const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
+    expect(source).toContain("window.location.assign(url)");
+    expect(source).toContain("ADMIN_SETTINGS_WORKSPACE_UNAVAILABLE");
+    expect(source).toContain("ADMIN_SETTINGS_RENDER_TIMEOUT");
+  });
 });
