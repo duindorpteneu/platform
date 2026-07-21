@@ -85,6 +85,25 @@ function currentTotp(secret) {
   return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, "0");
 }
 
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
+  const client = createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const result = await client.auth.signInWithPassword({ email, password });
+    if (!result.error && result.data.session) {
+      await client.auth.signOut({ scope: "local" });
+      return;
+    }
+    if (attempt < 6) await wait(attempt * 1_000);
+  }
+  throw new Error("STAFF_FIXTURE_AUTH_NOT_READY");
+}
+
 async function verifyHealth(target) {
   const response = await fetch(`${target.baseUrl}/api/health`, { redirect: "error", signal: AbortSignal.timeout(10_000) });
   const body = await response.json();
@@ -94,6 +113,7 @@ async function verifyHealth(target) {
 }
 
 async function loginWithMfa(page, baseUrl, projectRef, email, password) {
+  let authStatus = 0;
   try {
     await page.goto(`${baseUrl}/staff/login`);
     const runtime = await page.evaluate(() => ({
@@ -105,13 +125,31 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     }
     await page.getByLabel("E-mailadres").fill(email);
     await page.getByLabel("Wachtwoord").fill(password);
+    const authResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "POST"
+        && url.hostname === `${projectRef}.supabase.co`
+        && url.pathname === "/auth/v1/token";
+    }, { timeout: 30_000 });
     await page.getByRole("button", { name: "Inloggen" }).click();
+    authStatus = (await authResponse).status();
+    if (authStatus === 400) throw new Error("STAFF_PASSWORD_REJECTED");
+    if (authStatus === 429) throw new Error("STAFF_AUTH_RATE_LIMITED");
+    if (authStatus !== 200) throw new Error("STAFF_AUTH_PROVIDER_REJECTED");
     await page.waitForURL(`${baseUrl}/staff/mfa`, { timeout: 15_000 });
   } catch (error) {
-    if (error instanceof Error && error.message === "STAFF_RUNTIME_CONFIG_INVALID") throw error;
+    if (error instanceof Error && [
+      "STAFF_RUNTIME_CONFIG_INVALID",
+      "STAFF_PASSWORD_REJECTED",
+      "STAFF_AUTH_RATE_LIMITED",
+      "STAFF_AUTH_PROVIDER_REJECTED",
+    ].includes(error.message)) throw error;
     const alert = await page.getByRole("alert").textContent({ timeout: 1_000 }).catch(() => "");
     if (alert?.includes("E-mailadres of wachtwoord is niet geldig")) throw new Error("STAFF_PASSWORD_REJECTED");
     if (alert?.includes("Medewerkerslogin is lokaal nog niet geconfigureerd")) throw new Error("STAFF_RUNTIME_CONFIG_MISSING");
+    if (authStatus === 200) throw new Error("STAFF_LOGIN_NAVIGATION_FAILED");
+    if (authStatus > 0) throw new Error("STAFF_AUTH_PROVIDER_REJECTED");
+    if (error instanceof Error && error.name === "TimeoutError") throw new Error("STAFF_AUTH_NO_RESPONSE");
     throw new Error("STAFF_LOGIN_REDIRECT_TIMEOUT");
   }
   let secret;
@@ -199,6 +237,7 @@ async function main() {
         displayName: `Staging ${role}`,
         role,
       });
+      await waitForFixtureAuth(supabaseUrl, anonKey, email, password);
       process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
