@@ -112,17 +112,16 @@ Inschakelen:
 
 ### Restore-drill
 
-Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit:
+Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit. Start hiervoor handmatig de GitHub-workflow `Staging backup and isolated restore drill` met de volledige SHA die aantoonbaar op staging staat en bevestiging `STAGING-RESTORE`. De workflow draait op een tijdelijke GitHub-hosted runner, zodat de gedeelde applicatie-VPS en Castivo niet worden benaderd.
 
-1. Start de RTO-klok en registreer de gekozen back-up; die moet binnen de RPO van 24 uur vallen.
-2. Maak een leeg, tijdelijk en netwerkbeperkt Supabase/PostgreSQL-project in een EU-regio. Gebruik geen staging- of productionproject.
-3. Koppel geen Mollie-, SendGrid-, webhook- of cronconfiguratie; alle providerflags blijven uit.
-4. Herstel de back-up via de ondersteunde Supabase-herstelprocedure of `pg_restore` naar uitsluitend de lege restorebestemming.
-5. Controleer schema- en migratieversie, constraints, aantallen per hoofdentiteit en referentiële integriteit zonder persoonsgegevens te exporteren.
-6. Voer pgTAP/RLS-tests en een minimale applicatiesmoke uit met afgeschermde toegang.
-7. Controleer dat staff AAL2, ouderisolatie, betalingsinvarianten en dubbele-uitgifteconstraints blijven gelden.
-8. Noteer begin/eindtijd, bronback-uptijd, resultaat en afwijkingen. Doel: volledig herstel binnen vier uur.
-9. Verwijder de tijdelijke restoreomgeving volgens het changeproces en bevestig verwijdering.
+1. De workflow valideert het vaste stagingdomein, de stagingprojectref, databasehost, bevestiging en volledige release-SHA. De publieke healthcheck moet exact dezelfde SHA rapporteren.
+2. De RTO-klok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
+3. De back-up wordt hersteld naar een run-unieke PostgreSQL 17-container zonder hostpoort, Caddy-route, extern netwerk, permanente volumes of providerconfiguratie.
+4. De verificatie bewijst uitsluitend PostgreSQL-majorversie, migratieversies, constrainttotalen, RLS-telling en geaggregeerde aantallen per hoofdentiteit. Rijdata en persoonsgegevens komen niet in logs of artifacts.
+5. De workflow faalt wanneer de verse snapshot bij afronding ouder dan 24 uur is, de totale oefening langer dan vier uur duurt, constraints ongeldig zijn of het herstel onvolledig is.
+6. Een `always()`-stap verwijdert de run-specifieke containers, anonieme volumes, dump en ruwe verificatie. Alleen het geredigeerde JSON-bewijs blijft veertien dagen beschikbaar.
+
+Deze logische oefening bewijst het technische dump-/herstelpad en de gemeten RPO/RTO voor de verse staging-snapshot. Zij vervangt niet de afzonderlijke controle dat de dagelijkse beheerde productionback-up maximaal 24 uur oud is. Een productieherstel blijft een expliciet changeproces met een geïsoleerde restorebestemming.
 
 Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan vier uur duurt, providerverkeer mogelijk is, integriteitscontroles falen of credentials/data buiten de geïsoleerde omgeving terechtkomen.
 
