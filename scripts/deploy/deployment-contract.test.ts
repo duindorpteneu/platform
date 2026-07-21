@@ -122,9 +122,21 @@ describe("deployment environment isolation", () => {
     expect(refreshMigration).toContain("'create_season_v2'");
     expect(refreshMigration).toContain("grant execute on function app.get_settings_rpc_contract_version() to service_role");
     expect(contractScript).toContain("/rest/v1/rpc/get_settings_rpc_contract_version");
+    expect(contractScript).toContain("/rest/v1/rpc/create_staff_app_session_for_user");
+    expect(contractScript).toContain('safeRemoteCode(result?.code) === "42501"');
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
+  });
+
+  it("refreshes the service-only staff session RPC without mutating business data", () => {
+    const migration = readFileSync(
+      path.join(repositoryRoot, "supabase/migrations/20260721140000_refresh_staff_session_contract.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("grant execute on function app.create_staff_app_session_for_user(uuid) to service_role");
+    expect(migration).toContain("notify pgrst, 'reload schema'");
+    expect(migration).not.toMatch(/\b(?:insert|update|delete|truncate)\b/i);
   });
 
   it("does not serialize empty optional provider values into runtime", () => {

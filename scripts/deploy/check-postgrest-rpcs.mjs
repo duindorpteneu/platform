@@ -43,6 +43,29 @@ async function loadContractVersion(url, serviceRoleKey) {
   }
 }
 
+async function verifyStaffSessionContract(url, serviceRoleKey) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(new URL("/rest/v1/rpc/create_staff_app_session_for_user", url), {
+      method: "POST",
+      headers: {
+        "Content-Profile": "app",
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ p_auth_user_id: null }),
+      signal: controller.signal,
+    });
+    const result = await response.json().catch(() => null);
+    if (response.status === 403 && safeRemoteCode(result?.code) === "42501") return;
+    throw new Error(`STAFF_SESSION_HTTP_${response.status}_${safeRemoteCode(result?.code)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function main() {
   const url = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
@@ -52,6 +75,7 @@ async function main() {
     try {
       const contract = await loadContractVersion(url, serviceRoleKey);
       if (contract.version === expectedVersion && contract.ready === true) {
+        await verifyStaffSessionContract(url, serviceRoleKey);
         process.stdout.write("PostgREST-contract geslaagd: instellingen-RPC's zijn actueel en uitvoerbaar.\n");
         return;
       }
