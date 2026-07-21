@@ -72,13 +72,16 @@ unset restore_password
 
 init_complete_marker='PostgreSQL init process complete; ready for start up.'
 for _ in $(seq 1 120); do
-  if docker logs "${container_name}" 2>&1 | grep -Fq "${init_complete_marker}" \
+  container_logs="$(docker logs "${container_name}" 2>&1)"
+  if [[ "${container_logs}" == *"${init_complete_marker}"* ]] \
     && docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres; then
     break
   fi
   sleep 2
 done
-docker logs "${container_name}" 2>&1 | grep -Fq "${init_complete_marker}"
+container_logs="$(docker logs "${container_name}" 2>&1)"
+[[ "${container_logs}" == *"${init_complete_marker}"* ]]
+unset container_logs
 docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres
 docker exec "${container_name}" createdb --username postgres --template template0 restore_drill
 
