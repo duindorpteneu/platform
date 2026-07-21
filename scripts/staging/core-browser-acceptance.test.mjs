@@ -44,6 +44,7 @@ describe("staging core target", () => {
   it("controleert het settings-RPC met hetzelfde echte AAL2-token zonder het token te loggen", () => {
     const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
     expect(source).toContain("get_settings_workspace_v2");
+    expect(source).toContain("settingsWorkspaceSchema.safeParse(payload)");
     expect(source).toContain("ADMIN_SETTINGS_RPC_");
     expect(source).not.toContain("process.stdout.write(accessToken");
   });

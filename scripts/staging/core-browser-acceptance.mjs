@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { settingsWorkspaceSchema } from "../../src/lib/settings-audit-contract.ts";
 
 const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
@@ -391,8 +392,16 @@ async function verifyAdminSettingsRpc(target, anonKey, accessToken) {
     process.stdout.write(`Direct instellingen-RPC afgewezen (${response.status}, ${providerCode}).\n`);
     throw new Error(`ADMIN_SETTINGS_RPC_${providerCode}`);
   }
-  process.stdout.write("Direct instellingen-RPC geslaagd (200).\n");
-  return payload;
+  const parsed = settingsWorkspaceSchema.safeParse(payload);
+  if (!parsed.success) {
+    const paths = [...new Set(parsed.error.issues.map((issue) => issue.path.join(".") || "root"))]
+      .slice(0, 8)
+      .join(",");
+    process.stdout.write(`Direct instellingen-RPC contract ongeldig (${paths}).\n`);
+    throw new Error("ADMIN_SETTINGS_RPC_RESPONSE_INVALID");
+  }
+  process.stdout.write("Direct instellingen-RPC en responsecontract geslaagd (200).\n");
+  return parsed.data;
 }
 
 async function verifyRole(page, target, role, anonKey, accessToken) {
