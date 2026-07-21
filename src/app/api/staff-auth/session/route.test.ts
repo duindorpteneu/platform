@@ -93,14 +93,14 @@ describe("GET /api/staff-auth/session", () => {
 
     const response = await POST(synchronizationRequest({
       accessToken: "a".repeat(32),
-      refreshToken: "r".repeat(32),
+      refreshToken: "r".repeat(12),
     }));
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ landingPath: "/uitgifte" });
     expect(client.auth.setSession).toHaveBeenCalledWith({
       access_token: "a".repeat(32),
-      refresh_token: "r".repeat(32),
+      refresh_token: "r".repeat(12),
     });
   });
 

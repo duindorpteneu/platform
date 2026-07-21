@@ -6,8 +6,10 @@ import { getSupabaseServerClient } from "@/server/supabase/server";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0" };
 const sessionTokensSchema = z.object({
-  accessToken: z.string().min(20).max(16_384),
-  refreshToken: z.string().min(20).max(16_384),
+  // Supabase refresh tokens can be short opaque values in local and hosted environments.
+  // Authenticity is established by auth.setSession below; this schema only bounds input size.
+  accessToken: z.string().min(1).max(16_384),
+  refreshToken: z.string().min(1).max(16_384),
 }).strict();
 
 export const runtime = "nodejs";
