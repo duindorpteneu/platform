@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
+const POSTGRES_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 const roles = ["beheerder", "kledingcommissie", "uitgifte"];
 
 function envRequired(environment, name) {
@@ -22,6 +24,44 @@ export function targetFromEnvironment(environment = process.env) {
   if (!/^[a-f0-9]{40}$/.test(releaseSha)) throw new Error("RELEASE_SHA_INVALID");
   if (confirmation !== "STAGING-CORE") throw new Error("CONFIRMATION_INVALID");
   return { baseUrl, projectRef, releaseSha };
+}
+
+export function databaseTargetFromEnvironment(environment = process.env) {
+  const databaseUrl = envRequired(environment, "SUPABASE_DB_URL");
+  let parsed;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    throw new Error("STAGING_DATABASE_TARGET_INVALID");
+  }
+  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) throw new Error("STAGING_DATABASE_TARGET_INVALID");
+  if (!`${parsed.hostname}|${decodeURIComponent(parsed.username)}`.includes(STAGING_REF)) {
+    throw new Error("STAGING_DATABASE_TARGET_INVALID");
+  }
+  return databaseUrl;
+}
+
+function mutateStaffProfile(action, databaseUrl, fixture) {
+  const statements = {
+    insert: "insert into app.staff_profiles(auth_user_id, display_name, role, active) values (:'user_id'::uuid, :'display_name', :'role'::app.staff_role, true);",
+    delete: "delete from app.staff_profiles where auth_user_id = :'user_id'::uuid;",
+  };
+  const statement = statements[action];
+  if (!statement) throw new Error("STAFF_PROFILE_ACTION_INVALID");
+  const environment = {
+    ...process.env,
+    TARGET_DB_URL: databaseUrl,
+    PROFILE_USER_ID: fixture.userId,
+    PROFILE_DISPLAY_NAME: fixture.displayName,
+    PROFILE_ROLE: fixture.role,
+  };
+  const result = spawnSync("docker", [
+    "run", "--rm", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+    "--env", "TARGET_DB_URL", "--env", "PROFILE_USER_ID", "--env", "PROFILE_DISPLAY_NAME", "--env", "PROFILE_ROLE",
+    "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu",
+    "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --set=user_id=\"$PROFILE_USER_ID\" --set=display_name=\"$PROFILE_DISPLAY_NAME\" --set=role=\"$PROFILE_ROLE\"",
+  ], { env: environment, input: statement, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"] });
+  if (result.status !== 0) throw new Error(action === "insert" ? "STAFF_PROFILE_CREATE_FAILED" : "STAFF_PROFILE_CLEANUP_FAILED");
 }
 
 function decodeBase32(value) {
@@ -102,6 +142,7 @@ async function main() {
   const supabaseUrl = envRequired(process.env, "NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = envRequired(process.env, "NEXT_PUBLIC_SUPABASE_ANON_KEY");
   const serviceKey = envRequired(process.env, "SUPABASE_SERVICE_ROLE_KEY");
+  const databaseUrl = databaseTargetFromEnvironment();
   if (supabaseUrl !== `https://${target.projectRef}.supabase.co`) throw new Error("SUPABASE_URL_INVALID");
   if (anonKey.length < 20) throw new Error("SUPABASE_ANON_KEY_INVALID");
   await verifyHealth(target);
@@ -117,13 +158,11 @@ async function main() {
       const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
       if (created.error || !created.data.user) throw new Error("STAFF_FIXTURE_CREATE_FAILED");
       createdUsers.push(created.data.user.id);
-      const profile = await admin.schema("app").from("staff_profiles").insert({
-        auth_user_id: created.data.user.id,
-        display_name: `Staging ${role}`,
+      mutateStaffProfile("insert", databaseUrl, {
+        userId: created.data.user.id,
+        displayName: `Staging ${role}`,
         role,
-        active: true,
       });
-      if (profile.error) throw new Error("STAFF_PROFILE_CREATE_FAILED");
 
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
       try {
@@ -137,10 +176,17 @@ async function main() {
     }
   } finally {
     await browser.close();
+    let cleanupFailed = false;
     for (const userId of createdUsers.reverse()) {
-      await admin.schema("app").from("staff_profiles").delete().eq("auth_user_id", userId);
-      await admin.auth.admin.deleteUser(userId);
+      try {
+        mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
+      } catch {
+        cleanupFailed = true;
+      }
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      if (deleted.error) cleanupFailed = true;
     }
+    if (cleanupFailed) throw new Error("STAFF_FIXTURE_CLEANUP_FAILED");
   }
 }
 
