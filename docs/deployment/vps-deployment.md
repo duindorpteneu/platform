@@ -1,6 +1,6 @@
 # VPS-deployment
 
-De applicatie draait per environment als één Rootless-Docker-Composeproject. Caddy blijft buiten Docker en proxyt uitsluitend naar de loopbackbinding.
+De applicatie draait per environment als één Rootless-Docker-Composeproject met een app- en schedulercontainer. Caddy blijft buiten Docker en proxyt uitsluitend naar de app-loopbackbinding.
 
 | Onderdeel | Staging | Production |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ De applicatie draait per environment als één Rootless-Docker-Composeproject. C
 | Runtimepad | `/srv/apps/duindorpteneu/staging` | `/srv/apps/duindorpteneu/production` |
 | Runnerlabels | `self-hosted, linux, x64, duindorpteneu, staging` | `self-hosted, linux, x64, duindorpteneu, production` |
 
-`deploy/compose.vps.yml` bevat precies één appservice, geen Caddy, geen aparte admin-/uitgifteservice, geen volumes en geen `build:`. De app draait zonder Linux-capabilities, met een read-only rootfilesystem en publiceert containerpoort 3000 alleen op de vaste loopbackpoort.
+`deploy/compose.vps.yml` bevat precies één appservice en één scheduler, geen Caddy, geen aparte admin-/uitgifteservice, geen volumes en geen `build:`. Beide draaien zonder Linux-capabilities en met een read-only rootfilesystem. Alleen de app publiceert containerpoort 3000 op de vaste loopbackpoort; de scheduler gebruikt uitsluitend het Compose-interne netwerk.
 
 ## Health- en routematrix
 
@@ -27,17 +27,17 @@ De checks proberen maximaal twintig keer met drie seconden interval en korte tim
 
 ## Releaseflow
 
-Een push naar `main` start `.github/workflows/deploy.yml`: preflight/gates → imagebouw → stagingdeploy en routechecks → GitHub production-environmentapproval → productiondeploy. `duindorpteneu-app:<SHA>` wordt één keer gebouwd. Docker image-ID, tag en SHA staan in `RELEASE_MANIFEST`; production downloadt hetzelfde imageartefact en vergelijkt build-, staging- en lokaal geladen digest. Production bouwt nooit opnieuw.
+Een push naar `main` start `.github/workflows/deploy.yml`: preflight/gates → imagebouw → stagingdeploy en route-/schedulerchecks. Production start nooit automatisch. De handmatige `.github/workflows/promote-production.yml` vereist het succesvolle staging-run-ID, de exacte SHA, tekstbevestiging en daarna de GitHub production-environmentapproval. `duindorpteneu-app:<SHA>` wordt één keer gebouwd; production downloadt dezelfde stagingartefacten en vergelijkt build-, staging- en lokaal geladen digest.
 
 De expliciete `workflow_dispatch`-modus `redeploy` accepteert alleen een volledige SHA die voorouder van `origin/main` is. In normale modus moet de release-SHA exact de actuele `origin/main` zijn; een verouderde wachtende run stopt veilig.
 
 ## Eerste stagingdeploy
 
-1. Vul de ontbrekende environmentsecrets en optionele providervariables uit `github-environments.md`.
+1. Vul de ontbrekende heartbeatsecret en acceptatievariabele uit `github-environments.md`.
 2. Houd `MOLLIE_ENABLED=false` en `EMAIL_ENABLED=false`.
 3. Controleer dat beide runners Rootless Docker en Compose v2 zien en eigenaar zijn van hun eigen runtimepad.
-4. Merge de branch pas na review naar `main`; de push start de volledige flow automatisch.
-5. Controleer staginghealth, `/`, `/admin` en `/uitgifte` voordat production wordt goedgekeurd.
+4. Merge de branch pas na review naar `main`; de push start uitsluitend de stagingflow.
+5. Controleer staginghealth, scheduler, `/`, `/admin`, `/uitgifte`, core/Mollie/restore-evidence en start productionpromotie pas daarna afzonderlijk.
 
 Het deployscript wijzigt Caddy, UFW, SSH, systemd of Docker-globalconfiguratie niet en gebruikt geen `sudo`.
 

@@ -41,11 +41,11 @@ Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eig
 | Job | Route | Frequentie | Geldige uitkomst |
 | --- | --- | --- | --- |
 | E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200` met `status: "processed"`; `status: "paused"` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
-| Retentie | `POST /api/internal/jobs/retention` | Dagelijks | `200` met alleen verwijderde aantallen |
+| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna dagelijks na 03:17 Europe/Amsterdam | `200` met `status: "completed"` en alleen verwijderde aantallen |
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
 
-Voor staging voert `.github/workflows/staging-operations.yml` de e-mailworker in vijf korte cycli per vijfminutenschedule uit en de retentiejob dagelijks. De workflow is uitsluitend aan de GitHub Environment `staging` gekoppeld. GitHub-schedules kunnen vertraagd starten en zijn daarom geen productie-scheduler; production vereist vóór ingebruikname een afzonderlijke, bewaakte scheduler die iedere minuut aantoonbaar uitvoert.
+De geharde `scheduler`-service draait in ieder omgevingsspecifiek Composeproject zonder hostpoort en roept de app uitsluitend via het interne netwerk aan. De vroegere GitHub-cron is verwijderd; `.github/workflows/staging-operations.yml` blijft alleen als handmatige diagnose beschikbaar. Productionruntime vereist bovendien een onafhankelijke geheime `OPERATIONS_HEARTBEAT_URL`: uitsluitend een volledig gezonde cyclus verstuurt een ping, zodat VPS-, Caddy-, netwerk- en scheduleruitval extern alarmeert. Zie `docs/deployment/production-operations.md`.
 
 De retentiejob:
 

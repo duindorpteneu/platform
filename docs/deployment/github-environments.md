@@ -1,6 +1,6 @@
 # GitHub environments
 
-Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Environment branch policies laten uitsluitend `main` toe. Production vereist goedkeuring door `TIXOCEO`; self-review blijft voorlopig toegestaan omdat slechts één revieweraccount beschikbaar is.
+Audit opnieuw uitgevoerd op 2026-07-21 via `gh` zonder secretwaarden uit te lezen. Environment branch policies laten uitsluitend `main` toe. Production vereist goedkeuring door `TIXOCEO`; self-review blijft voorlopig toegestaan omdat slechts één revieweraccount beschikbaar is.
 
 ## Variables
 
@@ -12,6 +12,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `SUPABASE_PROJECT_REF` | ja | ja | 20 lowercase tekens; verschillend | DB-/URL-koppeling | correct en verschillend |
 | `NEXT_PUBLIC_SUPABASE_URL` | ja | ja | Exact `https://<ref>.supabase.co` | app/runtime | correct |
 | `MOLLIE_ENABLED` | `true` | nee | `false` of `true` | providergate | alleen staging testmode; production default `false` |
+| `MOLLIE_PROFILE_ID` | nee | nee | exact verwacht `pfl_…` testprofiel | muterende stagingacceptatie | vóór de Mollie-run als stagingvariable toevoegen; geen productionwaarde nodig zolang production uit staat |
 | `EMAIL_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
 | `SENDGRID_FROM_EMAIL` | `danny.goldenbelt@duindorpsv.nl` | `danny.goldenbelt@duindorpsv.nl` | geldig en geverifieerd e-mailadres | SendGrid | door eigenaar bevestigd |
 | `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
@@ -29,6 +30,7 @@ Audit uitgevoerd op 2026-07-19 via `gh` zonder secretwaarden uit te lezen. Envir
 | `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | ja | ja | base64, exact 32 bytes | Next Server Actions | aanwezig |
 | `PARENT_TOKEN_PEPPER` | ja | ja | uniek, minimaal 32 tekens | OTP/sessie/QR-hashing | aanwezig |
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
+| `OPERATIONS_HEARTBEAT_URL` | nee | nee | geheime `https://` dead-man-switch-URL zonder URL-userinfo | onafhankelijke schedulerbewaking | verplicht voor productiondeploy; staging optioneel maar aanbevolen |
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_SMOKE_RECIPIENT` | ja | nee | `info@dgwebservices.nl`, beheerde test-inbox | provider-smoke | uitsluitend gebruikt door de handmatige staging-smoke |
@@ -40,6 +42,14 @@ gh secret set MOLLIE_API_KEY --repo duindorpteneu/platform --env staging
 gh secret set SENDGRID_API_KEY --repo duindorpteneu/platform --env staging
 gh secret set MOLLIE_API_KEY --repo duindorpteneu/platform --env production
 gh secret set SENDGRID_API_KEY --repo duindorpteneu/platform --env production
+gh secret set OPERATIONS_HEARTBEAT_URL --repo duindorpteneu/platform --env staging
+gh secret set OPERATIONS_HEARTBEAT_URL --repo duindorpteneu/platform --env production
+```
+
+De niet-geheime Mollie-profielbinding wordt na controle van het bedoelde testprofiel gezet met:
+
+```bash
+gh variable set MOLLIE_PROFILE_ID --repo duindorpteneu/platform --env staging
 ```
 
 `SUPABASE_ACCESS_TOKEN`, Resend-, NIKKI- en `MOLLIE_WEBHOOK_SECRET`-waarden worden niet gebruikt en horen daarom niet in dit contract. `PARENT_TOKEN_PEPPER` is het bestaande QR-/tokensigninggeheim. Secretwaarden verschijnen nooit in logs, manifests of documentatie.

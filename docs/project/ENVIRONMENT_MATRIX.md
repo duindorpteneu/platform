@@ -19,8 +19,8 @@ Canon: MVP v1.0, hoofdstuk 20
 | `EMAIL_ENABLED` | `false` | `true` alleen na afzender-/templatecontrole | `true` alleen na mail-smoke en operationele goedkeuring |
 | Secrets | Alleen in niet-gecommitte `.env.local` | Staging-secretstore | Afzonderlijke production-secretstore |
 | Back-up | Niet van toepassing op testdata; resetbaar | Back-up vóór risicovolle migratie en restore-oefening | Dagelijkse back-up; laatste succesvolle back-up jonger dan 24 uur |
-| Logging | Lokale geredigeerde logs | Geredigeerd, correlation-id, alerts actief | Afzonderlijke retentie/toegang, geredigeerd en alertbaar |
-| Deploy | Handmatig lokaal | Na merge vanuit gecontroleerde pipeline | Alleen expliciete goedkeuring plus release-tag |
+| Logging | Lokale geredigeerde logs | Geredigeerd, correlation-id, scheduler-health optioneel extern bewaakt | Afzonderlijke retentie/toegang, geredigeerd en verplicht via externe dead-man-switch bewaakt |
+| Deploy | Handmatig lokaal | Na merge via `Deploy staging` | Alleen expliciete `Promote production`, dezelfde stagingartefacten en environmentapproval |
 
 Staging en production delen nooit projecten, databases, Auth-users, service-role keys, peppers, cronsecrets, Mollie-keys, SendGrid-keys, webhooks of logbestemmingen. Productiedata gaat niet naar staging zonder gedocumenteerde anonimisering en goedkeuring van de privacyverantwoordelijke.
 
@@ -34,6 +34,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `SUPABASE_SECRET_KEY` | Hoog geheim, server-only | Lokale secret key | Unieke secret/service-role key in secretstore |
 | `PARENT_TOKEN_PEPPER` | Hoog geheim, server-only | Uniek, minimaal 32 tekens | Uniek per omgeving; rotatie vereist sessie-/QR-plan |
 | `CRON_SECRET` | Hoog geheim, server-only | Uniek, minimaal 16 tekens | Uniek per omgeving en uitsluitend scheduler-to-app |
+| `OPERATIONS_HEARTBEAT_URL` | Hoog geheim, server-only | Leeg | Unieke externe HTTPS dead-man-switch; verplicht in production en nooit gelogd |
 | `MOLLIE_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
 | `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging, afzonderlijke live key in production |
 | `EMAIL_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
@@ -55,8 +56,8 @@ Voor de eerste stagingdeploy legt de releasebeheerder buiten Git vast:
 4. back-upmogelijkheid en gekozen geïsoleerde restorebestemming;
 5. Mollie-testprofiel en webhook-URL;
 6. SendGrid-afzender, SPF/DKIM-status, template-ID en webhook;
-7. scheduler voor e-mailjobs en retentie;
-8. health-/alertbestemming en escalatiekanaal.
+7. de projecteigen schedulercontainer die iedere minuut e-mail/health en dagelijks retentie uitvoert;
+8. onafhankelijke `OPERATIONS_HEARTBEAT_URL`, alert-eigenaar en escalatiekanaal.
 
 Gebruik daarna uitsluitend fictieve `example.invalid`-leden. Maak ten minste één account per staffrol en één geblokkeerd staffaccount. Alle drie actieve accounts doorlopen TOTP enrollment; gedeelde accounts zijn verboden.
 

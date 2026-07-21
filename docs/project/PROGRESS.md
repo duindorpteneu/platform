@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar gevalideerd. Het definitieve repositorydeploypad bouwt één immutable Rootless-Dockerimage, verifieert staging en promoveert exact dezelfde digest na GitHub productionapproval. De eerste echte run wacht op twee verplichte secrets en de production required-reviewerregel.
+De MVP-releasecandidate is lokaal functioneel, beveiligd en reproduceerbaar gevalideerd. Het repositorydeploypad bouwt één immutable Rootless-Dockerimage, verifieert staging en promoveert uitsluitend via een afzonderlijke handmatige productionworkflow exact dezelfde digest. Staging draait gezond; production blijft geblokkeerd op externe acceptatie, heartbeat en VPS-isolatie.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -82,14 +82,18 @@ De lokale MVP-releasecandidate is functioneel, beveiligd en reproduceerbaar geva
 - De gedeelde medewerkersshell heeft onder `lg` een rolgefilterde mobiele drawer met dezelfde werkruimte- en beheerlinks als desktop, actuele seizoencontext en uitloggen. De 44px-menuknop, actieve linkstatus, scroll-lock, overlay, Escape, focus-terugkeer en focus-trap zijn in de echte AAL2-browserflow afgedekt.
 
 ## In progress
-- Staging is via de immutable main-releaseflow publiek gezond; production wacht bewust achter de handmatige required-reviewer-gate.
-- Live SendGrid- en Mollie-testmodeverificatie, alerts en de geïsoleerde restore-oefening blijven afzonderlijke stagingacceptatiegates; beide providerflags staan nog uit. De staging-scheduler is geïmplementeerd maar wordt pas actief vanaf de default branch.
+- Staging draait publiek gezond op main-SHA `965233d89eb8dcfb58028ed02b6a637a478103a6`; de mobiele medewerkersnavigatie is daarmee gedeployed. De superseded productionapproval is geannuleerd en production is niet gewijzigd.
+- Branch `codex/operations-acceptance-hardening` bevat de volgende release: omgevingslokale minuutscheduler, afzonderlijke productionpromotie, runledger/503-health, veilige e-mailrecovery, zelfopruimende staff/MFA/mobile-acceptatie, Mollie paid/mismatch/replay/refund en een geïsoleerde restore-drill.
+- De volledige lokale releasegate is groen op 49 migrations: 20 pgTAP-bestanden/533 assertions, 56 Vitestbestanden/259 tests, concurrency, echte MFA, productiebuild, actionlint/ShellCheck en de volledige browserflow.
 
 ## Next
-- Doorloop `docs/project/STAGING_VERIFICATION.md` met uitsluitend fictieve data.
-- Verifieer Mollie testmode, SendGrid-afzender/templates/webhook, eerste beheerder, staffuitnodiging, scheduler, alerts en restore-drill.
-- Leg de geaccepteerde commit-SHA en alle externe bewijslinks vast voordat productie wordt overwogen.
+- Merge de operationele release na CI en deploy exact de merge-SHA naar staging.
+- Voer de drie afgeschermde workflows uit: core staff/MFA/mobile, Mollie testmode en restore-drill; leg uitsluitend geredigeerde runlinks/tellingen vast.
+- Configureer `MOLLIE_PROFILE_ID` voor staging en een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving; bewijs alarm en herstel. Corrigeer daarnaast de SendGrid-key die Mail Send nog met 401 weigert.
+- Rond de resterende menselijke/apparaatacceptatie uit `STAGING_VERIFICATION.md` af voordat productionpromotie wordt overwogen.
 
 ## Blockers
 - Geen lokale codeblocker.
-- Alle verplichte secret-namen zijn in beide GitHub environments aanwezig en production vereist review door `TIXOCEO`; alleen live stagingbewijs resteert. Providerflags blijven standaard uit.
+- Extern ontbreken `MOLLIE_PROFILE_ID` (stagingvariable) en `OPERATIONS_HEARTBEAT_URL` (staging/productionsecret). Productionpreflight blokkeert bewust zonder heartbeat.
+- SendGrid Mail Send retourneert nog HTTP 401; OTP/inbox/delivery en providerfault-herstel kunnen daardoor niet live worden afgetekend.
+- Production blijft NO-GO totdat de gedeelde VPS aantoonbaar afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo heeft.
