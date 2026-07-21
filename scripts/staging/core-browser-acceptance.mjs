@@ -201,17 +201,11 @@ async function main() {
       });
       process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
-      const credentialProbe = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-      const probeResult = await credentialProbe.auth.signInWithPassword({ email, password });
-      if (probeResult.error || !probeResult.data.user) throw new Error("STAFF_CREDENTIAL_PROBE_FAILED");
-      await credentialProbe.auth.signOut({ scope: "local" });
-      process.stdout.write(`${role}: Auth-credentialprobe geslaagd.\n`);
-
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
       try {
         const page = await context.newPage();
         await loginWithMfa(page, target.baseUrl, target.projectRef, email, password);
-        process.stdout.write(`${role}: MFA bevestigd.\n`);
+        process.stdout.write(`${role}: MFA-code ingediend.\n`);
         await verifyRole(page, target, role);
       } finally {
         await context.close();
