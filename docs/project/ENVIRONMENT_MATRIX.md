@@ -32,6 +32,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `NEXT_PUBLIC_SUPABASE_URL` | Publiek | Lokale API op poort 54329 | URL van uitsluitend het eigen project |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publiek maar omgevingsgebonden | Lokale key | Publishable key van uitsluitend het eigen project |
 | `SUPABASE_SECRET_KEY` | Hoog geheim, server-only | Lokale secret key | Unieke secret/service-role key in secretstore |
+| `SUPABASE_JWKS` | Publiek maar omgevingsgebonden | Optioneel; lokale JWKS of tijdelijke lokale endpointfallback | Verplicht; gevalideerde ES256/P-256 keyset van exact het eigen project, zonder runtime-netwerkafhankelijkheid |
 | `PARENT_TOKEN_PEPPER` | Hoog geheim, server-only | Uniek, minimaal 32 tekens | Uniek per omgeving; rotatie vereist sessie-/QR-plan |
 | `CRON_SECRET` | Hoog geheim, server-only | Uniek, minimaal 16 tekens | Uniek per omgeving en uitsluitend scheduler-to-app |
 | `OPERATIONS_HEARTBEAT_URL` | Hoog geheim, server-only | Leeg | Unieke externe HTTPS dead-man-switch; verplicht in production en nooit gelogd |

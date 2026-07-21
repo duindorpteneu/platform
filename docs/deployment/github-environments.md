@@ -11,6 +11,7 @@ Audit opnieuw uitgevoerd op 2026-07-21 via `gh` zonder secretwaarden uit te leze
 | `NEXT_PUBLIC_APP_URL` | ja | ja | `https://` + `APP_HOST` | redirects, QR, callbacks, e-mail | correct |
 | `SUPABASE_PROJECT_REF` | ja | ja | 20 lowercase tekens; verschillend | DB-/URL-koppeling | correct en verschillend |
 | `NEXT_PUBLIC_SUPABASE_URL` | ja | ja | Exact `https://<ref>.supabase.co` | app/runtime | correct |
+| `SUPABASE_JWKS` | ja | ja | Compacte publieke ES256/P-256 JWKS van exact het eigen project | lokale staff-JWT-verificatie | bij signing-keyrotatie vóór activatie actualiseren |
 | `MOLLIE_ENABLED` | `true` | nee | `false` of `true` | providergate | alleen staging testmode; production default `false` |
 | `MOLLIE_PROFILE_ID` | nee | nee | exact verwacht `pfl_…` testprofiel | muterende stagingacceptatie | vóór de Mollie-run als stagingvariable toevoegen; geen productionwaarde nodig zolang production uit staat |
 | `EMAIL_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |

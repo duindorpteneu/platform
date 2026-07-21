@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  createLocalJWKSet: vi.fn(() => vi.fn()),
   createRemoteJWKSet: vi.fn(() => vi.fn()),
   jwtVerify: vi.fn(),
 }));
@@ -19,8 +20,22 @@ const validClaims = {
 describe("staff Supabase JWT verification", () => {
   beforeEach(() => {
     mocks.createRemoteJWKSet.mockClear();
+    mocks.createLocalJWKSet.mockClear();
     mocks.jwtVerify.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
+    delete process.env.SUPABASE_JWKS;
+  });
+
+  it("gebruikt de gevalideerde lokale runtime-JWKS zonder outbound request", async () => {
+    process.env.SUPABASE_JWKS = JSON.stringify({ keys: [{
+      kty: "EC", crv: "P-256", alg: "ES256", kid: "runtime-key",
+      x: "A".repeat(43), y: "B".repeat(43),
+    }] });
+    mocks.jwtVerify.mockResolvedValue({ payload: validClaims });
+
+    await expect(verifyStaffAal2AccessToken("signed-token")).resolves.toEqual({ userId: validClaims.sub });
+    expect(mocks.createLocalJWKSet).toHaveBeenCalledOnce();
+    expect(mocks.createRemoteJWKSet).not.toHaveBeenCalled();
   });
 
   it("accepteert alleen geverifieerde AAL2-claims van de vaste issuer", async () => {

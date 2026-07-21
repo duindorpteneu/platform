@@ -67,6 +67,7 @@ const appPort = required("APP_BIND_PORT");
 const appUrl = required("NEXT_PUBLIC_APP_URL");
 const projectRef = required("SUPABASE_PROJECT_REF");
 const supabaseUrl = required("NEXT_PUBLIC_SUPABASE_URL");
+const supabaseJwks = required("SUPABASE_JWKS", 40);
 if (appHost !== expected.host) invalid("APP_HOST");
 if (appPort !== expected.port) invalid("APP_BIND_PORT");
 if (process.env.RUNTIME_DIRECTORY !== expected.root) invalid("RUNTIME_DIRECTORY");
@@ -75,6 +76,15 @@ if (!/^[a-z0-9]{20}$/.test(projectRef)) invalid("SUPABASE_PROJECT_REF");
 if (projectRef !== expected.supabaseRef) invalid("SUPABASE_PROJECT_REF");
 if (appUrl !== `https://${appHost}`) invalid("NEXT_PUBLIC_APP_URL");
 if (supabaseUrl !== `https://${projectRef}.supabase.co`) invalid("NEXT_PUBLIC_SUPABASE_URL");
+try {
+  const parsed = JSON.parse(supabaseJwks);
+  if (
+    !parsed || Object.keys(parsed).some((key) => key !== "keys") || !Array.isArray(parsed.keys) || parsed.keys.length < 1
+    || parsed.keys.some((key) => key?.kty !== "EC" || key?.crv !== "P-256" || key?.alg !== "ES256"
+      || typeof key?.kid !== "string" || key.kid.length < 1
+      || !/^[A-Za-z0-9_-]{40,}$/.test(key?.x ?? "") || !/^[A-Za-z0-9_-]{40,}$/.test(key?.y ?? ""))
+  ) invalid("SUPABASE_JWKS");
+} catch { invalid("SUPABASE_JWKS"); }
 
 jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon", projectRef);
 jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
@@ -158,6 +168,7 @@ const runtime = {
   NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   SUPABASE_SECRET_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_JWKS: supabaseJwks,
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
   CRON_SECRET: process.env.CRON_SECRET,
