@@ -336,6 +336,8 @@ async function verifyRole(page, target, role) {
       if (alert?.includes("geen actief medewerkersprofiel")) throw new Error("MFA_STAFF_SESSION_REJECTED");
       throw new Error("MFA_LANDING_FAILED");
     }
+    const sessionStatus = await page.evaluate(async () => (await fetch("/api/staff-auth/session", { headers: { accept: "application/json" } })).status);
+    if (sessionStatus !== 200) throw new Error("STAFF_APP_SESSION_NOT_AVAILABLE");
     const settingsStatus = await page.evaluate(async () => (await fetch("/api/settings", { headers: { accept: "application/json" } })).status);
     if (role === "beheerder" && settingsStatus !== 200) throw new Error("ADMIN_SETTINGS_DENIED");
     if (role === "kledingcommissie" && settingsStatus !== 403) throw new Error("COMMITTEE_SETTINGS_EXPOSED");
