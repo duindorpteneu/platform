@@ -80,17 +80,18 @@ De MVP-releasecandidate is lokaal functioneel, beveiligd en reproduceerbaar geva
 - Beheerder en kledingcommissie kunnen per actief lid, open seizoen en gekoppeld artikel een door ouders doorgegeven maat vastleggen. Bestelregels blijven leidend en alleen-lezen; maatprofielen wijzigen nooit automatisch betaling, voorraad of uitgifte.
 - De settings-release ververst hosted PostgREST nu expliciet en iedere deployment controleert vóór applicatie-activatie via een service-only, gegevensvrije contractprobe dat de drie nieuwe settings-RPC's zichtbaar zijn en hun `authenticated`-rechten behouden. De settings-foutstatus wijst niet langer ten onrechte naar MFA terwijl de AAL2-layout actief is.
 - De gedeelde medewerkersshell heeft onder `lg` een rolgefilterde mobiele drawer met dezelfde werkruimte- en beheerlinks als desktop, actuele seizoencontext en uitloggen. De 44px-menuknop, actieve linkstatus, scroll-lock, overlay, Escape, focus-terugkeer en focus-trap zijn in de echte AAL2-browserflow afgedekt.
+- De settingsworkspace retourneert bij ontbrekend actief seizoen nu altijd een boolean per seizoen. Exacte staging-SHA `76bfe4ef4a5e4348668c37647e8b72e3299a98c9` is groen voor immutable deploy/migration (`29873523343`), echte drie-rollen-MFA/settings/mobile-acceptatie (`29873991736`) en een netwerkgeïsoleerde backup/restore-drill (`29874124335`).
 
 ## In progress
-- Staging draait publiek gezond op main-SHA `965233d89eb8dcfb58028ed02b6a637a478103a6`; de mobiele medewerkersnavigatie is daarmee gedeployed. De superseded productionapproval is geannuleerd en production is niet gewijzigd.
-- Branch `codex/operations-acceptance-hardening` bevat de volgende release: omgevingslokale minuutscheduler, afzonderlijke productionpromotie, runledger/503-health, veilige e-mailrecovery, zelfopruimende staff/MFA/mobile-acceptatie, Mollie paid/mismatch/replay/refund en een geïsoleerde restore-drill.
-- De volledige lokale releasegate is groen op 49 migrations: 20 pgTAP-bestanden/533 assertions, 56 Vitestbestanden/259 tests, concurrency, echte MFA, productiebuild, actionlint/ShellCheck en de volledige browserflow.
+- Staging draait publiek gezond op main-SHA `76bfe4ef4a5e4348668c37647e8b72e3299a98c9`; settings zonder actief seizoen, opaque MFA-sessies, drie rollen, mobiele navigatie en restore zijn exact op deze SHA geverifieerd.
+- Er is geen lokale codeblocker voor de afgetekende kernflows. De resterende releasegereedheid bestaat uit externe provider-, monitoring-, apparaat- en VPS-isolatieacceptatie.
+- Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
-- Merge de operationele release na CI en deploy exact de merge-SHA naar staging.
-- Voer de drie afgeschermde workflows uit: core staff/MFA/mobile, Mollie testmode en restore-drill; leg uitsluitend geredigeerde runlinks/tellingen vast.
-- Configureer `MOLLIE_PROFILE_ID` voor staging en een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving; bewijs alarm en herstel. Corrigeer daarnaast de SendGrid-key die Mail Send nog met 401 weigert.
-- Rond de resterende menselijke/apparaatacceptatie uit `STAGING_VERIFICATION.md` af voordat productionpromotie wordt overwogen.
+- Configureer `MOLLIE_PROFILE_ID` in staging en voer de afgeschermde testmode paid/mismatch/replay/refund-acceptatie uit.
+- Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.
+- Rond de gekozen uitgifteapparaat-/browsermatrix en de afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo aantoonbaar af.
+- Overweeg productionpromotie pas daarna en uitsluitend na expliciete approval.
 
 ## Blockers
 - Geen lokale codeblocker.
