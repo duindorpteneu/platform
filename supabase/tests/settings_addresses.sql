@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(20);
 
 select is((select count(*)::integer from app.app_settings where id), 1, 'migrations leveren de verplichte instellingenrij');
 
@@ -21,6 +21,15 @@ select is((select contact_email from app.app_settings where id), 'kleding@duindo
 select is((select club_address_line from app.app_settings where id), 'Duinlaan 1', 'verenigingsadres wordt getrimd');
 select is((select pickup_location from app.app_settings where id), 'Duindorp SV, Duinlaan 1, 2584 AB Den Haag', 'mailshortcode gebruikt standaard het verenigingsadres');
 select is((select active_season_id from app.app_settings where id), null, 'instellingen opslaan vereist geen actief seizoen');
+select ok(
+  jsonb_array_length(app.get_settings_workspace_v2()->'seasons') > 0
+  and not exists (
+    select 1
+    from jsonb_array_elements(app.get_settings_workspace_v2()->'seasons') season
+    where jsonb_typeof(season->'active') <> 'boolean' or (season->>'active')::boolean
+  ),
+  'workspace retourneert false voor ieder seizoen wanneer geen actief seizoen is ingesteld'
+);
 
 select lives_ok($$select app.update_settings_v2(
   'kleding@duindorpsv.nl', 'Duinlaan 1', '2584 AB', 'Den Haag',
