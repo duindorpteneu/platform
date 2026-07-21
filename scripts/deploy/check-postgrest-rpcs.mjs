@@ -59,8 +59,38 @@ async function verifyStaffSessionContract(url, serviceRoleKey) {
       signal: controller.signal,
     });
     const result = await response.json().catch(() => null);
-    if (response.status === 403 && safeRemoteCode(result?.code) === "42501") return;
-    throw new Error(`STAFF_SESSION_HTTP_${response.status}_${safeRemoteCode(result?.code)}`);
+    if (response.status !== 403 || safeRemoteCode(result?.code) !== "42501") {
+      throw new Error(`STAFF_SESSION_HTTP_${response.status}_${safeRemoteCode(result?.code)}`);
+    }
+
+    const invalidToken = "0".repeat(64);
+    const contextResponse = await fetch(new URL("/rest/v1/rpc/get_staff_app_session", url), {
+      method: "POST",
+      headers: {
+        "Content-Profile": "app",
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ p_session_token: invalidToken }),
+      signal: controller.signal,
+    });
+    const context = await contextResponse.json().catch(() => "INVALID");
+    if (!contextResponse.ok || context !== null) throw new Error(`STAFF_CONTEXT_HTTP_${contextResponse.status}`);
+
+    const revokeResponse = await fetch(new URL("/rest/v1/rpc/revoke_staff_app_session", url), {
+      method: "POST",
+      headers: {
+        "Content-Profile": "app",
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ p_session_token: invalidToken }),
+      signal: controller.signal,
+    });
+    const revoked = await revokeResponse.json().catch(() => "INVALID");
+    if (!revokeResponse.ok || revoked !== 0) throw new Error(`STAFF_REVOKE_HTTP_${revokeResponse.status}`);
   } finally {
     clearTimeout(timeout);
   }
