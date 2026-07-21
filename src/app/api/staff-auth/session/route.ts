@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStaffLandingPath } from "@/lib/staff-auth-contract";
 import { getStaffContext } from "@/server/auth/staff";
-import { createStaffSessionForUser, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
-import { verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
+import { createStaffSessionForUser, STAFF_SESSION_COOKIE, StaffSessionUnavailableError } from "@/server/auth/staff-context";
+import { StaffJwtUnavailableError, verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
 import { guardBrowserMutation } from "@/server/security/route-guard";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0" };
@@ -40,10 +40,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID_SESSION_TOKENS" }, { status: 400, headers: privateHeaders });
   }
 
-  const verified = await verifyStaffAal2AccessToken(parsed.data.accessToken);
+  let verified;
+  try {
+    verified = await verifyStaffAal2AccessToken(parsed.data.accessToken);
+  } catch (error) {
+    if (error instanceof StaffJwtUnavailableError) {
+      return NextResponse.json({ error: "STAFF_AUTH_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+    }
+    throw error;
+  }
   if (!verified) return NextResponse.json({ error: "STAFF_AAL2_REQUIRED" }, { status: 403, headers: privateHeaders });
 
-  const consumed = await createStaffSessionForUser(verified.userId);
+  let consumed;
+  try {
+    consumed = await createStaffSessionForUser(verified.userId);
+  } catch (error) {
+    if (error instanceof StaffSessionUnavailableError) {
+      return NextResponse.json({ error: "STAFF_AUTH_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+    }
+    throw error;
+  }
   if (!consumed) return NextResponse.json({ error: "STAFF_SESSION_REJECTED" }, { status: 403, headers: privateHeaders });
 
   const response = NextResponse.json(

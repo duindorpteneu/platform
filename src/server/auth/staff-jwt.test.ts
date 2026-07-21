@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("jose", () => mocks);
 
-import { verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
+import { StaffJwtUnavailableError, verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
 
 const validClaims = {
   sub: "00000000-0000-4000-8000-000000000001",
@@ -62,5 +62,15 @@ describe("staff Supabase JWT verification", () => {
   it("faalt gesloten bij een ongeldige handtekening, issuer, audience of verloopdatum", async () => {
     mocks.jwtVerify.mockRejectedValue(new Error("JWT verification failed"));
     await expect(verifyStaffAal2AccessToken("tampered-token")).resolves.toBeNull();
+  });
+
+  it("breekt een vastgelopen verifier hard af", async () => {
+    vi.useFakeTimers();
+    mocks.jwtVerify.mockReturnValue(new Promise(() => undefined));
+    const verification = verifyStaffAal2AccessToken("signed-token");
+    const rejected = expect(verification).rejects.toBeInstanceOf(StaffJwtUnavailableError);
+    await vi.advanceTimersByTimeAsync(5_001);
+    await rejected;
+    vi.useRealTimers();
   });
 });

@@ -14,13 +14,17 @@ vi.mock("@/server/auth/staff", async (importOriginal) => {
 vi.mock("@/server/auth/staff-context", () => ({
   createStaffSessionForUser: mocks.createSession,
   STAFF_SESSION_COOKIE: "duindorp_staff_session",
+  StaffSessionUnavailableError: class StaffSessionUnavailableError extends Error {},
 }));
 
 vi.mock("@/server/auth/staff-jwt", () => ({
   verifyStaffAal2AccessToken: mocks.verifyToken,
+  StaffJwtUnavailableError: class StaffJwtUnavailableError extends Error {},
 }));
 
 import { GET, POST } from "./route";
+import { StaffSessionUnavailableError } from "@/server/auth/staff-context";
+import { StaffJwtUnavailableError } from "@/server/auth/staff-jwt";
 
 function synchronizationRequest(body: unknown) {
   const serialized = JSON.stringify(body);
@@ -120,5 +124,18 @@ describe("GET /api/staff-auth/session", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "STAFF_AAL2_REQUIRED" });
     expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["JWT", () => mocks.verifyToken.mockRejectedValue(new StaffJwtUnavailableError())],
+    ["sessie-RPC", () => {
+      mocks.verifyToken.mockResolvedValue({ userId: "00000000-0000-4000-8000-000000000001" });
+      mocks.createSession.mockRejectedValue(new StaffSessionUnavailableError());
+    }],
+  ])("faalt begrensd met 503 wanneer de %s transportlaag niet beschikbaar is", async (_stage, arrange) => {
+    arrange();
+    const response = await POST(synchronizationRequest({ accessToken: "header.payload.signature" }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "STAFF_AUTH_UNAVAILABLE" });
   });
 });

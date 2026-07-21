@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getServerEnv } from "@/lib/env";
 
 const STAFF_JWT_TIMEOUT_MS = 5_000;
+export class StaffJwtUnavailableError extends Error {
+  constructor() { super("STAFF_JWT_UNAVAILABLE"); }
+}
 const staffClaimsSchema = z.object({
   sub: z.string().uuid(),
   aal: z.literal("aal2"),
@@ -48,16 +51,25 @@ export async function verifyStaffAal2AccessToken(accessToken: string) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !accessToken) return null;
 
   const issuer = `${env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const verified = await jwtVerify(accessToken, verificationKeySet(issuer, env.SUPABASE_JWKS), {
-      issuer,
-      audience: "authenticated",
-      algorithms: ["ES256"],
-      clockTolerance: 5,
-    });
+    const verified = await Promise.race([
+      jwtVerify(accessToken, verificationKeySet(issuer, env.SUPABASE_JWKS), {
+        issuer,
+        audience: "authenticated",
+        algorithms: ["ES256"],
+        clockTolerance: 5,
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new StaffJwtUnavailableError()), STAFF_JWT_TIMEOUT_MS);
+      }),
+    ]);
     const claims = staffClaimsSchema.safeParse(verified.payload);
     return claims.success ? { userId: claims.data.sub } : null;
-  } catch {
+  } catch (error) {
+    if (error instanceof StaffJwtUnavailableError) throw error;
     return null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
