@@ -85,7 +85,7 @@ async function mutateStaffProfile(action, databaseUrl, fixture) {
   };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const result = spawnSync("docker", [
-      "run", "--rm", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+      "run", "--rm", "--interactive", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
       "--env", "TARGET_DB_URL", "--env", "PROFILE_USER_ID", "--env", "PROFILE_DISPLAY_NAME", "--env", "PROFILE_ROLE",
       "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu",
       "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --set=user_id=\"$PROFILE_USER_ID\" --set=display_name=\"$PROFILE_DISPLAY_NAME\" --set=role=\"$PROFILE_ROLE\"",
