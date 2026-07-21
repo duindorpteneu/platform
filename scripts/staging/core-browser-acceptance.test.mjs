@@ -40,4 +40,11 @@ describe("staging core target", () => {
     expect(source).toContain("ADMIN_SETTINGS_WORKSPACE_UNAVAILABLE");
     expect(source).toContain("ADMIN_SETTINGS_RENDER_TIMEOUT");
   });
+
+  it("controleert het settings-RPC met hetzelfde echte AAL2-token zonder het token te loggen", () => {
+    const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
+    expect(source).toContain("get_settings_workspace_v2");
+    expect(source).toContain("ADMIN_SETTINGS_RPC_");
+    expect(source).not.toContain("process.stdout.write(accessToken");
+  });
 });
