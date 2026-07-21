@@ -127,15 +127,18 @@ describe("GET /api/staff-auth/session", () => {
   });
 
   it.each([
-    ["JWT", () => mocks.verifyToken.mockRejectedValue(new StaffJwtUnavailableError())],
-    ["sessie-RPC", () => {
+    ["JWT", "STAFF_JWT_UNAVAILABLE", () => mocks.verifyToken.mockRejectedValue(new StaffJwtUnavailableError())],
+    ["sessie-RPC", "STAFF_SESSION_UNAVAILABLE", () => {
       mocks.verifyToken.mockResolvedValue({ userId: "00000000-0000-4000-8000-000000000001" });
       mocks.createSession.mockRejectedValue(new StaffSessionUnavailableError());
     }],
-  ])("faalt begrensd met 503 wanneer de %s transportlaag niet beschikbaar is", async (_stage, arrange) => {
-    arrange();
-    const response = await POST(synchronizationRequest({ accessToken: "header.payload.signature" }));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "STAFF_AUTH_UNAVAILABLE" });
-  });
+  ] as const)(
+    "faalt begrensd met 503 wanneer de %s transportlaag niet beschikbaar is",
+    async (_stage, errorCode, arrange) => {
+      arrange();
+      const response = await POST(synchronizationRequest({ accessToken: "header.payload.signature" }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: errorCode });
+    },
+  );
 });

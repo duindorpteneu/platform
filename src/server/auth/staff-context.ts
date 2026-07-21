@@ -35,7 +35,10 @@ async function callStaffSessionRpc(name: string, body: Record<string, string>, t
       signal: controller.signal,
     });
     if (!response.ok) return null;
-    return response.json();
+    // Keep the abort deadline active until the response body has been read.
+    // Returning the promise directly would execute `finally` first and clear
+    // the timer while a stalled PostgREST body could still wait indefinitely.
+    return await response.json();
   } catch {
     if (throwOnTransportFailure) throw new StaffSessionUnavailableError();
     return null;
