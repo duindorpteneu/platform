@@ -92,7 +92,7 @@ describe("SendGrid delivery boundary", () => {
       text: "Bericht",
       html: "<p>Bericht</p>",
       replyToEmail: "kledingcommissie@duindorpsv.nl",
-    })).resolves.toEqual({ delivered: false, reason: "disabled", retryable: true });
+    })).resolves.toEqual({ delivered: false, reason: "disabled", outcome: "retry" });
     expect(request).not.toHaveBeenCalled();
   });
 
@@ -106,7 +106,36 @@ describe("SendGrid delivery boundary", () => {
       text: "Bericht",
       html: "<p>Bericht</p>",
       replyToEmail: "kledingcommissie@duindorpsv.nl",
-    })).resolves.toEqual({ delivered: false, reason: "provider_error", retryable: false });
+    })).resolves.toEqual({ delivered: false, reason: "provider_rejected", outcome: "failed" });
+  });
+
+  it.each([
+    ["provider timeoutresponse", vi.fn().mockResolvedValue(new Response(null, { status: 408 }))],
+    ["provider 5xx", vi.fn().mockResolvedValue(new Response(null, { status: 503 }))],
+    ["202 zonder bericht-ID", vi.fn().mockResolvedValue(new Response(null, { status: 202 }))],
+    ["netwerkfout", vi.fn().mockRejectedValue(new TypeError("network failed"))],
+  ])("marks %s as delivery-uncertain and never as an automatic retry", async (_label, request) => {
+    vi.stubGlobal("fetch", request);
+    await expect(sendEmailJob({
+      jobId: "11111111-1111-4111-8111-111111111111",
+      recipientEmail: "ouder@example.nl",
+      subject: "Onderwerp",
+      text: "Bericht",
+      html: "<p>Bericht</p>",
+      replyToEmail: "kledingcommissie@duindorpsv.nl",
+    })).resolves.toEqual({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
+  });
+
+  it("retries only an explicit provider rejection that is safe to repeat", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+    await expect(sendEmailJob({
+      jobId: "11111111-1111-4111-8111-111111111111",
+      recipientEmail: "ouder@example.nl",
+      subject: "Onderwerp",
+      text: "Bericht",
+      html: "<p>Bericht</p>",
+      replyToEmail: "kledingcommissie@duindorpsv.nl",
+    })).resolves.toEqual({ delivered: false, reason: "provider_rejected", outcome: "retry" });
   });
 
   it("renders the immutable subject and body snapshots from a claimed job", () => {

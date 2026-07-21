@@ -6,7 +6,10 @@ import { getSupabaseAdminClient } from "@/server/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const responseSchema = z.object({ recorded: z.number().int().nonnegative(), ignored: z.number().int().nonnegative() }).strict();
+const responseSchema = z.object({
+  recorded: z.number().int().nonnegative(),
+  ignored: z.number().int().nonnegative(),
+}).strict();
 
 export async function POST(request: Request) {
   const publicKey = process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY;

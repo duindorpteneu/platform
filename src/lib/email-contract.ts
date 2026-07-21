@@ -12,7 +12,7 @@ export const emailTemplateKeySchema = z.enum([
   "qr_code_resent",
 ]);
 export const bulkEmailTemplateKeySchema = z.enum(["payment_reminder", "ready_for_pickup"]);
-export const emailJobStatusSchema = z.enum(["queued", "processing", "retry", "sent", "failed"]);
+export const emailJobStatusSchema = z.enum(["queued", "processing", "retry", "sent", "failed", "delivery_uncertain"]);
 export const emailDeliveryStatusSchema = z.enum(["delivered", "bounced", "deferred", "dropped", "failed"]);
 export const orderLineEmailStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up"]);
 
@@ -48,6 +48,7 @@ const emailWorkspaceOrderSchema = z.object({
 }).strict();
 
 export const emailWorkspaceSchema = z.object({
+  recoveryAllowed: z.boolean(),
   templateKeys: z.array(emailTemplateKeySchema).length(6),
   templates: z.array(emailTemplateSchema).length(6),
   batches: z.array(z.object({
@@ -67,6 +68,9 @@ export const emailWorkspaceSchema = z.object({
     availableAt: timestamp,
     sentAt: timestamp.nullable(),
     createdAt: timestamp,
+    updatedAt: timestamp,
+    claimedAt: timestamp.nullable(),
+    recoverable: z.boolean(),
   }).strict()).max(100),
   orders: z.array(emailWorkspaceOrderSchema).max(20_000),
 }).strict();
@@ -98,6 +102,36 @@ export const createEmailBulkResponseSchema = z.object({
   templateKey: bulkEmailTemplateKeySchema,
   jobCount: z.number().int().min(1).max(2_000),
   reused: z.boolean(),
+}).strict();
+
+export const emailRecoveryResolutionSchema = z.enum(["confirm_sent", "retry_proven_not_accepted"]);
+export const emailRecoveryReasonSchema = z.enum(["provider_confirmed_accepted", "provider_confirmed_not_accepted"]);
+const providerEvidenceSchema = z.string().trim().min(8).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/);
+
+export const recoverEmailJobRequestSchema = z.object({
+  expectedUpdatedAt: timestamp,
+  resolution: emailRecoveryResolutionSchema,
+  reason: emailRecoveryReasonSchema,
+  providerEvidenceRef: providerEvidenceSchema,
+  providerMessageId: z.string().trim().min(3).max(240).nullable(),
+  attestedNotAccepted: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (value.resolution === "confirm_sent") {
+    if (value.reason !== "provider_confirmed_accepted") context.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "Provideracceptatie is vereist." });
+    if (!value.providerMessageId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["providerMessageId"], message: "Providerbericht-ID is vereist." });
+    if (value.attestedNotAccepted) context.addIssue({ code: z.ZodIssueCode.custom, path: ["attestedNotAccepted"], message: "Tegenstrijdige bevestiging." });
+  } else {
+    if (value.reason !== "provider_confirmed_not_accepted") context.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "Providerweigering is vereist." });
+    if (value.providerMessageId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["providerMessageId"], message: "Een providerbericht-ID bewijst acceptatie." });
+    if (!value.attestedNotAccepted) context.addIssue({ code: z.ZodIssueCode.custom, path: ["attestedNotAccepted"], message: "Expliciete attestatie is vereist." });
+  }
+});
+
+export const recoverEmailJobResponseSchema = z.object({
+  jobId: uuid,
+  status: z.enum(["sent", "retry"]),
+  attempts: z.number().int().min(1).max(5),
+  updatedAt: timestamp,
 }).strict();
 
 const claimedEmailLineSchema = z.object({
@@ -169,3 +203,4 @@ export type EmailTemplateKey = z.infer<typeof emailTemplateKeySchema>;
 export type BulkEmailTemplateKey = z.infer<typeof bulkEmailTemplateKeySchema>;
 export type ClaimedEmailJob = z.infer<typeof claimedEmailJobSchema>;
 export type ParentOtpEmailTemplate = z.infer<typeof parentOtpEmailTemplateSchema>;
+export type RecoverEmailJobRequest = z.infer<typeof recoverEmailJobRequestSchema>;

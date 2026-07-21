@@ -32,7 +32,7 @@ export async function GET() {
   try {
     const admin = getSupabaseAdminClient();
     if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
-    const { data, error } = await admin.schema("app").rpc("get_operational_health");
+    const { data, error } = await admin.schema("app").rpc("get_operational_health_v2");
     const valid = !error && operationalHealthSchema.safeParse(data).success;
     return NextResponse.json({ status: valid ? "ok" : "degraded", ...release }, { status: valid ? 200 : 503, headers });
   } catch {

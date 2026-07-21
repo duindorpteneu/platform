@@ -10,7 +10,7 @@ Dit runbook gebruikt geen productiecredentials en geeft geen toestemming voor pr
 ### Health
 
 - `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200` met uitsluitend `status`, `service`, `environment` en de volledige `revision`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
-- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, stale/failed jobs, betaalreconciliatie en recente webhookmismatches.
+- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie en recente webhookmismatches. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
 - Beide responses moeten `Cache-Control: no-store` gebruiken. Bewaar nooit de bearerheader in monitorlogs.
 
 Voorbeeld vanaf een beveiligde runner:
@@ -26,7 +26,9 @@ Alarmeer direct bij:
 
 - publieke health twee opeenvolgende minuten `degraded` of onbereikbaar;
 - één of meer e-mailjobs langer dan 15 minuten in `processing`;
+- één of meer e-mailjobs met status `delivery_uncertain`;
 - één of meer definitief gefaalde e-mailjobs;
+- één of meer recente `bounced`, `dropped` of `failed` SendGrid-events;
 - één of meer betaalreconciliatieproblemen;
 - één of meer webhookmismatches in 24 uur;
 - scheduler die twee verwachte uitvoeringen mist;
@@ -38,7 +40,7 @@ Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eig
 
 | Job | Route | Frequentie | Geldige uitkomst |
 | --- | --- | --- | --- |
-| E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200`; `paused` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
+| E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200` met `status: "processed"`; `status: "paused"` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
 | Retentie | `POST /api/internal/jobs/retention` | Dagelijks | `200` met alleen verwijderde aantallen |
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
@@ -51,6 +53,7 @@ De retentiejob:
 - verwijdert rate-limit-events ouder dan 30 dagen;
 - verwijdert oudersessies uiterlijk 30 dagen na expiratie of intrekking;
 - verwijdert e-mailprovider-events ouder dan 12 maanden;
+- verwijdert voltooide operation-runrecords ouder dan 90 dagen, maar behoudt vastgelopen `running`-records voor onderzoek;
 - verwijdert geen orders, betalingen, fulfilments of auditregels.
 
 Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna handmatig beoordeeld. Financiële administratie blijft zeven jaar wanneer fiscaal vereist. Audit blijft minimaal 24 maanden; betaalgerelateerde audit volgt financiële retentie.
@@ -59,16 +62,17 @@ Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna hand
 
 1. Zet bij brede of onbegrepen storing `EMAIL_ENABLED=false` en deploy alleen die configuratiewijziging. Handmatige administratie blijft beschikbaar.
 2. Controleer interne health en noteer alleen job-ID, status, attempt count, foutcode en timestamps.
-3. Controleer SendGrid op provider-message-ID. Zoek niet op volledige inhoud en kopieer geen ontvanger naar het incidentdossier.
+3. Controleer SendGrid op provider-message-ID. Zoek niet op volledige inhoud en kopieer geen ontvanger naar het incidentdossier. Gebruik als bewijsreferentie uitsluitend een niet-persoonlijke provider- of ticketreferentie met letters, cijfers en `._:/-`.
 4. Een job in `processing` ouder dan 15 minuten is verdacht. Zet deze niet blind terug:
-   - bij aantoonbare provideracceptatie: voorkom opnieuw verzenden en reconcilieer status;
-   - bij aantoonbaar geen provideracceptatie: gebruik uitsluitend de beheer-/recoveryfunctie die claimtoken en idempotency bewaakt;
+   - bij aantoonbare provideracceptatie: een geldige signed SendGrid-eventwebhook reconcilieert `processing`/`delivery_uncertain` automatisch zonder resend; ontbreekt die, gebruik dan als beheerder met AAL2 in **E-mailcentrum → Verzending → Bewijs beoordelen** de optie **Geaccepteerd — niet opnieuw sturen**, met providerbericht-ID en bewijsreferentie;
+   - bij aantoonbaar geen provideracceptatie: gebruik uitsluitend dezelfde AAL2-beheeractie **Niet geaccepteerd — opnieuw inplannen**, met bewijsreferentie en expliciete attestatie;
    - bij onzekerheid: laat de job staan, escaleer en voorkom een dubbele e-mail.
-5. Controleer na recovery dat maximaal één providerbericht per job/idempotency key bestaat.
-6. Los template-, afzender- of keyfout op, voer één gecontroleerde worker-run uit en controleer de tellingen.
-7. Zet `EMAIL_ENABLED=true` pas terug na een staging-smoke met één fictieve ontvanger en groene health.
+5. Vernieuw de pagina wanneer optimistic concurrency meldt dat de job intussen is gewijzigd; beoordeel het actuele providerbewijs opnieuw en herhaal nooit blind hetzelfde besluit.
+6. Controleer na recovery dat maximaal één providerbericht per job/idempotency key bestaat en dat precies één `email.job.recovered.sent`- of `email.job.recovered.retry`-auditregel is toegevoegd zonder ontvanger of bewijswaarde.
+7. Los template-, afzender- of keyfout op, voer één gecontroleerde worker-run uit en controleer de tellingen.
+8. Zet `EMAIL_ENABLED=true` pas terug na een staging-smoke met één fictieve ontvanger en groene health.
 
-Een database-update buiten een geautoriseerde recoveryfunctie is geen normale herstelroute. Ontbreekt zo’n veilige recoveryfunctie, dan blijft handmatige wijziging geblokkeerd en is dit een releaseblokker.
+Een database-update buiten `app.recover_stale_email_job` is geen herstelroute. Time-outs, netwerkfouten, provider-5xx en een succesvolle HTTP-response zonder providerbericht-ID worden altijd `delivery_uncertain` en mogen nooit automatisch opnieuw worden verzonden. Alleen een expliciete HTTP `429` geldt als veilig retrybare providerweigering.
 
 ## 3. Betaal- en webhookreconciliatie
 

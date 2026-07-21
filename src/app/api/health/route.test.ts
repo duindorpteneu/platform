@@ -30,7 +30,17 @@ describe("GET /api/health", () => {
   });
 
   it("returns a minimal release-aware JSON readiness response", async () => {
-    mocks.admin.mockReturnValue({ schema: () => ({ rpc: vi.fn().mockResolvedValue({ data: { emailJobs: { queued: 0, retry: 0, processingStale: 0, failed: 0 }, reconciliationIssues: 0, recentWebhookFailures: 0, dbTime: "2026-07-19T12:00:00.000Z" }, error: null }) }) });
+    mocks.admin.mockReturnValue({ schema: () => ({ rpc: vi.fn().mockResolvedValue({ data: {
+      emailJobs: { queued: 0, retry: 0, processingStale: 0, deliveryUncertain: 0, failed: 0, oldestPendingAt: null },
+      operations: {
+        emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+        retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-19T11:00:00.000Z", lastSucceededAt: "2026-07-19T11:00:01.000Z", stale: false, runningStale: false },
+      },
+      recentDeliveryFailures: 0,
+      reconciliationIssues: 0,
+      recentWebhookFailures: 0,
+      dbTime: "2026-07-19T12:00:00.000Z",
+    }, error: null }) }) });
     const response = await GET();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
