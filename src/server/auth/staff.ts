@@ -6,6 +6,7 @@ import {
   type StaffContext,
   type StaffRole,
 } from "@/lib/staff-auth-contract";
+import { fetchStaffContext } from "@/server/auth/staff-context";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export { getStaffLandingPath, hasAal2, STAFF_ROLES, staffContextSchema };
@@ -15,10 +16,9 @@ export async function getStaffContext(): Promise<StaffContext | null> {
   const supabase = await getSupabaseServerClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.schema("app").rpc("get_staff_auth_context");
-  if (error) return null;
-  const parsed = staffContextSchema.safeParse(data);
-  return parsed.success ? parsed.data : null;
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) return null;
+  return fetchStaffContext(data.session.access_token);
 }
 
 export async function requireStaffRole(allowedRoles?: readonly StaffRole[]) {
