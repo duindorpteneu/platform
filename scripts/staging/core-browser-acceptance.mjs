@@ -267,15 +267,7 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
   if (!secret) throw new Error("MFA_ENROLLMENT_SECRET_MISSING");
   process.stdout.write("MFA-formulier en enrollmentsleutel gereed.\n");
   let syncResponse;
-  let providerResponse;
   try {
-    const pendingProvider = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return response.request().method() === "POST"
-        && url.hostname === `${projectRef}.supabase.co`
-        && url.pathname.includes("/auth/v1/factors/")
-        && url.pathname.endsWith("/verify");
-    }, { timeout: 30_000 });
     const pendingSync = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return response.request().method() === "POST"
@@ -289,10 +281,9 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
       "MFA_CLICK_FAILED",
     );
     process.stdout.write("MFA-submit direct naar de pagina verstuurd.\n");
-    providerResponse = await withDeadline(pendingProvider, 35_000, "MFA_PROVIDER_RESPONSE_TIMEOUT");
     syncResponse = await withDeadline(pendingSync, 35_000, "MFA_SESSION_RESPONSE_TIMEOUT");
   } catch (error) {
-    if (error instanceof Error && ["MFA_CLICK_FAILED", "MFA_PROVIDER_RESPONSE_TIMEOUT", "MFA_SESSION_RESPONSE_TIMEOUT"].includes(error.message)) throw error;
+    if (error instanceof Error && ["MFA_CLICK_FAILED", "MFA_SESSION_RESPONSE_TIMEOUT"].includes(error.message)) throw error;
     throw new Error("MFA_SUBMIT_FAILED");
   }
   if (!syncResponse.ok()) {
@@ -307,8 +298,8 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     };
     throw new Error(errors[safeError] ?? "MFA_SYNC_REQUEST_REJECTED");
   }
-  const providerPayload = await providerResponse.json().catch(() => null);
-  const accessToken = providerPayload?.access_token;
+  const sessionRequestPayload = syncResponse.request().postDataJSON();
+  const accessToken = sessionRequestPayload?.accessToken;
   if (typeof accessToken !== "string" || accessToken.split(".").length !== 3) throw new Error("MFA_ACCESS_TOKEN_INVALID");
   return accessToken;
 }
