@@ -409,7 +409,10 @@ async function verifyOperationsSprint(page, screenshotDir) {
   await variantForm.getByLabel("Volgorde").fill("10");
   await variantForm.getByRole("button", { name: "Variant toevoegen" }).click();
   await page.getByText("Variant toegevoegd.", { exact: true }).waitFor({ timeout: 5_000 });
-  await page.getByText("BROWSER-164", { exact: true }).waitFor({ timeout: 5_000 });
+  await page.reload();
+  await page.getByRole("heading", { name: "Artikelen en maten" }).waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: /Browser trainingsjack/ }).click();
+  await page.getByText("BROWSER-164", { exact: true }).waitFor({ timeout: 10_000 });
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-catalog-desktop.png"), fullPage: true });
 
   process.stdout.write("Operations-browsertest: artikelvariant preview-first aan team toevoegen…\n");
