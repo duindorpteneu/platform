@@ -114,6 +114,7 @@ describe("GET /api/staff-auth/session", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "STAFF_SESSION_REJECTED" });
+    expect(response.headers.get("x-duindorp-auth-error")).toBe("STAFF_SESSION_REJECTED");
   });
 
   it("weigert een ongeldig, verlopen of niet-AAL2 access-token vóór databasegebruik", async () => {
@@ -123,6 +124,7 @@ describe("GET /api/staff-auth/session", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "STAFF_AAL2_REQUIRED" });
+    expect(response.headers.get("x-duindorp-auth-error")).toBe("STAFF_AAL2_REQUIRED");
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
 
@@ -139,6 +141,7 @@ describe("GET /api/staff-auth/session", () => {
       const response = await POST(synchronizationRequest({ accessToken: "header.payload.signature" }));
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({ error: errorCode });
+      expect(response.headers.get("x-duindorp-auth-error")).toBe(errorCode);
     },
   );
 });

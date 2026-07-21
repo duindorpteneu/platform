@@ -14,6 +14,13 @@ const sessionTokensSchema = z.object({
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function authError(error: string, status: number) {
+  return NextResponse.json(
+    { error },
+    { status, headers: { ...privateHeaders, "X-Duindorp-Auth-Error": error } },
+  );
+}
+
 export async function GET() {
   const staff = await getStaffContext();
   if (!staff) {
@@ -37,7 +44,7 @@ export async function POST(request: Request) {
 
   const parsed = sessionTokensSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "INVALID_SESSION_TOKENS" }, { status: 400, headers: privateHeaders });
+    return authError("INVALID_SESSION_TOKENS", 400);
   }
 
   let verified;
@@ -45,22 +52,22 @@ export async function POST(request: Request) {
     verified = await verifyStaffAal2AccessToken(parsed.data.accessToken);
   } catch (error) {
     if (error instanceof StaffJwtUnavailableError) {
-      return NextResponse.json({ error: "STAFF_JWT_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+      return authError("STAFF_JWT_UNAVAILABLE", 503);
     }
     throw error;
   }
-  if (!verified) return NextResponse.json({ error: "STAFF_AAL2_REQUIRED" }, { status: 403, headers: privateHeaders });
+  if (!verified) return authError("STAFF_AAL2_REQUIRED", 403);
 
   let consumed;
   try {
     consumed = await createStaffSessionForUser(verified.userId);
   } catch (error) {
     if (error instanceof StaffSessionUnavailableError) {
-      return NextResponse.json({ error: "STAFF_SESSION_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+      return authError("STAFF_SESSION_UNAVAILABLE", 503);
     }
     throw error;
   }
-  if (!consumed) return NextResponse.json({ error: "STAFF_SESSION_REJECTED" }, { status: 403, headers: privateHeaders });
+  if (!consumed) return authError("STAFF_SESSION_REJECTED", 403);
 
   const response = NextResponse.json(
     { landingPath: getStaffLandingPath(consumed.context.role) },
