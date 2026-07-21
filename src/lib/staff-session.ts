@@ -4,6 +4,16 @@ const staffSessionSchema = z.object({
   landingPath: z.enum(["/backoffice", "/uitgifte"]),
 }).strict();
 
+async function parseLandingPath(response: Response) {
+  if (!response.ok) return null;
+  try {
+    const parsed = staffSessionSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data.landingPath : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveStaffLandingPath() {
   let response: Response;
   try {
@@ -15,14 +25,27 @@ export async function resolveStaffLandingPath() {
   } catch {
     return null;
   }
-  if (!response.ok) return null;
+  return parseLandingPath(response);
+}
 
+export async function synchronizeStaffSession(tokens: { accessToken: string; refreshToken: string }) {
+  let response: Response;
   try {
-    const parsed = staffSessionSchema.safeParse(await response.json());
-    return parsed.success ? parsed.data.landingPath : null;
+    response = await fetch("/api/staff-auth/session", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Duindorp-CSRF": "same-origin",
+      },
+      body: JSON.stringify(tokens),
+    });
   } catch {
     return null;
   }
+  return parseLandingPath(response);
 }
 
 export async function resolveStaffLandingPathWithRetry(options: { attempts?: number; delayMs?: number } = {}) {
