@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStaffSessionForUser, fetchStaffContext, revokeStaffSession } from "@/server/auth/staff-context";
+import { createStaffSessionForUser, fetchStaffContext, revokeStaffSession, StaffSessionUnavailableError } from "@/server/auth/staff-context";
 
 const context = {
   userId: "00000000-0000-4000-8000-000000000001",
@@ -56,5 +56,10 @@ describe("staff PostgREST context", () => {
 
     await expect(fetchStaffContext("a".repeat(64))).resolves.toBeNull();
     await expect(fetchStaffContext("b".repeat(64))).resolves.toBeNull();
+  });
+
+  it("onderscheidt een transportfout tijdens sessie-uitgifte van een autorisatieweigering", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
+    await expect(createStaffSessionForUser(context.userId)).rejects.toBeInstanceOf(StaffSessionUnavailableError);
   });
 });
