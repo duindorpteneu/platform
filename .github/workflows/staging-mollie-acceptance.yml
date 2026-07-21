@@ -1,0 +1,84 @@
+name: Staging Mollie acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte 40-teken SHA die al op staging staat
+        required: true
+        type: string
+      confirmation:
+        description: Typ STAGING-MOLLIE-TESTMODE om de muterende test te starten
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-mollie-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      APP_BASE_URL: https://staging-duindorp.dgwebservices.nl
+      EXPECTED_STAGING_SUPABASE_PROJECT_REF: dxbdjtbyghsovlrdcwcr
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      MOLLIE_ACCEPTANCE_CONFIRMATION: ${{ inputs.confirmation }}
+      MOLLIE_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Require protected main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "${RELEASE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          [[ "${RELEASE_SHA}" == "${GITHUB_SHA}" ]]
+          [[ "${MOLLIE_ACCEPTANCE_CONFIRMATION}" == "STAGING-MOLLIE-TESTMODE" ]]
+
+      - name: Checkout the exact accepted revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install isolated database and browser clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client >/dev/null
+          pnpm exec playwright install --with-deps chromium >/dev/null
+
+      - name: Run paid, mismatch, replay and refund acceptance
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
+          MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
+          MOLLIE_PROFILE_ID: ${{ vars.MOLLIE_PROFILE_ID }}
+        run: node scripts/providers/mollie-staging-acceptance.mjs
+
+      - name: Enforce idempotent fixture cleanup
+        if: always()
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only
