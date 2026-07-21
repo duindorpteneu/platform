@@ -17,8 +17,12 @@ export async function resolveStaffLandingPath() {
   }
   if (!response.ok) return null;
 
-  const parsed = staffSessionSchema.safeParse(await response.json());
-  return parsed.success ? parsed.data.landingPath : null;
+  try {
+    const parsed = staffSessionSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data.landingPath : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveStaffLandingPathWithRetry(options: { attempts?: number; delayMs?: number } = {}) {

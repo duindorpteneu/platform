@@ -4,7 +4,6 @@ import Image from "next/image";
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { resolveStaffLandingPathWithRetry } from "@/lib/staff-session";
 
 type Enrollment = { factorId: string; qrCode: string; secret: string };
 
@@ -34,12 +33,7 @@ export function StaffMfaForm() {
 
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (assurance?.currentLevel === "aal2") {
-        const landingPath = await resolveStaffLandingPathWithRetry();
-        if (landingPath) { window.location.assign(landingPath); return; }
-        if (active) {
-          setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
-          setLoading(false);
-        }
+        window.location.assign("/backoffice");
         return;
       }
 
@@ -93,13 +87,7 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    const landingPath = await resolveStaffLandingPathWithRetry();
-    if (!landingPath) {
-      setError("Je aanmelding is bevestigd, maar dit account heeft geen actief medewerkersprofiel. Vraag een beheerder om het account te activeren.");
-      setBusy(false);
-      return;
-    }
-    window.location.assign(landingPath);
+    window.location.assign("/backoffice");
   }
 
   async function cancel() {
