@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { databaseTargetFromEnvironment, targetFromEnvironment } from "./core-browser-acceptance.mjs";
 
@@ -25,5 +26,11 @@ describe("staging core target", () => {
     expect(databaseTargetFromEnvironment({ SUPABASE_DB_URL: "postgresql://postgres.dxbdjtbyghsovlrdcwcr:secret@pooler.supabase.com:6543/postgres" })).toContain(STAGING_REF);
     expect(() => databaseTargetFromEnvironment({ SUPABASE_DB_URL: "postgresql://postgres.production:secret@pooler.supabase.com:6543/postgres" })).toThrow("STAGING_DATABASE_TARGET_INVALID");
     expect(() => databaseTargetFromEnvironment({ SUPABASE_DB_URL: "https://dxbdjtbyghsovlrdcwcr.supabase.co" })).toThrow("STAGING_DATABASE_TARGET_INVALID");
+  });
+
+  it("houdt container-stdin open zodat psql de profielmutatie werkelijk uitvoert", () => {
+    const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
+    expect(source).toContain('"run", "--rm", "--interactive"');
+    expect(source).toContain("input: statement");
   });
 });
