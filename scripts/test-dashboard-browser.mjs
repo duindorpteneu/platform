@@ -799,9 +799,9 @@ try {
   process.stdout.write("Dashboard-browsertest: ontbrekend actief medewerkersprofiel controleren…\n");
   runSql(local.DB_URL, `update app.staff_profiles set active = false where auth_user_id = '${userId}';`);
   await page.goto(`${baseUrl}/staff/mfa`);
-  await page.getByRole("alert").getByText("geen actief medewerkersprofiel", { exact: false }).waitFor({ timeout: 5_000 });
-  if (page.url() !== `${baseUrl}/staff/mfa`) {
-    throw new Error("Een AAL2-sessie zonder actief medewerkersprofiel bleef niet op de MFA-pagina.");
+  await page.waitForURL(`${baseUrl}/staff/login`, { timeout: 5_000 });
+  if (page.url() !== `${baseUrl}/staff/login`) {
+    throw new Error("Een AAL2-sessie zonder actief medewerkersprofiel werd niet door de beschermde route geweigerd.");
   }
   runSql(local.DB_URL, `update app.staff_profiles set active = true where auth_user_id = '${userId}';`);
 
