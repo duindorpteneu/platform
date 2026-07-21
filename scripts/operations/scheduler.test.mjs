@@ -25,8 +25,10 @@ describe("operations scheduler", () => {
   });
 
   it("runs retention once per Amsterdam calendar day after 03:17", () => {
-    const before = shouldRunRetention(new Date("2026-07-21T01:16:00Z"), "");
-    const due = shouldRunRetention(new Date("2026-07-21T01:17:00Z"), "");
+    const firstStart = shouldRunRetention(new Date("2026-07-21T01:16:00Z"), "");
+    const before = shouldRunRetention(new Date("2026-07-21T01:16:00Z"), "2026-07-20");
+    const due = shouldRunRetention(new Date("2026-07-21T01:17:00Z"), "2026-07-20");
+    expect(firstStart.due).toBe(true);
     expect(before.due).toBe(false);
     expect(due.due).toBe(true);
     expect(shouldRunRetention(new Date("2026-07-21T10:00:00Z"), due.date).due).toBe(false);

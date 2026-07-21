@@ -36,7 +36,7 @@ export function shouldRunRetention(now, lastRetentionDate) {
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const date = `${value.year}-${value.month}-${value.day}`;
   const afterWindowStart = Number(value.hour) > 3 || (Number(value.hour) === 3 && Number(value.minute) >= 17);
-  return { date, due: afterWindowStart && date !== lastRetentionDate };
+  return { date, due: lastRetentionDate === "" || (afterWindowStart && date !== lastRetentionDate) };
 }
 
 async function fetchJson(url, init, timeoutMs = 55_000) {
