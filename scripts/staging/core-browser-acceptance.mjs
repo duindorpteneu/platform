@@ -159,11 +159,30 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     throw new Error("MFA_ENROLLMENT_FAILED");
   }
   if (!secret) throw new Error("MFA_ENROLLMENT_SECRET_MISSING");
+  let syncResponse;
   try {
+    const pendingSync = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "POST"
+        && url.origin === baseUrl
+        && url.pathname === "/api/staff-auth/session";
+    }, { timeout: 30_000 });
     await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
     await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
+    syncResponse = await pendingSync;
   } catch {
     throw new Error("MFA_SUBMIT_FAILED");
+  }
+  if (!syncResponse.ok()) {
+    const body = await syncResponse.json().catch(() => null);
+    const errors = {
+      INVALID_SESSION_TOKENS: "MFA_SYNC_TOKENS_INVALID",
+      STAFF_AUTH_UNAVAILABLE: "MFA_SYNC_AUTH_UNAVAILABLE",
+      STAFF_SESSION_REJECTED: "MFA_SYNC_SESSION_REJECTED",
+      STAFF_AAL2_REQUIRED: "MFA_SYNC_AAL2_REQUIRED",
+      STAFF_PROFILE_REQUIRED: "MFA_SYNC_PROFILE_REQUIRED",
+    };
+    throw new Error(errors[body?.error] ?? "MFA_SYNC_REQUEST_REJECTED");
   }
 }
 
