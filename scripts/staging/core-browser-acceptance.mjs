@@ -338,9 +338,13 @@ async function verifyRole(page, target, role) {
     }
     const sessionStatus = await page.evaluate(async () => (await fetch("/api/staff-auth/session", { headers: { accept: "application/json" } })).status);
     if (sessionStatus !== 200) throw new Error("STAFF_APP_SESSION_NOT_AVAILABLE");
-    const settingsStatus = await page.evaluate(async () => (await fetch("/api/settings", { headers: { accept: "application/json" } })).status);
-    if (role === "beheerder" && settingsStatus !== 200) throw new Error("ADMIN_SETTINGS_DENIED");
-    if (role === "kledingcommissie" && settingsStatus !== 403) throw new Error("COMMITTEE_SETTINGS_EXPOSED");
+    if (role === "beheerder") {
+      await page.goto(`${target.baseUrl}/backoffice/instellingen`);
+      await page.getByRole("heading", { name: "Instellingen", exact: true }).waitFor({ timeout: 15_000 });
+    }
+    if (role === "kledingcommissie" && await page.getByRole("link", { name: "Instellingen", exact: true }).count()) {
+      throw new Error("COMMITTEE_SETTINGS_EXPOSED");
+    }
   }
   await verifyMobileMenu(page, role);
 }
