@@ -1,0 +1,62 @@
+name: Staging core acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte 40-teken SHA die al naar staging is gedeployed.
+        required: true
+        type: string
+      confirmation:
+        description: Typ STAGING-CORE; uitsluitend tijdelijke fictieve medewerkers worden gemaakt.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-core-acceptance
+  cancel-in-progress: false
+
+jobs:
+  browser-roles:
+    name: Staff MFA, role boundaries and mobile navigation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - name: Checkout exact staged release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          clean: true
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Run self-cleaning staging browser acceptance
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/staging/core-browser-acceptance.mjs

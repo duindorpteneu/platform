@@ -1,9 +1,6 @@
 name: Staging operations
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
-    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       job:
@@ -25,9 +22,7 @@ concurrency:
 
 jobs:
   email-queue:
-    if: >-
-      (github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *') ||
-      (github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'email'))
+    if: inputs.job == 'all' || inputs.job == 'email'
     runs-on: ubuntu-latest
     timeout-minutes: 7
     environment: staging
@@ -35,24 +30,17 @@ jobs:
       APP_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
-      - name: Drain staging email queue once per minute
+      - name: Invoke staging email queue manually
         shell: bash
         run: |
           set -euo pipefail
-          iterations=5
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then iterations=1; fi
-          for ((attempt=1; attempt<=iterations; attempt++)); do
-            curl --fail --silent --show-error --max-time 50 \
-              --request POST \
-              --header "Authorization: Bearer ${CRON_SECRET}" \
-              "${APP_BASE_URL}/api/internal/jobs/email"
-            if (( attempt < iterations )); then sleep 60; fi
-          done
+          curl --fail --silent --show-error --max-time 50 \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_BASE_URL}/api/internal/jobs/email"
 
   retention:
-    if: >-
-      (github.event_name == 'schedule' && github.event.schedule == '17 3 * * *') ||
-      (github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'retention'))
+    if: inputs.job == 'all' || inputs.job == 'retention'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
@@ -69,7 +57,7 @@ jobs:
             "${APP_BASE_URL}/api/internal/jobs/retention"
 
   health:
-    if: github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'health')
+    if: inputs.job == 'all' || inputs.job == 'health'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging

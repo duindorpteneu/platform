@@ -29,3 +29,37 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+  scheduler:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    restart: unless-stopped
+    command:
+      - node
+      - operations-scheduler.mjs
+    env_file:
+      - ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - require('node:fs').stat('/tmp/scheduler-health',(e,s)=>{if(e||Date.now()-s.mtimeMs>150000)process.exit(1)})
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"

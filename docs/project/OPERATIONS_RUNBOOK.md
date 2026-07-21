@@ -10,7 +10,7 @@ Dit runbook gebruikt geen productiecredentials en geeft geen toestemming voor pr
 ### Health
 
 - `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200` met uitsluitend `status`, `service`, `environment` en de volledige `revision`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
-- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, stale/failed jobs, betaalreconciliatie en recente webhookmismatches.
+- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie en recente webhookmismatches. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
 - Beide responses moeten `Cache-Control: no-store` gebruiken. Bewaar nooit de bearerheader in monitorlogs.
 
 Voorbeeld vanaf een beveiligde runner:
@@ -26,7 +26,9 @@ Alarmeer direct bij:
 
 - publieke health twee opeenvolgende minuten `degraded` of onbereikbaar;
 - één of meer e-mailjobs langer dan 15 minuten in `processing`;
+- één of meer e-mailjobs met status `delivery_uncertain`;
 - één of meer definitief gefaalde e-mailjobs;
+- één of meer recente `bounced`, `dropped` of `failed` SendGrid-events;
 - één of meer betaalreconciliatieproblemen;
 - één of meer webhookmismatches in 24 uur;
 - scheduler die twee verwachte uitvoeringen mist;
@@ -38,12 +40,12 @@ Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eig
 
 | Job | Route | Frequentie | Geldige uitkomst |
 | --- | --- | --- | --- |
-| E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200`; `paused` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
-| Retentie | `POST /api/internal/jobs/retention` | Dagelijks | `200` met alleen verwijderde aantallen |
+| E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200` met `status: "processed"`; `status: "paused"` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
+| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna dagelijks na 03:17 Europe/Amsterdam | `200` met `status: "completed"` en alleen verwijderde aantallen |
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
 
-Voor staging voert `.github/workflows/staging-operations.yml` de e-mailworker in vijf korte cycli per vijfminutenschedule uit en de retentiejob dagelijks. De workflow is uitsluitend aan de GitHub Environment `staging` gekoppeld. GitHub-schedules kunnen vertraagd starten en zijn daarom geen productie-scheduler; production vereist vóór ingebruikname een afzonderlijke, bewaakte scheduler die iedere minuut aantoonbaar uitvoert.
+De geharde `scheduler`-service draait in ieder omgevingsspecifiek Composeproject zonder hostpoort en roept de app uitsluitend via het interne netwerk aan. De vroegere GitHub-cron is verwijderd; `.github/workflows/staging-operations.yml` blijft alleen als handmatige diagnose beschikbaar. Productionruntime vereist bovendien een onafhankelijke geheime `OPERATIONS_HEARTBEAT_URL`: uitsluitend een volledig gezonde cyclus verstuurt een ping, zodat VPS-, Caddy-, netwerk- en scheduleruitval extern alarmeert. Zie `docs/deployment/production-operations.md`.
 
 De retentiejob:
 
@@ -51,6 +53,7 @@ De retentiejob:
 - verwijdert rate-limit-events ouder dan 30 dagen;
 - verwijdert oudersessies uiterlijk 30 dagen na expiratie of intrekking;
 - verwijdert e-mailprovider-events ouder dan 12 maanden;
+- verwijdert voltooide operation-runrecords ouder dan 90 dagen, maar behoudt vastgelopen `running`-records voor onderzoek;
 - verwijdert geen orders, betalingen, fulfilments of auditregels.
 
 Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna handmatig beoordeeld. Financiële administratie blijft zeven jaar wanneer fiscaal vereist. Audit blijft minimaal 24 maanden; betaalgerelateerde audit volgt financiële retentie.
@@ -59,16 +62,17 @@ Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna hand
 
 1. Zet bij brede of onbegrepen storing `EMAIL_ENABLED=false` en deploy alleen die configuratiewijziging. Handmatige administratie blijft beschikbaar.
 2. Controleer interne health en noteer alleen job-ID, status, attempt count, foutcode en timestamps.
-3. Controleer SendGrid op provider-message-ID. Zoek niet op volledige inhoud en kopieer geen ontvanger naar het incidentdossier.
+3. Controleer SendGrid op provider-message-ID. Zoek niet op volledige inhoud en kopieer geen ontvanger naar het incidentdossier. Gebruik als bewijsreferentie uitsluitend een niet-persoonlijke provider- of ticketreferentie met letters, cijfers en `._:/-`.
 4. Een job in `processing` ouder dan 15 minuten is verdacht. Zet deze niet blind terug:
-   - bij aantoonbare provideracceptatie: voorkom opnieuw verzenden en reconcilieer status;
-   - bij aantoonbaar geen provideracceptatie: gebruik uitsluitend de beheer-/recoveryfunctie die claimtoken en idempotency bewaakt;
+   - bij aantoonbare provideracceptatie: een geldige signed SendGrid-eventwebhook reconcilieert `processing`/`delivery_uncertain` automatisch zonder resend; ontbreekt die, gebruik dan als beheerder met AAL2 in **E-mailcentrum → Verzending → Bewijs beoordelen** de optie **Geaccepteerd — niet opnieuw sturen**, met providerbericht-ID en bewijsreferentie;
+   - bij aantoonbaar geen provideracceptatie: gebruik uitsluitend dezelfde AAL2-beheeractie **Niet geaccepteerd — opnieuw inplannen**, met bewijsreferentie en expliciete attestatie;
    - bij onzekerheid: laat de job staan, escaleer en voorkom een dubbele e-mail.
-5. Controleer na recovery dat maximaal één providerbericht per job/idempotency key bestaat.
-6. Los template-, afzender- of keyfout op, voer één gecontroleerde worker-run uit en controleer de tellingen.
-7. Zet `EMAIL_ENABLED=true` pas terug na een staging-smoke met één fictieve ontvanger en groene health.
+5. Vernieuw de pagina wanneer optimistic concurrency meldt dat de job intussen is gewijzigd; beoordeel het actuele providerbewijs opnieuw en herhaal nooit blind hetzelfde besluit.
+6. Controleer na recovery dat maximaal één providerbericht per job/idempotency key bestaat en dat precies één `email.job.recovered.sent`- of `email.job.recovered.retry`-auditregel is toegevoegd zonder ontvanger of bewijswaarde.
+7. Los template-, afzender- of keyfout op, voer één gecontroleerde worker-run uit en controleer de tellingen.
+8. Zet `EMAIL_ENABLED=true` pas terug na een staging-smoke met één fictieve ontvanger en groene health.
 
-Een database-update buiten een geautoriseerde recoveryfunctie is geen normale herstelroute. Ontbreekt zo’n veilige recoveryfunctie, dan blijft handmatige wijziging geblokkeerd en is dit een releaseblokker.
+Een database-update buiten `app.recover_stale_email_job` is geen herstelroute. Time-outs, netwerkfouten, provider-5xx en een succesvolle HTTP-response zonder providerbericht-ID worden altijd `delivery_uncertain` en mogen nooit automatisch opnieuw worden verzonden. Alleen een expliciete HTTP `429` geldt als veilig retrybare providerweigering.
 
 ## 3. Betaal- en webhookreconciliatie
 
@@ -112,17 +116,16 @@ Inschakelen:
 
 ### Restore-drill
 
-Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit:
+Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit. Start hiervoor handmatig de GitHub-workflow `Staging backup and isolated restore drill` met de volledige SHA die aantoonbaar op staging staat en bevestiging `STAGING-RESTORE`. De workflow draait op een tijdelijke GitHub-hosted runner, zodat de gedeelde applicatie-VPS en Castivo niet worden benaderd.
 
-1. Start de RTO-klok en registreer de gekozen back-up; die moet binnen de RPO van 24 uur vallen.
-2. Maak een leeg, tijdelijk en netwerkbeperkt Supabase/PostgreSQL-project in een EU-regio. Gebruik geen staging- of productionproject.
-3. Koppel geen Mollie-, SendGrid-, webhook- of cronconfiguratie; alle providerflags blijven uit.
-4. Herstel de back-up via de ondersteunde Supabase-herstelprocedure of `pg_restore` naar uitsluitend de lege restorebestemming.
-5. Controleer schema- en migratieversie, constraints, aantallen per hoofdentiteit en referentiële integriteit zonder persoonsgegevens te exporteren.
-6. Voer pgTAP/RLS-tests en een minimale applicatiesmoke uit met afgeschermde toegang.
-7. Controleer dat staff AAL2, ouderisolatie, betalingsinvarianten en dubbele-uitgifteconstraints blijven gelden.
-8. Noteer begin/eindtijd, bronback-uptijd, resultaat en afwijkingen. Doel: volledig herstel binnen vier uur.
-9. Verwijder de tijdelijke restoreomgeving volgens het changeproces en bevestig verwijdering.
+1. De workflow valideert het vaste stagingdomein, de stagingprojectref, databasehost, bevestiging en volledige release-SHA. De publieke healthcheck moet exact dezelfde SHA rapporteren.
+2. De RTO-klok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
+3. De back-up wordt hersteld naar een run-unieke PostgreSQL 17-container zonder hostpoort, Caddy-route, extern netwerk, permanente volumes of providerconfiguratie.
+4. De verificatie bewijst uitsluitend PostgreSQL-majorversie, migratieversies, constrainttotalen, RLS-telling en geaggregeerde aantallen per hoofdentiteit. Rijdata en persoonsgegevens komen niet in logs of artifacts.
+5. De workflow faalt wanneer de verse snapshot bij afronding ouder dan 24 uur is, de totale oefening langer dan vier uur duurt, constraints ongeldig zijn of het herstel onvolledig is.
+6. Een `always()`-stap verwijdert de run-specifieke containers, anonieme volumes, dump en ruwe verificatie. Alleen het geredigeerde JSON-bewijs blijft veertien dagen beschikbaar.
+
+Deze logische oefening bewijst het technische dump-/herstelpad en de gemeten RPO/RTO voor de verse staging-snapshot. Zij vervangt niet de afzonderlijke controle dat de dagelijkse beheerde productionback-up maximaal 24 uur oud is. Een productieherstel blijft een expliciet changeproces met een geïsoleerde restorebestemming.
 
 Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan vier uur duurt, providerverkeer mogelijk is, integriteitscontroles falen of credentials/data buiten de geïsoleerde omgeving terechtkomen.
 

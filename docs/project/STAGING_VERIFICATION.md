@@ -65,10 +65,12 @@ Bewijs: `________________`
 
 ### E2E-05 — Mollie exact paid
 
+- [ ] Start `.github/workflows/staging-mollie-acceptance.yml` met de exacte gedeployde SHA en bevestiging `STAGING-MOLLIE-TESTMODE`; de workflow weigert iedere andere host/ref, een `live_`-key en een onverwacht `MOLLIE_PROFILE_ID`.
 - [ ] Zet `MOLLIE_ENABLED=true` in staging en start voor één lid een testmodebetaling voor exact het server-side orderbedrag in EUR.
 - [ ] Rond hosted checkout af; de redirect alleen wijzigt paid niet.
 - [ ] Laat de publiek bereikbare webhook de actuele betaling bij Mollie ophalen en verwerken.
 - [ ] Controleer één immutable paid-record, paid order, actieve QR en één mailjob.
+- [ ] Controleer dat de run-unieke ouder-, lid-, order-, payment-, QR-, e-mail- en eventfixtures in `finally` zijn verwijderd; het testmode-providerrecord blijft zonder PII in het stagingprofiel staan.
 
 Verwacht canoniek resultaat: payment paid, QR actief, mailjob aangemaakt.
 Bewijs: `________________`
@@ -76,8 +78,9 @@ Bewijs: `________________`
 ### E2E-06 — Mollie bedrag-/metadata-afwijking
 
 - [ ] Richt via een afgeschermde stagingfixture een Mollie-testbetaling in waarvan bedrag of metadata niet overeenkomt met de lokale order.
+- [ ] Maak de lokale attempt via de echte payment-create-route en wijzig uitsluitend in Mollie-testmode het `payment_id` in de providermetadata naar een andere run-unieke fixture-UUID.
 - [ ] Verwerk de webhook via dezelfde publieke productiecode en server-side providerlookup.
-- [ ] Controleer dat order/payment niet paid worden, uitgifte geblokkeerd blijft en security/reconciliatie zichtbaar is.
+- [ ] Controleer dat order/payment niet paid worden, geen QR/mail ontstaat, uitgifte geblokkeerd blijft en `reconciliation_issue` plus manual-reviewaudit zichtbaar zijn.
 - [ ] Voer handmatige review uit zonder historie te overschrijven.
 
 Verwacht canoniek resultaat: order niet paid; security/error-event; handmatige review.
@@ -85,10 +88,20 @@ Bewijs: `________________`
 
 ### E2E-07 — Webhookreplay
 
-- [ ] Lever exact dezelfde Mollie-webhook driemaal af, inclusief gelijktijdige replay.
+- [ ] Lever na de eerste paid-verwerking exact dezelfde klassieke form-webhook driemaal gelijktijdig af via de publieke staging-URL.
 - [ ] Controleer één lokale statuswijziging, één auditketen en geen dubbele e-mail- of QR-actie.
 
 Verwacht canoniek resultaat: één statuswijziging; geen dubbele mail/QR.
+Bewijs: `________________`
+
+### Mollie-refundacceptatie
+
+- [ ] Start via de Mollie test-API een volledige refund van de door E2E-05 betaalde testbetaling; het portaal biedt bewust geen refundknop.
+- [ ] Wacht tot Mollie `amountRefunded` voor het volledige EUR-bedrag retourneert en lever het provider-ID via de publieke stagingwebhook af.
+- [ ] Controleer paymentstatus `refunded`, één refundevent/audit, nul actieve QR-codes, geen uitgifterecht en geen tweede betalingsmail.
+- [ ] Bewijs dat de workflow uitsluitend de `test_`-key en het verwachte stagingprofiel gebruikte en geen checkout-URL, cookie, key, e-mailadres of webhookbody logde of als artefact opsloeg.
+
+Verwacht canoniek resultaat: refund zichtbaar; actieve QR ingetrokken; geen nieuw uitgifterecht.
 Bewijs: `________________`
 
 ### E2E-08 — Exacte kasbetaling

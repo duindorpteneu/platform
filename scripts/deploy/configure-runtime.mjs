@@ -81,6 +81,14 @@ jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
 postgresUrl("SUPABASE_DB_URL", projectRef);
 required("PARENT_TOKEN_PEPPER", 32);
 required("CRON_SECRET", 16);
+const operationsHeartbeatUrl = optional("OPERATIONS_HEARTBEAT_URL");
+if (environment === "production" && !operationsHeartbeatUrl) invalid("OPERATIONS_HEARTBEAT_URL");
+if (operationsHeartbeatUrl) {
+  try {
+    const parsed = new URL(operationsHeartbeatUrl);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) invalid("OPERATIONS_HEARTBEAT_URL");
+  } catch { invalid("OPERATIONS_HEARTBEAT_URL"); }
+}
 
 const encryptionKey = required("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY", 40);
 try {
@@ -153,6 +161,7 @@ const runtime = {
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
   CRON_SECRET: process.env.CRON_SECRET,
+  OPERATIONS_INTERNAL_BASE_URL: "http://app:3000",
   MOLLIE_ENABLED: mollieEnabled,
   EMAIL_ENABLED: emailEnabled,
   ...Object.fromEntries([
@@ -162,6 +171,7 @@ const runtime = {
     ["SENDGRID_FROM_EMAIL", fromEmail],
     ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
+    ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
   ].filter(([, value]) => value)),
 };
 function quote(value) { return `"${String(value ?? "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`; }

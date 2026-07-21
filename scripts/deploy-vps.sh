@@ -174,7 +174,7 @@ deploy_environment() {
       echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
       APP_IMAGE="$previous_image" docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans || true
     fi
-    docker compose -p "$compose_project" -f "$compose_file" logs --no-color --tail 80 app 2>&1 | node scripts/deploy/redact-logs.mjs || true
+    docker compose -p "$compose_project" -f "$compose_file" logs --no-color --tail 80 app scheduler 2>&1 | node scripts/deploy/redact-logs.mjs || true
     exit "$status"
   }
   signal_abort() {
@@ -196,6 +196,15 @@ deploy_environment() {
   }
   check_with_retries "http://127.0.0.1:${expected_port}"
   check_with_retries "https://${expected_host}"
+  local scheduler_container scheduler_health
+  scheduler_container="$(docker compose -p "$compose_project" -f "$compose_file" ps -q scheduler)"
+  [[ -n "$scheduler_container" ]] || die "Schedulercontainer ontbreekt."
+  for attempt in $(seq 1 20); do
+    scheduler_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$scheduler_container")"
+    [[ "$scheduler_health" == healthy ]] && break
+    [[ "$attempt" == 20 ]] && die "Scheduler werd niet gezond."
+    sleep 3
+  done
 
   local temp_revision temp_previous temp_manifest
   temp_revision="$(mktemp "${runtime_directory}/REVISION.XXXXXX")"

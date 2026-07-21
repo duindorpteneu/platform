@@ -12,7 +12,11 @@ const renderedMessageSchema = z.object({
 
 export type SendGridDeliveryResult =
   | { delivered: true; providerMessageId: string }
-  | { delivered: false; reason: "disabled" | "configuration_error" | "provider_error"; retryable: boolean };
+  | {
+      delivered: false;
+      reason: "disabled" | "configuration_error" | "provider_rejected" | "delivery_uncertain";
+      outcome: "retry" | "failed" | "delivery_uncertain";
+    };
 
 function providerConfiguration() {
   const enabled = process.env.EMAIL_ENABLED === "true";
@@ -71,10 +75,10 @@ export async function sendParentOtpEmail(recipientEmail: string, message: { subj
 
 export async function sendEmailJob(message: z.input<typeof renderedMessageSchema>): Promise<SendGridDeliveryResult> {
   const configuration = providerConfiguration();
-  if (!configuration.enabled) return { delivered: false, reason: "disabled", retryable: true };
-  if (!configuration.configured) return { delivered: false, reason: "configuration_error", retryable: false };
+  if (!configuration.enabled) return { delivered: false, reason: "disabled", outcome: "retry" };
+  if (!configuration.configured) return { delivered: false, reason: "configuration_error", outcome: "failed" };
   const parsed = renderedMessageSchema.safeParse(message);
-  if (!parsed.success) return { delivered: false, reason: "configuration_error", retryable: false };
+  if (!parsed.success) return { delivered: false, reason: "configuration_error", outcome: "failed" };
 
   try {
     const response = await mailSend(configuration.apiKey, {
@@ -96,12 +100,19 @@ export async function sendEmailJob(message: z.input<typeof renderedMessageSchema
       },
     });
     if (!response.ok) {
-      return { delivered: false, reason: "provider_error", retryable: response.status === 408 || response.status === 429 || response.status >= 500 };
+      if (response.status === 408 || response.status >= 500) {
+        return { delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" };
+      }
+      return {
+        delivered: false,
+        reason: "provider_rejected",
+        outcome: response.status === 429 ? "retry" : "failed",
+      };
     }
     const providerMessageId = response.headers.get("x-message-id")?.trim();
-    if (!providerMessageId) return { delivered: false, reason: "provider_error", retryable: true };
+    if (!providerMessageId) return { delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" };
     return { delivered: true, providerMessageId };
   } catch {
-    return { delivered: false, reason: "provider_error", retryable: true };
+    return { delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" };
   }
 }

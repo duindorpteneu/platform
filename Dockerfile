@@ -25,6 +25,7 @@ RUN groupadd --system --gid 10001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/operations/scheduler.mjs ./operations-scheduler.mjs
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]

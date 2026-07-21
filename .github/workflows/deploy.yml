@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy staging
 
 on:
   push:
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-duindorpteneu-main
+  group: deploy-duindorpteneu-staging
   cancel-in-progress: false
 
 env:
@@ -196,6 +196,7 @@ jobs:
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          OPERATIONS_HEARTBEAT_URL: ${{ secrets.OPERATIONS_HEARTBEAT_URL }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
@@ -209,82 +210,3 @@ jobs:
           path: /srv/apps/duindorpteneu/staging/RELEASE_MANIFEST
           if-no-files-found: error
           retention-days: 7
-
-  deploy-production:
-    name: Approve, deploy and verify production
-    needs:
-      - deploy-staging
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - duindorpteneu
-      - production
-    timeout-minutes: 45
-    environment:
-      name: production
-      url: https://duindorp.dgwebservices.nl
-    steps:
-      - name: Checkout exact staged release commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.deploy-staging.outputs.release_sha }}
-          fetch-depth: 0
-          clean: true
-          persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.5.2
-          run_install: false
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install locked deployment dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Download exact staged image
-        uses: actions/download-artifact@v4
-        with:
-          name: release-image-${{ needs.deploy-staging.outputs.release_sha }}
-          path: .release
-
-      - name: Download staging release manifest
-        uses: actions/download-artifact@v4
-        with:
-          name: staging-release-${{ needs.deploy-staging.outputs.release_sha }}
-          path: .staging-release
-
-      - name: Verify main freshness, deploy and verify production
-        env:
-          RELEASE_SHA: ${{ needs.deploy-staging.outputs.release_sha }}
-          DEPLOYMENT_MODE: ${{ needs.deploy-staging.outputs.deployment_mode }}
-          APP_HOST: ${{ vars.APP_HOST }}
-          APP_BIND_PORT: ${{ vars.APP_BIND_PORT }}
-          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-          MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
-          EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
-          SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
-          SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
-          SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
-          SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
-          PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
-          RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
-          STAGING_RELEASE_MANIFEST: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/deploy-vps.sh production

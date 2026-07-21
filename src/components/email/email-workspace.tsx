@@ -13,7 +13,7 @@ const fieldClass = "mt-2 w-full rounded-lg border border-line bg-white px-3 text
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", { dateStyle: "short", timeStyle: "short" });
 
 async function postJson(path: string, body: unknown) {
-  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify(body) });
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin", "X-Correlation-ID": crypto.randomUUID() }, body: JSON.stringify(body) });
   const payload = await response.json() as Record<string, unknown> & { error?: string };
   if (!response.ok) throw new Error(payload.error ?? "De aanvraag kon niet worden verwerkt.");
   return payload;
@@ -28,7 +28,7 @@ function StatusNotice({ notice }: { notice: Notice }) {
 
 export function EmailWorkspace({ workspace, emailEnabled }: { workspace: Workspace; emailEnabled: boolean }) {
   const [tab, setTab] = useState<Tab>("templates");
-  const failed = workspace.jobs.filter((job) => job.status === "failed" || ["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")).length;
+  const failed = workspace.jobs.filter((job) => ["failed", "delivery_uncertain"].includes(job.status) || ["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")).length;
   const queued = workspace.jobs.filter((job) => ["queued", "processing", "retry"].includes(job.status)).length;
   const delivered = workspace.jobs.filter((job) => job.deliveryStatus === "delivered").length;
 
@@ -154,15 +154,60 @@ function BulkPanel({ workspace, emailEnabled }: { workspace: Workspace; emailEna
 }
 
 function DeliveryPanel({ workspace }: { workspace: Workspace }) {
-  const statusLabels: Record<string, string> = { queued: "In wachtrij", processing: "Bezig", retry: "Nieuwe poging", sent: "Verzonden", failed: "Mislukt", delivered: "Afgeleverd", bounced: "Bounce", deferred: "Uitgesteld", dropped: "Geweigerd" };
+  const statusLabels: Record<string, string> = { queued: "In wachtrij", processing: "Bezig", retry: "Nieuwe poging", sent: "Verzonden", failed: "Mislukt", delivery_uncertain: "Aflevering onzeker", delivered: "Afgeleverd", bounced: "Bounce", deferred: "Uitgesteld", dropped: "Geweigerd" };
   return <div className="space-y-6">
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-base font-bold text-brand-900">Recente e-mailjobs</h2><p className="mt-1 text-xs text-slate-500">Maximaal vijf pogingen; gevoelige ontvangergegevens worden hier niet getoond.</p></div><RefreshCw className="size-4 text-slate-400" /></div>{workspace.jobs.length === 0 ? <Empty icon={Send} title="Nog geen e-mailjobs" text="Transactionele triggers en bevestigde bulkacties verschijnen hier." /> : <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left"><thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="px-6 py-3">Template</th><th className="px-3 py-3">Wachtrijstatus</th><th className="px-3 py-3">Afleverstatus</th><th className="px-3 py-3">Pogingen</th><th className="px-6 py-3 text-right">Aangemaakt</th></tr></thead><tbody className="divide-y divide-line">{workspace.jobs.map((job) => <tr key={job.id}><td className="px-6 py-3 text-xs font-bold text-brand-900">{emailTemplateLabels[job.templateKey]}</td><td className="px-3 py-3"><StatusBadge status={job.status} label={statusLabels[job.status]} /></td><td className="px-3 py-3">{job.deliveryStatus ? <StatusBadge status={job.deliveryStatus} label={statusLabels[job.deliveryStatus]} /> : <span className="text-xs text-slate-300">—</span>}</td><td className="px-3 py-3 text-xs text-slate-600">{job.attempts} / 5</td><td className="px-6 py-3 text-right text-[11px] text-slate-400">{dateFormatter.format(new Date(job.createdAt))}</td></tr>)}</tbody></table></div>}</section>
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-base font-bold text-brand-900">Recente e-mailjobs</h2><p className="mt-1 text-xs text-slate-500">Maximaal vijf pogingen; gevoelige ontvangergegevens worden hier niet getoond.</p></div><RefreshCw className="size-4 text-slate-400" /></div>{workspace.jobs.length === 0 ? <Empty icon={Send} title="Nog geen e-mailjobs" text="Transactionele triggers en bevestigde bulkacties verschijnen hier." /> : <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="px-6 py-3">Template</th><th className="px-3 py-3">Wachtrijstatus</th><th className="px-3 py-3">Afleverstatus</th><th className="px-3 py-3">Pogingen</th><th className="px-3 py-3">Herstel</th><th className="px-6 py-3 text-right">Aangemaakt</th></tr></thead><tbody className="divide-y divide-line">{workspace.jobs.map((job) => <tr key={job.id} className="align-top"><td className="px-6 py-3 text-xs font-bold text-brand-900">{emailTemplateLabels[job.templateKey]}</td><td className="px-3 py-3"><StatusBadge status={job.status} label={statusLabels[job.status]} /></td><td className="px-3 py-3">{job.deliveryStatus ? <StatusBadge status={job.deliveryStatus} label={statusLabels[job.deliveryStatus]} /> : <span className="text-xs text-slate-300">—</span>}</td><td className="px-3 py-3 text-xs text-slate-600">{job.attempts} / 5</td><td className="max-w-[360px] px-3 py-3">{workspace.recoveryAllowed && job.recoverable ? <RecoveryControls job={job} /> : <span className="text-[11px] text-slate-300">—</span>}</td><td className="px-6 py-3 text-right text-[11px] text-slate-400">{dateFormatter.format(new Date(job.createdAt))}</td></tr>)}</tbody></table></div>}</section>
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-6 py-5"><h2 className="text-base font-bold text-brand-900">Recente bulkacties</h2><p className="mt-1 text-xs text-slate-500">Idempotente batches per template, selectie en bevestigingssleutel.</p></div>{workspace.batches.length === 0 ? <Empty icon={Users} title="Nog geen bulkacties" text="Handmatig bevestigde herinneringen en gereedmeldingen verschijnen hier." /> : <div className="divide-y divide-line">{workspace.batches.map((batch) => <div key={batch.id} className="flex items-center justify-between gap-4 px-6 py-4"><div><p className="text-xs font-bold text-brand-900">{emailTemplateLabels[batch.templateKey]}</p><p className="mt-1 text-[10px] text-slate-400">{dateFormatter.format(new Date(batch.createdAt))}</p></div><span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-bold text-brand-700">{batch.selectedCount.toLocaleString("nl-NL")} jobs</span></div>)}</div>}</section>
   </div>;
 }
 
+function RecoveryControls({ job }: { job: Workspace["jobs"][number] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [resolution, setResolution] = useState<"confirm_sent" | "retry_proven_not_accepted">("confirm_sent");
+  const [providerMessageId, setProviderMessageId] = useState("");
+  const [evidenceRef, setEvidenceRef] = useState("");
+  const [attested, setAttested] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
+
+  async function recover(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice(null);
+    try {
+      await postJson(`/api/email/jobs/${job.id}/recovery`, {
+        expectedUpdatedAt: job.updatedAt,
+        resolution,
+        reason: resolution === "confirm_sent" ? "provider_confirmed_accepted" : "provider_confirmed_not_accepted",
+        providerEvidenceRef: evidenceRef,
+        providerMessageId: resolution === "confirm_sent" ? providerMessageId : null,
+        attestedNotAccepted: resolution === "retry_proven_not_accepted" && attested,
+      });
+      setNotice({ tone: "success", text: resolution === "confirm_sent" ? "Provideracceptatie is vastgelegd zonder herverzending." : "Alleen deze bewezen niet-geaccepteerde job is opnieuw ingepland." });
+      router.refresh();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Herstel is geweigerd." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">Bewijs beoordelen</button>;
+  return <form onSubmit={(event) => void recover(event)} className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+    <p className="text-[11px] font-bold text-amber-900">Geen automatische herverzending</p>
+    <p className="text-[10px] leading-4 text-amber-800">Controleer eerst bij SendGrid of het bericht aantoonbaar is geaccepteerd of aantoonbaar niet is geaccepteerd.</p>
+    <label className="block text-[10px] font-bold text-amber-900">Besluit<select value={resolution} onChange={(event) => { setResolution(event.target.value as typeof resolution); setAttested(false); }} className={`${fieldClass} h-9 text-[11px]`}><option value="confirm_sent">Geaccepteerd — niet opnieuw sturen</option><option value="retry_proven_not_accepted">Niet geaccepteerd — opnieuw inplannen</option></select></label>
+    {resolution === "confirm_sent" && <label className="block text-[10px] font-bold text-amber-900">Providerbericht-ID<input value={providerMessageId} onChange={(event) => setProviderMessageId(event.target.value)} required minLength={3} maxLength={240} autoComplete="off" className={`${fieldClass} h-9 text-[11px]`} /></label>}
+    <label className="block text-[10px] font-bold text-amber-900">Bewijsreferentie<input value={evidenceRef} onChange={(event) => setEvidenceRef(event.target.value)} required minLength={8} maxLength={120} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" autoComplete="off" placeholder="ticket/SG-12345" className={`${fieldClass} h-9 text-[11px]`} /></label>
+    {resolution === "retry_proven_not_accepted" && <label className="flex items-start gap-2 text-[10px] leading-4 text-amber-900"><input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} required className="mt-0.5 size-4 accent-brand-700" /><span>Ik bevestig dat providerbewijs aantoont dat SendGrid dit bericht niet heeft geaccepteerd.</span></label>}
+    <StatusNotice notice={notice} />
+    <div className="flex gap-2"><button type="submit" disabled={busy} className="h-8 rounded-lg bg-brand-700 px-3 text-[10px] font-bold text-white disabled:opacity-50">{busy ? "Bezig…" : "Besluit vastleggen"}</button><button type="button" onClick={() => setOpen(false)} disabled={busy} className="h-8 px-2 text-[10px] font-bold text-slate-500">Annuleren</button></div>
+  </form>;
+}
+
 function StatusBadge({ status, label }: { status: string; label: string }) {
-  const danger = ["failed", "bounced", "dropped"].includes(status);
+  const danger = ["failed", "bounced", "dropped", "delivery_uncertain"].includes(status);
   const success = ["sent", "delivered"].includes(status);
   return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${danger ? "bg-red-50 text-danger" : success ? "bg-emerald-50 text-success" : "bg-amber-50 text-amber-700"}`}>{label}</span>;
 }
