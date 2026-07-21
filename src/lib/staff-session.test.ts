@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveStaffLandingPath, resolveStaffLandingPathWithRetry } from "@/lib/staff-session";
+import { resolveStaffLandingPath, resolveStaffLandingPathWithRetry, synchronizeStaffSession } from "@/lib/staff-session";
 
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -41,5 +41,18 @@ describe("staff session landing", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>login</html>", { status: 200 })));
 
     await expect(resolveStaffLandingPath()).resolves.toBeNull();
+  });
+
+  it("synchronizes verified MFA tokens through the same-origin server boundary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ landingPath: "/backoffice" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(synchronizeStaffSession({ accessToken: "access-token", refreshToken: "refresh-token" })).resolves.toBe("/backoffice");
+    expect(fetchMock).toHaveBeenCalledWith("/api/staff-auth/session", expect.objectContaining({
+      method: "POST",
+      credentials: "same-origin",
+      headers: expect.objectContaining({ "X-Duindorp-CSRF": "same-origin" }),
+      body: JSON.stringify({ accessToken: "access-token", refreshToken: "refresh-token" }),
+    }));
   });
 });

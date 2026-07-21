@@ -761,6 +761,17 @@ try {
   process.stdout.write("Dashboard-browsertest: browser en AAL2-login controleren…\n");
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  let staffSessionSyncStatus = "niet-verzonden";
+  page.on("response", (response) => {
+    if (response.request().method() === "POST" && new URL(response.url()).pathname === "/api/staff-auth/session") {
+      staffSessionSyncStatus = `http-${response.status()}`;
+    }
+  });
+  page.on("requestfailed", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/staff-auth/session") {
+      staffSessionSyncStatus = "netwerkfout";
+    }
+  });
 
   await page.goto(`${baseUrl}/backoffice`);
   await page.waitForURL(`${baseUrl}/staff/login`);
@@ -772,7 +783,14 @@ try {
   if (!secret) throw new Error("De MFA-handmatige sleutel is niet zichtbaar.");
   await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
   await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
-  await page.waitForURL(`${baseUrl}/backoffice`);
+  try {
+    await page.waitForURL(`${baseUrl}/backoffice`);
+  } catch (error) {
+    const route = new URL(page.url()).pathname;
+    const alert = await page.getByRole("alert").textContent({ timeout: 1_000 }).catch(() => "");
+    process.stderr.write(`Dashboard-browsertest: MFA-landingdiagnose route=${route} alert=${alert ? "aanwezig" : "afwezig"} sync=${staffSessionSyncStatus}.\n`);
+    throw error;
+  }
 
   process.stdout.write("Dashboard-browsertest: desktop en mobiel controleren…\n");
   const screenshotDir = process.env.DASHBOARD_SCREENSHOT_DIR

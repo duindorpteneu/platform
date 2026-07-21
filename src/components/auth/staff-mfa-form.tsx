@@ -4,6 +4,7 @@ import Image from "next/image";
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { synchronizeStaffSession } from "@/lib/staff-session";
 
 type Enrollment = { factorId: string; qrCode: string; secret: string };
 
@@ -87,7 +88,16 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    window.location.assign("/backoffice");
+    const landingPath = await synchronizeStaffSession({
+      accessToken: result.data.access_token,
+      refreshToken: result.data.refresh_token,
+    });
+    if (!landingPath) {
+      setError("De beveiligde sessie kon niet met de server worden gesynchroniseerd. Probeer het opnieuw.");
+      setBusy(false);
+      return;
+    }
+    window.location.assign(landingPath);
   }
 
   async function cancel() {
