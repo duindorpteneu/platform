@@ -31,6 +31,10 @@ function runtimeEnvironment(environment: "staging" | "production") {
     NEXT_PUBLIC_APP_URL: `https://${host}`,
     SUPABASE_PROJECT_REF: ref,
     NEXT_PUBLIC_SUPABASE_URL: `https://${ref}.supabase.co`,
+    SUPABASE_JWKS: JSON.stringify({ keys: [{
+      kty: "EC", crv: "P-256", alg: "ES256", kid: `${ref}-test-key`,
+      x: "A".repeat(43), y: "B".repeat(43),
+    }] }),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: jwt("anon", ref),
     SUPABASE_SERVICE_ROLE_KEY: jwt("service_role", ref),
     SUPABASE_DB_URL: `postgresql://postgres:password@db.${ref}.supabase.co:5432/postgres?sslmode=require`,
@@ -71,6 +75,14 @@ describe("deployment environment isolation", () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("SUPABASE_PROJECT_REF");
+  });
+
+  it("requires a valid local ES256 JWKS in runtime configuration", () => {
+    const environment = runtimeEnvironment("staging");
+    environment.SUPABASE_JWKS = JSON.stringify({ keys: [{ kty: "RSA", alg: "RS256", kid: "wrong" }] });
+    const result = spawnSync(process.execPath, [configureRuntime, "validate"], { env: environment, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("SUPABASE_JWKS");
   });
 
   it("keeps public browser configuration runtime-injected", () => {
