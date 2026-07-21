@@ -45,6 +45,7 @@ describe("staging core target", () => {
     const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
     expect(source).toContain("get_settings_workspace_v2");
     expect(source).toContain("settingsWorkspaceSchema.safeParse(payload)");
+    expect(source).toContain("syncResponse.request().postDataJSON()");
     expect(source).toContain("ADMIN_SETTINGS_RPC_");
     expect(source).not.toContain("process.stdout.write(accessToken");
   });
