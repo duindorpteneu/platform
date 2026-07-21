@@ -36,9 +36,9 @@ async function callStaffSessionRpc(name: string, body: Record<string, string>) {
   }
 }
 
-export async function consumeStaffSessionExchange(exchangeToken: string) {
-  const parsed = consumedSessionSchema.safeParse(await callStaffSessionRpc("consume_staff_session_exchange", {
-    p_exchange_token: exchangeToken,
+export async function createStaffSessionForUser(userId: string) {
+  const parsed = consumedSessionSchema.safeParse(await callStaffSessionRpc("create_staff_app_session_for_user", {
+    p_auth_user_id: userId,
   }));
   return parsed.success ? parsed.data : null;
 }

@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStaffLandingPath } from "@/lib/staff-auth-contract";
 import { getStaffContext } from "@/server/auth/staff";
-import { consumeStaffSessionExchange, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
+import { createStaffSessionForUser, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
+import { verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
 import { guardBrowserMutation } from "@/server/security/route-guard";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0" };
 const sessionTokensSchema = z.object({
-  exchangeToken: z.string().regex(/^[0-9a-f]{64}$/),
+  accessToken: z.string().min(1).max(16_384),
 }).strict();
 
 export const runtime = "nodejs";
@@ -39,7 +40,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID_SESSION_TOKENS" }, { status: 400, headers: privateHeaders });
   }
 
-  const consumed = await consumeStaffSessionExchange(parsed.data.exchangeToken);
+  const verified = await verifyStaffAal2AccessToken(parsed.data.accessToken);
+  if (!verified) return NextResponse.json({ error: "STAFF_AAL2_REQUIRED" }, { status: 403, headers: privateHeaders });
+
+  const consumed = await createStaffSessionForUser(verified.userId);
   if (!consumed) return NextResponse.json({ error: "STAFF_SESSION_REJECTED" }, { status: 403, headers: privateHeaders });
 
   const response = NextResponse.json(

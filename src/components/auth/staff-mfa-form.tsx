@@ -5,10 +5,8 @@ import { AlertTriangle, CheckCircle2, KeyRound, Loader2, LogOut, ShieldCheck } f
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { resolveStaffLandingPathWithRetry, synchronizeStaffSession } from "@/lib/staff-session";
-import { z } from "zod";
 
 type Enrollment = { factorId: string; qrCode: string; secret: string };
-const exchangeSchema = z.object({ exchangeToken: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
 
 export function StaffMfaForm() {
   const started = useRef(false);
@@ -96,17 +94,7 @@ export function StaffMfaForm() {
       setBusy(false);
       return;
     }
-    const appClient = supabase as unknown as {
-      schema(name: "app"): { rpc(name: "create_staff_session_exchange"): Promise<{ data: unknown; error: unknown }> };
-    };
-    const exchangeResult = await appClient.schema("app").rpc("create_staff_session_exchange");
-    const exchange = exchangeSchema.safeParse(exchangeResult.data);
-    if (exchangeResult.error || !exchange.success) {
-      setError("De beveiligde sessie kon niet met de server worden voorbereid. Probeer het opnieuw.");
-      setBusy(false);
-      return;
-    }
-    const landingPath = await synchronizeStaffSession(exchange.data.exchangeToken);
+    const landingPath = await synchronizeStaffSession(result.data.access_token);
     if (!landingPath) {
       setError("De beveiligde sessie kon niet met de server worden gesynchroniseerd. Probeer het opnieuw.");
       setBusy(false);

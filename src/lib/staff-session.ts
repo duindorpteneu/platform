@@ -28,7 +28,7 @@ export async function resolveStaffLandingPath() {
   return parseLandingPath(response);
 }
 
-export async function synchronizeStaffSession(exchangeToken: string) {
+export async function synchronizeStaffSession(accessToken: string) {
   let response: Response;
   try {
     response = await fetch("/api/staff-auth/session", {
@@ -40,7 +40,7 @@ export async function synchronizeStaffSession(exchangeToken: string) {
         "Content-Type": "application/json",
         "X-Duindorp-CSRF": "same-origin",
       },
-      body: JSON.stringify({ exchangeToken }),
+      body: JSON.stringify({ accessToken }),
     });
   } catch {
     return null;
