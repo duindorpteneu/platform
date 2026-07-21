@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     verified = await verifyStaffAal2AccessToken(parsed.data.accessToken);
   } catch (error) {
     if (error instanceof StaffJwtUnavailableError) {
-      return NextResponse.json({ error: "STAFF_AUTH_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+      return NextResponse.json({ error: "STAFF_JWT_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
     }
     throw error;
   }
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     consumed = await createStaffSessionForUser(verified.userId);
   } catch (error) {
     if (error instanceof StaffSessionUnavailableError) {
-      return NextResponse.json({ error: "STAFF_AUTH_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
+      return NextResponse.json({ error: "STAFF_SESSION_UNAVAILABLE" }, { status: 503, headers: privateHeaders });
     }
     throw error;
   }

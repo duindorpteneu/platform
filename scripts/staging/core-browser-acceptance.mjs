@@ -69,9 +69,9 @@ export function databaseTargetFromEnvironment(environment = process.env) {
   return databaseUrl;
 }
 
-function mutateStaffProfile(action, databaseUrl, fixture) {
+async function mutateStaffProfile(action, databaseUrl, fixture) {
   const statements = {
-    insert: "insert into app.staff_profiles(auth_user_id, display_name, role, active) values (:'user_id'::uuid, :'display_name', :'role'::app.staff_role, true);",
+    insert: "insert into app.staff_profiles(auth_user_id, display_name, role, active) values (:'user_id'::uuid, :'display_name', :'role'::app.staff_role, true) on conflict (auth_user_id) do update set display_name = excluded.display_name, role = excluded.role, active = true;",
     delete: "delete from app.staff_profiles where auth_user_id = :'user_id'::uuid;",
   };
   const statement = statements[action];
@@ -83,13 +83,17 @@ function mutateStaffProfile(action, databaseUrl, fixture) {
     PROFILE_DISPLAY_NAME: fixture.displayName,
     PROFILE_ROLE: fixture.role,
   };
-  const result = spawnSync("docker", [
-    "run", "--rm", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
-    "--env", "TARGET_DB_URL", "--env", "PROFILE_USER_ID", "--env", "PROFILE_DISPLAY_NAME", "--env", "PROFILE_ROLE",
-    "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu",
-    "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --set=user_id=\"$PROFILE_USER_ID\" --set=display_name=\"$PROFILE_DISPLAY_NAME\" --set=role=\"$PROFILE_ROLE\"",
-  ], { env: environment, input: statement, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"], timeout: 30_000 });
-  if (result.status !== 0) throw new Error(action === "insert" ? "STAFF_PROFILE_CREATE_FAILED" : "STAFF_PROFILE_CLEANUP_FAILED");
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const result = spawnSync("docker", [
+      "run", "--rm", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+      "--env", "TARGET_DB_URL", "--env", "PROFILE_USER_ID", "--env", "PROFILE_DISPLAY_NAME", "--env", "PROFILE_ROLE",
+      "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu",
+      "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --set=user_id=\"$PROFILE_USER_ID\" --set=display_name=\"$PROFILE_DISPLAY_NAME\" --set=role=\"$PROFILE_ROLE\"",
+    ], { env: environment, input: statement, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"], timeout: 45_000 });
+    if (result.status === 0) return;
+    if (attempt < 2) await wait(1_000);
+  }
+  throw new Error(action === "insert" ? "STAFF_PROFILE_CREATE_FAILED" : "STAFF_PROFILE_CLEANUP_FAILED");
 }
 
 function decodeBase32(value) {
@@ -135,7 +139,7 @@ async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
 }
 
 async function removeAcceptanceUser(admin, databaseUrl, userId) {
-  mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
+  await mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
   const deleted = await withDeadline(admin.auth.admin.deleteUser(userId), 20_000, "STAFF_FIXTURE_DELETE_TIMEOUT");
   if (deleted.error) throw new Error("STAFF_FIXTURE_CLEANUP_FAILED");
 }
@@ -232,7 +236,8 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     const body = await syncResponse.json().catch(() => null);
     const errors = {
       INVALID_SESSION_TOKENS: "MFA_SYNC_TOKENS_INVALID",
-      STAFF_AUTH_UNAVAILABLE: "MFA_SYNC_AUTH_UNAVAILABLE",
+      STAFF_JWT_UNAVAILABLE: "MFA_SYNC_JWT_UNAVAILABLE",
+      STAFF_SESSION_UNAVAILABLE: "MFA_SYNC_SESSION_UNAVAILABLE",
       STAFF_SESSION_REJECTED: "MFA_SYNC_SESSION_REJECTED",
       STAFF_AAL2_REQUIRED: "MFA_SYNC_AAL2_REQUIRED",
       STAFF_PROFILE_REQUIRED: "MFA_SYNC_PROFILE_REQUIRED",
@@ -313,7 +318,7 @@ async function main() {
       );
       if (created.error || !created.data.user) throw new Error("STAFF_FIXTURE_CREATE_FAILED");
       createdUsers.push(created.data.user.id);
-      mutateStaffProfile("insert", databaseUrl, {
+      await mutateStaffProfile("insert", databaseUrl, {
         userId: created.data.user.id,
         displayName: `Staging ${role}`,
         role,

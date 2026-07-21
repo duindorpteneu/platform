@@ -14,7 +14,10 @@ describe("staff PostgREST context", () => {
     process.env.SUPABASE_SECRET_KEY = "service-role-test-key";
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it("valideert de opaque sessie via het service-role staff-RPC", async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json(context));
@@ -61,5 +64,22 @@ describe("staff PostgREST context", () => {
   it("onderscheidt een transportfout tijdens sessie-uitgifte van een autorisatieweigering", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
     await expect(createStaffSessionForUser(context.userId)).rejects.toBeInstanceOf(StaffSessionUnavailableError);
+  });
+
+  it("houdt de transportdeadline actief totdat de PostgREST-body volledig is gelezen", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((_input: URL, init: RequestInit) => Promise.resolve({
+      ok: true,
+      json: () => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = createStaffSessionForUser(context.userId);
+    const assertion = expect(pending).rejects.toBeInstanceOf(StaffSessionUnavailableError);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await assertion;
   });
 });
