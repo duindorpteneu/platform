@@ -84,10 +84,13 @@ container_logs="$(docker logs "${container_name}" 2>&1)"
 unset container_logs
 docker exec "${container_name}" pg_isready --quiet --username postgres --dbname postgres
 docker exec "${container_name}" createdb --username postgres --template template0 restore_drill
+docker exec "${container_name}" \
+  psql --no-psqlrc --set=ON_ERROR_STOP=1 --username postgres --dbname restore_drill \
+  --command='drop schema if exists public cascade;'
 
 echo "Back-up wordt in een netwerkloze, run-unieke PostgreSQL 17-container hersteld."
 docker exec --interactive "${container_name}" \
-  pg_restore --clean --if-exists --exit-on-error --no-owner --no-acl --username postgres --dbname restore_drill \
+  pg_restore --exit-on-error --no-owner --no-acl --username postgres --dbname restore_drill \
   < "${dump_path}"
 
 docker exec --interactive "${container_name}" \

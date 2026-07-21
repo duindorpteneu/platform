@@ -5,13 +5,32 @@ const staffSessionSchema = z.object({
 }).strict();
 
 export async function resolveStaffLandingPath() {
-  const response = await fetch("/api/staff-auth/session", {
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/staff-auth/session", {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    return null;
+  }
   if (!response.ok) return null;
 
   const parsed = staffSessionSchema.safeParse(await response.json());
   return parsed.success ? parsed.data.landingPath : null;
+}
+
+export async function resolveStaffLandingPathWithRetry(options: { attempts?: number; delayMs?: number } = {}) {
+  const attempts = Math.max(1, options.attempts ?? 4);
+  const delayMs = Math.max(0, options.delayMs ?? 200);
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const landingPath = await resolveStaffLandingPath();
+    if (landingPath) return landingPath;
+    if (attempt < attempts && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
 }
