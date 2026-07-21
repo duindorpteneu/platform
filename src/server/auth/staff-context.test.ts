@@ -68,11 +68,9 @@ describe("staff PostgREST context", () => {
 
   it("houdt de transportdeadline actief totdat de PostgREST-body volledig is gelezen", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockImplementation((_input: URL, init: RequestInit) => Promise.resolve({
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve({
       ok: true,
-      json: () => new Promise((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      }),
+      json: () => new Promise(() => undefined),
     }));
     vi.stubGlobal("fetch", fetchMock);
 

@@ -16,34 +16,42 @@ const consumedSessionSchema = z.object({
 async function callStaffSessionRpc(name: string, body: Record<string, string>, throwOnTransportFailure = false) {
   const env = getServerEnv();
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SECRET_KEY) return null;
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+  const secretKey = env.SUPABASE_SECRET_KEY;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), STAFF_CONTEXT_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await fetch(new URL(`/rest/v1/rpc/${name}`, env.NEXT_PUBLIC_SUPABASE_URL), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Accept-Profile": "app",
-        apikey: env.SUPABASE_SECRET_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
-        "Content-Profile": "app",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-      signal: controller.signal,
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new StaffSessionUnavailableError());
+      }, STAFF_CONTEXT_TIMEOUT_MS);
     });
-    if (!response.ok) return null;
-    // Keep the abort deadline active until the response body has been read.
-    // Returning the promise directly would execute `finally` first and clear
-    // the timer while a stalled PostgREST body could still wait indefinitely.
-    return await response.json();
+    const request = Promise.resolve().then(async () => {
+      const response = await fetch(new URL(`/rest/v1/rpc/${name}`, supabaseUrl), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Profile": "app",
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Profile": "app",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      return response.json();
+    });
+    return await Promise.race([request, deadline]);
   } catch {
     if (throwOnTransportFailure) throw new StaffSessionUnavailableError();
     return null;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
