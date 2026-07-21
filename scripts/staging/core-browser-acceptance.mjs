@@ -23,6 +23,20 @@ function supabaseOptions() {
   };
 }
 
+async function withDeadline(promise, milliseconds, code) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(code)), milliseconds);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function envRequired(environment, name) {
   const value = environment[name]?.trim() ?? "";
   if (!value || /[\r\n\0]/.test(value)) throw new Error(`MISSING_${name}`);
@@ -106,9 +120,13 @@ function wait(milliseconds) {
 async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
   const client = createClient(supabaseUrl, anonKey, supabaseOptions());
   for (let attempt = 1; attempt <= 6; attempt += 1) {
-    const result = await client.auth.signInWithPassword({ email, password });
+    const result = await withDeadline(
+      client.auth.signInWithPassword({ email, password }),
+      20_000,
+      "STAFF_FIXTURE_AUTH_TIMEOUT",
+    );
     if (!result.error && result.data.session) {
-      await client.auth.signOut({ scope: "local" });
+      await withDeadline(client.auth.signOut({ scope: "local" }), 5_000, "STAFF_FIXTURE_SIGNOUT_TIMEOUT");
       return;
     }
     if (attempt < 6) await wait(attempt * 1_000);
@@ -118,14 +136,18 @@ async function waitForFixtureAuth(supabaseUrl, anonKey, email, password) {
 
 async function removeAcceptanceUser(admin, databaseUrl, userId) {
   mutateStaffProfile("delete", databaseUrl, { userId, displayName: "cleanup", role: "uitgifte" });
-  const deleted = await admin.auth.admin.deleteUser(userId);
+  const deleted = await withDeadline(admin.auth.admin.deleteUser(userId), 20_000, "STAFF_FIXTURE_DELETE_TIMEOUT");
   if (deleted.error) throw new Error("STAFF_FIXTURE_CLEANUP_FAILED");
 }
 
 async function cleanupStaleFixtures(admin, databaseUrl) {
   const staleUserIds = [];
   for (let page = 1; page <= 10; page += 1) {
-    const listed = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    const listed = await withDeadline(
+      admin.auth.admin.listUsers({ page, perPage: 1000 }),
+      20_000,
+      "STAFF_FIXTURE_LIST_TIMEOUT",
+    );
     if (listed.error) throw new Error("STAFF_FIXTURE_LIST_FAILED");
     for (const user of listed.data.users) {
       if (!ACCEPTANCE_EMAIL.test(user.email ?? "")) continue;
@@ -271,11 +293,12 @@ async function main() {
   const databaseUrl = databaseTargetFromEnvironment();
   if (supabaseUrl !== `https://${target.projectRef}.supabase.co`) throw new Error("SUPABASE_URL_INVALID");
   if (anonKey.length < 20) throw new Error("SUPABASE_ANON_KEY_INVALID");
-  await verifyHealth(target);
+  if (process.env.CLEANUP_ONLY !== "1") await verifyHealth(target);
 
   const admin = createClient(supabaseUrl, serviceKey, supabaseOptions());
   await cleanupStaleFixtures(admin, databaseUrl);
-  const browser = await chromium.launch({ headless: true });
+  if (process.env.CLEANUP_ONLY === "1") return;
+  const browser = await withDeadline(chromium.launch({ headless: true }), 20_000, "BROWSER_LAUNCH_TIMEOUT");
   const createdUsers = [];
   try {
     for (const role of roles) {
@@ -283,7 +306,11 @@ async function main() {
       const email = `staging-acceptance-${marker}-${role}@example.invalid`;
       const password = `${crypto.randomBytes(24).toString("base64url")}!Aa1`;
       process.stdout.write(`${role}: tijdelijke authfixture aanmaken…\n`);
-      const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+      const created = await withDeadline(
+        admin.auth.admin.createUser({ email, password, email_confirm: true }),
+        20_000,
+        "STAFF_FIXTURE_CREATE_TIMEOUT",
+      );
       if (created.error || !created.data.user) throw new Error("STAFF_FIXTURE_CREATE_FAILED");
       createdUsers.push(created.data.user.id);
       mutateStaffProfile("insert", databaseUrl, {
@@ -294,19 +321,25 @@ async function main() {
       await waitForFixtureAuth(supabaseUrl, anonKey, email, password);
       process.stdout.write(`${role}: tijdelijke fixture gereed.\n`);
 
-      const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      const context = await withDeadline(
+        browser.newContext({ viewport: { width: 390, height: 844 } }),
+        10_000,
+        "BROWSER_CONTEXT_CREATE_TIMEOUT",
+      );
       try {
-        const page = await context.newPage();
+        const page = await withDeadline(context.newPage(), 10_000, "BROWSER_PAGE_CREATE_TIMEOUT");
+        page.setDefaultTimeout(15_000);
+        page.setDefaultNavigationTimeout(15_000);
         await loginWithMfa(page, target.baseUrl, target.projectRef, email, password);
         process.stdout.write(`${role}: MFA-code ingediend.\n`);
         await verifyRole(page, target, role);
       } finally {
-        await context.close();
+        await withDeadline(context.close(), 10_000, "BROWSER_CONTEXT_CLOSE_TIMEOUT").catch(() => undefined);
       }
       process.stdout.write(`${role}: MFA, rolgrens en mobiel menu geslaagd.\n`);
     }
   } finally {
-    await browser.close();
+    await withDeadline(browser.close(), 10_000, "BROWSER_CLOSE_TIMEOUT").catch(() => undefined);
     let cleanupFailed = false;
     for (const userId of createdUsers.reverse()) {
       try {
@@ -320,9 +353,11 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error) => {
-    const code = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message) ? error.message : "STAGING_CORE_ACCEPTANCE_FAILED";
-    process.stderr.write(`${code}\n`);
-    process.exit(1);
-  });
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      const code = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message) ? error.message : "STAGING_CORE_ACCEPTANCE_FAILED";
+      process.stderr.write(`${code}\n`);
+      process.exit(1);
+    });
 }
