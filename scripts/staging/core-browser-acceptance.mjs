@@ -261,7 +261,7 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
     throw new Error("MFA_SUBMIT_FAILED");
   }
   if (!syncResponse.ok()) {
-    const body = await syncResponse.json().catch(() => null);
+    const safeError = await syncResponse.headerValue("x-duindorp-auth-error");
     const errors = {
       INVALID_SESSION_TOKENS: "MFA_SYNC_TOKENS_INVALID",
       STAFF_JWT_UNAVAILABLE: "MFA_SYNC_JWT_UNAVAILABLE",
@@ -270,7 +270,7 @@ async function loginWithMfa(page, baseUrl, projectRef, email, password) {
       STAFF_AAL2_REQUIRED: "MFA_SYNC_AAL2_REQUIRED",
       STAFF_PROFILE_REQUIRED: "MFA_SYNC_PROFILE_REQUIRED",
     };
-    throw new Error(errors[body?.error] ?? "MFA_SYNC_REQUEST_REJECTED");
+    throw new Error(errors[safeError] ?? "MFA_SYNC_REQUEST_REJECTED");
   }
 }
 
