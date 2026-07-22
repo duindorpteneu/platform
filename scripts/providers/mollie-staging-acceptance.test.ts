@@ -14,6 +14,7 @@ const {
   validateCheckoutUrl,
   validateConfiguration,
   validateTargetConfiguration,
+  waitForStagingParentMembers,
 } = acceptance;
 
 const validEnv = {
@@ -134,6 +135,27 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     }, "create_parent_session", {}, fetchImpl)).rejects.toThrow(
       "MOLLIE_ACCEPTANCE_PARENT_RPC_CREATE_PARENT_SESSION_HTTP_409_23503",
     );
+  });
+
+  it("waits until both parent members are visible through the hosted app schema", async () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response("[]", { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        { id: identity.paidMemberId },
+        { id: identity.mismatchMemberId },
+      ]), { status: 200 }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await waitForStagingParentMembers({
+      projectRef: STAGING_SUPABASE_PROJECT_REF,
+      serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
+    }, identity, { fetchImpl, sleep });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][0]).toContain("/rest/v1/members?");
+    expect(fetchImpl.mock.calls[0][1].headers["Accept-Profile"]).toBe("app");
+    expect(sleep).toHaveBeenCalledWith(2_000);
   });
 
   it("posts the same classic form webhook three times concurrently", async () => {
