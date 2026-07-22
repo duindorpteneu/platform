@@ -472,6 +472,29 @@ function paymentBinding(psql, orderId) {
   `, { order_id: orderId });
 }
 
+function assertPreparedParentMembers(psql, identity) {
+  const fixture = queryJson(psql, `
+    select json_build_object(
+      'memberCount', count(*)::integer,
+      'otpVisible', public.parent_otp_members_visible(
+        array[:'paid_member_id'::uuid, :'mismatch_member_id'::uuid],
+        :'fixture_email'
+      )
+    )
+    from app.members member
+    where member.id in (:'paid_member_id'::uuid, :'mismatch_member_id'::uuid)
+      and member.email = :'fixture_email'
+      and member.active_for_season = true;
+  `, {
+    paid_member_id: identity.paidMemberId,
+    mismatch_member_id: identity.mismatchMemberId,
+    fixture_email: identity.fixtureEmail,
+  });
+  if (fixture?.memberCount !== 2 || fixture?.otpVisible !== true) {
+    fail("MOLLIE_ACCEPTANCE_PARENT_MEMBERS_NOT_COMMITTED");
+  }
+}
+
 function assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash) {
   const fixture = queryJson(psql, `
     select json_build_object(
@@ -589,6 +612,8 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     fixturePrepared = true;
 
     console.log("Mollie stagingfixture is geïsoleerd voorbereid.");
+    assertPreparedParentMembers(psql, identity);
+    console.log("Stagingfixture is database-side gecommit en OTP-geschikt.");
     await waitForStagingParentMembers(config, identity, { fetchImpl, sleep });
     console.log("Stagingfixture is via de hosted Data API zichtbaar.");
     const parentAuth = await createParentAuthFixture(config, identity, parentTokenHash, fetchImpl);
