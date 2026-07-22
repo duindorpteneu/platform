@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { mollieCreateRequestSchema } from "@/lib/mollie-contract";
-import { getParentSession } from "@/server/auth/parent-session";
+import { resolveParentSession } from "@/server/auth/parent-session";
 import {
   getMollieRuntimeConfig,
   hasTrustedPaymentOrigin,
@@ -19,8 +19,8 @@ export const dynamic = "force-dynamic";
 
 const responseHeaders = { "Cache-Control": "no-store" };
 
-function failure(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status, headers: responseHeaders });
+function failure(message: string, status: number, extraHeaders: Record<string, string> = {}) {
+  return NextResponse.json({ error: message }, { status, headers: { ...responseHeaders, ...extraHeaders } });
 }
 
 export async function POST(request: Request) {
@@ -36,9 +36,14 @@ export async function POST(request: Request) {
     return failure("Dit betaalverzoek kon niet veilig worden gecontroleerd.", 403);
   }
 
-  const session = await getParentSession();
+  const parentSession = await resolveParentSession();
+  const session = parentSession.session;
   const admin = getSupabaseAdminClient();
-  if (!session || !admin) return failure("Log opnieuw in om veilig te betalen.", 401);
+  if (!session || !admin) {
+    return failure("Log opnieuw in om veilig te betalen.", 401, {
+      "X-Duindorp-Parent-Session-Phase": !admin ? "admin_unavailable" : parentSession.phase,
+    });
+  }
   if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "mollie_enabled")) return failure("Online betalen is tijdelijk gepauzeerd.", 503);
   const allowed = await consumeRateLimit(admin, { scope: "mollie_create", keyHash: session.tokenHash, limit: 10, windowSeconds: 600 });
   if (!allowed) return failure("Te veel betaalpogingen. Probeer het over enkele minuten opnieuw.", 429);

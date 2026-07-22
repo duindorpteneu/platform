@@ -17,7 +17,7 @@ vi.mock("@/server/payments/mollie-service", async (importOriginal) => {
     startMollieCheckout: mocks.start,
   };
 });
-vi.mock("@/server/auth/parent-session", () => ({ getParentSession: mocks.session }));
+vi.mock("@/server/auth/parent-session", () => ({ resolveParentSession: mocks.session }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 
 import { POST } from "@/app/api/payments/mollie/create/route";
@@ -37,7 +37,10 @@ describe("Mollie create-route", () => {
     mocks.config.mockReset().mockReturnValue({ enabled: true, apiKey: "test_000000000000", appBaseUrl: "https://tenue.example" });
     mocks.origin.mockReset().mockReturnValue(true);
     mocks.start.mockReset().mockResolvedValue({ checkoutUrl: "https://checkout.mollie.com/pay/test" });
-    mocks.session.mockReset().mockResolvedValue({ tokenHash: "a".repeat(64) });
+    mocks.session.mockReset().mockResolvedValue({
+      session: { tokenHash: "a".repeat(64) },
+      phase: "ready",
+    });
     mocks.admin.mockReset().mockReturnValue({
       rpc: vi.fn(),
       schema: vi.fn().mockReturnValue({
@@ -59,6 +62,14 @@ describe("Mollie create-route", () => {
     const response = await POST(request({ orderId, amountCents: 1 }));
     expect(response.status).toBe(400);
     expect(mocks.start).not.toHaveBeenCalled();
+  });
+
+  it("rapporteert uitsluitend een veilige sessiefase bij een geweigerde oudersessie", async () => {
+    mocks.session.mockResolvedValue({ session: null, phase: "rpc_error" });
+    const response = await POST(request({ orderId }));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("X-Duindorp-Parent-Session-Phase")).toBe("rpc_error");
+    expect(await response.json()).toEqual({ error: "Log opnieuw in om veilig te betalen." });
   });
 
   it("retourneert uitsluitend de beveiligde hosted checkout", async () => {
