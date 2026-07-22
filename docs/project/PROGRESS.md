@@ -83,18 +83,18 @@ De MVP-releasecandidate is lokaal functioneel, beveiligd en reproduceerbaar geva
 - De settingsworkspace retourneert bij ontbrekend actief seizoen nu altijd een boolean per seizoen. Exacte staging-SHA `76bfe4ef4a5e4348668c37647e8b72e3299a98c9` is groen voor immutable deploy/migration (`29873523343`), echte drie-rollen-MFA/settings/mobile-acceptatie (`29873991736`) en een netwerkgeïsoleerde backup/restore-drill (`29874124335`).
 
 ## In progress
-- Staging draait publiek gezond op main-SHA `76bfe4ef4a5e4348668c37647e8b72e3299a98c9`; settings zonder actief seizoen, opaque MFA-sessies, drie rollen, mobiele navigatie en restore zijn exact op deze SHA geverifieerd.
-- Er is geen lokale codeblocker voor de afgetekende kernflows. De resterende releasegereedheid bestaat uit externe provider-, monitoring-, apparaat- en VPS-isolatieacceptatie.
+- Staging draait publiek gezond op main-SHA `7e50810e77bf1d65c3c95af2930e35ee0a0cf329`. CI, immutable deploy/migrations en de echte Mollie paid/mismatch/replay/refund-aanmaakacceptatie zijn exact op deze SHA groen.
+- Er is geen lokale codeblocker voor de afgetekende kernflows. De resterende releasegereedheid bestaat uit SendGrid-deliverability, externe monitoring, apparaatacceptatie, VPS-isolatie en een later werkelijk door Mollie naar `processing/refunded` gevorderde refundobservatie.
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
-- Configureer `MOLLIE_PROFILE_ID` in staging en voer de afgeschermde testmode paid/mismatch/replay/refund-acceptatie uit.
+- Leg bij een latere Mollie-overgang naar `processing` of `refunded` aanvullend live webhook-/QR-intrekkingsbewijs vast; de huidige testmode-refund bleef conform providercontract `pending` en lokaal ongewijzigd.
 - Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.
 - Rond de gekozen uitgifteapparaat-/browsermatrix en de afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo aantoonbaar af.
 - Overweeg productionpromotie pas daarna en uitsluitend na expliciete approval.
 
 ## Blockers
 - Geen lokale codeblocker.
-- Extern ontbreken `MOLLIE_PROFILE_ID` (stagingvariable) en `OPERATIONS_HEARTBEAT_URL` (staging/productionsecret). Productionpreflight blokkeert bewust zonder heartbeat.
+- Extern ontbreekt `OPERATIONS_HEARTBEAT_URL` als uniek staging- en productionsecret. Productionpreflight blokkeert bewust zonder heartbeat.
 - SendGrid Mail Send retourneert nog HTTP 401; OTP/inbox/delivery en providerfault-herstel kunnen daardoor niet live worden afgetekend.
 - Production blijft NO-GO totdat de gedeelde VPS aantoonbaar afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo heeft.
