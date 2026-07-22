@@ -171,6 +171,14 @@ describe("deployment environment isolation", () => {
     expect(source).not.toMatch(/\n\s*SENDGRID_FROM_EMAIL:\s*fromEmail/);
   });
 
+  it("passes runtime secrets through raw Compose env files without interpolation", () => {
+    const compose = readFileSync(path.join(repositoryRoot, "deploy/compose.vps.yml"), "utf8");
+    const source = readFileSync(configureRuntime, "utf8");
+    expect(compose.match(/\bformat:\s*raw\b/g)).toHaveLength(2);
+    expect(source).toContain('`${name}=${String(value ?? "")}`');
+    expect(source).not.toContain("function quote(value)");
+  });
+
   it("requires a secret independent heartbeat target in production", () => {
     const environment = runtimeEnvironment("production");
     delete environment.OPERATIONS_HEARTBEAT_URL;

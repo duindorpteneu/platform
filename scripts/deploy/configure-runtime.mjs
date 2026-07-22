@@ -185,10 +185,9 @@ const runtime = {
     ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
   ].filter(([, value]) => value)),
 };
-function quote(value) { return `"${String(value ?? "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`; }
 await mkdir(expected.root, { recursive: true, mode: 0o700 });
 const temporary = `${target}.tmp-${process.pid}`;
-await writeFile(temporary, `${Object.entries(runtime).map(([name, value]) => `${name}=${quote(value)}`).join("\n")}\n`, { mode: 0o600 });
+await writeFile(temporary, `${Object.entries(runtime).map(([name, value]) => `${name}=${String(value ?? "")}`).join("\n")}\n`, { mode: 0o600 });
 await chmod(temporary, 0o600);
 await rename(temporary, target);
 await chmod(target, 0o600);

@@ -3,7 +3,8 @@ services:
     image: ${APP_IMAGE:?APP_IMAGE is required}
     restart: unless-stopped
     env_file:
-      - ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
+      - path: ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
+        format: raw
     ports:
       - "127.0.0.1:${APP_BIND_PORT:?APP_BIND_PORT is required}:3000"
     read_only: true
@@ -36,7 +37,8 @@ services:
       - node
       - operations-scheduler.mjs
     env_file:
-      - ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
+      - path: ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
+        format: raw
     depends_on:
       app:
         condition: service_healthy
