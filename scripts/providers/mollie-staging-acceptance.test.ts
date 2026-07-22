@@ -77,19 +77,20 @@ describe("Mollie staging acceptance guards", () => {
     })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
   });
 
-  it("preserves the complete database URI through process environment instead of command arguments", () => {
+  it("passes the complete database URI directly without inheriting provider secrets", () => {
     const spawnImpl = vi.fn().mockReturnValue({ status: 0, stdout: "{}\n" });
     const databaseUrl = `${validEnv.SUPABASE_DB_URL}&application_name=mollie-acceptance`;
     const psql = createPsqlRunner(databaseUrl, spawnImpl);
     psql({ sql: "select '{}'::json;" });
 
     const [, args, options] = spawnImpl.mock.calls[0];
-    expect(args.join(" ")).not.toContain("secret");
-    expect(args.join(" ")).not.toContain("supabase.co");
+    expect(args).toContain("--dbname");
+    expect(args).toContain(databaseUrl);
     expect(options.env).toMatchObject({
-      PGDATABASE: databaseUrl,
       PGCONNECT_TIMEOUT: "15",
     });
+    expect(options.env).not.toHaveProperty("SUPABASE_DB_URL");
+    expect(options.env).not.toHaveProperty("MOLLIE_API_KEY");
     expect(options.env).not.toHaveProperty("PGHOST");
     expect(options.env).not.toHaveProperty("PGUSER");
     expect(options.env).not.toHaveProperty("PGPASSWORD");

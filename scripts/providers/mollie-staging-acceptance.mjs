@@ -128,19 +128,16 @@ export function createPsqlRunner(dbUrl, spawnImpl = spawnSync) {
   const parsedDbUrl = new URL(dbUrl);
   const databaseName = decodeURIComponent(parsedDbUrl.pathname.replace(/^\//, ""));
   if (!databaseName) fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
-  const psqlEnvironment = {
-    ...process.env,
-    // libpq accepts a complete connection URI as PGDATABASE. Keeping the URI
-    // intact preserves Supabase pooler routing and connection options while
-    // keeping credentials out of process arguments and logs.
-    PGDATABASE: dbUrl,
-    PGCONNECT_TIMEOUT: "15",
-  };
-  for (const name of ["PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGSSLMODE"]) {
-    delete psqlEnvironment[name];
-  }
+  const psqlEnvironment = Object.fromEntries(
+    ["PATH", "HOME", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR"]
+      .map((name) => [name, process.env[name]])
+      .filter((entry) => typeof entry[1] === "string"),
+  );
+  psqlEnvironment.PGCONNECT_TIMEOUT = "15";
   return ({ file, sql, variables = {} }) => {
-    const args = ["-X", "--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"];
+    // Passing the URI as one direct spawn argument preserves all Supabase
+    // pooler options. spawnSync does not invoke a shell or echo its arguments.
+    const args = ["--dbname", dbUrl, "-X", "--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"];
     for (const [name, value] of Object.entries(variables)) {
       validatePsqlVariable(name, value);
       args.push("--set", `${name}=${value}`);
