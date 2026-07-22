@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -231,8 +231,20 @@ async function assertProfile(config, fetchImpl) {
   if (profile?.id !== config.profileId) fail("MOLLIE_ACCEPTANCE_PROFILE_MISMATCH");
 }
 
-async function createParentSession(config, identity, parentTokenHash, fetchImpl) {
-  const response = await fetchImpl(`https://${config.projectRef}.supabase.co/rest/v1/rpc/create_parent_session`, {
+const stagingParentRpcNames = new Set([
+  "create_parent_otp",
+  "consume_parent_otp",
+  "create_parent_session",
+  "link_parent_member",
+]);
+
+function safeRemoteCode(value) {
+  return typeof value === "string" && /^[A-Z0-9_]{2,32}$/.test(value) ? value : "UNKNOWN";
+}
+
+export async function stagingParentRpc(config, rpcName, payload, fetchImpl = fetch) {
+  if (!stagingParentRpcNames.has(rpcName)) fail("MOLLIE_ACCEPTANCE_PARENT_RPC_INVALID");
+  const response = await fetchImpl(`https://${config.projectRef}.supabase.co/rest/v1/rpc/${rpcName}`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -240,18 +252,59 @@ async function createParentSession(config, identity, parentTokenHash, fetchImpl)
       Authorization: `Bearer ${config.serviceRoleKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      p_parent_account_id: identity.parentAccountId,
-      p_token_hash: parentTokenHash,
-      p_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    }),
+    body: JSON.stringify(payload),
     redirect: "error",
     signal: AbortSignal.timeout(20_000),
   });
-  if (!response.ok) fail(`MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_HTTP_${response.status}`);
-  const sessionId = await readJsonResponse(response, "MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_RESPONSE_INVALID");
-  if (!uuidPattern.test(sessionId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_RESPONSE_INVALID");
-  return sessionId;
+  const text = await response.text();
+  if (!response.ok) {
+    let code = "UNKNOWN";
+    try {
+      code = safeRemoteCode(parseJsonResponseText(text, "MOLLIE_ACCEPTANCE_PARENT_RPC_RESPONSE_INVALID")?.code);
+    } catch {
+      // Never reflect a provider body, fixture value or credential in acceptance output.
+    }
+    fail(`MOLLIE_ACCEPTANCE_PARENT_RPC_${rpcName.toUpperCase()}_HTTP_${response.status}_${code}`);
+  }
+  return parseJsonResponseText(text, "MOLLIE_ACCEPTANCE_PARENT_RPC_RESPONSE_INVALID");
+}
+
+async function createParentAuthFixture(config, identity, parentTokenHash, fetchImpl) {
+  const code = randomInt(100000, 1000000).toString();
+  const codeHash = createHmac("sha256", config.pepper).update(code).digest("hex");
+  const parentAccountId = await stagingParentRpc(config, "create_parent_otp", {
+    p_email: identity.fixtureEmail,
+    p_code_hash: codeHash,
+    p_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  }, fetchImpl);
+  if (!uuidPattern.test(parentAccountId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_OTP_CREATE_INVALID");
+  identity.parentAccountId = parentAccountId;
+
+  const consumed = await stagingParentRpc(config, "consume_parent_otp", {
+    p_email: identity.fixtureEmail,
+    p_code_hash: codeHash,
+  }, fetchImpl);
+  if (consumed?.status !== "verified" || consumed?.parentAccountId !== parentAccountId) {
+    fail("MOLLIE_ACCEPTANCE_PARENT_OTP_CONSUME_INVALID");
+  }
+
+  const parentSessionId = await stagingParentRpc(config, "create_parent_session", {
+    p_parent_account_id: parentAccountId,
+    p_token_hash: parentTokenHash,
+    p_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  }, fetchImpl);
+  if (!uuidPattern.test(parentSessionId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_INVALID");
+
+  for (const memberId of [identity.paidMemberId, identity.mismatchMemberId]) {
+    const linked = await stagingParentRpc(config, "link_parent_member", {
+      p_token_hash: parentTokenHash,
+      p_member_id: memberId,
+    }, fetchImpl);
+    if (!uuidPattern.test(linked?.linkId ?? "") || linked?.memberId !== memberId) {
+      fail("MOLLIE_ACCEPTANCE_PARENT_LINK_INVALID");
+    }
+  }
+  return { parentAccountId, parentSessionId };
 }
 
 function assertTestPayment(config, payment, expectedProviderPaymentId) {
@@ -522,7 +575,8 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     fixturePrepared = true;
 
     console.log("Mollie stagingfixture is geïsoleerd voorbereid.");
-    const parentSessionId = await createParentSession(config, identity, parentTokenHash, fetchImpl);
+    const parentAuth = await createParentAuthFixture(config, identity, parentTokenHash, fetchImpl);
+    const parentSessionId = parentAuth.parentSessionId;
     assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash);
     console.log("Oudersessiefixture is actief en via het databasecontract zichtbaar.");
     const paidCheckoutUrl = await createCheckout(config, identity.paidOrderId, parentSessionToken, fetchImpl);

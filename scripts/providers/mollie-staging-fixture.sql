@@ -44,14 +44,6 @@ values
   (:'paid_order_id', :'paid_member_id', :'fixture_season_id', 100),
   (:'mismatch_order_id', :'mismatch_member_id', :'fixture_season_id', 100);
 
-insert into private.parent_accounts (id, email_normalized)
-values (:'parent_account_id', :'fixture_email');
-
-insert into private.parent_member_links (parent_account_id, member_id)
-values
-  (:'parent_account_id', :'paid_member_id'),
-  (:'parent_account_id', :'mismatch_member_id');
-
 update app.app_settings
 set mollie_enabled = true, updated_at = timezone('utc', now())
 where id = true;

@@ -10,6 +10,7 @@ const {
   createPsqlRunner,
   postConcurrentReplays,
   providerRequest,
+  stagingParentRpc,
   validateCheckoutUrl,
   validateConfiguration,
   validateTargetConfiguration,
@@ -117,6 +118,19 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
       {},
       fetchImpl,
     )).rejects.toThrow("MOLLIE_ACCEPTANCE_PROVIDER_HTTP_500");
+  });
+
+  it("returns only an allowlisted Supabase error code for parent RPC failures", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "23503",
+      message: "secret fixture detail",
+    }), { status: 409 }));
+    await expect(stagingParentRpc({
+      projectRef: STAGING_SUPABASE_PROJECT_REF,
+      serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
+    }, "create_parent_session", {}, fetchImpl)).rejects.toThrow(
+      "MOLLIE_ACCEPTANCE_PARENT_RPC_CREATE_PARENT_SESSION_HTTP_409_23503",
+    );
   });
 
   it("posts the same classic form webhook three times concurrently", async () => {
