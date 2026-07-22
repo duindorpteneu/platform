@@ -728,13 +728,19 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     const changePaymentStateUrl = paidProviderPayment?._links?.changePaymentState?.href;
     if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
     await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
-    await waitForProviderRefund(config, paidBinding.providerPaymentId, (refund) => {
-      return refund?.status === "refunded" && refund?.amount?.currency === "EUR"
+    const providerRefund = await waitForProviderRefund(config, paidBinding.providerPaymentId, (refund) => {
+      return ["pending", "processing", "refunded"].includes(refund?.status)
+        && refund?.amount?.currency === "EUR"
         && refund?.amount?.value === paidProviderPayment.amount.value;
     }, { fetchImpl, sleep });
-    await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-    assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));
-    console.log("Refund-scenario trok de QR via de publieke stagingwebhook in.");
+    if (providerRefund.status === "pending") {
+      assert.deepEqual(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl), paidSnapshot);
+      console.log("Volledige refund is door Mollie geaccepteerd als pending; lokaal bleef betaald totdat de providerwebhook verschuldigd is.");
+    } else {
+      await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
+      assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));
+      console.log("Finale providerrefund trok de QR via de publieke stagingwebhook in.");
+    }
   } finally {
     if (fixturePrepared) {
       const cleaned = await stagingParentRpc(config, "cleanup_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
