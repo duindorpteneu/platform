@@ -501,6 +501,21 @@ export async function chooseRefundedOnHostedTestPage(page) {
     }
     if (!submitted) fail("MOLLIE_HOSTED_TEST_REFUND_SUBMIT_CONTROL_NOT_FOUND");
   }
+
+  await page.waitForTimeout(1_000);
+  const exactFinalRefund = /^(refunded|terugbetaald|teruggestort|successful|geslaagd)$/i;
+  const finalRadio = page.getByRole("radio", { name: exactFinalRefund });
+  if (await visible(finalRadio)) {
+    await finalRadio.first().check();
+    const finalSubmit = page.getByRole("button", { name: /(continue|doorgaan|ga verder|bevestigen|submit|confirm|complete)/i });
+    if (await visible(finalSubmit)) {
+      await finalSubmit.first().click();
+    } else {
+      const finalSubmitControl = page.locator('button[type="submit"], input[type="submit"]');
+      if (!await visible(finalSubmitControl)) fail("MOLLIE_HOSTED_TEST_REFUND_FINAL_SUBMIT_NOT_FOUND");
+      await finalSubmitControl.first().click();
+    }
+  }
 }
 
 async function completeHostedTestAction(actionUrl, chooseAction, dependencies = {}) {
@@ -518,6 +533,10 @@ async function completeHostedTestAction(actionUrl, chooseAction, dependencies = 
     await page.goto(safeActionUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await chooseAction(page);
     await page.waitForTimeout(1_500);
+    const screenshotPath = process.env.MOLLIE_ACCEPTANCE_SCREENSHOT_PATH;
+    if (screenshotPath?.endsWith(".png")) {
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
+    }
   } catch (error) {
     const screenshotPath = process.env.MOLLIE_ACCEPTANCE_SCREENSHOT_PATH;
     if (page && screenshotPath?.endsWith(".png")) {

@@ -204,8 +204,11 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
   });
 
   it("selects refunded and submits the hosted test state change", async () => {
-    const check = vi.fn();
-    const click = vi.fn();
+    let initialSubmitted = false;
+    const initialCheck = vi.fn();
+    const finalCheck = vi.fn();
+    const initialClick = vi.fn().mockImplementation(async () => { initialSubmitted = true; });
+    const finalClick = vi.fn();
     const locator = (visible: boolean, actions: Record<string, unknown> = {}) => ({
       count: vi.fn().mockResolvedValue(visible ? 1 : 0),
       first: vi.fn().mockReturnValue({ isVisible: vi.fn().mockResolvedValue(visible), ...actions }),
@@ -213,17 +216,25 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     const hidden = locator(false);
     const page = {
       getByRole: vi.fn((role: string, options: { name?: RegExp }) => {
-        if (role === "radio" && options.name?.test("Volledige terugbetaling aanmaken")) {
-          return locator(true, { check });
+        if (role === "radio" && !initialSubmitted && options.name?.test("Volledige terugbetaling aanmaken")) {
+          return locator(true, { check: initialCheck });
         }
-        if (role === "button" && options.name?.test("Ga verder")) return locator(true, { click });
+        if (role === "radio" && initialSubmitted && options.name?.test("Terugbetaald")) {
+          return locator(true, { check: finalCheck });
+        }
+        if (role === "button" && options.name?.test("Ga verder")) {
+          return locator(true, { click: initialSubmitted ? finalClick : initialClick });
+        }
         return hidden;
       }),
       locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
+      waitForTimeout: vi.fn().mockResolvedValue(undefined),
     };
 
     await chooseRefundedOnHostedTestPage(page);
-    expect(check).toHaveBeenCalledOnce();
-    expect(click).toHaveBeenCalledOnce();
+    expect(initialCheck).toHaveBeenCalledOnce();
+    expect(initialClick).toHaveBeenCalledOnce();
+    expect(finalCheck).toHaveBeenCalledOnce();
+    expect(finalClick).toHaveBeenCalledOnce();
   });
 });
