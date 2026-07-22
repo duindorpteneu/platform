@@ -58,6 +58,24 @@ select is((select mollie_enabled from app.app_settings where id = true),
   (select mollie_enabled from original_mollie_setting),
   'cleanup herstelt de oorspronkelijke Mollie-featureflag');
 
+update app.app_settings set active_season_id = null where id = true;
+select is(public.prepare_mollie_acceptance_fixture(
+  'a9500000-0000-4000-8000-000000000001', 'a9500000-0000-4000-8000-000000000002',
+  'a9600000-0000-4000-8000-000000000001', 'a9600000-0000-4000-8000-000000000002',
+  'MOLLIE-67890a2-P', 'MOLLIE-67890a2-M', 'mollie-acceptance+67890a2@example.invalid'
+), true, 'fixture maakt alleen bij ontbreken van een actief seizoen een tijdelijk testseizoen');
+select is((select count(*) from app.seasons where name = 'Mollie acceptatie MOLLIE-67890a2-P'),
+  1::bigint, 'tijdelijk testseizoen is streng herkenbaar en uniek');
+select is(public.cleanup_mollie_acceptance_fixture(
+  'a9500000-0000-4000-8000-000000000001', 'a9500000-0000-4000-8000-000000000002',
+  'a9600000-0000-4000-8000-000000000001', 'a9600000-0000-4000-8000-000000000002',
+  'MOLLIE-67890a2-P', 'MOLLIE-67890a2-M', 'mollie-acceptance+67890a2@example.invalid'
+), true, 'cleanup herstelt ook staging zonder actief seizoen');
+select is((select active_season_id from app.app_settings where id = true), null::uuid,
+  'cleanup herstelt de ontbrekende actieve-seizoenstatus');
+select is((select count(*) from app.seasons where name = 'Mollie acceptatie MOLLIE-67890a2-P'),
+  0::bigint, 'cleanup verwijdert het tijdelijke testseizoen');
+
 select * from finish();
 rollback;
 reset role;
