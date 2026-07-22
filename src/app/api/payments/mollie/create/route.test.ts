@@ -43,10 +43,9 @@ describe("Mollie create-route", () => {
       phase: "ready",
     });
     mocks.admin.mockReset().mockReturnValue({
-      rpc: vi.fn(),
+      rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
       schema: vi.fn().mockReturnValue({
         rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
-        from: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: { mollie_enabled: true }, error: null }) }) }) }),
       }),
     });
   });

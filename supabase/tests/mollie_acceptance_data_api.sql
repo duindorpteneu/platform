@@ -15,6 +15,12 @@ select ok(not has_function_privilege('anon',
 select ok(has_function_privilege('service_role',
   'public.get_mollie_acceptance_payment_state(uuid,uuid)', 'EXECUTE'),
   'service role kan uitsluitend de begrensde acceptatiebetaalstaat lezen');
+select ok(has_function_privilege('service_role',
+  'public.is_operational_feature_enabled(text)', 'EXECUTE'),
+  'service role kan de operationele providerflag via een begrensd contract lezen');
+select ok(not has_function_privilege('anon',
+  'public.is_operational_feature_enabled(text)', 'EXECUTE'),
+  'anonieme clients kunnen operationele providerflags niet opvragen');
 
 create temporary table original_mollie_setting as
 select mollie_enabled from app.app_settings where id = true;
@@ -35,6 +41,8 @@ select is(public.parent_otp_members_visible(array[
   'a9100000-0000-4000-8000-000000000002'::uuid
 ], 'mollie-acceptance+12345a1@example.invalid'), true,
   'fixture is direct via het hosted OTP-zichtbaarheidscontract beschikbaar');
+select is(public.is_operational_feature_enabled('mollie_enabled'), true,
+  'Mollie-featureflag is via het servicecontract direct zichtbaar');
 select is(public.get_mollie_acceptance_payment_state(
   'a9200000-0000-4000-8000-000000000001', 'a9100000-0000-4000-8000-000000000001'
 ), null::jsonb, 'betaalstaat is leeg voordat een checkout is aangemaakt');
