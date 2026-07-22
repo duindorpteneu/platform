@@ -129,14 +129,16 @@ export function createPsqlRunner(dbUrl, spawnImpl = spawnSync) {
   const databaseName = decodeURIComponent(parsedDbUrl.pathname.replace(/^\//, ""));
   if (!databaseName) fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
   const psqlEnvironment = {
-    PGHOST: parsedDbUrl.hostname,
-    PGPORT: parsedDbUrl.port || "5432",
-    PGUSER: decodeURIComponent(parsedDbUrl.username),
-    PGPASSWORD: decodeURIComponent(parsedDbUrl.password),
-    PGDATABASE: databaseName,
-    PGSSLMODE: parsedDbUrl.searchParams.get("sslmode") ?? "require",
+    ...process.env,
+    // libpq accepts a complete connection URI as PGDATABASE. Keeping the URI
+    // intact preserves Supabase pooler routing and connection options while
+    // keeping credentials out of process arguments and logs.
+    PGDATABASE: dbUrl,
     PGCONNECT_TIMEOUT: "15",
   };
+  for (const name of ["PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGSSLMODE"]) {
+    delete psqlEnvironment[name];
+  }
   return ({ file, sql, variables = {} }) => {
     const args = ["-X", "--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"];
     for (const [name, value] of Object.entries(variables)) {
@@ -146,7 +148,7 @@ export function createPsqlRunner(dbUrl, spawnImpl = spawnSync) {
     if (file) args.push("--file", file);
     else args.push("--file", "-");
     const result = spawnImpl("psql", args, {
-      env: { ...process.env, ...psqlEnvironment },
+      env: psqlEnvironment,
       input: sql,
       encoding: "utf8",
       maxBuffer: 256 * 1024,
