@@ -6,6 +6,7 @@ const {
   ACCEPTANCE_CONFIRMATION,
   STAGING_SUPABASE_PROJECT_REF,
   choosePaidOnHostedTestPage,
+  chooseRefundedOnHostedTestPage,
   createFixtureIdentity,
   postConcurrentReplays,
   providerRequest,
@@ -200,5 +201,24 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     expect(issuerClick).toHaveBeenCalledOnce();
     expect(paidCheck).toHaveBeenCalledOnce();
     expect(submitClick).toHaveBeenCalledOnce();
+  });
+
+  it("selects refunded and submits the hosted test state change", async () => {
+    const check = vi.fn();
+    const click = vi.fn();
+    const locator = (visible: boolean, actions: Record<string, unknown> = {}) => ({
+      count: vi.fn().mockResolvedValue(visible ? 1 : 0),
+      first: vi.fn().mockReturnValue({ isVisible: vi.fn().mockResolvedValue(visible), ...actions }),
+    });
+    const page = {
+      getByRole: vi.fn((role: string) => role === "radio"
+        ? locator(true, { check })
+        : locator(true, { click })),
+      locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
+    };
+
+    await chooseRefundedOnHostedTestPage(page);
+    expect(check).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
   });
 });

@@ -435,8 +435,76 @@ export async function choosePaidOnHostedTestPage(page) {
   }
 }
 
-export async function completeHostedTestCheckout(checkoutUrl, dependencies = {}) {
-  const safeCheckoutUrl = validateCheckoutUrl(checkoutUrl);
+export async function chooseRefundedOnHostedTestPage(page) {
+  const exactRefunded = /^(refunded|refund|terugbetaald|teruggestort)$/i;
+  let selected = false;
+  let submitted = false;
+
+  for (let attempt = 0; attempt < 20 && !selected; attempt += 1) {
+    const radio = page.getByRole("radio", { name: exactRefunded });
+    if (await visible(radio)) {
+      await radio.first().check();
+      selected = true;
+      break;
+    }
+
+    const refundInput = page.locator('input[type="radio"][value="refunded" i], input[type="radio"][value="refund" i]');
+    if (await visible(refundInput)) {
+      await refundInput.first().check();
+      selected = true;
+      break;
+    }
+
+    const selects = page.locator("select");
+    for (let index = 0; index < await selects.count(); index += 1) {
+      const select = selects.nth(index);
+      const values = await select.locator("option").evaluateAll((options) => options.map((option) => ({
+        label: option.textContent?.trim() ?? "",
+        value: option.getAttribute("value") ?? "",
+      })));
+      const refundedOption = values.find((option) => exactRefunded.test(option.label)
+        || /^(refunded|refund)$/i.test(option.value));
+      if (refundedOption) {
+        await select.selectOption(refundedOption.value ? { value: refundedOption.value } : { label: refundedOption.label });
+        selected = true;
+        break;
+      }
+    }
+
+    if (selected) break;
+    const button = page.getByRole("button", { name: exactRefunded });
+    if (await visible(button)) {
+      await button.first().click();
+      selected = true;
+      submitted = true;
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  if (!selected) fail("MOLLIE_HOSTED_TEST_REFUNDED_CONTROL_NOT_FOUND");
+
+  if (!submitted) {
+    for (let attempt = 0; attempt < 10 && !submitted; attempt += 1) {
+      const submit = page.getByRole("button", { name: /(continue|doorgaan|ga verder|bevestigen|submit|confirm|complete)/i });
+      if (await visible(submit)) {
+        await submit.first().click();
+        submitted = true;
+        break;
+      }
+      const submitControl = page.locator('button[type="submit"], input[type="submit"]');
+      if (await visible(submitControl)) {
+        await submitControl.first().click();
+        submitted = true;
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+    if (!submitted) fail("MOLLIE_HOSTED_TEST_REFUND_SUBMIT_CONTROL_NOT_FOUND");
+  }
+}
+
+async function completeHostedTestAction(actionUrl, chooseAction, dependencies = {}) {
+  const safeActionUrl = validateCheckoutUrl(actionUrl);
   let browser;
   let page;
   try {
@@ -447,8 +515,8 @@ export async function completeHostedTestCheckout(checkoutUrl, dependencies = {})
     browser = await launch();
     const context = await browser.newContext({ locale: "en-US" });
     page = await context.newPage();
-    await page.goto(safeCheckoutUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await choosePaidOnHostedTestPage(page);
+    await page.goto(safeActionUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await chooseAction(page);
     await page.waitForTimeout(1_500);
   } catch (error) {
     const screenshotPath = process.env.MOLLIE_ACCEPTANCE_SCREENSHOT_PATH;
@@ -460,6 +528,14 @@ export async function completeHostedTestCheckout(checkoutUrl, dependencies = {})
   } finally {
     await browser?.close().catch(() => undefined);
   }
+}
+
+export async function completeHostedTestCheckout(checkoutUrl, dependencies = {}) {
+  return completeHostedTestAction(checkoutUrl, choosePaidOnHostedTestPage, dependencies);
+}
+
+export async function completeHostedTestRefund(changePaymentStateUrl, dependencies = {}) {
+  return completeHostedTestAction(changePaymentStateUrl, chooseRefundedOnHostedTestPage, dependencies);
 }
 
 export async function postPublicWebhook(config, providerPaymentId, fetchImpl = fetch) {
@@ -546,6 +622,7 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   const fetchImpl = overrides.fetchImpl ?? fetch;
   const sleep = overrides.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const completeCheckout = overrides.completeCheckout ?? completeHostedTestCheckout;
+  const completeRefund = overrides.completeRefund ?? completeHostedTestRefund;
   const parentSessionToken = randomBytes(32).toString("base64url");
   const parentTokenHash = createHmac("sha256", config.pepper).update(parentSessionToken).digest("hex");
   let fixturePrepared = false;
@@ -602,16 +679,9 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     const paidProviderPayment = assertTestPayment(config,
       await providerRequest(config, `/v2/payments/${paidBinding.providerPaymentId}`, {}, fetchImpl),
       paidBinding.providerPaymentId);
-    await providerRequest(config, `/v2/payments/${paidBinding.providerPaymentId}/refunds`, {
-      method: "POST",
-      idempotencyKey: `duindorp-mollie-acceptance-refund-${config.runMarker}`,
-      body: {
-        amount: paidProviderPayment.amount,
-        description: "Duindorp staging acceptance refund",
-        metadata: { acceptance_run: config.runMarker },
-      },
-      acceptedStatuses: [201],
-    }, fetchImpl);
+    const changePaymentStateUrl = paidProviderPayment?._links?.changePaymentState?.href;
+    if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
+    await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
     await waitForProvider(config, paidBinding.providerPaymentId, (payment) => {
       return payment?.amountRefunded?.currency === "EUR" && payment?.amountRefunded?.value === payment?.amount?.value;
     }, { fetchImpl, sleep });
