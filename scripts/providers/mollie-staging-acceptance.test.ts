@@ -140,11 +140,8 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
   it("waits until both parent members are visible through the hosted app schema", async () => {
     const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response("[]", { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([
-        { id: identity.paidMemberId },
-        { id: identity.mismatchMemberId },
-      ]), { status: 200 }));
+      .mockResolvedValueOnce(new Response("false", { status: 200 }))
+      .mockResolvedValueOnce(new Response("true", { status: 200 }));
     const sleep = vi.fn().mockResolvedValue(undefined);
 
     await waitForStagingParentMembers({
@@ -153,8 +150,11 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     }, identity, { fetchImpl, sleep });
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0][0]).toContain("/rest/v1/members?");
-    expect(fetchImpl.mock.calls[0][1].headers["Accept-Profile"]).toBe("app");
+    expect(fetchImpl.mock.calls[0][0]).toContain("/rest/v1/rpc/parent_otp_members_visible");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({
+      p_member_ids: [identity.paidMemberId, identity.mismatchMemberId],
+      p_email: identity.fixtureEmail,
+    });
     expect(sleep).toHaveBeenCalledWith(2_000);
   });
 

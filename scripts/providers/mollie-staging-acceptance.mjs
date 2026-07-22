@@ -235,6 +235,7 @@ const stagingParentRpcNames = new Set([
   "consume_parent_otp",
   "create_parent_session",
   "link_parent_member",
+  "parent_otp_members_visible",
 ]);
 
 function safeRemoteCode(value) {
@@ -271,29 +272,12 @@ export async function stagingParentRpc(config, rpcName, payload, fetchImpl = fet
 export async function waitForStagingParentMembers(config, identity, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
-  const expectedIds = new Set([identity.paidMemberId, identity.mismatchMemberId]);
-  const query = new URLSearchParams({
-    select: "id",
-    id: `in.(${[...expectedIds].join(",")})`,
-    email: `eq.${identity.fixtureEmail}`,
-    active_for_season: "eq.true",
-  });
   for (let attempt = 1; attempt <= 20; attempt += 1) {
-    const response = await fetchImpl(`https://${config.projectRef}.supabase.co/rest/v1/members?${query}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "Accept-Profile": "app",
-        apikey: config.serviceRoleKey,
-        Authorization: `Bearer ${config.serviceRoleKey}`,
-      },
-      redirect: "error",
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) fail(`MOLLIE_ACCEPTANCE_PARENT_MEMBER_VISIBILITY_HTTP_${response.status}`);
-    const rows = await readJsonResponse(response, "MOLLIE_ACCEPTANCE_PARENT_MEMBER_VISIBILITY_RESPONSE_INVALID");
-    const visibleIds = new Set(Array.isArray(rows) ? rows.map((row) => row?.id) : []);
-    if (visibleIds.size === expectedIds.size && [...expectedIds].every((id) => visibleIds.has(id))) return;
+    const visible = await stagingParentRpc(config, "parent_otp_members_visible", {
+      p_member_ids: [identity.paidMemberId, identity.mismatchMemberId],
+      p_email: identity.fixtureEmail,
+    }, fetchImpl);
+    if (visible === true) return;
     if (attempt < 20) await sleep(2_000);
   }
   fail("MOLLIE_ACCEPTANCE_PARENT_MEMBERS_NOT_VISIBLE");
