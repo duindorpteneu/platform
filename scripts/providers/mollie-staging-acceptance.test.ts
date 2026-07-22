@@ -210,10 +210,15 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
       count: vi.fn().mockResolvedValue(visible ? 1 : 0),
       first: vi.fn().mockReturnValue({ isVisible: vi.fn().mockResolvedValue(visible), ...actions }),
     });
+    const hidden = locator(false);
     const page = {
-      getByRole: vi.fn((role: string) => role === "radio"
-        ? locator(true, { check })
-        : locator(true, { click })),
+      getByRole: vi.fn((role: string, options: { name?: RegExp }) => {
+        if (role === "radio" && options.name?.test("Volledige terugbetaling aanmaken")) {
+          return locator(true, { check });
+        }
+        if (role === "button" && options.name?.test("Ga verder")) return locator(true, { click });
+        return hidden;
+      }),
       locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
     };
 

@@ -436,7 +436,7 @@ export async function choosePaidOnHostedTestPage(page) {
 }
 
 export async function chooseRefundedOnHostedTestPage(page) {
-  const exactRefunded = /^(refunded|refund|terugbetaald|teruggestort)$/i;
+  const exactRefunded = /^(?:volledige\s+)?(?:terugbetaling(?:\s+aanmaken)?|terugbetaald|teruggestort|refund(?:ed)?)$/i;
   let selected = false;
   let submitted = false;
 
