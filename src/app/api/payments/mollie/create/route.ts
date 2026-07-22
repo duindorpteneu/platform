@@ -19,8 +19,14 @@ export const dynamic = "force-dynamic";
 
 const responseHeaders = { "Cache-Control": "no-store" };
 
+type MollieFailurePhase = "configuration" | "paused" | "database" | "provider" | "provider_response" | "unknown";
+
 function failure(message: string, status: number, extraHeaders: Record<string, string> = {}) {
   return NextResponse.json({ error: message }, { status, headers: { ...responseHeaders, ...extraHeaders } });
+}
+
+function unavailable(message: string, phase: MollieFailurePhase) {
+  return failure(message, 503, { "X-Duindorp-Mollie-Phase": phase });
 }
 
 export async function POST(request: Request) {
@@ -28,7 +34,7 @@ export async function POST(request: Request) {
   try {
     config = getMollieRuntimeConfig();
   } catch {
-    return failure("Online betalen is tijdelijk niet beschikbaar.", 503);
+    return unavailable("Online betalen is tijdelijk niet beschikbaar.", "configuration");
   }
   const guarded = guardBrowserMutation(request, { appBaseUrl: config.appBaseUrl, body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } });
   if (guarded || !hasTrustedPaymentOrigin(request, config.appBaseUrl)) {
@@ -44,7 +50,9 @@ export async function POST(request: Request) {
       "X-Duindorp-Parent-Session-Phase": !admin ? "admin_unavailable" : parentSession.phase,
     });
   }
-  if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "mollie_enabled")) return failure("Online betalen is tijdelijk gepauzeerd.", 503);
+  if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "mollie_enabled")) {
+    return unavailable("Online betalen is tijdelijk gepauzeerd.", "paused");
+  }
   const allowed = await consumeRateLimit(admin, { scope: "mollie_create", keyHash: session.tokenHash, limit: 10, windowSeconds: 600 });
   if (!allowed) return failure("Te veel betaalpogingen. Probeer het over enkele minuten opnieuw.", 429);
 
@@ -71,8 +79,11 @@ export async function POST(request: Request) {
     if (error instanceof MollieServiceError) {
       if (error.code === "ORDER_ALREADY_PAID") return failure("Deze bestelling is al betaald.", 409);
       if (error.code === "ORDER_NOT_AVAILABLE") return failure("Deze bestelling is niet beschikbaar.", 404);
-      if (error.code === "NOT_CONFIGURED") return failure("Online betalen is tijdelijk niet beschikbaar.", 503);
+      if (error.code === "NOT_CONFIGURED") return unavailable("Online betalen is tijdelijk niet beschikbaar.", "configuration");
+      if (error.code === "DATABASE_UNAVAILABLE") return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "database");
+      if (error.code === "PROVIDER_UNAVAILABLE") return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "provider");
+      if (error.code === "INVALID_PROVIDER_RESPONSE") return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "provider_response");
     }
-    return failure("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", 503);
+    return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "unknown");
   }
 }

@@ -21,6 +21,7 @@ vi.mock("@/server/auth/parent-session", () => ({ resolveParentSession: mocks.ses
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 
 import { POST } from "@/app/api/payments/mollie/create/route";
+import { MollieServiceError } from "@/server/payments/mollie-service";
 
 const orderId = "00000000-0000-4000-8000-000000000002";
 
@@ -54,8 +55,21 @@ describe("Mollie create-route", () => {
     mocks.config.mockImplementation(() => { throw new Error("invalid env"); });
     const response = await POST(request({ orderId }));
     expect(response.status).toBe(503);
+    expect(response.headers.get("X-Duindorp-Mollie-Phase")).toBe("configuration");
     expect(await response.json()).toEqual({ error: "Online betalen is tijdelijk niet beschikbaar." });
     expect(mocks.start).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["DATABASE_UNAVAILABLE", "database"],
+    ["PROVIDER_UNAVAILABLE", "provider"],
+    ["INVALID_PROVIDER_RESPONSE", "provider_response"],
+  ] as const)("rapporteert de veilige %s-fase zonder providerdetails", async (code, phase) => {
+    mocks.start.mockRejectedValue(new MollieServiceError(code));
+    const response = await POST(request({ orderId }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("X-Duindorp-Mollie-Phase")).toBe(phase);
+    expect(await response.json()).toEqual({ error: "De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw." });
   });
 
   it("weigert een bedrag uit de browser", async () => {

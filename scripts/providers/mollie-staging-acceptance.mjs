@@ -308,7 +308,9 @@ async function createCheckout(config, orderId, parentSessionToken, fetchImpl) {
     signal: AbortSignal.timeout(30_000),
   });
   if (response.status !== 200) {
-    const phaseValue = response.headers.get("x-duindorp-parent-session-phase") ?? "unknown";
+    const phaseValue = response.headers.get("x-duindorp-mollie-phase")
+      ?? response.headers.get("x-duindorp-parent-session-phase")
+      ?? "unknown";
     const phase = /^[a-z_]{2,32}$/.test(phaseValue) ? phaseValue.toUpperCase() : "UNKNOWN";
     fail(`MOLLIE_ACCEPTANCE_APP_CREATE_HTTP_${response.status}_${phase}`);
   }
