@@ -417,7 +417,7 @@ export async function choosePaidOnHostedTestPage(page) {
 
   if (!submitted) {
     for (let attempt = 0; attempt < 10 && !submitted; attempt += 1) {
-      const submit = page.getByRole("button", { name: /(continue|doorgaan|bevestigen|submit|betalen|confirm|complete)/i });
+      const submit = page.getByRole("button", { name: /(continue|doorgaan|ga verder|bevestigen|submit|betalen|confirm|complete)/i });
       if (await visible(submit)) {
         await submit.first().click();
         submitted = true;
