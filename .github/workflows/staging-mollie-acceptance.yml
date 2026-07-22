@@ -61,13 +61,8 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Install isolated database and browser clients
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client >/dev/null
-          pnpm exec playwright install --with-deps chromium >/dev/null
+      - name: Install isolated browser client
+        run: pnpm exec playwright install --with-deps chromium >/dev/null
 
       - name: Run paid, mismatch, replay and refund acceptance
         env:
@@ -82,4 +77,5 @@ jobs:
         if: always()
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only

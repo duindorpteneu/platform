@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 export const STAGING_APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
 export const STAGING_SUPABASE_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
@@ -76,6 +75,12 @@ export function validateConfiguration(env) {
   };
 }
 
+function validateCleanupConfiguration(env) {
+  const target = validateTargetConfiguration(env);
+  if ((env.SUPABASE_SERVICE_ROLE_KEY ?? "").length < 40) fail("MOLLIE_ACCEPTANCE_SERVICE_ROLE_KEY_INVALID");
+  return { ...target, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY };
+}
+
 function uuidFromMarker(runMarker, label) {
   const bytes = createHash("sha256").update(`duindorp-mollie-acceptance:${runMarker}:${label}`).digest().subarray(0, 16);
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -102,64 +107,15 @@ export function createFixtureIdentity(runMarker) {
   };
 }
 
-function fixtureVariables(identity, parentTokenHash) {
-  const variables = {
-    paid_member_id: identity.paidMemberId,
-    mismatch_member_id: identity.mismatchMemberId,
-    paid_order_id: identity.paidOrderId,
-    mismatch_order_id: identity.mismatchOrderId,
-    parent_account_id: identity.parentAccountId,
-    parent_session_id: identity.parentSessionId,
-    paid_relation: identity.paidRelation,
-    mismatch_relation: identity.mismatchRelation,
-    fixture_email: identity.fixtureEmail,
-  };
-  if (parentTokenHash) variables.parent_token_hash = parentTokenHash;
-  return variables;
-}
-
-function validatePsqlVariable(name, value) {
-  if (!/^[a-z_]+$/.test(name) || typeof value !== "string" || value.length > 320 || /[\n\r\\]/.test(value)) {
-    fail("MOLLIE_ACCEPTANCE_FIXTURE_VALUE_INVALID");
-  }
-}
-
-export function createPsqlRunner(dbUrl, spawnImpl = spawnSync) {
-  const parsedDbUrl = new URL(dbUrl);
-  const databaseName = decodeURIComponent(parsedDbUrl.pathname.replace(/^\//, ""));
-  if (!databaseName) fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
-  const psqlEnvironment = Object.fromEntries(
-    ["PATH", "HOME", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR"]
-      .map((name) => [name, process.env[name]])
-      .filter((entry) => typeof entry[1] === "string"),
-  );
-  psqlEnvironment.PGCONNECT_TIMEOUT = "15";
-  return ({ file, sql, variables = {} }) => {
-    // Passing the URI as one direct spawn argument preserves all Supabase
-    // pooler options. spawnSync does not invoke a shell or echo its arguments.
-    const args = ["--dbname", dbUrl, "-X", "--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"];
-    for (const [name, value] of Object.entries(variables)) {
-      validatePsqlVariable(name, value);
-      args.push("--set", `${name}=${value}`);
-    }
-    if (file) args.push("--file", file);
-    else args.push("--file", "-");
-    const result = spawnImpl("psql", args, {
-      env: psqlEnvironment,
-      input: sql,
-      encoding: "utf8",
-      maxBuffer: 256 * 1024,
-      timeout: 45_000,
-    });
-    if (result.status !== 0) fail(file ? "MOLLIE_ACCEPTANCE_FIXTURE_SQL_FAILED" : "MOLLIE_ACCEPTANCE_ASSERTION_SQL_FAILED");
-    return (result.stdout ?? "").trim();
-  };
-}
-
-function fixturePaths() {
+function fixturePayload(identity) {
   return {
-    prepare: fileURLToPath(new URL("./mollie-staging-fixture.sql", import.meta.url)),
-    cleanup: fileURLToPath(new URL("./mollie-staging-cleanup.sql", import.meta.url)),
+    p_paid_member_id: identity.paidMemberId,
+    p_mismatch_member_id: identity.mismatchMemberId,
+    p_paid_order_id: identity.paidOrderId,
+    p_mismatch_order_id: identity.mismatchOrderId,
+    p_paid_relation: identity.paidRelation,
+    p_mismatch_relation: identity.mismatchRelation,
+    p_fixture_email: identity.fixtureEmail,
   };
 }
 
@@ -236,6 +192,9 @@ const stagingParentRpcNames = new Set([
   "create_parent_session",
   "link_parent_member",
   "parent_otp_members_visible",
+  "prepare_mollie_acceptance_fixture",
+  "get_mollie_acceptance_payment_state",
+  "cleanup_mollie_acceptance_fixture",
 ]);
 
 function safeRemoteCode(value) {
@@ -453,98 +412,11 @@ export async function postConcurrentReplays(config, providerPaymentId, fetchImpl
   ]);
 }
 
-function queryJson(psql, sql, variables) {
-  const raw = psql({ sql, variables });
-  const line = raw.split("\n").map((value) => value.trim()).filter(Boolean).at(-1);
-  return parseJsonResponseText(line ?? "", "MOLLIE_ACCEPTANCE_ASSERTION_RESPONSE_INVALID");
-}
-
-function paymentBinding(psql, orderId) {
-  return queryJson(psql, `
-    select json_build_object(
-      'paymentId', payment.id,
-      'providerPaymentId', payment.provider_payment_id,
-      'amountCents', payment.amount_cents
-    )
-    from app.payments payment
-    where payment.order_id = :'order_id'::uuid and payment.method = 'mollie'
-    order by payment.created_at desc limit 1;
-  `, { order_id: orderId });
-}
-
-function assertPreparedParentMembers(psql, identity) {
-  const fixture = queryJson(psql, `
-    select json_build_object(
-      'memberCount', count(*)::integer,
-      'otpVisible', public.parent_otp_members_visible(
-        array[:'paid_member_id'::uuid, :'mismatch_member_id'::uuid],
-        :'fixture_email'
-      )
-    )
-    from app.members member
-    where member.id in (:'paid_member_id'::uuid, :'mismatch_member_id'::uuid)
-      and member.email = :'fixture_email'
-      and member.active_for_season = true;
-  `, {
-    paid_member_id: identity.paidMemberId,
-    mismatch_member_id: identity.mismatchMemberId,
-    fixture_email: identity.fixtureEmail,
-  });
-  if (fixture?.memberCount !== 2 || fixture?.otpVisible !== true) {
-    fail("MOLLIE_ACCEPTANCE_PARENT_MEMBERS_NOT_COMMITTED");
-  }
-}
-
-function assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash) {
-  const fixture = queryJson(psql, `
-    select json_build_object(
-      'rowExists', count(*) = 1,
-      'hashMatches', coalesce(bool_and(session.token_hash = :'parent_token_hash'), false),
-      'notRevoked', coalesce(bool_and(session.revoked_at is null), false),
-      'notExpired', coalesce(bool_and(session.expires_at > timezone('utc', now())), false),
-      'rpcVisible', exists(
-        select 1 from public.get_parent_session(:'parent_token_hash') resolved
-        where resolved.parent_account_id = :'parent_account_id'::uuid
-      )
-    )
-    from private.parent_sessions session
-    where session.id = :'parent_session_id'::uuid;
-  `, {
-    parent_account_id: identity.parentAccountId,
-    parent_session_id: parentSessionId,
-    parent_token_hash: parentTokenHash,
-  });
-  for (const [field, code] of [
-    ["rowExists", "ROW_MISSING"],
-    ["hashMatches", "HASH_MISMATCH"],
-    ["notRevoked", "REVOKED"],
-    ["notExpired", "EXPIRED"],
-    ["rpcVisible", "RPC_NOT_VISIBLE"],
-  ]) {
-    if (fixture?.[field] !== true) fail(`MOLLIE_ACCEPTANCE_PARENT_FIXTURE_${code}`);
-  }
-}
-
-function paymentSnapshot(psql, orderId) {
-  return queryJson(psql, `
-    select json_build_object(
-      'paymentStatus', payment.status::text,
-      'reconciliationIssue', payment.reconciliation_issue,
-      'paidPayments', (select count(*) from app.payments p where p.order_id = :'order_id'::uuid and p.status = 'paid'),
-      'activeQr', (select count(*) from private.qr_tokens qr where qr.order_id = :'order_id'::uuid and qr.active),
-      'allQr', (select count(*) from private.qr_tokens qr where qr.order_id = :'order_id'::uuid),
-      'paymentEmailJobs', (select count(*) from private.email_jobs job where job.order_id = :'order_id'::uuid and job.template_key = 'payment_received'),
-      'paidEvents', (select count(*) from private.payment_events event where event.payment_id = payment.id and event.event_type = 'paid'),
-      'refundEvents', (select count(*) from private.payment_events event where event.payment_id = payment.id and event.event_type = 'refunded'),
-      'mismatchEvents', (select count(*) from private.payment_events event where event.payment_id = payment.id and event.event_type = 'mismatch'),
-      'paidAudits', (select count(*) from app.audit_logs audit where audit.entity_id = :'order_id'::uuid and audit.action = 'payment.mollie.paid'),
-      'refundAudits', (select count(*) from app.audit_logs audit where audit.entity_id = :'order_id'::uuid and audit.action = 'payment.mollie.refunded'),
-      'manualReviewAudits', (select count(*) from app.audit_logs audit where audit.entity_id = payment.id and audit.action = 'payment.mollie.manual_review')
-    )
-    from app.payments payment
-    where payment.order_id = :'order_id'::uuid and payment.method = 'mollie'
-    order by payment.created_at desc limit 1;
-  `, { order_id: orderId });
+async function paymentState(config, orderId, memberId, fetchImpl) {
+  return stagingParentRpc(config, "get_mollie_acceptance_payment_state", {
+    p_order_id: orderId,
+    p_member_id: memberId,
+  }, fetchImpl);
 }
 
 async function waitForProvider(config, providerPaymentId, predicate, dependencies) {
@@ -595,49 +467,43 @@ function assertRefundSnapshot(snapshot) {
 export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   const config = validateConfiguration(rawEnv);
   const identity = createFixtureIdentity(config.runMarker);
-  const psql = overrides.psql ?? createPsqlRunner(config.dbUrl);
   const fetchImpl = overrides.fetchImpl ?? fetch;
   const sleep = overrides.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const completeCheckout = overrides.completeCheckout ?? completeHostedTestCheckout;
   const parentSessionToken = randomBytes(32).toString("base64url");
   const parentTokenHash = createHmac("sha256", config.pepper).update(parentSessionToken).digest("hex");
-  const variables = fixtureVariables(identity, parentTokenHash);
-  const paths = fixturePaths();
   let fixturePrepared = false;
 
   await assertRelease(config, fetchImpl);
   await assertProfile(config, fetchImpl);
   try {
-    psql({ file: paths.prepare, variables });
+    const prepared = await stagingParentRpc(config, "prepare_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
+    if (prepared !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_PREPARE_INVALID");
     fixturePrepared = true;
 
-    console.log("Mollie stagingfixture is geïsoleerd voorbereid.");
-    assertPreparedParentMembers(psql, identity);
-    console.log("Stagingfixture is database-side gecommit en OTP-geschikt.");
+    console.log("Mollie stagingfixture is via de hosted Data API geïsoleerd voorbereid.");
     await waitForStagingParentMembers(config, identity, { fetchImpl, sleep });
     console.log("Stagingfixture is via de hosted Data API zichtbaar.");
-    const parentAuth = await createParentAuthFixture(config, identity, parentTokenHash, fetchImpl);
-    const parentSessionId = parentAuth.parentSessionId;
-    assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash);
-    console.log("Oudersessiefixture is actief en via het databasecontract zichtbaar.");
+    await createParentAuthFixture(config, identity, parentTokenHash, fetchImpl);
+    console.log("Oudersessiefixture is via het hosted authenticatiecontract actief.");
     const paidCheckoutUrl = await createCheckout(config, identity.paidOrderId, parentSessionToken, fetchImpl);
-    const paidBinding = paymentBinding(psql, identity.paidOrderId);
+    const paidBinding = await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl);
     if (!uuidPattern.test(paidBinding?.paymentId ?? "") || !providerPaymentIdPattern.test(paidBinding?.providerPaymentId ?? "")
       || paidBinding?.amountCents !== 100) fail("MOLLIE_ACCEPTANCE_PAID_BINDING_INVALID");
 
     await completeCheckout(paidCheckoutUrl);
     await waitForProvider(config, paidBinding.providerPaymentId, (payment) => payment?.status === "paid", { fetchImpl, sleep });
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-    const paidSnapshot = paymentSnapshot(psql, identity.paidOrderId);
+    const paidSnapshot = await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl);
     assertPaidSnapshot(paidSnapshot);
     console.log("Paid-scenario is via de publieke stagingwebhook gevalideerd.");
 
     await postConcurrentReplays(config, paidBinding.providerPaymentId, fetchImpl);
-    assert.deepEqual(paymentSnapshot(psql, identity.paidOrderId), paidSnapshot);
+    assert.deepEqual(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl), paidSnapshot);
     console.log("Drie gelijktijdige webhookreplays bleven idempotent.");
 
     const mismatchCheckoutUrl = await createCheckout(config, identity.mismatchOrderId, parentSessionToken, fetchImpl);
-    const mismatchBinding = paymentBinding(psql, identity.mismatchOrderId);
+    const mismatchBinding = await paymentState(config, identity.mismatchOrderId, identity.mismatchMemberId, fetchImpl);
     if (!uuidPattern.test(mismatchBinding?.paymentId ?? "") || !providerPaymentIdPattern.test(mismatchBinding?.providerPaymentId ?? "")
       || mismatchBinding?.amountCents !== 100) fail("MOLLIE_ACCEPTANCE_MISMATCH_BINDING_INVALID");
     const mismatchProviderPayment = assertTestPayment(config,
@@ -654,7 +520,7 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     await completeCheckout(mismatchCheckoutUrl);
     await waitForProvider(config, mismatchBinding.providerPaymentId, (payment) => payment?.status === "paid", { fetchImpl, sleep });
     await postPublicWebhook(config, mismatchBinding.providerPaymentId, fetchImpl);
-    assertMismatchSnapshot(paymentSnapshot(psql, identity.mismatchOrderId));
+    assertMismatchSnapshot(await paymentState(config, identity.mismatchOrderId, identity.mismatchMemberId, fetchImpl));
     console.log("Metadata-afwijking bleef unpaid en zichtbaar voor handmatige review.");
 
     const paidProviderPayment = assertTestPayment(config,
@@ -674,23 +540,27 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
       return payment?.amountRefunded?.currency === "EUR" && payment?.amountRefunded?.value === payment?.amount?.value;
     }, { fetchImpl, sleep });
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-    assertRefundSnapshot(paymentSnapshot(psql, identity.paidOrderId));
+    assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));
     console.log("Refund-scenario trok de QR via de publieke stagingwebhook in.");
   } finally {
-    if (fixturePrepared) psql({ file: paths.cleanup, variables: fixtureVariables(identity) });
+    if (fixturePrepared) {
+      const cleaned = await stagingParentRpc(config, "cleanup_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
+      if (cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
+    }
   }
 }
 
-export function cleanupAcceptance(rawEnv = process.env, overrides = {}) {
-  const config = validateTargetConfiguration(rawEnv);
+export async function cleanupAcceptance(rawEnv = process.env, overrides = {}) {
+  const config = validateCleanupConfiguration(rawEnv);
   const identity = createFixtureIdentity(config.runMarker);
-  const psql = overrides.psql ?? createPsqlRunner(config.dbUrl);
-  psql({ file: fixturePaths().cleanup, variables: fixtureVariables(identity) });
+  const fetchImpl = overrides.fetchImpl ?? fetch;
+  const cleaned = await stagingParentRpc(config, "cleanup_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
+  if (cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
 }
 
 async function main() {
   if (process.argv.includes("--cleanup-only")) {
-    cleanupAcceptance();
+    await cleanupAcceptance();
     console.log("Mollie stagingfixture-cleanup is idempotent uitgevoerd.");
     return;
   }

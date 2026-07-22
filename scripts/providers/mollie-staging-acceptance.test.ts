@@ -7,7 +7,6 @@ const {
   STAGING_SUPABASE_PROJECT_REF,
   choosePaidOnHostedTestPage,
   createFixtureIdentity,
-  createPsqlRunner,
   postConcurrentReplays,
   providerRequest,
   stagingParentRpc,
@@ -76,26 +75,6 @@ describe("Mollie staging acceptance guards", () => {
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=prefer`,
     })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
-  });
-
-  it("passes the complete database URI directly without inheriting provider secrets", () => {
-    const spawnImpl = vi.fn().mockReturnValue({ status: 0, stdout: "{}\n" });
-    const databaseUrl = `${validEnv.SUPABASE_DB_URL}&application_name=mollie-acceptance`;
-    const psql = createPsqlRunner(databaseUrl, spawnImpl);
-    psql({ sql: "select '{}'::json;" });
-
-    const [, args, options] = spawnImpl.mock.calls[0];
-    expect(args).toContain("--dbname");
-    expect(args).toContain(databaseUrl);
-    expect(options.env).toMatchObject({
-      PGCONNECT_TIMEOUT: "15",
-    });
-    expect(options.env).not.toHaveProperty("SUPABASE_DB_URL");
-    expect(options.env).not.toHaveProperty("MOLLIE_API_KEY");
-    expect(options.env).not.toHaveProperty("PGHOST");
-    expect(options.env).not.toHaveProperty("PGUSER");
-    expect(options.env).not.toHaveProperty("PGPASSWORD");
-    expect(options.env).not.toHaveProperty("PGSSLMODE");
   });
 
   it("creates deterministic, fictitious and run-isolated fixture identities", () => {
