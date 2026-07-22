@@ -327,43 +327,77 @@ async function visible(locator) {
 }
 
 export async function choosePaidOnHostedTestPage(page) {
-  const exactPaid = /^(paid|betaald)$/i;
-  const radio = page.getByRole("radio", { name: exactPaid });
+  const exactPaid = /^(paid|betaald|success|successful|succeeded|geslaagd)$/i;
   let selected = false;
   let submitted = false;
-  if (await visible(radio)) {
-    await radio.first().check();
-    selected = true;
-  }
 
-  if (!selected) {
+  for (let attempt = 0; attempt < 20 && !selected; attempt += 1) {
+    const radio = page.getByRole("radio", { name: exactPaid });
+    if (await visible(radio)) {
+      await radio.first().check();
+      selected = true;
+      break;
+    }
+
+    const paidInput = page.locator('input[type="radio"][value="paid" i], input[type="radio"][value="success" i]');
+    if (await visible(paidInput)) {
+      await paidInput.first().check();
+      selected = true;
+      break;
+    }
+
     const selects = page.locator("select");
     for (let index = 0; index < await selects.count(); index += 1) {
       const select = selects.nth(index);
-      const options = await select.locator("option").allTextContents();
-      const paidIndex = options.findIndex((label) => exactPaid.test(label.trim()));
-      if (paidIndex >= 0) {
-        await select.selectOption({ index: paidIndex });
+      const values = await select.locator("option").evaluateAll((options) => options.map((option) => ({
+        label: option.textContent?.trim() ?? "",
+        value: option.getAttribute("value") ?? "",
+      })));
+      const paidOption = values.find((option) => exactPaid.test(option.label) || /^(paid|success|successful)$/i.test(option.value));
+      if (paidOption) {
+        await select.selectOption(paidOption.value ? { value: paidOption.value } : { label: paidOption.label });
         selected = true;
         break;
       }
     }
-  }
 
-  if (!selected) {
+    if (selected) break;
     const button = page.getByRole("button", { name: exactPaid });
     if (await visible(button)) {
       await button.first().click();
       selected = true;
       submitted = true;
+      break;
     }
+
+    const paidAction = page.locator('button[value="paid" i], button[data-status="paid" i], [role="button"][data-status="paid" i]');
+    if (await visible(paidAction)) {
+      await paidAction.first().click();
+      selected = true;
+      submitted = true;
+      break;
+    }
+    await page.waitForTimeout(500);
   }
   if (!selected) fail("MOLLIE_HOSTED_TEST_PAID_CONTROL_NOT_FOUND");
 
   if (!submitted) {
-    const submit = page.getByRole("button", { name: /^(continue|doorgaan|bevestigen|submit|betalen)$/i });
-    if (!await visible(submit)) fail("MOLLIE_HOSTED_TEST_SUBMIT_CONTROL_NOT_FOUND");
-    await submit.first().click();
+    for (let attempt = 0; attempt < 10 && !submitted; attempt += 1) {
+      const submit = page.getByRole("button", { name: /(continue|doorgaan|bevestigen|submit|betalen|confirm|complete)/i });
+      if (await visible(submit)) {
+        await submit.first().click();
+        submitted = true;
+        break;
+      }
+      const submitControl = page.locator('button[type="submit"], input[type="submit"]');
+      if (await visible(submitControl)) {
+        await submitControl.first().click();
+        submitted = true;
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+    if (!submitted) fail("MOLLIE_HOSTED_TEST_SUBMIT_CONTROL_NOT_FOUND");
   }
 }
 
@@ -381,7 +415,8 @@ export async function completeHostedTestCheckout(checkoutUrl, dependencies = {})
     await page.goto(safeCheckoutUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await choosePaidOnHostedTestPage(page);
     await page.waitForTimeout(1_500);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && /^MOLLIE_HOSTED_TEST_[A-Z_]+$/.test(error.message)) fail(error.message);
     fail("MOLLIE_HOSTED_CHECKOUT_AUTOMATION_FAILED");
   } finally {
     await browser?.close().catch(() => undefined);
