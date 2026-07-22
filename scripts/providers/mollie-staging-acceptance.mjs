@@ -331,6 +331,7 @@ export async function choosePaidOnHostedTestPage(page) {
   let selected = false;
   let submitted = false;
   let methodSelected = false;
+  let issuerSelected = false;
 
   for (let attempt = 0; attempt < 20 && !selected; attempt += 1) {
     const radio = page.getByRole("radio", { name: exactPaid });
@@ -393,6 +394,22 @@ export async function choosePaidOnHostedTestPage(page) {
         }
       }
       if (methodSelected) continue;
+    }
+
+    if (methodSelected && !issuerSelected) {
+      const issuerName = /^ABN AMRO$/i;
+      const issuerButton = page.getByRole("button", { name: issuerName });
+      const issuerLink = page.getByRole("link", { name: issuerName });
+      const issuerText = page.getByText(issuerName);
+      for (const issuer of [issuerButton, issuerLink, issuerText]) {
+        if (await visible(issuer)) {
+          await issuer.first().click();
+          issuerSelected = true;
+          await page.waitForTimeout(1_000);
+          break;
+        }
+      }
+      if (issuerSelected) continue;
     }
     await page.waitForTimeout(500);
   }

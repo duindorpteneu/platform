@@ -169,9 +169,11 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     expect(click).toHaveBeenCalledOnce();
   });
 
-  it("selects iDEAL before choosing paid on the current two-step test screen", async () => {
+  it("selects iDEAL and a test bank before choosing paid on the current hosted screen", async () => {
     let methodSelected = false;
+    let issuerSelected = false;
     const methodClick = vi.fn().mockImplementation(async () => { methodSelected = true; });
+    const issuerClick = vi.fn().mockImplementation(async () => { issuerSelected = true; });
     const paidCheck = vi.fn();
     const submitClick = vi.fn();
     const locator = (isVisible: () => boolean, actions: Record<string, unknown> = {}) => ({
@@ -182,9 +184,10 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     const page = {
       getByRole: vi.fn((role: string, options: { name?: RegExp }) => {
         const name = options.name?.source ?? "";
-        if (role === "radio") return locator(() => methodSelected, { check: paidCheck });
+        if (role === "radio") return locator(() => issuerSelected, { check: paidCheck });
         if (role === "button" && name.includes("iDEAL")) return locator(() => !methodSelected, { click: methodClick });
-        if (role === "button" && name.includes("continue")) return locator(() => methodSelected, { click: submitClick });
+        if (role === "button" && name.includes("ABN AMRO")) return locator(() => methodSelected && !issuerSelected, { click: issuerClick });
+        if (role === "button" && name.includes("continue")) return locator(() => issuerSelected, { click: submitClick });
         return hidden;
       }),
       getByText: vi.fn(() => hidden),
@@ -194,6 +197,7 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
 
     await choosePaidOnHostedTestPage(page);
     expect(methodClick).toHaveBeenCalledOnce();
+    expect(issuerClick).toHaveBeenCalledOnce();
     expect(paidCheck).toHaveBeenCalledOnce();
     expect(submitClick).toHaveBeenCalledOnce();
   });
