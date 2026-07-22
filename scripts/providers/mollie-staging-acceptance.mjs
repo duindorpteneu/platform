@@ -380,6 +380,36 @@ function paymentBinding(psql, orderId) {
   `, { order_id: orderId });
 }
 
+function assertParentSessionFixture(psql, identity, parentTokenHash) {
+  const fixture = queryJson(psql, `
+    select json_build_object(
+      'rowExists', count(*) = 1,
+      'hashMatches', coalesce(bool_and(session.token_hash = :'parent_token_hash'), false),
+      'notRevoked', coalesce(bool_and(session.revoked_at is null), false),
+      'notExpired', coalesce(bool_and(session.expires_at > timezone('utc', now())), false),
+      'rpcVisible', exists(
+        select 1 from public.get_parent_session(:'parent_token_hash') resolved
+        where resolved.parent_account_id = :'parent_account_id'::uuid
+      )
+    )
+    from private.parent_sessions session
+    where session.id = :'parent_session_id'::uuid;
+  `, {
+    parent_account_id: identity.parentAccountId,
+    parent_session_id: identity.parentSessionId,
+    parent_token_hash: parentTokenHash,
+  });
+  for (const [field, code] of [
+    ["rowExists", "ROW_MISSING"],
+    ["hashMatches", "HASH_MISMATCH"],
+    ["notRevoked", "REVOKED"],
+    ["notExpired", "EXPIRED"],
+    ["rpcVisible", "RPC_NOT_VISIBLE"],
+  ]) {
+    if (fixture?.[field] !== true) fail(`MOLLIE_ACCEPTANCE_PARENT_FIXTURE_${code}`);
+  }
+}
+
 function paymentSnapshot(psql, orderId) {
   return queryJson(psql, `
     select json_build_object(
@@ -467,6 +497,8 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     fixturePrepared = true;
 
     console.log("Mollie stagingfixture is geïsoleerd voorbereid.");
+    assertParentSessionFixture(psql, identity, parentTokenHash);
+    console.log("Oudersessiefixture is actief en via het databasecontract zichtbaar.");
     const paidCheckoutUrl = await createCheckout(config, identity.paidOrderId, parentSessionToken, fetchImpl);
     const paidBinding = paymentBinding(psql, identity.paidOrderId);
     if (!uuidPattern.test(paidBinding?.paymentId ?? "") || !providerPaymentIdPattern.test(paidBinding?.providerPaymentId ?? "")

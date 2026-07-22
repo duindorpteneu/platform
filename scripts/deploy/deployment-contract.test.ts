@@ -137,6 +137,8 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain("/rest/v1/rpc/revoke_staff_app_session");
     expect(contractScript).toContain('safeRemoteCode(result?.code) !== "42501"');
     expect(contractScript).not.toContain("get_settings_workspace_v2");
+    expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
     expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
   });

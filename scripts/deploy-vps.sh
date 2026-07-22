@@ -186,6 +186,14 @@ deploy_environment() {
   activated=true
   docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans
 
+  local app_container runtime_probe_nonce expected_runtime_probe actual_runtime_probe
+  app_container="$(docker compose -p "$compose_project" -f "$compose_file" ps -q app)"
+  [[ -n "$app_container" ]] || die "Applicatiecontainer ontbreekt voor runtime-secretcontrole."
+  runtime_probe_nonce="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER."
+
   check_with_retries() {
     local url="$1"
     for attempt in $(seq 1 20); do
