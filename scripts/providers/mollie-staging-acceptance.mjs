@@ -61,6 +61,7 @@ export function validateConfiguration(env) {
     fail("MOLLIE_ACCEPTANCE_TEST_KEY_REQUIRED");
   }
   if (!profileIdPattern.test(env.MOLLIE_PROFILE_ID ?? "")) fail("MOLLIE_ACCEPTANCE_PROFILE_ID_INVALID");
+  if ((env.SUPABASE_SERVICE_ROLE_KEY ?? "").length < 40) fail("MOLLIE_ACCEPTANCE_SERVICE_ROLE_KEY_INVALID");
   if ((env.PARENT_TOKEN_PEPPER ?? "").length < 32) fail("MOLLIE_ACCEPTANCE_PEPPER_INVALID");
   if (env.MOLLIE_ACCEPTANCE_CONFIRMATION !== ACCEPTANCE_CONFIRMATION) {
     fail("MOLLIE_ACCEPTANCE_CONFIRMATION_REQUIRED");
@@ -70,6 +71,7 @@ export function validateConfiguration(env) {
     releaseSha: env.RELEASE_SHA,
     apiKey: env.MOLLIE_API_KEY,
     profileId: env.MOLLIE_PROFILE_ID,
+    serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
     pepper: env.PARENT_TOKEN_PEPPER,
   };
 }
@@ -229,6 +231,29 @@ async function assertProfile(config, fetchImpl) {
   if (profile?.id !== config.profileId) fail("MOLLIE_ACCEPTANCE_PROFILE_MISMATCH");
 }
 
+async function createParentSession(config, identity, parentTokenHash, fetchImpl) {
+  const response = await fetchImpl(`https://${config.projectRef}.supabase.co/rest/v1/rpc/create_parent_session`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_parent_account_id: identity.parentAccountId,
+      p_token_hash: parentTokenHash,
+      p_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    }),
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) fail(`MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_HTTP_${response.status}`);
+  const sessionId = await readJsonResponse(response, "MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_RESPONSE_INVALID");
+  if (!uuidPattern.test(sessionId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_RESPONSE_INVALID");
+  return sessionId;
+}
+
 function assertTestPayment(config, payment, expectedProviderPaymentId) {
   if (payment?.id !== expectedProviderPaymentId || payment?.mode !== "test"
     || payment?.profileId !== config.profileId || payment?.amount?.currency !== "EUR") {
@@ -380,7 +405,7 @@ function paymentBinding(psql, orderId) {
   `, { order_id: orderId });
 }
 
-function assertParentSessionFixture(psql, identity, parentTokenHash) {
+function assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash) {
   const fixture = queryJson(psql, `
     select json_build_object(
       'rowExists', count(*) = 1,
@@ -396,7 +421,7 @@ function assertParentSessionFixture(psql, identity, parentTokenHash) {
     where session.id = :'parent_session_id'::uuid;
   `, {
     parent_account_id: identity.parentAccountId,
-    parent_session_id: identity.parentSessionId,
+    parent_session_id: parentSessionId,
     parent_token_hash: parentTokenHash,
   });
   for (const [field, code] of [
@@ -497,7 +522,8 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     fixturePrepared = true;
 
     console.log("Mollie stagingfixture is geïsoleerd voorbereid.");
-    assertParentSessionFixture(psql, identity, parentTokenHash);
+    const parentSessionId = await createParentSession(config, identity, parentTokenHash, fetchImpl);
+    assertParentSessionFixture(psql, identity, parentSessionId, parentTokenHash);
     console.log("Oudersessiefixture is actief en via het databasecontract zichtbaar.");
     const paidCheckoutUrl = await createCheckout(config, identity.paidOrderId, parentSessionToken, fetchImpl);
     const paidBinding = paymentBinding(psql, identity.paidOrderId);

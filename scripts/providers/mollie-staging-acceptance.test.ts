@@ -19,6 +19,7 @@ const validEnv = {
   APP_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
   EXPECTED_STAGING_SUPABASE_PROJECT_REF: STAGING_SUPABASE_PROJECT_REF,
   SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
+  SUPABASE_SERVICE_ROLE_KEY: "service-role-key-with-at-least-forty-characters-for-tests",
   MOLLIE_ACCEPTANCE_RUN_ID: "123456789-1",
   RELEASE_SHA: "a".repeat(40),
   MOLLIE_API_KEY: "test_example-key-with-enough-entropy",
@@ -43,6 +44,8 @@ describe("Mollie staging acceptance guards", () => {
       .toThrow("MOLLIE_ACCEPTANCE_RELEASE_SHA_INVALID");
     expect(() => validateConfiguration({ ...validEnv, MOLLIE_PROFILE_ID: "pfl_wrong profile" }))
       .toThrow("MOLLIE_ACCEPTANCE_PROFILE_ID_INVALID");
+    expect(() => validateConfiguration({ ...validEnv, SUPABASE_SERVICE_ROLE_KEY: "" }))
+      .toThrow("MOLLIE_ACCEPTANCE_SERVICE_ROLE_KEY_INVALID");
     expect(() => validateConfiguration({ ...validEnv, MOLLIE_ACCEPTANCE_CONFIRMATION: "yes" }))
       .toThrow("MOLLIE_ACCEPTANCE_CONFIRMATION_REQUIRED");
   });

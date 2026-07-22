@@ -63,8 +63,7 @@ where link.parent_account_id = :'parent_account_id'::uuid
   and link.member_id in (:'paid_member_id'::uuid, :'mismatch_member_id'::uuid);
 
 delete from private.parent_sessions session
-where session.id = :'parent_session_id'::uuid
-  and session.parent_account_id = :'parent_account_id'::uuid;
+where session.parent_account_id = :'parent_account_id'::uuid;
 
 delete from private.parent_accounts account
 where account.id = :'parent_account_id'::uuid

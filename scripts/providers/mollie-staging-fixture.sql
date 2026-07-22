@@ -47,13 +47,6 @@ values
 insert into private.parent_accounts (id, email_normalized)
 values (:'parent_account_id', :'fixture_email');
 
-insert into private.parent_sessions (
-  id, parent_account_id, token_hash, expires_at
-) values (
-  :'parent_session_id', :'parent_account_id', :'parent_token_hash',
-  timezone('utc', now()) + interval '2 hours'
-);
-
 insert into private.parent_member_links (parent_account_id, member_id)
 values
   (:'parent_account_id', :'paid_member_id'),
