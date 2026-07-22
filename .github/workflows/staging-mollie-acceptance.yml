@@ -71,7 +71,17 @@ jobs:
           PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           MOLLIE_PROFILE_ID: ${{ secrets.MOLLIE_PROFILE_ID || vars.MOLLIE_PROFILE_ID }}
+          MOLLIE_ACCEPTANCE_SCREENSHOT_PATH: ${{ runner.temp }}/mollie-acceptance-failure.png
         run: node scripts/providers/mollie-staging-acceptance.mjs
+
+      - name: Preserve fictitious checkout failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mollie-acceptance-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/mollie-acceptance-failure.png
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Enforce idempotent fixture cleanup
         if: always()

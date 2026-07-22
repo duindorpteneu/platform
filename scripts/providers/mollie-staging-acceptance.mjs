@@ -404,6 +404,7 @@ export async function choosePaidOnHostedTestPage(page) {
 export async function completeHostedTestCheckout(checkoutUrl, dependencies = {}) {
   const safeCheckoutUrl = validateCheckoutUrl(checkoutUrl);
   let browser;
+  let page;
   try {
     const launch = dependencies.launch ?? (async () => {
       const { chromium } = await import("@playwright/test");
@@ -411,11 +412,15 @@ export async function completeHostedTestCheckout(checkoutUrl, dependencies = {})
     });
     browser = await launch();
     const context = await browser.newContext({ locale: "en-US" });
-    const page = await context.newPage();
+    page = await context.newPage();
     await page.goto(safeCheckoutUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await choosePaidOnHostedTestPage(page);
     await page.waitForTimeout(1_500);
   } catch (error) {
+    const screenshotPath = process.env.MOLLIE_ACCEPTANCE_SCREENSHOT_PATH;
+    if (page && screenshotPath?.endsWith(".png")) {
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
+    }
     if (error instanceof Error && /^MOLLIE_HOSTED_TEST_[A-Z_]+$/.test(error.message)) fail(error.message);
     fail("MOLLIE_HOSTED_CHECKOUT_AUTOMATION_FAILED");
   } finally {
