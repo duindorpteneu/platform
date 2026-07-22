@@ -604,6 +604,7 @@ async function waitForProvider(config, providerPaymentId, predicate, dependencie
 
 async function waitForProviderRefund(config, providerPaymentId, predicate, dependencies) {
   const deadline = Date.now() + 60_000;
+  const observedStatuses = new Set();
   while (Date.now() < deadline) {
     const response = await providerRequest(
       config,
@@ -617,11 +618,15 @@ async function waitForProviderRefund(config, providerPaymentId, predicate, depen
       if (!/^re_[A-Za-z0-9]+$/.test(refund?.id ?? "") || refund?.paymentId !== providerPaymentId) {
         fail("MOLLIE_ACCEPTANCE_REFUND_INVALID");
       }
+      if (["queued", "pending", "canceled", "processing", "failed", "refunded"].includes(refund.status)) {
+        observedStatuses.add(refund.status.toUpperCase());
+      }
       if (predicate(refund)) return refund;
     }
     await dependencies.sleep(2_000);
   }
-  fail("MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT");
+  const statusCode = [...observedStatuses].sort().join("_") || "EMPTY";
+  fail(`MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT_${statusCode}`);
 }
 
 function assertPaidSnapshot(snapshot) {
