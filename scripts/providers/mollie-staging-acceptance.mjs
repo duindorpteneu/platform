@@ -594,7 +594,7 @@ async function waitForProvider(config, providerPaymentId, predicate, dependencie
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const payment = assertTestPayment(config,
-      await providerRequest(config, `/v2/payments/${providerPaymentId}`, {}, dependencies.fetchImpl),
+      await providerRequest(config, `/v2/payments/${providerPaymentId}?embed=refunds`, {}, dependencies.fetchImpl),
       providerPaymentId);
     if (predicate(payment)) return payment;
     await dependencies.sleep(2_000);
@@ -702,7 +702,10 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
     await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
     await waitForProvider(config, paidBinding.providerPaymentId, (payment) => {
-      return payment?.amountRefunded?.currency === "EUR" && payment?.amountRefunded?.value === payment?.amount?.value;
+      return payment?._embedded?.refunds?.some((refund) => {
+        return refund?.status === "refunded" && refund?.amount?.currency === "EUR"
+          && refund?.amount?.value === payment?.amount?.value;
+      });
     }, { fetchImpl, sleep });
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
     assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));

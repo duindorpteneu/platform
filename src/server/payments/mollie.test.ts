@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
+import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, getMolliePayment, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
 
 const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 1 as const };
 
@@ -38,6 +38,32 @@ describe("Mollie provider boundary", () => {
     const refunded = molliePaymentSchema.parse({ ...base, status: "paid", amountRefunded: { currency: "EUR", value: "125.00" } });
     expect(toLocalMollieStatus(authorized)).toBe("pending");
     expect(toLocalMollieStatus(refunded)).toBe("refunded");
+  });
+
+  it("maps embedded processing and completed refunds fail-closed while ignoring cancelable refunds", () => {
+    const base = { id: "tr_test123", status: "paid", amount: { currency: "EUR", value: "125.00" }, metadata, _links: {} };
+    const withRefund = (status: "queued" | "processing" | "refunded") => molliePaymentSchema.parse({
+      ...base,
+      _embedded: { refunds: [{ id: "re_test123", status, amount: { currency: "EUR", value: "125.00" } }] },
+    });
+    expect(toLocalMollieStatus(withRefund("queued"))).toBe("paid");
+    expect(toLocalMollieStatus(withRefund("processing"))).toBe("refunded");
+    expect(toLocalMollieStatus(withRefund("refunded"))).toBe("refunded");
+  });
+
+  it("fetches the payment together with authoritative refund resources", async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toBe("https://api.mollie.com/v2/payments/tr_test123?embed=refunds");
+      return new Response(JSON.stringify({
+        id: "tr_test123",
+        status: "paid",
+        amount: { currency: "EUR", value: "125.00" },
+        metadata,
+        _links: {},
+        _embedded: { refunds: [] },
+      }), { status: 200 });
+    });
+    await expect(getMolliePayment("test_key", "tr_test123", fetcher as typeof fetch)).resolves.toMatchObject({ id: "tr_test123" });
   });
 
   it("accepts checkout links only from Mollie over HTTPS", () => {

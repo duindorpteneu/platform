@@ -257,7 +257,12 @@ export async function reconcileMollieWebhook(
     status = toLocalMollieStatus(providerPayment);
   } catch {
     // Een refundveld dat niet exact kan worden geïnterpreteerd mag nooit als paid doorstromen.
-    status = providerPayment.amountRefunded ? "refunded" : providerPayment.status === "authorized" ? "pending" : providerPayment.status;
+    const embeddedRefund = providerPayment._embedded?.refunds?.some((refund) => {
+      return refund.status === "processing" || refund.status === "refunded";
+    });
+    status = providerPayment.amountRefunded || embeddedRefund
+      ? "refunded"
+      : providerPayment.status === "authorized" ? "pending" : providerPayment.status;
   }
   const nextQrVersion = context.data.qrVersion + 1;
   const tokenHash = hashQrBearerToken(deriveQrBearerToken(context.data.orderId, nextQrVersion));

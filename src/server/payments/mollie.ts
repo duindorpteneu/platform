@@ -1,9 +1,16 @@
 import { z } from "zod";
 
 export const mollieStatusSchema = z.enum(["open", "pending", "authorized", "paid", "failed", "canceled", "expired"]);
+const mollieRefundStatusSchema = z.enum(["queued", "pending", "canceled", "processing", "failed", "refunded"]);
 
 const amountSchema = z.object({ currency: z.string(), value: z.string() }).strict();
 const linkSchema = z.object({ href: z.string().url(), type: z.string().optional() }).passthrough();
+const refundSchema = z.object({
+  resource: z.literal("refund").optional(),
+  id: z.string().regex(/^re_[A-Za-z0-9]+$/),
+  status: mollieRefundStatusSchema,
+  amount: amountSchema,
+}).passthrough();
 
 export const molliePaymentSchema = z.object({
   resource: z.literal("payment").optional(),
@@ -20,6 +27,7 @@ export const molliePaymentSchema = z.object({
   canceledAt: z.string().datetime({ offset: true }).nullable().optional(),
   failedAt: z.string().datetime({ offset: true }).nullable().optional(),
   _links: z.object({ checkout: linkSchema.optional() }).passthrough(),
+  _embedded: z.object({ refunds: z.array(refundSchema).max(250).optional() }).passthrough().optional(),
 }).passthrough();
 
 export const mollieMetadataSchema = z.object({
@@ -85,6 +93,9 @@ export function parseMollieMetadata(value: unknown) {
 
 export function toLocalMollieStatus(payment: MolliePayment) {
   if (payment.amountRefunded && parseMollieAmountCents(payment.amountRefunded) > 0) return "refunded" as const;
+  if (payment._embedded?.refunds?.some((refund) => {
+    return ["processing", "refunded"].includes(refund.status) && parseMollieAmountCents(refund.amount) > 0;
+  })) return "refunded" as const;
   if (payment.status === "authorized") return "pending" as const;
   return payment.status;
 }
@@ -135,7 +146,7 @@ export async function createMolliePayment(input: {
 
 export async function getMolliePayment(apiKey: string, providerPaymentId: string, fetcher: typeof fetch = fetch) {
   if (!/^tr_[A-Za-z0-9]+$/.test(providerPaymentId)) throw new Error("MOLLIE_PAYMENT_ID_INVALID");
-  return requestPayment(`https://api.mollie.com/v2/payments/${encodeURIComponent(providerPaymentId)}`, {
+  return requestPayment(`https://api.mollie.com/v2/payments/${encodeURIComponent(providerPaymentId)}?embed=refunds`, {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
     cache: "no-store",

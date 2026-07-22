@@ -183,12 +183,16 @@ describe("Mollie-applicatieservice", () => {
     }));
   });
 
-  it("behandelt iedere refundobservatie fail-closed als refunded", async () => {
+  it("behandelt een embedded providerrefund fail-closed als refunded", async () => {
     process.env.PARENT_TOKEN_PEPPER = "p".repeat(32);
     const rpc = vi.fn()
       .mockResolvedValueOnce({ data: { ...context, paymentStatus: "paid", qrVersion: 1, activeQrVersion: 1 }, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, orderId: ids.order, status: "refunded", effect: "refunded", eventType: "refunded" }, error: null });
-    const getPayment = vi.fn().mockResolvedValue(providerPayment({ amountRefunded: { currency: "EUR", value: "1.00" } }));
+    const getPayment = vi.fn().mockResolvedValue(providerPayment({
+      _embedded: {
+        refunds: [{ id: "re_test123", status: "refunded", amount: { currency: "EUR", value: "1.00" } }],
+      },
+    }));
     const { database } = databaseWithAppRpc(rpc);
 
     await reconcileMollieWebhook("tr_test123", {
