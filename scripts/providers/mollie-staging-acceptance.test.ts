@@ -168,4 +168,33 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     expect(check).toHaveBeenCalledOnce();
     expect(click).toHaveBeenCalledOnce();
   });
+
+  it("selects iDEAL before choosing paid on the current two-step test screen", async () => {
+    let methodSelected = false;
+    const methodClick = vi.fn().mockImplementation(async () => { methodSelected = true; });
+    const paidCheck = vi.fn();
+    const submitClick = vi.fn();
+    const locator = (isVisible: () => boolean, actions: Record<string, unknown> = {}) => ({
+      count: vi.fn().mockImplementation(async () => isVisible() ? 1 : 0),
+      first: vi.fn().mockReturnValue({ isVisible: vi.fn().mockImplementation(async () => isVisible()), ...actions }),
+    });
+    const hidden = locator(() => false);
+    const page = {
+      getByRole: vi.fn((role: string, options: { name?: RegExp }) => {
+        const name = options.name?.source ?? "";
+        if (role === "radio") return locator(() => methodSelected, { check: paidCheck });
+        if (role === "button" && name.includes("iDEAL")) return locator(() => !methodSelected, { click: methodClick });
+        if (role === "button" && name.includes("continue")) return locator(() => methodSelected, { click: submitClick });
+        return hidden;
+      }),
+      getByText: vi.fn(() => hidden),
+      locator: vi.fn(() => ({ count: vi.fn().mockResolvedValue(0) })),
+      waitForTimeout: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await choosePaidOnHostedTestPage(page);
+    expect(methodClick).toHaveBeenCalledOnce();
+    expect(paidCheck).toHaveBeenCalledOnce();
+    expect(submitClick).toHaveBeenCalledOnce();
+  });
 });

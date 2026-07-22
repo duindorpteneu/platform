@@ -330,6 +330,7 @@ export async function choosePaidOnHostedTestPage(page) {
   const exactPaid = /^(paid|betaald|success|successful|succeeded|geslaagd)$/i;
   let selected = false;
   let submitted = false;
+  let methodSelected = false;
 
   for (let attempt = 0; attempt < 20 && !selected; attempt += 1) {
     const radio = page.getByRole("radio", { name: exactPaid });
@@ -376,6 +377,22 @@ export async function choosePaidOnHostedTestPage(page) {
       selected = true;
       submitted = true;
       break;
+    }
+
+    if (!methodSelected) {
+      const methodName = /iDEAL(?:\s*\|\s*Wero)?/i;
+      const methodButton = page.getByRole("button", { name: methodName });
+      const methodLink = page.getByRole("link", { name: methodName });
+      const methodText = page.getByText(/^iDEAL(?:\s*\|\s*Wero)?$/i);
+      for (const method of [methodButton, methodLink, methodText]) {
+        if (await visible(method)) {
+          await method.first().click();
+          methodSelected = true;
+          await page.waitForTimeout(1_000);
+          break;
+        }
+      }
+      if (methodSelected) continue;
     }
     await page.waitForTimeout(500);
   }
