@@ -94,6 +94,16 @@ describe("deployment environment isolation", () => {
     expect(layout).toContain("globalThis.__DUINDORP_RUNTIME_CONFIG__");
   });
 
+  it("accepts the staging Mollie profile id from a protected secret or variable", () => {
+    const workflow = readFileSync(
+      path.join(repositoryRoot, ".github/workflows/staging-mollie-acceptance.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain(
+      "MOLLIE_PROFILE_ID: ${{ secrets.MOLLIE_PROFILE_ID || vars.MOLLIE_PROFILE_ID }}",
+    );
+  });
+
   it("keeps the hosted PostgREST schema list aligned with local Supabase", () => {
     const config = readFileSync(path.join(repositoryRoot, "supabase/config.toml"), "utf8");
     const migration = readFileSync(

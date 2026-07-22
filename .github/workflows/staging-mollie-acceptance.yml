@@ -74,7 +74,7 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
-          MOLLIE_PROFILE_ID: ${{ vars.MOLLIE_PROFILE_ID }}
+          MOLLIE_PROFILE_ID: ${{ secrets.MOLLIE_PROFILE_ID || vars.MOLLIE_PROFILE_ID }}
         run: node scripts/providers/mollie-staging-acceptance.mjs
 
       - name: Enforce idempotent fixture cleanup
