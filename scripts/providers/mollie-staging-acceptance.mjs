@@ -602,6 +602,28 @@ async function waitForProvider(config, providerPaymentId, predicate, dependencie
   fail("MOLLIE_ACCEPTANCE_PROVIDER_STATE_TIMEOUT");
 }
 
+async function waitForProviderRefund(config, providerPaymentId, predicate, dependencies) {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const response = await providerRequest(
+      config,
+      `/v2/payments/${providerPaymentId}/refunds?limit=250`,
+      {},
+      dependencies.fetchImpl,
+    );
+    const refunds = response?._embedded?.refunds;
+    if (!Array.isArray(refunds) || refunds.length > 250) fail("MOLLIE_ACCEPTANCE_REFUND_LIST_INVALID");
+    for (const refund of refunds) {
+      if (!/^re_[A-Za-z0-9]+$/.test(refund?.id ?? "") || refund?.paymentId !== providerPaymentId) {
+        fail("MOLLIE_ACCEPTANCE_REFUND_INVALID");
+      }
+      if (predicate(refund)) return refund;
+    }
+    await dependencies.sleep(2_000);
+  }
+  fail("MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT");
+}
+
 function assertPaidSnapshot(snapshot) {
   assert.equal(snapshot.paymentStatus, "paid");
   assert.equal(snapshot.reconciliationIssue, null);
@@ -701,11 +723,9 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     const changePaymentStateUrl = paidProviderPayment?._links?.changePaymentState?.href;
     if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
     await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
-    await waitForProvider(config, paidBinding.providerPaymentId, (payment) => {
-      return payment?._embedded?.refunds?.some((refund) => {
-        return refund?.status === "refunded" && refund?.amount?.currency === "EUR"
-          && refund?.amount?.value === payment?.amount?.value;
-      });
+    await waitForProviderRefund(config, paidBinding.providerPaymentId, (refund) => {
+      return refund?.status === "refunded" && refund?.amount?.currency === "EUR"
+        && refund?.amount?.value === paidProviderPayment.amount.value;
     }, { fetchImpl, sleep });
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
     assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));

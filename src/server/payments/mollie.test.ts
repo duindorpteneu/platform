@@ -53,17 +53,25 @@ describe("Mollie provider boundary", () => {
 
   it("fetches the payment together with authoritative refund resources", async () => {
     const fetcher = vi.fn(async (url: string | URL | Request) => {
-      expect(String(url)).toBe("https://api.mollie.com/v2/payments/tr_test123?embed=refunds");
+      if (String(url).endsWith("/refunds?limit=250")) {
+        return new Response(JSON.stringify({
+          _embedded: { refunds: [{ id: "re_test123", status: "refunded", amount: { currency: "EUR", value: "125.00" } }] },
+        }), { status: 200 });
+      }
+      expect(String(url)).toBe("https://api.mollie.com/v2/payments/tr_test123");
       return new Response(JSON.stringify({
         id: "tr_test123",
         status: "paid",
         amount: { currency: "EUR", value: "125.00" },
         metadata,
         _links: {},
-        _embedded: { refunds: [] },
       }), { status: 200 });
     });
-    await expect(getMolliePayment("test_key", "tr_test123", fetcher as typeof fetch)).resolves.toMatchObject({ id: "tr_test123" });
+    await expect(getMolliePayment("test_key", "tr_test123", fetcher as typeof fetch)).resolves.toMatchObject({
+      id: "tr_test123",
+      _embedded: { refunds: [{ id: "re_test123", status: "refunded" }] },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("accepts checkout links only from Mollie over HTTPS", () => {

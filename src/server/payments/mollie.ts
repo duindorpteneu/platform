@@ -11,6 +11,9 @@ const refundSchema = z.object({
   status: mollieRefundStatusSchema,
   amount: amountSchema,
 }).passthrough();
+const refundListSchema = z.object({
+  _embedded: z.object({ refunds: z.array(refundSchema).max(250) }).passthrough(),
+}).passthrough();
 
 export const molliePaymentSchema = z.object({
   resource: z.literal("payment").optional(),
@@ -62,6 +65,23 @@ async function requestPayment(url: string, init: RequestInit, fetcher: typeof fe
   if (raw.length > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
   try {
     return parseResponse(JSON.parse(raw));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("MOLLIE_")) throw error;
+    throw new Error("MOLLIE_RESPONSE_INVALID");
+  }
+}
+
+async function requestRefunds(url: string, init: RequestInit, fetcher: typeof fetch) {
+  const response = await fetcher(url, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new MollieRequestError(response.status, response.status === 429 || response.status >= 500);
+  const contentLength = Number(response.headers.get("content-length") ?? 0);
+  if (contentLength > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
+  const raw = await response.text();
+  if (raw.length > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
+  try {
+    const parsed = refundListSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) throw new Error("MOLLIE_RESPONSE_INVALID");
+    return parsed.data._embedded.refunds;
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("MOLLIE_")) throw error;
     throw new Error("MOLLIE_RESPONSE_INVALID");
@@ -146,11 +166,17 @@ export async function createMolliePayment(input: {
 
 export async function getMolliePayment(apiKey: string, providerPaymentId: string, fetcher: typeof fetch = fetch) {
   if (!/^tr_[A-Za-z0-9]+$/.test(providerPaymentId)) throw new Error("MOLLIE_PAYMENT_ID_INVALID");
-  return requestPayment(`https://api.mollie.com/v2/payments/${encodeURIComponent(providerPaymentId)}?embed=refunds`, {
+  const encodedPaymentId = encodeURIComponent(providerPaymentId);
+  const request = {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
     cache: "no-store",
-  }, fetcher);
+  } satisfies RequestInit;
+  const [payment, refunds] = await Promise.all([
+    requestPayment(`https://api.mollie.com/v2/payments/${encodedPaymentId}`, request, fetcher),
+    requestRefunds(`https://api.mollie.com/v2/payments/${encodedPaymentId}/refunds?limit=250`, request, fetcher),
+  ]);
+  return { ...payment, _embedded: { ...payment._embedded, refunds } };
 }
 
 export async function extractMollieWebhookPaymentId(request: Request) {
