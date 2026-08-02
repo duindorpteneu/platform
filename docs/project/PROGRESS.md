@@ -1,7 +1,7 @@
 # Progress
 
 ## Current phase
-De MVP-releasecandidate is lokaal functioneel, beveiligd en reproduceerbaar gevalideerd. Het repositorydeploypad bouwt één immutable Rootless-Dockerimage, verifieert staging en promoveert uitsluitend via een afzonderlijke handmatige productionworkflow exact dezelfde digest. Staging draait gezond; production blijft geblokkeerd op externe acceptatie, heartbeat en VPS-isolatie.
+Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 legt het pakket-/lid-seizoenmodel, DOB-toegang, dynamische import, selectieve oudergrants, allocatiegebonden QR, scanner-PWA en staging-opschoning vast. Implementatie start forward-only en achter standaard uitgeschakelde compatibilityflags; production blijft geblokkeerd.
 
 ## Completed
 - Starter governance and canon assets added.
@@ -83,11 +83,14 @@ De MVP-releasecandidate is lokaal functioneel, beveiligd en reproduceerbaar geva
 - De settingsworkspace retourneert bij ontbrekend actief seizoen nu altijd een boolean per seizoen. Exacte staging-SHA `76bfe4ef4a5e4348668c37647e8b72e3299a98c9` is groen voor immutable deploy/migration (`29873523343`), echte drie-rollen-MFA/settings/mobile-acceptatie (`29873991736`) en een netwerkgeïsoleerde backup/restore-drill (`29874124335`).
 
 ## In progress
+- Phase B slice 0: reproduceerbare baseline, canonaddendum, security-/releasefundering en nieuwe expandmigraties.
 - Staging draait publiek gezond op main-SHA `7e50810e77bf1d65c3c95af2930e35ee0a0cf329`. CI, immutable deploy/migrations en de echte Mollie paid/mismatch/replay/refund-aanmaakacceptatie zijn exact op deze SHA groen.
 - Er is geen lokale codeblocker voor de afgetekende kernflows. De resterende releasegereedheid bestaat uit SendGrid-deliverability, externe monitoring, apparaatacceptatie, VPS-isolatie en een later werkelijk door Mollie naar `processing/refunded` gevorderde refundobservatie.
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
+- Bouw eerst bodylimieten, dependency-/releasegates en het forward-only lid-seizoen-/DOB-/toegangsmodel; voeg daarna pakketten, dynamische import, allocatie, QR-exchange, mails en scanner-PWA als verticale slices toe.
+- Voer de geautoriseerde staging-opschoning pas uit na de nieuwe migrations, targetassertie, back-up en tellingendry-run; behoud alle staff- en Auth-accounts.
 - Leg bij een latere Mollie-overgang naar `processing` of `refunded` aanvullend live webhook-/QR-intrekkingsbewijs vast; de huidige testmode-refund bleef conform providercontract `pending` en lokaal ongewijzigd.
 - Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.
 - Rond de gekozen uitgifteapparaat-/browsermatrix en de afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo aantoonbaar af.
