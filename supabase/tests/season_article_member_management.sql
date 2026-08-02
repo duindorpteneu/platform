@@ -52,6 +52,14 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('ca400000-0000-4000-8000-000000000001', repeat('c', 64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('ca400000-0000-4000-8000-000000000001', 'ca100000-0000-4000-8000-000000000001');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'ca000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'ca400000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"ca000000-0000-4000-8000-000000000002","aal":"aal2"}', true);

@@ -32,11 +32,19 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('b6000000-0000-4000-8000-000000000001', repeat('1', 64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('b6000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'b0000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'b6000000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 
-select is((select count(*) from app.email_templates), 6::bigint, 'exact zes canonieke e-mailtemplates bestaan');
+select is((select count(*) from app.email_templates), 7::bigint, 'zes legacytemplates plus de veilige portaaluitnodiging bestaan');
 select is((select array_agg(template_key order by template_key) from app.email_templates),
-  array['payment_received','payment_reminder','payment_request','qr_code_resent','ready_for_pickup','verification_code']::text[],
-  'templatecontract gebruikt exact qr_code_resent en de overige vijf canonieke keys');
+  array['payment_received','payment_reminder','payment_request','portal_access_invite','qr_code_resent','ready_for_pickup','verification_code']::text[],
+  'templatecontract bevat de portaaluitnodiging en alle zes legacykeys');
 select is((select count(*) from app.email_templates where template_key = 'qr_resend'), 0::bigint,
   'niet-canonieke alias qr_resend bestaat niet');
 select ok(not has_table_privilege('authenticated', 'app.email_templates', 'SELECT'), 'templates zijn alleen via smalle RPC leesbaar');

@@ -34,6 +34,7 @@ export function renderParentOtpEmail(template: ParentOtpEmailTemplate, code: str
       clubnaam: template.clubName,
       contact_email: template.contactEmail ?? "",
       verificatiecode: code,
+      portaal_url: "",
     },
   );
 }

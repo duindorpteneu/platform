@@ -444,10 +444,26 @@ select is(
   0::bigint,
   'gedeeld e-mailadres verleent het tweede kind geen toegang'
 );
+update app.release_feature_flags
+set enabled = true,
+    updated_at = timezone('utc', now())
+where key = 'parent_access_grants_v2';
+select is(
+  (select count(*) from public.get_parent_members(repeat('f', 64))),
+  0::bigint,
+  'legacy reviewkoppeling verleent vóór beheerdergoedkeuring geen toegang'
+);
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'fa900000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where legacy_link_id = 'fa810000-0000-4000-8000-000000000001';
 select is(
   (select count(*) from public.get_parent_members(repeat('f', 64))),
   1::bigint,
-  'legacycompatibiliteit retourneert exact het actieve lid-seizoen'
+  'expliciet geactiveerde grant retourneert exact het lid-seizoen'
 );
 select is(
   (select date_of_birth from public.get_parent_members(repeat('f', 64))),
@@ -458,6 +474,27 @@ select is(
   (select gender from public.get_parent_members(repeat('f', 64))),
   'female',
   'geautoriseerde ouder ziet geregistreerd geslacht'
+);
+insert into app.member_orders(
+  id,
+  member_id,
+  season_id,
+  amount_due_cents
+) values (
+  'fa300000-0000-4000-8000-000000000004',
+  'fa200000-0000-4000-8000-000000000002',
+  'fa100000-0000-4000-8000-000000000001',
+  14000
+);
+select throws_ok(
+  $$select public.prepare_mollie_payment(
+    repeat('f', 64),
+    'fa300000-0000-4000-8000-000000000004',
+    'phase-b-idor-attempt'
+  )$$,
+  '42501',
+  'PARENT_ORDER_ACCESS_DENIED',
+  'oudergrant kan geen Molliebetaling voor een ander lid-seizoen starten'
 );
 select throws_ok(
   $$select public.link_parent_member(
@@ -484,6 +521,22 @@ select is(
   app.get_member_detail_v3('fa200000-0000-4000-8000-000000000001')->>'dateOfBirth',
   '2012-03-04',
   'beheerder met AAL2 ziet DOB'
+);
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"fa900000-0000-4000-8000-000000000001","aal":"aal1"}',
+  true
+);
+set local role authenticated;
+select throws_ok(
+  $$select app.get_member_detail_v3(
+    'fa200000-0000-4000-8000-000000000001'
+  )$$,
+  '42501',
+  'STAFF_AUTHORIZATION_REQUIRED',
+  'beheerder op AAL1 krijgt geen leden- of DOB-detail'
 );
 reset role;
 

@@ -37,6 +37,14 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('c5000000-0000-4000-8000-000000000001', repeat('6',64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('c5000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'c0000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'c5000000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 insert into app.payments(id, order_id, method, status, amount_cents, idempotency_key, created_at)
 values('c6000000-0000-4000-8000-000000000001', 'c4000000-0000-4000-8000-000000000002',
   'mollie', 'open', 12500, 'unbound-hour-old-attempt', timezone('utc', now()) - interval '61 minutes');
@@ -109,7 +117,7 @@ select isnt(result #>> '{jobs,0,subjectSource}',
 
 select throws_ok($$insert into private.email_jobs(kind, recipient_email, template_key, payload)
   values('otp', 'otp@example.invalid', 'verification_code', '{"code":"123456"}'::jsonb)$$,
-  '23514', 'DURABLE_ORDER_EMAIL_REQUIRED', 'OTP blijft buiten de duurzame orderqueue');
+  '23514', 'DURABLE_EMAIL_CONTEXT_REQUIRED', 'OTP blijft buiten iedere duurzame mailcontext');
 
 select * from finish();
 rollback;

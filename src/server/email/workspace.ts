@@ -9,7 +9,7 @@ export async function getEmailWorkspace() {
   const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("EMAIL_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("get_email_workspace_v2");
+  const { data, error } = await supabase.schema("app").rpc("get_email_workspace_v3");
   if (error) {
     if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
     throw new Error("EMAIL_WORKSPACE_QUERY_FAILED");
@@ -72,13 +72,40 @@ export async function createEmailBulk(templateKey: string, orderIds: string[], b
   return { data: response.data, error: null };
 }
 
-function formatArticleLines(lines: ClaimedEmailJob["payload"]["articles"]) {
+type ClaimedOrderEmailJob = Extract<ClaimedEmailJob, { contextKind: "order" }>;
+
+function formatArticleLines(lines: ClaimedOrderEmailJob["payload"]["articles"]) {
   if (lines.length === 0) return "Geen";
   return lines.map((line) => `${line.article} (${line.size})${line.quantity > 1 ? ` × ${line.quantity}` : ""}`).join(", ");
 }
 
 export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) {
   const baseUrl = new URL(appBaseUrl);
+  const loginUrl = new URL("/login", baseUrl).toString();
+  if (job.contextKind === "portal_access") {
+    return renderEmailTemplate(
+      job.subjectSource,
+      job.bodySource,
+      job.allowedShortcodes.map((shortcode) => shortcode.slice(2, -2)),
+      {
+        voornaam: "",
+        volledige_naam: "",
+        team: "",
+        relatienummer: "",
+        seizoen: "",
+        bedrag: "",
+        betaallink: "",
+        qr_code: "",
+        artikelen_af_te_halen: "",
+        artikelen_nalevering: "",
+        afhaallocatie: "",
+        clubnaam: job.payload.clubName,
+        contact_email: job.payload.contactEmail ?? "",
+        verificatiecode: "",
+        portaal_url: loginUrl,
+      },
+    );
+  }
   const paymentUrl = new URL(`/betaling/${job.orderId}`, baseUrl).toString();
   const portalUrl = new URL("/mijn-tenue", baseUrl).toString();
   return renderEmailTemplate(
@@ -100,6 +127,7 @@ export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) 
       clubnaam: job.payload.clubName,
       contact_email: job.payload.contactEmail ?? "Nog niet ingesteld",
       verificatiecode: "",
+      portaal_url: loginUrl,
     },
   );
 }

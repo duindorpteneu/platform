@@ -142,12 +142,39 @@ describe("SendGrid delivery boundary", () => {
     const orderId = "11111111-1111-4111-8111-111111111111";
     const rendered = renderClaimedEmailJob({
       id: "22222222-2222-4222-8222-222222222222", kind: "transactional", recipientEmail: "ouder@example.nl",
+      contextKind: "order",
       templateKey: "payment_received", templateVersion: 4, subjectSource: "Snapshot voor {{volledige_naam}}",
       bodySource: "Versie vier: {{bedrag}} is ontvangen.", allowedShortcodes: ["{{volledige_naam}}", "{{bedrag}}"],
-      orderId, attempt: 1,
+      orderId, parentAccountId: null, attempt: 1,
       payload: { orderId, memberId: "33333333-3333-4333-8333-333333333333", firstName: "Sophie", fullName: "Sophie de Bruin", team: "JO11-1", relationNumber: "DSV-1", season: "2026/27", amountCents: 12500, clubName: "Duindorp SV", contactEmail: "kleding@duindorpsv.nl", pickupLocation: "Clubhuis", qrVersion: 1, articles: [], articlesReady: [], articlesBackorder: [] },
     }, "https://tenue.duindorpsv.nl");
     expect(rendered.subject).toBe("Snapshot voor Sophie de Bruin");
     expect(rendered.text).toContain("Versie vier: € 125,00 is ontvangen.");
+  });
+
+  it("renders a portal invitation with only a login route and explanation", () => {
+    const parentAccountId = "33333333-3333-4333-8333-333333333333";
+    const rendered = renderClaimedEmailJob({
+      id: "22222222-2222-4222-8222-222222222222",
+      kind: "transactional",
+      contextKind: "portal_access",
+      recipientEmail: "ouder@example.nl",
+      templateKey: "portal_access_invite",
+      templateVersion: 1,
+      subjectSource: "Toegang tot {{clubnaam}}",
+      bodySource: "Open {{portaal_url}} en vraag zelf een eenmalige code aan.",
+      allowedShortcodes: ["{{clubnaam}}", "{{portaal_url}}"],
+      orderId: null,
+      parentAccountId,
+      payload: {
+        parentAccountId,
+        clubName: "Duindorp SV",
+        contactEmail: "kleding@duindorpsv.nl",
+      },
+      attempt: 1,
+    }, "https://tenue.duindorpsv.nl");
+    expect(rendered.text).toContain("https://tenue.duindorpsv.nl/login");
+    expect(rendered.text).not.toContain("token=");
+    expect(rendered.text).not.toContain("123456");
   });
 });

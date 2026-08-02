@@ -71,7 +71,7 @@ function TemplatesPanel({ workspace }: { workspace: Workspace }) {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState<"preview" | "save" | null>(null);
   useEffect(() => { setSubject(template?.subjectSource ?? ""); setBody(template?.bodySource ?? ""); setPreview(null); setNotice(null); }, [template]);
-  if (!template) return <Empty icon={FileText} title="Geen templates beschikbaar" text="De zes canonieke templates zijn nog niet veilig geladen." />;
+  if (!template) return <Empty icon={FileText} title="Geen templates beschikbaar" text="De beschikbare templates zijn nog niet veilig geladen." />;
 
   async function previewTemplate() {
     setBusy("preview"); setNotice(null);
@@ -93,7 +93,7 @@ function TemplatesPanel({ workspace }: { workspace: Workspace }) {
   }
 
   return <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-    <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-5 py-4"><h2 className="text-sm font-bold text-brand-900">Berichttypen</h2><p className="mt-1 text-[11px] text-slate-400">Exact zes canonieke templates</p></div><div className="divide-y divide-line">{workspace.templates.map((entry) => <button key={entry.id} type="button" onClick={() => setSelectedId(entry.id)} className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${entry.id === template.id ? "bg-brand-50" : "hover:bg-slate-50"}`}><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm"><Mail className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-brand-900">{emailTemplateLabels[entry.key]}</span><span className="mt-1 block text-[10px] text-slate-400">Versie {entry.version} · {entry.active ? "Actief" : "Inactief"}</span></span></button>)}</div></aside>
+    <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-5 py-4"><h2 className="text-sm font-bold text-brand-900">Berichttypen</h2><p className="mt-1 text-[11px] text-slate-400">Rolgebonden templatecatalogus</p></div><div className="divide-y divide-line">{workspace.templates.map((entry) => <button key={entry.id} type="button" onClick={() => setSelectedId(entry.id)} className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${entry.id === template.id ? "bg-brand-50" : "hover:bg-slate-50"}`}><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm"><Mail className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-brand-900">{emailTemplateLabels[entry.key]}</span><span className="mt-1 block text-[10px] text-slate-400">Versie {entry.version} · {entry.active ? "Actief" : "Inactief"}</span></span></button>)}</div></aside>
     <div>
       <StatusNotice notice={notice} />
       <form onSubmit={save} className="rounded-xl border border-line bg-white p-6 shadow-card">

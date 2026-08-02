@@ -8,6 +8,7 @@ import {
   Download,
   HelpCircle,
   History,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -97,6 +98,10 @@ function NavigationPanel({
           {staff.role === "beheerder" && <Link href="/backoffice/pakketten" onClick={onNavigate} aria-current={navigationItemActive(pathname, "/backoffice/pakketten") ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", navigationItemActive(pathname, "/backoffice/pakketten") && "bg-white/12 text-white shadow-sm")}>
             <Package className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
             Pakketten
+          </Link>}
+          {staff.role === "beheerder" && <Link href="/backoffice/portaaltoegang" onClick={onNavigate} aria-current={navigationItemActive(pathname, "/backoffice/portaaltoegang") ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", navigationItemActive(pathname, "/backoffice/portaaltoegang") && "bg-white/12 text-white shadow-sm")}>
+            <KeyRound className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
+            Portaaltoegang
           </Link>}
           <Link href="/backoffice/audit" onClick={onNavigate} aria-current={navigationItemActive(pathname, "/backoffice/audit") ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", navigationItemActive(pathname, "/backoffice/audit") && "bg-white/12 text-white shadow-sm")}>
             <ShieldCheck className="size-[17px] text-blue-200/80" strokeWidth={1.8} />

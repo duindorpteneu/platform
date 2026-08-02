@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "paused", claimed: 0, sent: 0, retry: 0, failed: 0, deliveryUncertain: 0 });
   }
   const claimToken = randomUUID();
-  const { data, error } = await admin.schema("app").rpc("claim_email_jobs", { p_claim_token: claimToken, p_limit: 25 });
+  const { data, error } = await admin.schema("app").rpc("claim_email_jobs_v2", { p_claim_token: claimToken, p_limit: 25 });
   if (error) {
     await finishOperationRun(admin, "email_worker", runId, "failed", 0, "claim_failed");
     return NextResponse.json({ error: "E-mailjobs konden niet worden geclaimd." }, { status: 503 });
@@ -78,6 +78,21 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
   let outcome: "sent" | "retry" | "failed" | "delivery_uncertain" = "failed";
   let providerMessageId: string | null = null;
   let errorCode: string | null = "render_invalid";
+  const authorization = await admin.schema("app").rpc(
+    "authorize_claimed_email_job",
+    {
+      p_job_id: job.id,
+      p_claim_token: claimToken,
+    },
+  );
+  if (authorization.error || typeof authorization.data !== "boolean") {
+    counts.completionErrors += 1;
+    throw new Error("EMAIL_JOB_AUTHORIZATION_FAILED");
+  }
+  if (!authorization.data) {
+    counts.failed += 1;
+    return;
+  }
   try {
     const rendered = renderClaimedEmailJob(job, appBaseUrl);
     const delivery = await sendEmailJob({ jobId: job.id, recipientEmail: job.recipientEmail, ...rendered, replyToEmail: job.payload.contactEmail ?? process.env.SENDGRID_REPLY_TO_EMAIL ?? "" });

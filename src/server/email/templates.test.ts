@@ -20,4 +20,19 @@ describe("e-mailtemplateveiligheid", () => {
     expect(() => validateTemplateForPurpose("verification_code", "Uw code", "Code: {{verificatiecode}}", ["verificatiecode"])).not.toThrow();
     expect(fictionalEmailPreviewValues().verificatiecode).toBe("123456");
   });
+
+  it("requires a protected portal route in access invitations", () => {
+    expect(() => validateTemplateForPurpose(
+      "portal_access_invite",
+      "Uw toegang",
+      "Vraag zelf een code aan.",
+      ["portaal_url"],
+    )).toThrow("EMAIL_PORTAL_URL_REQUIRED");
+    expect(() => validateTemplateForPurpose(
+      "portal_access_invite",
+      "Uw toegang",
+      "Open {{portaal_url}} en vraag zelf een code aan.",
+      ["portaal_url"],
+    )).not.toThrow();
+  });
 });

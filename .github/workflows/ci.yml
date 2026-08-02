@@ -108,6 +108,9 @@ jobs:
       - name: Run fulfilment concurrency test
         run: pnpm test:db:concurrency
 
+      - name: Run parent-access concurrency test
+        run: pnpm test:db:access-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 
@@ -116,6 +119,9 @@ jobs:
 
       - name: Run staff MFA integration
         run: pnpm test:staff-mfa
+
+      - name: Run parent portal access browser acceptance
+        run: timeout --signal=TERM --kill-after=10s 4m pnpm test:portal-access-browser
 
       - name: Run full Playwright browser review
         run: pnpm test:e2e

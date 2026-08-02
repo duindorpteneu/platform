@@ -4,10 +4,13 @@ export const parentMemberLinkSchema = z.object({ memberId: z.string().uuid() }).
 
 export type ParentMember = {
   member_id: string;
+  member_season_id: string;
   relation_number: string;
   first_name: string;
   insertion: string | null;
   last_name: string;
+  date_of_birth: string | null;
+  gender: "male" | "female" | "other" | "unknown";
   team: string;
   order_id: string | null;
   amount_due_cents: number | null;

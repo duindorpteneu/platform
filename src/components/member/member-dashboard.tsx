@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 type Member = {
   member_id: string;
+  member_season_id: string;
   relation_number: string;
   first_name: string;
   insertion: string | null;
@@ -151,11 +152,11 @@ export function MemberDashboard() {
       </div>
 
       {members.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-card"><UserRound className="mx-auto size-7 text-brand-500" /><h2 className="mt-4 text-base font-bold text-brand-900">Nog geen toegang geactiveerd</h2><p className="mt-2 text-sm text-slate-500">De kledingbeheerder kan portaaltoegang voor een lid activeren. Een gedeeld e-mailadres koppelt nooit automatisch kinderen.</p></div>
+        <div className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-card"><UserRound className="mx-auto size-7 text-brand-500" /><h2 className="mt-4 text-base font-bold text-brand-900">Nog geen toegang geactiveerd</h2><p className="mt-2 text-sm text-slate-500">Alleen een beheerder kan portaaltoegang voor een lid activeren. Een gedeeld e-mailadres koppelt nooit automatisch kinderen.</p></div>
       ) : (
         <div className="mt-8 grid gap-5 lg:grid-cols-2">
           {members.map((member) => (
-            <article key={member.member_id} className="rounded-2xl border border-line bg-white p-6 shadow-card">
+            <article key={member.member_season_id} className="rounded-2xl border border-line bg-white p-6 shadow-card">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">{member.first_name.slice(0, 1)}{member.last_name.slice(0, 1)}</div><div><h2 className="text-base font-bold text-brand-900">{fullName(member)}</h2><p className="mt-1 text-xs text-slate-500">{member.team} · {member.relation_number}</p></div></div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(member.payment_status)}`}>{paymentLabel[member.payment_status ?? "open"] ?? "Nog te betalen"}</span>

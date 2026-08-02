@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EMAIL_SHORTCODES = ["voornaam", "volledige_naam", "team", "relatienummer", "seizoen", "bedrag", "betaallink", "qr_code", "artikelen_af_te_halen", "artikelen_nalevering", "afhaallocatie", "clubnaam", "contact_email", "verificatiecode"] as const;
+export const EMAIL_SHORTCODES = ["voornaam", "volledige_naam", "team", "relatienummer", "seizoen", "bedrag", "betaallink", "qr_code", "artikelen_af_te_halen", "artikelen_nalevering", "afhaallocatie", "clubnaam", "contact_email", "verificatiecode", "portaal_url"] as const;
 export const emailShortcodeSchema = z.enum(EMAIL_SHORTCODES);
 export type EmailShortcode = z.infer<typeof emailShortcodeSchema>;
 export type EmailTemplateValues = Record<EmailShortcode, string>;
@@ -24,6 +24,9 @@ export function validateTemplateForPurpose(templateKey: string, subject: string,
   validateTemplateSource(subject, body, allowed);
   if (templateKey === "verification_code" && !`${subject}\n${body}`.includes("{{verificatiecode}}")) {
     throw new Error("EMAIL_VERIFICATION_CODE_REQUIRED");
+  }
+  if (templateKey === "portal_access_invite" && !`${subject}\n${body}`.includes("{{portaal_url}}")) {
+    throw new Error("EMAIL_PORTAL_URL_REQUIRED");
   }
 }
 
@@ -52,5 +55,6 @@ export function fictionalEmailPreviewValues(): EmailTemplateValues {
     artikelen_nalevering: "Broekje maat 152", afhaallocatie: "Clubhuis Duindorp SV", clubnaam: "Duindorp SV",
     contact_email: "kledingcommissie@duindorpsv.nl",
     verificatiecode: "123456",
+    portaal_url: "https://tenue.duindorpsv.nl/login",
   };
 }

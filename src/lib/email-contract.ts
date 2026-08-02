@@ -5,6 +5,7 @@ const timestamp = z.string().datetime({ offset: true });
 
 export const emailTemplateKeySchema = z.enum([
   "verification_code",
+  "portal_access_invite",
   "payment_request",
   "payment_received",
   "ready_for_pickup",
@@ -21,7 +22,7 @@ const emailTemplateSchema = z.object({
   key: emailTemplateKeySchema,
   subjectSource: z.string().min(3).max(180),
   bodySource: z.string().min(10).max(10_000),
-  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(14),
+  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(32),
   active: z.boolean(),
   version: z.number().int().positive(),
   updatedAt: timestamp,
@@ -47,10 +48,38 @@ const emailWorkspaceOrderSchema = z.object({
   lines: z.array(emailOrderLineSchema).max(25),
 }).strict();
 
+const emailWorkspaceJobBase = {
+  id: uuid,
+  templateKey: emailTemplateKeySchema,
+  status: emailJobStatusSchema,
+  attempts: z.number().int().min(0).max(5),
+  deliveryStatus: emailDeliveryStatusSchema.nullable(),
+  availableAt: timestamp,
+  sentAt: timestamp.nullable(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  claimedAt: timestamp.nullable(),
+  recoverable: z.boolean(),
+};
+
+const emailWorkspaceJobSchema = z.discriminatedUnion("contextKind", [
+  z.object({
+    ...emailWorkspaceJobBase,
+    contextKind: z.literal("order"),
+    orderId: uuid,
+  }).strict(),
+  z.object({
+    ...emailWorkspaceJobBase,
+    contextKind: z.literal("portal_access"),
+    orderId: z.null(),
+    templateKey: z.literal("portal_access_invite"),
+  }).strict(),
+]);
+
 export const emailWorkspaceSchema = z.object({
   recoveryAllowed: z.boolean(),
-  templateKeys: z.array(emailTemplateKeySchema).length(6),
-  templates: z.array(emailTemplateSchema).length(6),
+  templateKeys: z.array(emailTemplateKeySchema).min(6).max(7),
+  templates: z.array(emailTemplateSchema).min(6).max(7),
   batches: z.array(z.object({
     id: uuid,
     batchKey: z.string().min(8).max(160),
@@ -58,22 +87,21 @@ export const emailWorkspaceSchema = z.object({
     selectedCount: z.number().int().min(1).max(2_000),
     createdAt: timestamp,
   }).strict()).max(25),
-  jobs: z.array(z.object({
-    id: uuid,
-    orderId: uuid,
-    templateKey: emailTemplateKeySchema,
-    status: emailJobStatusSchema,
-    attempts: z.number().int().min(0).max(5),
-    deliveryStatus: emailDeliveryStatusSchema.nullable(),
-    availableAt: timestamp,
-    sentAt: timestamp.nullable(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    claimedAt: timestamp.nullable(),
-    recoverable: z.boolean(),
-  }).strict()).max(100),
+  jobs: z.array(emailWorkspaceJobSchema).max(100),
   orders: z.array(emailWorkspaceOrderSchema).max(20_000),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const keys = new Set(value.templateKeys);
+  if (keys.size !== value.templateKeys.length
+    || value.templates.length !== value.templateKeys.length
+    || value.templates.some((template) => !keys.has(template.key))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["templates"],
+      message: "Templatecatalogus en templates komen niet overeen.",
+    });
+  }
+});
 
 export const updateEmailTemplateRequestSchema = z.object({
   templateId: uuid,
@@ -142,16 +170,23 @@ const claimedEmailLineSchema = z.object({
   status: orderLineEmailStatusSchema,
 }).strict();
 
-export const claimedEmailJobSchema = z.object({
+const claimedEmailJobBase = {
   id: uuid,
   kind: z.enum(["transactional", "bulk"]),
   recipientEmail: z.string().min(1).max(320),
-  templateKey: emailTemplateKeySchema.exclude(["verification_code"]),
   templateVersion: z.number().int().positive(),
   subjectSource: z.string().min(3).max(180),
   bodySource: z.string().min(10).max(10_000),
-  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(14),
+  allowedShortcodes: z.array(z.string().regex(/^{{[a-z_]+}}$/)).min(1).max(32),
+  attempt: z.number().int().min(1).max(5),
+};
+
+const claimedOrderEmailJobSchema = z.object({
+  ...claimedEmailJobBase,
+  contextKind: z.literal("order"),
+  templateKey: emailTemplateKeySchema.exclude(["verification_code", "portal_access_invite"]),
   orderId: uuid,
+  parentAccountId: z.null(),
   payload: z.object({
     orderId: uuid,
     memberId: uuid,
@@ -169,9 +204,40 @@ export const claimedEmailJobSchema = z.object({
     articlesReady: z.array(claimedEmailLineSchema).max(25),
     articlesBackorder: z.array(claimedEmailLineSchema).max(25),
   }).strict(),
-  attempt: z.number().int().min(1).max(5),
-}).strict().superRefine((value, context) => {
-  if (value.orderId !== value.payload.orderId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "orderId"], message: "Ordercontext komt niet overeen." });
+}).strict();
+
+const claimedPortalAccessEmailJobSchema = z.object({
+  ...claimedEmailJobBase,
+  kind: z.literal("transactional"),
+  contextKind: z.literal("portal_access"),
+  templateKey: z.literal("portal_access_invite"),
+  orderId: z.null(),
+  parentAccountId: uuid,
+  payload: z.object({
+    parentAccountId: uuid,
+    clubName: z.string().min(1).max(160),
+    contactEmail: z.string().email().max(320).nullable(),
+  }).strict(),
+}).strict();
+
+export const claimedEmailJobSchema = z.discriminatedUnion("contextKind", [
+  claimedOrderEmailJobSchema,
+  claimedPortalAccessEmailJobSchema,
+]).superRefine((value, context) => {
+  if (value.contextKind === "order" && value.orderId !== value.payload.orderId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["payload", "orderId"],
+      message: "Ordercontext komt niet overeen.",
+    });
+  }
+  if (value.contextKind === "portal_access" && value.parentAccountId !== value.payload.parentAccountId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["payload", "parentAccountId"],
+      message: "Ouderaccountcontext komt niet overeen.",
+    });
+  }
 });
 
 export const emailJobClaimResponseSchema = z.object({
@@ -191,6 +257,7 @@ export const parentOtpEmailTemplateSchema = z.object({
 
 export const emailTemplateLabels: Record<z.infer<typeof emailTemplateKeySchema>, string> = {
   verification_code: "Verificatiecode",
+  portal_access_invite: "Portaaltoegang geactiveerd",
   payment_request: "Betalingsverzoek",
   payment_received: "Betaling ontvangen",
   ready_for_pickup: "Artikelen af te halen",
