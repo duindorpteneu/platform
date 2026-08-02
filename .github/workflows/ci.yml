@@ -43,6 +43,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Reject known high or critical dependencies
+        run: pnpm security:dependencies
+
       - name: Scan repository for secrets
         run: node scripts/check-secrets.mjs
 

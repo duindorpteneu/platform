@@ -84,6 +84,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 ## In progress
 - Phase B slice 0: reproduceerbare baseline, canonaddendum, security-/releasefundering en nieuwe expandmigraties.
+- De eerder gemelde dependencybaseline is opnieuw gemeten op 14 advisories (9 high, 5 moderate). Next.js, Sharp, PostCSS en alle aanwezige `brace-expansion`-majors zijn naar gepatchte versies vastgezet; `pnpm audit --audit-level high` is nu groen en een harde CI-/deploygate.
 - Staging draait publiek gezond op main-SHA `7e50810e77bf1d65c3c95af2930e35ee0a0cf329`. CI, immutable deploy/migrations en de echte Mollie paid/mismatch/replay/refund-aanmaakacceptatie zijn exact op deze SHA groen.
 - Er is geen lokale codeblocker voor de afgetekende kernflows. De resterende releasegereedheid bestaat uit SendGrid-deliverability, externe monitoring, apparaatacceptatie, VPS-isolatie en een later werkelijk door Mollie naar `processing/refunded` gevorderde refundobservatie.
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.

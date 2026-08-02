@@ -94,6 +94,7 @@ jobs:
 
       - name: Run repository gates
         run: |
+          pnpm security:dependencies
           pnpm security:secrets
           pnpm security:migrations
           pnpm lint
