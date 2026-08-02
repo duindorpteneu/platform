@@ -44,8 +44,18 @@ const detail = {
   email: "ouder@example.invalid",
   team: "JO11-1",
   activeForSeason: true,
+  gender: "female",
+  dateOfBirth: "2012-03-04",
   updatedAt: "2026-07-18T12:00:00.000Z",
   activeSeason: season,
+  memberSeasons: [{
+    id: "71000000-0000-4000-8000-000000000002",
+    seasonId: season.id,
+    seasonName: season.name,
+    team: "JO11-1",
+    participationStatus: "active",
+    reconciliationStatus: "resolved",
+  }],
   sizeProfile: null,
   parentLinks: [{ id: "77000000-0000-4000-8000-000000000001", email: "ouder@example.invalid", linkedAt: "2026-07-18T12:00:00.000Z" }],
   order: {
@@ -91,7 +101,13 @@ describe("member overview contract", () => {
 
   it("accepts operationele detaildata but rejects a QR token", () => {
     expect(memberDetailResponseSchema.safeParse(detail).success).toBe(true);
+    expect(memberDetailResponseSchema.safeParse({ ...detail, dateOfBirth: null }).success).toBe(true);
     expect(memberDetailResponseSchema.safeParse({ ...detail, order: { ...detail.order, qrToken: "secret" } }).success).toBe(false);
+  });
+
+  it("rejects malformed DOB and guessed gender values", () => {
+    expect(memberDetailResponseSchema.safeParse({ ...detail, dateOfBirth: "04-03-2012" }).success).toBe(false);
+    expect(memberDetailResponseSchema.safeParse({ ...detail, gender: "girl" }).success).toBe(false);
   });
 
   it("validates season-bound individual size changes", () => {

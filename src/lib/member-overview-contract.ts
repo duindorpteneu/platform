@@ -8,6 +8,7 @@ const activeSeasonSchema = z.object({
 const nonNegativeInteger = z.number().int().nonnegative();
 const paymentStatusSchema = z.enum(["Betaald", "Nog te betalen"]);
 export const memberLineStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]);
+export const memberGenderSchema = z.enum(["male", "female", "other", "unknown"]);
 const uuid = z.string().uuid();
 
 export const memberSizeProfileSchema = z.object({
@@ -101,8 +102,18 @@ export const memberDetailResponseSchema = z.object({
   email: z.string().email().max(320),
   team: z.string().min(1).max(120),
   activeForSeason: z.boolean(),
+  gender: memberGenderSchema,
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   updatedAt: z.string().datetime({ offset: true }),
   activeSeason: activeSeasonSchema.nullable(),
+  memberSeasons: z.array(z.object({
+    id: uuid,
+    seasonId: uuid,
+    seasonName: z.string().min(1).max(120),
+    team: z.string().min(1).max(120).nullable(),
+    participationStatus: z.enum(["active", "inactive", "unknown"]),
+    reconciliationStatus: z.enum(["resolved", "legacy_unknown"]),
+  }).strict()).max(100),
   sizeProfile: memberSizeProfileSchema.nullable(),
   parentLinks: z.array(z.object({
     id: z.string().uuid(),

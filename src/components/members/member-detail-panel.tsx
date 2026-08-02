@@ -1,4 +1,4 @@
-import { Clock3, Link2, Mail, PackageCheck, ReceiptText, ShieldCheck, UserRound, X } from "lucide-react";
+import { CalendarDays, Clock3, Link2, Mail, PackageCheck, ReceiptText, ShieldCheck, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import type { MemberDetailResponse } from "@/lib/member-overview-contract";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,22 @@ function moment(value: string) {
   }).format(new Date(value));
 }
 
+function date(value: string) {
+  return new Intl.DateTimeFormat("nl-NL", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Amsterdam",
+  }).format(new Date(`${value}T12:00:00+02:00`));
+}
+
+const genderLabels = {
+  male: "Jongen/man",
+  female: "Meisje/vrouw",
+  other: "Anders",
+  unknown: "Niet geregistreerd",
+};
+
 export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailResponse; closeHref: string }) {
   return (
     <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card" aria-label="Liddetail">
@@ -61,7 +77,10 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
           <dl className="mt-4 space-y-3 text-xs">
             <div className="flex items-start gap-3"><Mail className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">E-mailadres</dt><dd className="mt-0.5 break-all font-semibold text-ink">{detail.email}</dd></div></div>
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Seizoen</dt><dd className="mt-0.5 font-semibold text-ink">{detail.activeSeason?.name ?? "Geen actief seizoen"}</dd></div></div>
+            <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Geslacht</dt><dd className="mt-0.5 font-semibold text-ink">{genderLabels[detail.gender]}</dd></div></div>
+            {detail.dateOfBirth && <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Geboortedatum</dt><dd className="mt-0.5 font-semibold text-ink">{date(detail.dateOfBirth)}</dd></div></div>}
           </dl>
+          {detail.memberSeasons.length > 1 && <div className="mt-4 rounded-lg border border-line p-3"><p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Seizoenshistorie</p><ul className="mt-2 space-y-1.5">{detail.memberSeasons.map((season) => <li key={season.id} className="flex justify-between gap-3 text-[11px]"><span className="font-semibold text-ink">{season.seasonName}</span><span className="text-right text-slate-500">{season.team ?? "Team nog te controleren"} · {season.participationStatus === "active" ? "Actief" : season.participationStatus === "inactive" ? "Inactief" : "Historie onbekend"}</span></li>)}</ul></div>}
           <MemberStatusAction memberId={detail.id} active={detail.activeForSeason} enabled={Boolean(detail.activeSeason)} />
         </section>
 

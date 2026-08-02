@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, CreditCard, Link2, Loader2, LockKeyhole, LogOut, RefreshCw, Shirt, UserRound } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, CreditCard, Loader2, LockKeyhole, LogOut, RefreshCw, Shirt, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -12,6 +12,9 @@ type Member = {
   insertion: string | null;
   last_name: string;
   team: string;
+  date_of_birth: string | null;
+  gender: "male" | "female" | "other" | "unknown";
+  season_name: string;
   order_id: string | null;
   amount_due_cents: number | null;
   payment_status: string | null;
@@ -20,16 +23,9 @@ type Member = {
   article_lines: Array<{ id: string; article: string; size: string; quantity: number; status: string }>;
 };
 
-type Candidate = {
-  member_id: string;
-  relation_number: string;
-  first_name: string;
-  insertion: string | null;
-  last_name: string;
-  team: string;
-};
-
 const amount = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
+const date = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
+const genderLabel = { male: "Jongen/man", female: "Meisje/vrouw", other: "Anders", unknown: "Niet geregistreerd" };
 const statusLabel: Record<string, string> = {
   backorder: "Nalevering",
   ready_for_pickup: "Af te halen",
@@ -91,11 +87,9 @@ function QrPanel({ member }: { member: Member }) {
 
 export function MemberDashboard() {
   const [members, setMembers] = useState<Member[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [linking, setLinking] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -109,11 +103,6 @@ export function MemberDashboard() {
       if (!response.ok) throw new Error();
       const payload = await response.json() as { members: Member[] };
       setMembers(payload.members);
-
-      const candidateResponse = await fetch("/api/parent/candidates", { cache: "no-store" });
-      if (candidateResponse.ok) {
-        setCandidates((await candidateResponse.json() as { candidates: Candidate[] }).candidates);
-      }
     } catch {
       setError("De leden konden niet worden geladen.");
     } finally {
@@ -122,23 +111,6 @@ export function MemberDashboard() {
   }
 
   useEffect(() => { void load(); }, []);
-
-  async function linkMember(memberId: string) {
-    setLinking(memberId);
-    try {
-      const response = await fetch("/api/parent/member-links", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
-        body: JSON.stringify({ memberId }),
-      });
-      if (!response.ok) throw new Error();
-      await load();
-    } catch {
-      setError("Dit lid kon niet worden gekoppeld.");
-    } finally {
-      setLinking(null);
-    }
-  }
 
   async function logout() {
     await fetch("/api/parent-auth/logout", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" } });
@@ -179,7 +151,7 @@ export function MemberDashboard() {
       </div>
 
       {members.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-card"><UserRound className="mx-auto size-7 text-brand-500" /><h2 className="mt-4 text-base font-bold text-brand-900">Nog geen gekoppeld lid</h2><p className="mt-2 text-sm text-slate-500">Koppel hieronder een actief lid dat bij hetzelfde e-mailadres hoort.</p></div>
+        <div className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-card"><UserRound className="mx-auto size-7 text-brand-500" /><h2 className="mt-4 text-base font-bold text-brand-900">Nog geen toegang geactiveerd</h2><p className="mt-2 text-sm text-slate-500">De kledingbeheerder kan portaaltoegang voor een lid activeren. Een gedeeld e-mailadres koppelt nooit automatisch kinderen.</p></div>
       ) : (
         <div className="mt-8 grid gap-5 lg:grid-cols-2">
           {members.map((member) => (
@@ -187,6 +159,11 @@ export function MemberDashboard() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">{member.first_name.slice(0, 1)}{member.last_name.slice(0, 1)}</div><div><h2 className="text-base font-bold text-brand-900">{fullName(member)}</h2><p className="mt-1 text-xs text-slate-500">{member.team} · {member.relation_number}</p></div></div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(member.payment_status)}`}>{paymentLabel[member.payment_status ?? "open"] ?? "Nog te betalen"}</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-slate-500">
+                <span className="inline-flex items-center gap-1.5"><UserRound className="size-3.5 text-brand-500" />{genderLabel[member.gender]}</span>
+                {member.date_of_birth && <span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5 text-brand-500" />{date.format(new Date(`${member.date_of_birth}T12:00:00+02:00`))}</span>}
+                <span>{member.season_name}</span>
               </div>
               <div className="mt-6 grid grid-cols-[1fr_118px] gap-4">
                 <div><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Artikelregels</p><div className="mt-3 space-y-2">{member.article_lines.length === 0 ? <p className="text-xs text-slate-400">Nog geen artikelen gekoppeld.</p> : member.article_lines.map((line) => <div key={line.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"><span className="flex items-center gap-2 text-xs font-medium text-ink"><Shirt className="size-3.5 text-brand-500" />{line.article} · {line.size}</span><span className={`text-[10px] font-semibold ${line.status === "picked_up" ? "text-success" : line.status === "ready_for_pickup" ? "text-brand-700" : "text-warning"}`}>{statusLabel[line.status] ?? line.status}</span></div>)}</div></div>
@@ -205,13 +182,6 @@ export function MemberDashboard() {
             </article>
           ))}
         </div>
-      )}
-
-      {candidates.length > 0 && (
-        <section className="mt-8 rounded-2xl border border-line bg-white p-6 shadow-card">
-          <div className="flex items-start gap-3"><div className="flex size-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700"><Link2 className="size-4" /></div><div><h2 className="text-base font-bold text-brand-900">Nog een lid koppelen</h2><p className="mt-1 text-xs text-slate-500">Deze leden gebruiken hetzelfde e-mailadres. Koppelen is altijd een bewuste keuze.</p></div></div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">{candidates.map((candidate) => <button key={candidate.member_id} onClick={() => void linkMember(candidate.member_id)} disabled={linking === candidate.member_id} className="flex items-center justify-between rounded-lg border border-line px-4 py-3 text-left hover:border-brand-500 disabled:opacity-60"><span><span className="block text-xs font-semibold text-ink">{fullName(candidate)}</span><span className="mt-1 block text-[10px] text-slate-400">{candidate.team} · {candidate.relation_number}</span></span>{linking === candidate.member_id ? <Loader2 className="size-4 animate-spin text-brand-500" /> : <Link2 className="size-4 text-brand-500" />}</button>)}</div>
-        </section>
       )}
     </div>
   );

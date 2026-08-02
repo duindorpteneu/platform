@@ -16,6 +16,7 @@
     "supabase:stop": "supabase stop",
     "db:reset": "supabase db reset --local",
     "test:db": "supabase test db --local supabase/tests",
+    "test:db:upgrade:phase-b": "bash scripts/test-phase-b-expand-upgrade.sh",
     "test:db:mollie-fixture": "bash scripts/test-mollie-fixture-sql.sh",
     "test:db:concurrency": "bash scripts/test-fulfilment-concurrency.sh",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",

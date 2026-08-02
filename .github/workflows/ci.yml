@@ -93,6 +93,9 @@ jobs:
       - name: Export local Supabase browser build configuration
         run: node scripts/export-local-supabase-ci-env.mjs
 
+      - name: Run legacy Phase B upgrade reconciliation
+        run: pnpm test:db:upgrade:phase-b
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
