@@ -39,7 +39,7 @@ const emailOrderLineSchema = z.object({
 const emailWorkspaceOrderSchema = z.object({
   orderId: uuid,
   memberName: z.string().min(1).max(320),
-  relationNumber: z.string().min(1).max(120),
+  relationNumber: z.string().min(1).max(120).nullable(),
   team: z.string().min(1).max(160),
   season: z.string().min(1).max(120),
   amountDueCents: z.number().int().nonnegative(),
@@ -193,7 +193,7 @@ const claimedOrderEmailJobSchema = z.object({
     firstName: z.string().min(1).max(160),
     fullName: z.string().min(1).max(320),
     team: z.string().max(160).nullable(),
-    relationNumber: z.string().min(1).max(120),
+    relationNumber: z.string().min(1).max(120).nullable(),
     season: z.string().min(1).max(120),
     amountCents: z.number().int().nonnegative(),
     clubName: z.string().min(1).max(160),

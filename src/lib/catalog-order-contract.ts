@@ -66,7 +66,7 @@ export const catalogOrderWorkspaceSchema = z.object({
   members: z.array(z.object({
     id: uuid,
     name: z.string().trim().min(1).max(320),
-    relationNumber: z.string().trim().min(1).max(80),
+    relationNumber: z.string().trim().min(1).max(120).nullable(),
     team: z.string().trim().min(1).max(120),
     order: memberOrderSchema.nullable(),
   }).strict()).max(10_000),

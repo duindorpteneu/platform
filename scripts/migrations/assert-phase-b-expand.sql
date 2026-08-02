@@ -5,6 +5,22 @@ declare
   invalid_constraints integer;
   missing_rls integer;
 begin
+  if not exists(
+    select 1
+    from app.members member
+    where member.id = 'ec400000-0000-4000-8000-000000000001'
+      and member.relation_number is null
+      and member.email = 'legacy-ongeldig'
+  ) then
+    raise exception 'UPGRADE_EMPTY_IDENTITY_NOT_CANONICALIZED';
+  end if;
+  if exists(
+    select 1
+    from app.member_external_identities identity_row
+    where identity_row.member_id = 'ec400000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'UPGRADE_EMPTY_IDENTITY_PLACEHOLDER_RETAINED';
+  end if;
   if (select count(*) from app.member_seasons where member_id::text like 'eb4%') <> 2 then
     raise exception 'UPGRADE_MEMBER_SEASONS_MISMATCH';
   end if;

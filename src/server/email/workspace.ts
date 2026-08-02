@@ -116,7 +116,7 @@ export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) 
       voornaam: job.payload.firstName,
       volledige_naam: job.payload.fullName,
       team: job.payload.team ?? "Niet opgegeven",
-      relatienummer: job.payload.relationNumber,
+      relatienummer: job.payload.relationNumber ?? "Niet opgegeven",
       seizoen: job.payload.season,
       bedrag: new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(job.payload.amountCents / 100),
       betaallink: paymentUrl,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fulfilmentLookupResponseSchema } from "@/lib/fulfilment-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { fulfilmentLookupRequestSchema, hashQrBearerToken } from "@/server/qr/tokens";
 import { getSupabaseServerClient } from "@/server/supabase/server";
@@ -24,7 +25,14 @@ export async function POST(request: Request) {
       if (error.code === "P0001") return NextResponse.json({ error: "Te veel scanpogingen. Probeer het zo opnieuw." }, { status: 429 });
       return NextResponse.json({ error: "De QR-code kon niet worden gecontroleerd." }, { status: 500 });
     }
-    return NextResponse.json(data);
+    const response = fulfilmentLookupResponseSchema.safeParse(data);
+    if (!response.success) {
+      return NextResponse.json(
+        { error: "De QR-code gaf een ongeldig databaseantwoord." },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(response.data);
   } catch (error) {
     if (error instanceof Error && error.message === "STAFF_AUTHORIZATION_REQUIRED") return NextResponse.json({ error: "Geen toegang tot uitgifte." }, { status: 403 });
     return NextResponse.json({ error: "De QR-code kon niet worden verwerkt." }, { status: 500 });

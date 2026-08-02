@@ -59,6 +59,16 @@ describe("catalogus- en bestelcontract", () => {
   it("valideert de workspace strikt en weigert onverwachte PII", () => {
     const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], teamOptions: ["JO9-1"], articles: [], members: [] };
     expect(catalogOrderWorkspaceSchema.safeParse(workspace).success).toBe(true);
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      members: [{
+        id,
+        name: "Lid zonder Sportlinknummer",
+        relationNumber: null,
+        team: "JO9-1",
+        order: null,
+      }],
+    }).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
   });
 });

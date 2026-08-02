@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 type Member = {
   member_id: string;
   member_season_id: string;
-  relation_number: string;
+  relation_number: string | null;
   first_name: string;
   insertion: string | null;
   last_name: string;
@@ -158,7 +158,7 @@ export function MemberDashboard() {
           {members.map((member) => (
             <article key={member.member_season_id} className="rounded-2xl border border-line bg-white p-6 shadow-card">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">{member.first_name.slice(0, 1)}{member.last_name.slice(0, 1)}</div><div><h2 className="text-base font-bold text-brand-900">{fullName(member)}</h2><p className="mt-1 text-xs text-slate-500">{member.team} · {member.relation_number}</p></div></div>
+                <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">{member.first_name.slice(0, 1)}{member.last_name.slice(0, 1)}</div><div><h2 className="text-base font-bold text-brand-900">{fullName(member)}</h2><p className="mt-1 text-xs text-slate-500">{member.team} · {member.relation_number ?? "Geen relatienummer"}</p></div></div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(member.payment_status)}`}>{paymentLabel[member.payment_status ?? "open"] ?? "Nog te betalen"}</span>
               </div>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-slate-500">

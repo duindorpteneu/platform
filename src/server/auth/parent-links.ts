@@ -5,7 +5,7 @@ export const parentMemberLinkSchema = z.object({ memberId: z.string().uuid() }).
 export type ParentMember = {
   member_id: string;
   member_season_id: string;
-  relation_number: string;
+  relation_number: string | null;
   first_name: string;
   insertion: string | null;
   last_name: string;

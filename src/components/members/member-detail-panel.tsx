@@ -66,7 +66,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-200">Liddetail</p>
           <h2 className="mt-2 truncate text-lg font-bold">{detail.memberName}</h2>
-          <p className="mt-1 text-xs text-blue-100/75">{detail.team} · {detail.relationNumber}</p>
+          <p className="mt-1 text-xs text-blue-100/75">{detail.team} · {detail.relationNumber ?? "Geen relatienummer"}</p>
         </div>
         <Link href={closeHref} aria-label="Sluit liddetail" className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-blue-100 hover:bg-white/20 hover:text-white"><X className="size-4" /></Link>
       </div>
@@ -75,7 +75,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
         <section className="p-5">
           <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Basisgegevens</h3><span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", detail.activeForSeason ? "bg-emerald-50 text-success" : "bg-slate-100 text-slate-500")}>{detail.activeForSeason ? "Actief" : "Inactief"}</span></div>
           <dl className="mt-4 space-y-3 text-xs">
-            <div className="flex items-start gap-3"><Mail className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">E-mailadres</dt><dd className="mt-0.5 break-all font-semibold text-ink">{detail.email}</dd></div></div>
+            <div className="flex items-start gap-3"><Mail className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">E-mailadres</dt><dd className="mt-0.5 break-all font-semibold text-ink">{detail.email ?? "Niet geregistreerd"}</dd></div></div>
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Seizoen</dt><dd className="mt-0.5 font-semibold text-ink">{detail.activeSeason?.name ?? "Geen actief seizoen"}</dd></div></div>
             <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Geslacht</dt><dd className="mt-0.5 font-semibold text-ink">{genderLabels[detail.gender]}</dd></div></div>
             {detail.dateOfBirth && <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Geboortedatum</dt><dd className="mt-0.5 font-semibold text-ink">{date(detail.dateOfBirth)}</dd></div></div>}

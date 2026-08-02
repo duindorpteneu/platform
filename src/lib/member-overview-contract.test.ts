@@ -93,6 +93,10 @@ describe("member overview contract", () => {
 
   it("accepts a minimal list without e-mail", () => {
     expect(memberListResponseSchema.safeParse(list).success).toBe(true);
+    expect(memberListResponseSchema.safeParse({
+      ...list,
+      members: [{ ...list.members[0], relationNumber: null }],
+    }).success).toBe(true);
   });
 
   it("rejects PII added to a list row", () => {
@@ -102,6 +106,15 @@ describe("member overview contract", () => {
   it("accepts operationele detaildata but rejects a QR token", () => {
     expect(memberDetailResponseSchema.safeParse(detail).success).toBe(true);
     expect(memberDetailResponseSchema.safeParse({ ...detail, dateOfBirth: null }).success).toBe(true);
+    expect(memberDetailResponseSchema.safeParse({
+      ...detail,
+      relationNumber: null,
+      email: null,
+    }).success).toBe(true);
+    expect(memberDetailResponseSchema.safeParse({
+      ...detail,
+      email: "ongeldig-geimporteerd-adres",
+    }).success).toBe(true);
     expect(memberDetailResponseSchema.safeParse({ ...detail, order: { ...detail.order, qrToken: "secret" } }).success).toBe(false);
   });
 

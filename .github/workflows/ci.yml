@@ -114,6 +114,9 @@ jobs:
       - name: Run variant alias concurrency test
         run: pnpm test:db:variant-concurrency
 
+      - name: Run action-item concurrency test
+        run: pnpm test:db:action-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 

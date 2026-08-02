@@ -81,6 +81,20 @@ insert into app.members(
     true
   );
 
+-- Legacy schema allowed empty identifiers and non-canonical e-mail casing.
+-- This row is deliberately outside the financial fingerprint fixture.
+insert into app.members(
+  id, relation_number, first_name, last_name, email, team, active_for_season
+) values (
+  'ec400000-0000-4000-8000-000000000001',
+  '',
+  'Legacy',
+  'Zondernummer',
+  ' LEGACY-ONGELDIG ',
+  'Niet ingedeeld',
+  true
+);
+
 insert into app.member_orders(
   id, member_id, season_id, amount_due_cents, order_status
 ) values

@@ -40,7 +40,7 @@ export const portalAccessWorkspaceSchema = z.object({
   members: z.array(z.object({
     memberSeasonId: uuid,
     memberId: uuid,
-    relationNumber: z.string().trim().min(1).max(120),
+    relationNumber: z.string().trim().min(1).max(120).nullable(),
     firstName: z.string().trim().min(1).max(160),
     insertion: z.string().max(80).nullable(),
     lastName: z.string().trim().min(1).max(160),
