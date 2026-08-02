@@ -99,6 +99,9 @@ jobs:
       - name: Run database and RLS tests
         run: pnpm test:db
 
+      - name: Run isolated Mollie fixture SQL integration
+        run: pnpm test:db:mollie-fixture
+
       - name: Run fulfilment concurrency test
         run: pnpm test:db:concurrency
 

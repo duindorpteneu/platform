@@ -19,6 +19,7 @@ Deze verificatie gebruikt alleen fictieve gegevens en provider-testmodi. Elk sce
 - [ ] Eén fictief account per staffrol heeft TOTP/AAL2; er is ook een geblokkeerd account.
 - [ ] Er zijn fixtures voor één e-mail/één lid, één e-mail/drie leden, betaald, onbetaald, nalevering en dubbele uitgifteconcurrentie.
 - [ ] Mollie staat in testmode en webhook gebruikt publiek HTTPS.
+- [ ] De Mollie-acceptatie vindt een bestaand actief open stagingseizoen en `mollie_enabled=true`; het productschema retourneert voor alle vier verwijderde fixture-RPC's `404/PGRST202`.
 - [ ] SendGrid-afzender/template en signed event webhook zijn staging-specifiek.
 - [ ] Publieke en interne health, queue, webhook- en reconciliatiemonitoring zijn zichtbaar.
 - [ ] Providerflags starten uit en worden alleen binnen de expliciete providerscenario’s aangezet.
@@ -71,7 +72,7 @@ Bewijs: `________________`
 - [ ] Rond hosted checkout af; de redirect alleen wijzigt paid niet.
 - [ ] Laat de publiek bereikbare webhook de actuele betaling bij Mollie ophalen en verwerken.
 - [ ] Controleer één immutable paid-record, paid order, actieve QR en één mailjob.
-- [ ] Controleer dat de run-unieke ouder-, lid-, order-, payment-, QR-, e-mail- en eventfixtures in `finally` zijn verwijderd; het testmode-providerrecord blijft zonder PII in het stagingprofiel staan.
+- [ ] Controleer dat de externe target-locked SQL-runner geen globale instelling of duurzame fixturetabel maakt en dat alle run-unieke ouder-, lid-, order-, payment-, QR-, e-mail- en eventfixtures in `finally` zijn verwijderd; het testmode-providerrecord blijft zonder PII in het stagingprofiel staan.
 
 Verwacht canoniek resultaat: payment paid, QR actief, mailjob aangemaakt.
 Bewijs: `________________`

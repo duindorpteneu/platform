@@ -102,6 +102,7 @@ describe("deployment environment isolation", () => {
     expect(workflow).toContain(
       "MOLLIE_PROFILE_ID: ${{ secrets.MOLLIE_PROFILE_ID || vars.MOLLIE_PROFILE_ID }}",
     );
+    expect(workflow).toContain("group: deploy-duindorpteneu-staging");
   });
 
   it("keeps the hosted PostgREST schema list aligned with local Supabase", () => {
@@ -135,12 +136,19 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain("/rest/v1/rpc/create_staff_app_session_for_user");
     expect(contractScript).toContain("/rest/v1/rpc/get_staff_app_session");
     expect(contractScript).toContain("/rest/v1/rpc/revoke_staff_app_session");
+    expect(contractScript).toContain('"prepare_mollie_acceptance_fixture"');
+    expect(contractScript).toContain('"get_mollie_acceptance_payment_state"');
+    expect(contractScript).toContain('"cleanup_mollie_acceptance_fixture"');
+    expect(contractScript).toContain('"parent_otp_members_visible"');
+    expect(contractScript).toContain('response.status !== 404 || code !== "PGRST202"');
     expect(contractScript).toContain('safeRemoteCode(result?.code) !== "42501"');
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
-    expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
+    const postgrestGate = deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs");
+    expect(postgrestGate)
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
+    expect(postgrestGate).toBeLessThan(deployScript.indexOf("activated=true"));
   });
 
   it("blocks staging and production until the public proxy rejects chunked oversize bodies", () => {
@@ -178,6 +186,36 @@ describe("deployment environment isolation", () => {
       "revoke_staff_app_session(text)",
     ]) expect(migration).toContain(`grant execute on function app.${signature} to service_role`);
     expect(migration).toContain("notify pgrst, 'reload schema'");
+  });
+
+  it("removes every acceptance-only RPC without cascade or product fixture state", () => {
+    const migration = readFileSync(
+      path.join(
+        repositoryRoot,
+        "supabase/migrations/20260802170000_remove_product_mollie_acceptance_fixtures.sql",
+      ),
+      "utf8",
+    );
+    const acceptance = readFileSync(
+      path.join(repositoryRoot, "scripts/providers/mollie-staging-acceptance.mjs"),
+      "utf8",
+    );
+    for (const functionName of [
+      "prepare_mollie_acceptance_fixture",
+      "get_mollie_acceptance_payment_state",
+      "cleanup_mollie_acceptance_fixture",
+      "is_mollie_acceptance_identity",
+      "parent_otp_members_visible",
+    ]) {
+      expect(migration).toContain(functionName);
+      expect(acceptance).not.toContain(`"${functionName}"`);
+    }
+    expect(migration).toContain("notify pgrst, 'reload schema'");
+    expect(migration).toContain("ACTIVE_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_CLEANUP");
+    expect(migration).toContain("ORPHAN_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_REVIEW");
+    expect(migration.indexOf("ACTIVE_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_CLEANUP"))
+      .toBeLessThan(migration.indexOf("drop function if exists"));
+    expect(migration).not.toMatch(/\bcascade\b/i);
   });
 
   it("does not serialize empty optional provider values into runtime", () => {

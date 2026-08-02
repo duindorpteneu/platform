@@ -96,6 +96,48 @@ async function verifyStaffSessionContract(url, serviceRoleKey) {
   }
 }
 
+async function verifyAcceptanceFixtureContractAbsent(url, serviceRoleKey) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const identityPayload = {
+      p_paid_member_id: null,
+      p_mismatch_member_id: null,
+      p_paid_order_id: null,
+      p_mismatch_order_id: null,
+      p_paid_relation: "FORBIDDEN",
+      p_mismatch_relation: "FORBIDDEN",
+      p_fixture_email: "forbidden@example.invalid",
+    };
+    const forbiddenContracts = [
+      ["prepare_mollie_acceptance_fixture", identityPayload],
+      ["get_mollie_acceptance_payment_state", { p_order_id: null, p_member_id: null }],
+      ["cleanup_mollie_acceptance_fixture", identityPayload],
+      ["parent_otp_members_visible", { p_member_ids: [], p_email: "forbidden@example.invalid" }],
+    ];
+
+    for (const [rpcName, payload] of forbiddenContracts) {
+      const response = await fetch(new URL(`/rest/v1/rpc/${rpcName}`, url), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const result = await response.json().catch(() => null);
+      const code = safeRemoteCode(result?.code);
+      if (response.status !== 404 || code !== "PGRST202") {
+        throw new Error(`ACCEPTANCE_FIXTURE_RPC_VISIBLE_${response.status}_${code}`);
+      }
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function main() {
   const url = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
@@ -106,7 +148,10 @@ async function main() {
       const contract = await loadContractVersion(url, serviceRoleKey);
       if (contract.version === expectedVersion && contract.ready === true) {
         await verifyStaffSessionContract(url, serviceRoleKey);
-        process.stdout.write("PostgREST-contract geslaagd: instellingen-RPC's zijn actueel en uitvoerbaar.\n");
+        await verifyAcceptanceFixtureContractAbsent(url, serviceRoleKey);
+        process.stdout.write(
+          "PostgREST-contract geslaagd: runtime-RPC's zijn actueel en staging-fixture-RPC's ontbreken.\n",
+        );
         return;
       }
       lastCode = contract.version === expectedVersion ? "RPC_PRIVILEGES_INVALID" : "VERSION_NOT_VISIBLE";

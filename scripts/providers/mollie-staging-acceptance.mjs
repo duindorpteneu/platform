@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const STAGING_APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
 export const STAGING_SUPABASE_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
 export const MOLLIE_API_BASE_URL = "https://api.mollie.com";
 export const ACCEPTANCE_CONFIRMATION = "STAGING-MOLLIE-TESTMODE";
+export const POSTGRES_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 
 const releaseShaPattern = /^[a-f0-9]{40}$/;
 const profileIdPattern = /^pfl_[A-Za-z0-9]+$/;
 const providerPaymentIdPattern = /^tr_[A-Za-z0-9]+$/;
 const runMarkerPattern = /^[0-9]{1,20}-[0-9]{1,6}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const fixtureRelationPattern = /^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-[PM]$/;
+const fixtureEmailPattern = /^mollie-acceptance\+[0-9]{1,20}a[0-9]{1,6}@example\.invalid$/;
+const fixtureSqlDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "sql");
+const fixtureSqlFiles = Object.freeze({
+  prepare: "mollie-fixture-prepare.sql",
+  state: "mollie-fixture-state.sql",
+  cleanup: "mollie-fixture-cleanup.sql",
+});
 
 function fail(code) {
   throw new Error(code);
@@ -27,15 +39,21 @@ function assertDbTarget(dbUrlValue, projectRef) {
   if (!["postgres:", "postgresql:"].includes(dbUrl.protocol) || !dbUrl.hostname || !dbUrl.username) {
     fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
   }
+  if (!dbUrl.password || dbUrl.pathname !== "/postgres") fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
   const sslMode = dbUrl.searchParams.get("sslmode");
-  if (sslMode && !["require", "verify-ca", "verify-full"].includes(sslMode)) {
+  if (!sslMode || !["require", "verify-ca", "verify-full"].includes(sslMode)) {
     fail("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
   }
 
   const directHost = `db.${projectRef}.supabase.co`;
+  const username = decodeURIComponent(dbUrl.username);
+  const directTarget = dbUrl.hostname === directHost
+    && username === "postgres"
+    && (dbUrl.port === "" || dbUrl.port === "5432");
   const poolerTarget = dbUrl.hostname.endsWith(".pooler.supabase.com")
-    && decodeURIComponent(dbUrl.username).endsWith(`.${projectRef}`);
-  if (dbUrl.hostname !== directHost && !poolerTarget) fail("MOLLIE_ACCEPTANCE_DATABASE_TARGET_MISMATCH");
+    && username === `postgres.${projectRef}`
+    && ["5432", "6543"].includes(dbUrl.port);
+  if (!directTarget && !poolerTarget) fail("MOLLIE_ACCEPTANCE_DATABASE_TARGET_MISMATCH");
 }
 
 export function validateTargetConfiguration(env) {
@@ -77,8 +95,7 @@ export function validateConfiguration(env) {
 
 function validateCleanupConfiguration(env) {
   const target = validateTargetConfiguration(env);
-  if ((env.SUPABASE_SERVICE_ROLE_KEY ?? "").length < 40) fail("MOLLIE_ACCEPTANCE_SERVICE_ROLE_KEY_INVALID");
-  return { ...target, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY };
+  return target;
 }
 
 function uuidFromMarker(runMarker, label) {
@@ -107,16 +124,99 @@ export function createFixtureIdentity(runMarker) {
   };
 }
 
-function fixturePayload(identity) {
+function validateFixtureIdentity(identity) {
+  if (!identity || !uuidPattern.test(identity.paidMemberId ?? "")
+    || !uuidPattern.test(identity.mismatchMemberId ?? "")
+    || !uuidPattern.test(identity.paidOrderId ?? "")
+    || !uuidPattern.test(identity.mismatchOrderId ?? "")
+    || identity.paidMemberId === identity.mismatchMemberId
+    || identity.paidOrderId === identity.mismatchOrderId
+    || !fixtureRelationPattern.test(identity.paidRelation ?? "")
+    || !fixtureRelationPattern.test(identity.mismatchRelation ?? "")
+    || !identity.paidRelation.endsWith("-P")
+    || !identity.mismatchRelation.endsWith("-M")
+    || !fixtureEmailPattern.test(identity.fixtureEmail ?? "")) {
+    fail("MOLLIE_ACCEPTANCE_FIXTURE_IDENTITY_INVALID");
+  }
+}
+
+function fixtureEnvironment(config, identity, stateIdentity) {
   return {
-    p_paid_member_id: identity.paidMemberId,
-    p_mismatch_member_id: identity.mismatchMemberId,
-    p_paid_order_id: identity.paidOrderId,
-    p_mismatch_order_id: identity.mismatchOrderId,
-    p_paid_relation: identity.paidRelation,
-    p_mismatch_relation: identity.mismatchRelation,
-    p_fixture_email: identity.fixtureEmail,
+    ...process.env,
+    TARGET_DB_URL: config.dbUrl,
+    FIXTURE_PAID_MEMBER_ID: identity.paidMemberId,
+    FIXTURE_MISMATCH_MEMBER_ID: identity.mismatchMemberId,
+    FIXTURE_PAID_ORDER_ID: identity.paidOrderId,
+    FIXTURE_MISMATCH_ORDER_ID: identity.mismatchOrderId,
+    FIXTURE_PAID_RELATION: identity.paidRelation,
+    FIXTURE_MISMATCH_RELATION: identity.mismatchRelation,
+    FIXTURE_EMAIL: identity.fixtureEmail,
+    FIXTURE_STATE_ORDER_ID: stateIdentity?.orderId ?? identity.paidOrderId,
+    FIXTURE_STATE_MEMBER_ID: stateIdentity?.memberId ?? identity.paidMemberId,
   };
+}
+
+const fixtureSqlCommand = [
+  "psql \"$TARGET_DB_URL\" --no-psqlrc --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align",
+  "--set=paid_member_id=\"$FIXTURE_PAID_MEMBER_ID\"",
+  "--set=mismatch_member_id=\"$FIXTURE_MISMATCH_MEMBER_ID\"",
+  "--set=paid_order_id=\"$FIXTURE_PAID_ORDER_ID\"",
+  "--set=mismatch_order_id=\"$FIXTURE_MISMATCH_ORDER_ID\"",
+  "--set=paid_relation=\"$FIXTURE_PAID_RELATION\"",
+  "--set=mismatch_relation=\"$FIXTURE_MISMATCH_RELATION\"",
+  "--set=fixture_email=\"$FIXTURE_EMAIL\"",
+  "--set=state_order_id=\"$FIXTURE_STATE_ORDER_ID\"",
+  "--set=state_member_id=\"$FIXTURE_STATE_MEMBER_ID\"",
+].join(" ");
+
+export function runFixtureSql(config, action, identity, dependencies = {}) {
+  assertDbTarget(config?.dbUrl ?? "", STAGING_SUPABASE_PROJECT_REF);
+  validateFixtureIdentity(identity);
+  const sqlFile = fixtureSqlFiles[action];
+  if (!sqlFile) fail("MOLLIE_ACCEPTANCE_FIXTURE_ACTION_INVALID");
+  const stateIdentity = dependencies.stateIdentity;
+  if (action === "state") {
+    const validPair = (stateIdentity?.orderId === identity.paidOrderId
+        && stateIdentity?.memberId === identity.paidMemberId)
+      || (stateIdentity?.orderId === identity.mismatchOrderId
+        && stateIdentity?.memberId === identity.mismatchMemberId);
+    if (!validPair) fail("MOLLIE_ACCEPTANCE_FIXTURE_STATE_IDENTITY_INVALID");
+  }
+
+  const spawnImpl = dependencies.spawnImpl ?? spawnSync;
+  const sql = readFileSync(path.join(fixtureSqlDirectory, sqlFile), "utf8");
+  const environment = fixtureEnvironment(config, identity, stateIdentity);
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const result = spawnImpl("docker", [
+      "run", "--rm", "--interactive", "--read-only", "--cap-drop=ALL",
+      "--security-opt", "no-new-privileges:true",
+      "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+      "--env", "TARGET_DB_URL",
+      "--env", "FIXTURE_PAID_MEMBER_ID",
+      "--env", "FIXTURE_MISMATCH_MEMBER_ID",
+      "--env", "FIXTURE_PAID_ORDER_ID",
+      "--env", "FIXTURE_MISMATCH_ORDER_ID",
+      "--env", "FIXTURE_PAID_RELATION",
+      "--env", "FIXTURE_MISMATCH_RELATION",
+      "--env", "FIXTURE_EMAIL",
+      "--env", "FIXTURE_STATE_ORDER_ID",
+      "--env", "FIXTURE_STATE_MEMBER_ID",
+      "--entrypoint", "sh", POSTGRES_IMAGE, "-ceu", fixtureSqlCommand,
+    ], {
+      env: environment,
+      input: sql,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "ignore"],
+      timeout: 45_000,
+      maxBuffer: 200_000,
+    });
+    if (result.status === 0 && typeof result.stdout === "string") {
+      const output = result.stdout.trim();
+      if (output.length > 100_000) fail("MOLLIE_ACCEPTANCE_FIXTURE_RESPONSE_INVALID");
+      return parseJsonResponseText(output || "null", "MOLLIE_ACCEPTANCE_FIXTURE_RESPONSE_INVALID");
+    }
+  }
+  fail(`MOLLIE_ACCEPTANCE_FIXTURE_${action.toUpperCase()}_FAILED`);
 }
 
 function parseJsonResponseText(text, code) {
@@ -191,10 +291,6 @@ const stagingParentRpcNames = new Set([
   "consume_parent_otp",
   "create_parent_session",
   "link_parent_member",
-  "parent_otp_members_visible",
-  "prepare_mollie_acceptance_fixture",
-  "get_mollie_acceptance_payment_state",
-  "cleanup_mollie_acceptance_fixture",
 ]);
 
 function safeRemoteCode(value) {
@@ -226,20 +322,6 @@ export async function stagingParentRpc(config, rpcName, payload, fetchImpl = fet
     fail(`MOLLIE_ACCEPTANCE_PARENT_RPC_${rpcName.toUpperCase()}_HTTP_${response.status}_${code}`);
   }
   return parseJsonResponseText(text, "MOLLIE_ACCEPTANCE_PARENT_RPC_RESPONSE_INVALID");
-}
-
-export async function waitForStagingParentMembers(config, identity, dependencies = {}) {
-  const fetchImpl = dependencies.fetchImpl ?? fetch;
-  const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
-  for (let attempt = 1; attempt <= 20; attempt += 1) {
-    const visible = await stagingParentRpc(config, "parent_otp_members_visible", {
-      p_member_ids: [identity.paidMemberId, identity.mismatchMemberId],
-      p_email: identity.fixtureEmail,
-    }, fetchImpl);
-    if (visible === true) return;
-    if (attempt < 20) await sleep(2_000);
-  }
-  fail("MOLLIE_ACCEPTANCE_PARENT_MEMBERS_NOT_VISIBLE");
 }
 
 async function createParentAuthFixture(config, identity, parentTokenHash, fetchImpl) {
@@ -583,11 +665,8 @@ export async function postConcurrentReplays(config, providerPaymentId, fetchImpl
   ]);
 }
 
-async function paymentState(config, orderId, memberId, fetchImpl) {
-  return stagingParentRpc(config, "get_mollie_acceptance_payment_state", {
-    p_order_id: orderId,
-    p_member_id: memberId,
-  }, fetchImpl);
+async function paymentState(config, identity, orderId, memberId, runSql) {
+  return runSql(config, "state", identity, { stateIdentity: { orderId, memberId } });
 }
 
 async function waitForProvider(config, providerPaymentId, predicate, dependencies) {
@@ -669,6 +748,7 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   const sleep = overrides.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const completeCheckout = overrides.completeCheckout ?? completeHostedTestCheckout;
   const completeRefund = overrides.completeRefund ?? completeHostedTestRefund;
+  const runSql = overrides.runSql ?? runFixtureSql;
   const parentSessionToken = randomBytes(32).toString("base64url");
   const parentTokenHash = createHmac("sha256", config.pepper).update(parentSessionToken).digest("hex");
   let fixturePrepared = false;
@@ -676,33 +756,40 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   await assertRelease(config, fetchImpl);
   await assertProfile(config, fetchImpl);
   try {
-    const prepared = await stagingParentRpc(config, "prepare_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
-    if (prepared !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_PREPARE_INVALID");
+    const prepared = await runSql(config, "prepare", identity);
+    if (prepared?.prepared !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_PREPARE_INVALID");
     fixturePrepared = true;
 
-    console.log("Mollie stagingfixture is via de hosted Data API geïsoleerd voorbereid.");
-    await waitForStagingParentMembers(config, identity, { fetchImpl, sleep });
-    console.log("Stagingfixture is via de hosted Data API zichtbaar.");
+    console.log("Mollie stagingfixture is via het directe staging-databaseharnas geïsoleerd voorbereid.");
     await createParentAuthFixture(config, identity, parentTokenHash, fetchImpl);
-    console.log("Oudersessiefixture is via het hosted authenticatiecontract actief.");
+    console.log("Fixture en oudersessie zijn via het hosted authenticatiecontract zichtbaar.");
     const paidCheckoutUrl = await createCheckout(config, identity.paidOrderId, parentSessionToken, fetchImpl);
-    const paidBinding = await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl);
+    const paidBinding = await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql);
     if (!uuidPattern.test(paidBinding?.paymentId ?? "") || !providerPaymentIdPattern.test(paidBinding?.providerPaymentId ?? "")
       || paidBinding?.amountCents !== 100) fail("MOLLIE_ACCEPTANCE_PAID_BINDING_INVALID");
 
     await completeCheckout(paidCheckoutUrl);
     await waitForProvider(config, paidBinding.providerPaymentId, (payment) => payment?.status === "paid", { fetchImpl, sleep });
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-    const paidSnapshot = await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl);
+    const paidSnapshot = await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql);
     assertPaidSnapshot(paidSnapshot);
     console.log("Paid-scenario is via de publieke stagingwebhook gevalideerd.");
 
     await postConcurrentReplays(config, paidBinding.providerPaymentId, fetchImpl);
-    assert.deepEqual(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl), paidSnapshot);
+    assert.deepEqual(
+      await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
+      paidSnapshot,
+    );
     console.log("Drie gelijktijdige webhookreplays bleven idempotent.");
 
     const mismatchCheckoutUrl = await createCheckout(config, identity.mismatchOrderId, parentSessionToken, fetchImpl);
-    const mismatchBinding = await paymentState(config, identity.mismatchOrderId, identity.mismatchMemberId, fetchImpl);
+    const mismatchBinding = await paymentState(
+      config,
+      identity,
+      identity.mismatchOrderId,
+      identity.mismatchMemberId,
+      runSql,
+    );
     if (!uuidPattern.test(mismatchBinding?.paymentId ?? "") || !providerPaymentIdPattern.test(mismatchBinding?.providerPaymentId ?? "")
       || mismatchBinding?.amountCents !== 100) fail("MOLLIE_ACCEPTANCE_MISMATCH_BINDING_INVALID");
     const mismatchProviderPayment = assertTestPayment(config,
@@ -719,7 +806,9 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     await completeCheckout(mismatchCheckoutUrl);
     await waitForProvider(config, mismatchBinding.providerPaymentId, (payment) => payment?.status === "paid", { fetchImpl, sleep });
     await postPublicWebhook(config, mismatchBinding.providerPaymentId, fetchImpl);
-    assertMismatchSnapshot(await paymentState(config, identity.mismatchOrderId, identity.mismatchMemberId, fetchImpl));
+    assertMismatchSnapshot(
+      await paymentState(config, identity, identity.mismatchOrderId, identity.mismatchMemberId, runSql),
+    );
     console.log("Metadata-afwijking bleef unpaid en zichtbaar voor handmatige review.");
 
     const paidProviderPayment = assertTestPayment(config,
@@ -734,17 +823,22 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
         && refund?.amount?.value === paidProviderPayment.amount.value;
     }, { fetchImpl, sleep });
     if (providerRefund.status === "pending") {
-      assert.deepEqual(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl), paidSnapshot);
+      assert.deepEqual(
+        await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
+        paidSnapshot,
+      );
       console.log("Volledige refund is door Mollie geaccepteerd als pending; lokaal bleef betaald totdat de providerwebhook verschuldigd is.");
     } else {
       await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-      assertRefundSnapshot(await paymentState(config, identity.paidOrderId, identity.paidMemberId, fetchImpl));
+      assertRefundSnapshot(
+        await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
+      );
       console.log("Finale providerrefund trok de QR via de publieke stagingwebhook in.");
     }
   } finally {
     if (fixturePrepared) {
-      const cleaned = await stagingParentRpc(config, "cleanup_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
-      if (cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
+      const cleaned = await runSql(config, "cleanup", identity);
+      if (cleaned?.cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
     }
   }
 }
@@ -752,9 +846,9 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
 export async function cleanupAcceptance(rawEnv = process.env, overrides = {}) {
   const config = validateCleanupConfiguration(rawEnv);
   const identity = createFixtureIdentity(config.runMarker);
-  const fetchImpl = overrides.fetchImpl ?? fetch;
-  const cleaned = await stagingParentRpc(config, "cleanup_mollie_acceptance_fixture", fixturePayload(identity), fetchImpl);
-  if (cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
+  const runSql = overrides.runSql ?? runFixtureSql;
+  const cleaned = await runSql(config, "cleanup", identity);
+  if (cleaned?.cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
 }
 
 async function main() {

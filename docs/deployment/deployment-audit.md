@@ -11,7 +11,8 @@
 - Staging `APP_HOST` bevatte een extra `d`; deze GitHub variable is gecorrigeerd. Andere variables waren correct en Supabaseprojecten verschillen.
 - Alle bestaande runtime-/providersecret-namen, inclusief `PARENT_TOKEN_PEPPER` en `CRON_SECRET`, zijn aanwezig. Nieuw ontbreekt `OPERATIONS_HEARTBEAT_URL`; productionpreflight blokkeert bewust totdat een onafhankelijke monitor is gekozen. Voor de Mollie-acceptatie ontbreekt de niet-geheime stagingvariable `MOLLIE_PROFILE_ID`.
 - Production vereist review door `TIXOCEO`. Er is geen productionapproval verleend; superseded wachtende runs zijn na succesvolle stagingdeploy geannuleerd.
+- De vier staging-specifieke Mollie-acceptatie-RPC's en hun ledgertabel zijn forward-only uit het productschema verwijderd. De externe acceptance-run vereist exact staging/TLS, deelt de stagingdeploy-serialisatiegroep, wijzigt geen globale instellingen en de deploy blokkeert vóór activatie wanneer een verboden RPC niet exact `404/PGRST202` retourneert.
 
 ## Resterende externe validatie
 
-Staging is meermaals via het immutable pad gedeployed; de actuele mobiele release `965233d…` is publiek groen. Production is bewust niet uitgevoerd. Voor NO-GO naar GO zijn nog nodig: de afgeschermde core/Mollie/restore-runs op de nieuwe merge-SHA, een echte heartbeat-/alarmtest, SendGrid Mail Send zonder 401 en bewijs dat Duindorp staging, Duindorp production en Castivo afzonderlijke Linux-users/rootless sockets/runners gebruiken.
+Staging is meermaals via het immutable pad gedeployed; de actuele mobiele release `965233d…` is publiek groen. Production is bewust niet uitgevoerd. Voor NO-GO naar GO zijn nog nodig: de afgeschermde core/Mollie/restore-runs op de nieuwe merge-SHA (inclusief afwezigheidsbewijs voor alle fixture-RPC's), een echte heartbeat-/alarmtest, SendGrid Mail Send zonder 401 en bewijs dat Duindorp staging, Duindorp production en Castivo afzonderlijke Linux-users/rootless sockets/runners gebruiken.
