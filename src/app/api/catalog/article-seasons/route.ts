@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot seizoenskoppelingen." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Een geselecteerd artikel bestaat niet meer." }, { status: 404 });
       if (error.code === "23514") return NextResponse.json({ error: "Alleen een open seizoen kan worden gewijzigd." }, { status: 409 });
+      if (error.code === "23503") return NextResponse.json({ error: "Een artikel in een historische, concept- of actieve pakketrevisie kan niet van dit seizoen worden losgekoppeld." }, { status: 409 });
       return NextResponse.json({ error: "De seizoenskoppelingen konden niet veilig worden opgeslagen." }, { status: 422 });
     }
     const response = bulkArticleSeasonResponseSchema.safeParse(data);

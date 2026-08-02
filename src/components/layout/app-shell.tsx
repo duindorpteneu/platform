@@ -94,6 +94,10 @@ function NavigationPanel({
             <Settings className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
             Instellingen
           </Link>}
+          {staff.role === "beheerder" && <Link href="/backoffice/pakketten" onClick={onNavigate} aria-current={navigationItemActive(pathname, "/backoffice/pakketten") ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", navigationItemActive(pathname, "/backoffice/pakketten") && "bg-white/12 text-white shadow-sm")}>
+            <Package className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
+            Pakketten
+          </Link>}
           <Link href="/backoffice/audit" onClick={onNavigate} aria-current={navigationItemActive(pathname, "/backoffice/audit") ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-blue-100 transition-colors hover:bg-white/10 hover:text-white", navigationItemActive(pathname, "/backoffice/audit") && "bg-white/12 text-white shadow-sm")}>
             <ShieldCheck className="size-[17px] text-blue-200/80" strokeWidth={1.8} />
             Auditlog

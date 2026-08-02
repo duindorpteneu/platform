@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot de catalogus." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Artikel of seizoen bestaat niet meer." }, { status: 404 });
       if (error.code === "23505") return NextResponse.json({ error: "Deze artikelnaam of code bestaat al." }, { status: 409 });
+      if (error.message.includes("PACKAGE_PRODUCT_STILL_IN_USE")) return NextResponse.json({ error: "Dit artikel staat in een concept of actief pakket. Pas dat pakket eerst aan." }, { status: 409 });
       return NextResponse.json({ error: "Het artikel kon niet veilig worden opgeslagen." }, { status: 422 });
     }
     const response = catalogMutationResponseSchema.safeParse(data);

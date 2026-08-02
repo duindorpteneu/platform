@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       if (error.code === "P0002") return NextResponse.json({ error: "Artikelvariant bestaat niet meer." }, { status: 404 });
       if (error.code === "23505") return NextResponse.json({ error: "Deze maat bestaat al voor het artikel." }, { status: 409 });
       if (error.message.includes("USED_VARIANT_SIZE_IMMUTABLE")) return NextResponse.json({ error: "De maat van een gebruikte variant kan niet worden gewijzigd. Maak een nieuwe variant aan." }, { status: 409 });
+      if (error.message.includes("PACKAGE_LAST_ACTIVE_VARIANT_REQUIRED")) return NextResponse.json({ error: "Een product in een concept of actief pakket moet minstens één actieve maat houden." }, { status: 409 });
       return NextResponse.json({ error: "De variant kon niet veilig worden opgeslagen." }, { status: 422 });
     }
     const response = catalogMutationResponseSchema.safeParse(data);

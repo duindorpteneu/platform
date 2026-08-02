@@ -345,10 +345,11 @@ insert into app.package_template_revisions(
   14900
 );
 insert into app.package_template_items(
-  id, revision_id, article_id, quantity, product_name_snapshot, product_code_snapshot
+  id, revision_id, season_id, article_id, quantity, product_name_snapshot, product_code_snapshot
 ) values (
   'fa720000-0000-4000-8000-000000000001',
   'fa710000-0000-4000-8000-000000000001',
+  'fa100000-0000-4000-8000-000000000001',
   'fa400000-0000-4000-8000-000000000001',
   1,
   'Hernoemde broek',
