@@ -69,7 +69,9 @@ export const dynamicImportUploadResponseSchema = z.object({
 
 export const stagedImportPayloadSchema = z.object({
   batchId: uuid,
+  actorId: uuid,
   seasonId: uuid,
+  previewRevision: z.number().int().nonnegative(),
   checksum: z.string().regex(/^[0-9a-f]{64}$/),
   fileName: z.string().min(1).max(255),
   delimiter: z.enum([",", ";"]),
@@ -79,7 +81,8 @@ export const stagedImportPayloadSchema = z.object({
   expiresAt: z.string().datetime({ offset: true }),
   ciphertext: z.string().min(24).max(14_000_000),
   nonce: z.string().length(16),
-  keyVersion: z.number().int().min(1).max(100),
+  keyVersion: z.literal(1),
+  keyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
 export type DynamicImportWorkspaceData = z.infer<typeof dynamicImportWorkspaceSchema>;

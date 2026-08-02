@@ -26,11 +26,19 @@ export async function getDynamicImportWorkspace(): Promise<DynamicImportWorkspac
   return { ...parsed.data, featureEnabled: parsed.data.featureEnabled && runtimeEnabled };
 }
 
-export async function readStagedImportPayload(batchId: string): Promise<StagedImportPayload> {
+export async function readStagedImportPayload(binding: {
+  batchId: string;
+  actorId: string;
+  seasonId: string;
+  previewRevision: number;
+}): Promise<StagedImportPayload> {
   const admin = getSupabaseAdminClient();
   if (!admin) throw new Error("DYNAMIC_IMPORT_DATABASE_UNAVAILABLE");
-  const { data, error } = await admin.schema("app").rpc("read_dynamic_import_payload", {
-    p_batch_id: batchId,
+  const { data, error } = await admin.schema("app").rpc("read_dynamic_import_payload_bound", {
+    p_batch_id: binding.batchId,
+    p_actor_id: binding.actorId,
+    p_season_id: binding.seasonId,
+    p_preview_revision: binding.previewRevision,
   });
   if (error) {
     if (error.code === "P0002") throw new Error("DYNAMIC_IMPORT_UPLOAD_NOT_AVAILABLE");

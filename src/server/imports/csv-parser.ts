@@ -191,6 +191,7 @@ export function parseCsvBytes(
 export function inspectCsvColumns(parsed: ParsedCsv): CsvColumnInspection[] {
   return parsed.headers.map((label, index) => {
     const unique = new Set<string>();
+    const samples: string[] = [];
     let emptyCount = 0;
     let nonEmptyCount = 0;
     for (const record of parsed.records) {
@@ -199,22 +200,20 @@ export function inspectCsvColumns(parsed: ParsedCsv): CsvColumnInspection[] {
         emptyCount += 1;
       } else {
         nonEmptyCount += 1;
-        if (unique.size < DYNAMIC_IMPORT_LIMITS.maxUniquePreviewValues) unique.add(value);
+        if (!unique.has(value)) {
+          unique.add(value);
+          if (samples.length < DYNAMIC_IMPORT_LIMITS.maxUniquePreviewValues) samples.push(value);
+        }
       }
     }
-    const allUnique = new Set(
-      parsed.records
-        .map((record) => record[index]?.trim() ?? "")
-        .filter(Boolean),
-    );
     return {
       index,
       label,
-      uniqueValues: [...unique],
-      uniqueValueCount: allUnique.size,
+      uniqueValues: samples,
+      uniqueValueCount: unique.size,
       emptyCount,
       nonEmptyCount,
-      valuesTruncated: allUnique.size > DYNAMIC_IMPORT_LIMITS.maxUniquePreviewValues,
+      valuesTruncated: unique.size > DYNAMIC_IMPORT_LIMITS.maxUniquePreviewValues,
     };
   });
 }

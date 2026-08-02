@@ -6,7 +6,9 @@ import {
   randomBytes,
 } from "node:crypto";
 
-const KEY_VERSION = 1;
+export const IMPORT_STAGING_KEY_VERSION = 1 as const;
+const MAX_PLAINTEXT_BYTES = 10 * 1024 * 1024;
+const AUTH_TAG_BYTES = 16;
 
 function rootKey(encoded: string) {
   if (!/^[A-Za-z0-9_-]{43}$/u.test(encoded)) throw new Error("IMPORT_STAGING_KEY_INVALID");
@@ -27,13 +29,25 @@ function derivedKey(encoded: string, batchId: string, checksum: string) {
     "sha256",
     rootKey(encoded),
     Buffer.from(checksum, "hex"),
-    Buffer.from(`duindorp-dynamic-import:${batchId}:v${KEY_VERSION}`, "utf8"),
+    Buffer.from(`duindorp-dynamic-import:${batchId}:v${IMPORT_STAGING_KEY_VERSION}`, "utf8"),
     32,
   ));
 }
 
 function aad(batchId: string, checksum: string) {
-  return Buffer.from(`duindorp-dynamic-import:${batchId}:${checksum}:v${KEY_VERSION}`, "utf8");
+  return Buffer.from(
+    `duindorp-dynamic-import:${batchId}:${checksum}:v${IMPORT_STAGING_KEY_VERSION}`,
+    "utf8",
+  );
+}
+
+function canonicalBase64(value: string, errorCode: string) {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)) {
+    throw new Error(errorCode);
+  }
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.toString("base64") !== value) throw new Error(errorCode);
+  return decoded;
 }
 
 export function encryptImportPayload(
@@ -50,22 +64,39 @@ export function encryptImportPayload(
   return {
     ciphertext: ciphertext.toString("base64"),
     nonce: nonce.toString("base64"),
-    keyVersion: KEY_VERSION,
+    keyVersion: IMPORT_STAGING_KEY_VERSION,
     keyFingerprint: importStagingKeyFingerprint(encodedRootKey),
   };
 }
 
 export function decryptImportPayload(
-  ciphertextBase64: string,
-  nonceBase64: string,
+  encrypted: {
+    ciphertext: string;
+    nonce: string;
+    keyVersion: number;
+    keyFingerprint: string;
+  },
   encodedRootKey: string,
   batchId: string,
   expectedChecksum: string,
 ) {
-  const ciphertext = Buffer.from(ciphertextBase64, "base64");
-  const nonce = Buffer.from(nonceBase64, "base64");
-  if (ciphertext.byteLength < 17 || nonce.byteLength !== 12) throw new Error("IMPORT_STAGING_PAYLOAD_INVALID");
-  const encrypted = ciphertext.subarray(0, -16);
+  if (encrypted.keyVersion !== IMPORT_STAGING_KEY_VERSION) {
+    throw new Error("IMPORT_STAGING_KEY_VERSION_UNSUPPORTED");
+  }
+  const configuredFingerprint = importStagingKeyFingerprint(encodedRootKey);
+  if (encrypted.keyFingerprint !== configuredFingerprint) {
+    throw new Error("IMPORT_STAGING_KEY_FINGERPRINT_MISMATCH");
+  }
+  const ciphertext = canonicalBase64(encrypted.ciphertext, "IMPORT_STAGING_PAYLOAD_INVALID");
+  const nonce = canonicalBase64(encrypted.nonce, "IMPORT_STAGING_PAYLOAD_INVALID");
+  if (
+    ciphertext.byteLength < AUTH_TAG_BYTES + 1
+    || ciphertext.byteLength > MAX_PLAINTEXT_BYTES + AUTH_TAG_BYTES
+    || nonce.byteLength !== 12
+  ) {
+    throw new Error("IMPORT_STAGING_PAYLOAD_INVALID");
+  }
+  const encryptedBytes = ciphertext.subarray(0, -16);
   const tag = ciphertext.subarray(-16);
   try {
     const decipher = createDecipheriv(
@@ -75,7 +106,7 @@ export function decryptImportPayload(
     );
     decipher.setAAD(aad(batchId, expectedChecksum));
     decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    const plaintext = Buffer.concat([decipher.update(encryptedBytes), decipher.final()]);
     const checksum = createHash("sha256").update(plaintext).digest("hex");
     if (checksum !== expectedChecksum) throw new Error("IMPORT_STAGING_CHECKSUM_MISMATCH");
     return new Uint8Array(plaintext);

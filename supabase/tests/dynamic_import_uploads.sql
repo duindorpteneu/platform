@@ -27,8 +27,16 @@ select ok(
   'payload-read is niet beschikbaar voor applicatierollen'
 );
 select ok(
-  has_function_privilege('service_role', 'app.read_dynamic_import_payload(uuid)', 'EXECUTE'),
-  'payload-read is alleen service-role'
+  not has_function_privilege('service_role', 'app.read_dynamic_import_payload(uuid)', 'EXECUTE'),
+  'ongebonden payload-read is ook voor service-role gesloten'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'app.read_dynamic_import_payload_bound(uuid,uuid,uuid,integer)',
+    'EXECUTE'
+  ),
+  'alleen de actor-, seizoen- en revisiegebonden payload-read is service-role'
 );
 select ok(
   has_function_privilege('service_role', 'app.cleanup_expired_security_data_v2(timestamptz)', 'EXECUTE'),
@@ -304,9 +312,36 @@ select throws_ok(
   'de staging-sleutel kan niet worden verwijderd met actieve uploads'
 );
 select is(
-  app.read_dynamic_import_payload('b2000000-0000-4000-8000-000000000001')->>'ciphertext',
+  app.read_dynamic_import_payload_bound(
+    'b2000000-0000-4000-8000-000000000001',
+    'b0000000-0000-4000-8000-000000000001',
+    'b1000000-0000-4000-8000-000000000001',
+    0
+  )->>'ciphertext',
   repeat('A', 24),
-  'service-worker kan alleen via de smalle RPC versleutelde data ophalen'
+  'service-worker haalt versleutelde data uitsluitend met de exacte binding op'
+);
+select throws_ok(
+  $$select app.read_dynamic_import_payload_bound(
+    'b2000000-0000-4000-8000-000000000001',
+    'b0000000-0000-4000-8000-000000000002',
+    'b1000000-0000-4000-8000-000000000001',
+    0
+  )$$,
+  'P0002',
+  'DYNAMIC_IMPORT_UPLOAD_NOT_AVAILABLE',
+  'verkeerde actor geeft geen batchinformatie prijs'
+);
+select throws_ok(
+  $$select app.read_dynamic_import_payload_bound(
+    'b2000000-0000-4000-8000-000000000001',
+    'b0000000-0000-4000-8000-000000000001',
+    'b1000000-0000-4000-8000-000000000001',
+    1
+  )$$,
+  'P0002',
+  'DYNAMIC_IMPORT_UPLOAD_NOT_AVAILABLE',
+  'verkeerde previewrevisie kan de payload niet lezen'
 );
 select is(
   (
@@ -325,6 +360,15 @@ select is(
   'retentie-v2 voegt uitsluitend de importtelling toe'
 );
 reset role;
+
+select throws_ok(
+  $$update app.release_feature_flags
+    set enabled = false
+    where key = 'dynamic_import_v2'$$,
+  '55000',
+  'DYNAMIC_IMPORT_CUTOVER_IRREVERSIBLE',
+  'een geactiveerde databasecutover kan legacy-import niet heropenen'
+);
 
 update private.import_staging_payloads
 set created_at = timezone('utc', now()) - interval '2 hours',
