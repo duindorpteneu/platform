@@ -10,7 +10,7 @@ export async function getCatalogOrderWorkspace() {
   if (!supabase) throw new Error("CATALOG_DATABASE_UNAVAILABLE");
 
   const [{ data, error }, { data: seasons, error: seasonsError }, { data: teamOptions, error: teamsError }] = await Promise.all([
-    supabase.schema("app").rpc("get_catalog_order_workspace"),
+    supabase.schema("app").rpc("get_catalog_order_workspace_v2"),
     supabase.schema("app").rpc("get_catalog_seasons"),
     supabase.schema("app").rpc("get_member_team_options"),
   ]);

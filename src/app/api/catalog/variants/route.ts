@@ -18,18 +18,20 @@ export async function POST(request: Request) {
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
     const input = parsed.data;
-    const { data, error } = await supabase.schema("app").rpc("upsert_catalog_variant", {
+    const { data, error } = await supabase.schema("app").rpc("upsert_catalog_variant_v2", {
       p_article_id: input.articleId,
       p_variant_id: input.variantId ?? null,
       p_size: input.size,
       p_supplier_code: input.supplierCode,
+      p_aliases: input.aliases,
       p_active: input.active,
       p_sort_order: input.sortOrder,
     });
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot de catalogus." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Artikelvariant bestaat niet meer." }, { status: 404 });
-      if (error.code === "23505") return NextResponse.json({ error: "Deze maat bestaat al voor het artikel." }, { status: 409 });
+      if (error.code === "23505") return NextResponse.json({ error: "Deze maat, code of alias bestaat al voor het artikel." }, { status: 409 });
+      if (error.message.includes("OTHER_IS_NOT_A_VARIANT")) return NextResponse.json({ error: "‘Anders…’ is een maatconflict en kan niet als variant of alias worden opgeslagen." }, { status: 409 });
       if (error.message.includes("USED_VARIANT_SIZE_IMMUTABLE")) return NextResponse.json({ error: "De maat van een gebruikte variant kan niet worden gewijzigd. Maak een nieuwe variant aan." }, { status: 409 });
       if (error.message.includes("PACKAGE_LAST_ACTIVE_VARIANT_REQUIRED")) return NextResponse.json({ error: "Een product in een concept of actief pakket moet minstens één actieve maat houden." }, { status: 409 });
       return NextResponse.json({ error: "De variant kon niet veilig worden opgeslagen." }, { status: 422 });

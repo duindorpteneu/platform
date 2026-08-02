@@ -20,6 +20,7 @@
     "test:db:mollie-fixture": "bash scripts/test-mollie-fixture-sql.sh",
     "test:db:concurrency": "bash scripts/test-fulfilment-concurrency.sh",
     "test:db:access-concurrency": "bash scripts/test-parent-access-concurrency.sh",
+    "test:db:variant-concurrency": "bash scripts/test-variant-alias-concurrency.sh",
     "test:portal-access-browser": "node scripts/test-parent-access-browser.mjs",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
     "test:dashboard-browser": "node scripts/test-dashboard-browser.mjs",

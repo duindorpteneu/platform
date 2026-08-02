@@ -10,6 +10,7 @@ const catalogVariantSchema = z.object({
   id: uuid,
   size: z.string().trim().min(1).max(80),
   supplierCode: z.string().trim().min(1).max(120).nullable(),
+  aliases: z.array(z.string().trim().min(1).max(80)).max(25),
   active: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000),
   used: z.boolean(),
@@ -26,6 +27,11 @@ const catalogArticleSchema = z.object({
   sortOrder: z.number().int().min(0).max(10_000),
   seasonIds: z.array(uuid).max(100),
   variants: z.array(catalogVariantSchema).max(500),
+  matchConflicts: z.array(z.object({
+    key: z.string().min(1).max(120),
+    variantIds: z.array(uuid).min(1).max(500),
+    reason: z.enum(["ambiguous", "invalid_other", "unsafe_format"]),
+  }).strict()).max(500),
 }).strict();
 
 const orderLineSchema = z.object({
@@ -90,9 +96,27 @@ export const catalogVariantRequestSchema = z.object({
     (value) => typeof value === "string" && value.trim() === "" ? null : value,
     z.string().trim().min(1).max(120).nullable(),
   ),
+  aliases: z.array(z.string().trim().min(1).max(80)).max(25),
   active: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const unsafeFormat = /[\p{Cf}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0]/u;
+  const sizeKey = value.size.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL");
+  const codeKey = value.supplierCode?.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL") ?? null;
+  const normalized = value.aliases.map((alias) => alias.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL"));
+  if (unsafeFormat.test(value.size) || (value.supplierCode && unsafeFormat.test(value.supplierCode)) || value.aliases.some((alias) => unsafeFormat.test(alias))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["aliases"], message: "Onzichtbare of bidi-opmaaktekens zijn niet toegestaan." });
+  }
+  if (/^ANDERS(?:[ .…]*)$/u.test(sizeKey) || (codeKey && /^ANDERS(?:[ .…]*)$/u.test(codeKey))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["size"], message: "Anders is een conflict en geen variant." });
+  }
+  if (!uniqueValues(normalized)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["aliases"], message: "Maataliassen moeten na normalisatie uniek zijn." });
+  }
+  if (normalized.some((alias) => /^ANDERS(?:[ .…]*)$/u.test(alias))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["aliases"], message: "Anders is een conflict en geen maatalias." });
+  }
+});
 
 export const saveMemberOrderRequestSchema = z.object({
   memberId: uuid,

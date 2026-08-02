@@ -111,6 +111,9 @@ jobs:
       - name: Run parent-access concurrency test
         run: pnpm test:db:access-concurrency
 
+      - name: Run variant alias concurrency test
+        run: pnpm test:db:variant-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 
