@@ -14,9 +14,11 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   dynamicImportUploadResponseSchema,
+  type DynamicImportMappingResponse,
   type DynamicImportUploadResponse,
   type DynamicImportWorkspaceData,
 } from "@/lib/import-contract";
+import { ColumnMappingStep } from "@/components/imports/column-mapping-step";
 
 const steps = ["Bestand", "Kolommen", "Dry-run", "Verwerken"];
 
@@ -28,6 +30,7 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
   const [file, setFile] = useState<File | null>(null);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [upload, setUpload] = useState<DynamicImportUploadResponse | null>(null);
+  const [mappingValidation, setMappingValidation] = useState<DynamicImportMappingResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const enabled = workspace.featureEnabled && Boolean(workspace.activeSeason);
@@ -57,6 +60,7 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
       const parsed = dynamicImportUploadResponseSchema.safeParse(body);
       if (!parsed.success) throw new Error("De server gaf een ongeldig uploadresultaat terug.");
       setUpload(parsed.data);
+      setMappingValidation(null);
     } catch (cause) {
       setUpload(null);
       setError(cause instanceof Error ? cause.message : "De upload kon niet veilig worden klaargezet.");
@@ -80,7 +84,9 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
 
       <ol className="mt-7 grid grid-cols-4 gap-2 rounded-xl border border-line bg-white p-4 shadow-card" aria-label="Importstappen">
         {steps.map((step, index) => {
-          const reached = index === 0 || (index === 1 && upload);
+          const reached = index === 0
+            || (index === 1 && upload)
+            || (index === 2 && mappingValidation);
           return (
             <li key={step} className="flex min-w-0 items-center gap-2">
               <span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${reached ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-400"}`}>{index + 1}</span>
@@ -123,6 +129,7 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
                 setFile(event.target.files?.[0] ?? null);
                 setRequestId(crypto.randomUUID());
                 setUpload(null);
+                setMappingValidation(null);
                 setError(null);
               }}
             />
@@ -168,7 +175,16 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
                   ))}
                 </div>
               </div>
-              <button type="button" disabled className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-slate-200 px-4 text-xs font-semibold text-slate-500">Kolommen koppelen wordt na servervalidatie beschikbaar</button>
+              <ColumnMappingStep
+                key={upload.batchId}
+                upload={upload}
+                onValidated={setMappingValidation}
+              />
+              {mappingValidation && (
+                <button type="button" disabled className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-slate-200 px-4 text-xs font-semibold text-slate-500">
+                  Dry-run wordt in de volgende beveiligde verwerkingsstap beschikbaar
+                </button>
+              )}
             </div>
           )}
         </section>
