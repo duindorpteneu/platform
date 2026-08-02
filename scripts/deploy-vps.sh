@@ -204,6 +204,7 @@ deploy_environment() {
   }
   check_with_retries "http://127.0.0.1:${expected_port}"
   check_with_retries "https://${expected_host}"
+  node scripts/deploy/check-edge-body-limits.mjs "$environment"
   local scheduler_container scheduler_health
   scheduler_container="$(docker compose -p "$compose_project" -f "$compose_file" ps -q scheduler)"
   [[ -n "$scheduler_container" ]] || die "Schedulercontainer ontbreekt."

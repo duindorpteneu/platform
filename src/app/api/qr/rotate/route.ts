@@ -3,18 +3,18 @@ import { requireStaffRole } from "@/server/auth/staff";
 import { qrManagementRequestSchema } from "@/server/operations/requests";
 import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = qrManagementRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonStandard);
+    if (!body.ok) return body.response;
+    const parsed = qrManagementRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Vul een geldige verplichte reden in." }, { status: 400 });
     const admin = getSupabaseAdminClient();
     if (!admin) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });

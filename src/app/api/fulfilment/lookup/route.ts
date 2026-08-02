@@ -2,16 +2,18 @@ import { NextResponse } from "next/server";
 import { requireStaffRole } from "@/server/auth/staff";
 import { fulfilmentLookupRequestSchema, hashQrBearerToken } from "@/server/qr/tokens";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     await requireStaffRole();
-    const parsed = fulfilmentLookupRequestSchema.safeParse(await request.json());
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonStandard);
+    if (!body.ok) return body.response;
+    const parsed = fulfilmentLookupRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ status: "invalid" }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });

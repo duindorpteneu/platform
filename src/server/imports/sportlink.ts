@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const SPORTLINK_MAX_BYTES = 10 * 1024 * 1024;
-export const SPORTLINK_MAX_REQUEST_BYTES = SPORTLINK_MAX_BYTES + 1024 * 1024;
+export const SPORTLINK_MAX_REQUEST_BYTES = SPORTLINK_MAX_BYTES;
 const MAX_ROWS = 10_000;
 const MAX_COLUMNS = 32;
 const MAX_CELL_LENGTH = 512;
@@ -38,12 +38,28 @@ export type ImportPreview = {
   mapping: SportlinkColumnMapping;
 };
 
-const CSV_MIME_TYPES = new Set(["text/csv", "application/csv", "application/vnd.ms-excel"]);
+export const SPORTLINK_CSV_MIME_TYPES = ["text/csv", "application/csv", "application/vnd.ms-excel"] as const;
+const csvMimeTypes = new Set<string>(SPORTLINK_CSV_MIME_TYPES);
 
-export function validateSportlinkUpload(file: File) {
+export function validateSportlinkUpload(file: Pick<File, "name" | "type" | "size">) {
   if (!file.name.toLocaleLowerCase("nl-NL").endsWith(".csv")) throw new Error("CSV_EXTENSION_INVALID");
-  if (!CSV_MIME_TYPES.has(file.type.toLocaleLowerCase("en-US"))) throw new Error("CSV_MIME_INVALID");
+  if (!csvMimeTypes.has(file.type.toLocaleLowerCase("en-US"))) throw new Error("CSV_MIME_INVALID");
   if (file.size > SPORTLINK_MAX_BYTES) throw new Error("CSV_FILE_TOO_LARGE");
+}
+
+export function sportlinkUploadMetadata(headers: Pick<Headers, "get">, size: number) {
+  const encodedFileName = headers.get("x-duindorp-file-name");
+  if (!encodedFileName || encodedFileName.length > 1_024) throw new Error("CSV_FILE_NAME_INVALID");
+  let name: string;
+  try {
+    name = decodeURIComponent(encodedFileName);
+  } catch {
+    throw new Error("CSV_FILE_NAME_INVALID");
+  }
+  const type = headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  const metadata = { name, type, size };
+  validateSportlinkUpload(metadata);
+  return metadata;
 }
 
 export function normalizeSportlinkFileName(fileName: string) {

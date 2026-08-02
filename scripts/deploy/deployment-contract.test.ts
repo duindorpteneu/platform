@@ -143,6 +143,20 @@ describe("deployment environment isolation", () => {
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
   });
 
+  it("blocks staging and production until the public proxy rejects chunked oversize bodies", () => {
+    const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
+    const probeScript = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy/check-edge-body-limits.mjs"),
+      "utf8",
+    );
+    expect(deployScript).toContain('node scripts/deploy/check-edge-body-limits.mjs "$environment"');
+    expect(deployScript.indexOf('node scripts/deploy/check-edge-body-limits.mjs "$environment"'))
+      .toBeGreaterThan(deployScript.indexOf('check_with_retries "https://${expected_host}"'));
+    expect(probeScript).toContain('"Content-Type": "application/octet-stream"');
+    expect(probeScript).toContain('duplex: "half"');
+    expect(probeScript).not.toContain("Authorization");
+  });
+
   it("refreshes the service-only staff session RPC without mutating business data", () => {
     const migration = readFileSync(
       path.join(repositoryRoot, "supabase/migrations/20260721140000_refresh_staff_session_contract.sql"),

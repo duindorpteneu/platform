@@ -45,6 +45,32 @@ describe("Mollie classic webhookroute", () => {
     expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 
+  it("weigert dubbele identifiers en een chunked payload boven de echte bytelimiet", async () => {
+    const duplicate = await POST(new Request("https://tenue.example/api/webhooks/mollie", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "id=tr_first&id=tr_second",
+    }));
+    expect(duplicate.status).toBe(400);
+
+    const oversized = await POST(new Request("https://tenue.example/api/webhooks/mollie", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": "1",
+      },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`id=tr_${"a".repeat(10_001)}`));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" }));
+    expect(oversized.status).toBe(413);
+    expect(mocks.reconcile).not.toHaveBeenCalled();
+  });
+
   it("geeft een tijdelijke databasefout terug voor Mollie-retry", async () => {
     mocks.reconcile.mockRejectedValue(new MollieServiceError("DATABASE_UNAVAILABLE", true));
     const response = await POST(new Request("https://tenue.example/api/webhooks/mollie", {

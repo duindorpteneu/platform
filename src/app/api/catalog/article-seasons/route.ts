@@ -2,20 +2,20 @@ import { NextResponse } from "next/server";
 import { bulkArticleSeasonRequestSchema, bulkArticleSeasonResponseSchema } from "@/lib/catalog-order-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 40_000 } });
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.articleSeasonBulk });
   if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = bulkArticleSeasonRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.articleSeasonBulk);
+    if (!body.ok) return body.response;
+    const parsed = bulkArticleSeasonRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Selecteer een open seizoen en één of meer unieke artikelen." }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });

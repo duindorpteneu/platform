@@ -36,6 +36,21 @@ Alarmeer direct bij:
 
 Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eigenaar vast. Kopieer geen requestbody, e-mailadres, OTP, QR-token, sessiecookie of providerkey naar logs of tickets.
 
+### Reverse-proxy bodylimieten
+
+De beheerde Caddy moet versie 2.10 of nieuwer zijn en de niet-overlappende
+`request_body`-matchers uit `deploy/caddy/duindorp-tenueportaal.caddy.example`
+actief hebben voor beide omgevingen. Valideer de hostconfig vóór een reload.
+De applicatielimieten blijven zelfstandig leidend; Caddy is een tweede grens
+vóór Next.js.
+
+Iedere staging- en productiondeployment voert na de publieke healthcheck
+`scripts/deploy/check-edge-body-limits.mjs` uit. Die verstuurt per routegroep
+een anonieme chunked payload met een bewust onjuist inhoudstype. Alleen HTTP
+`413` is groen: HTTP `415` bewijst dat de payload de applicatie heeft bereikt
+en blokkeert de release. De probe logt uitsluitend routegroep en status, nooit
+payload, credentials of persoonsgegevens.
+
 ### Schedulers
 
 | Job | Route | Frequentie | Geldige uitkomst |

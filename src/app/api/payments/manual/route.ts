@@ -4,18 +4,20 @@ import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { manualPaymentRequestSchema } from "@/server/payments/manual";
 import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
     const supabase = getSupabaseAdminClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
-    const parsed = manualPaymentRequestSchema.safeParse(await request.json());
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonStandard);
+    if (!body.ok) return body.response;
+    const parsed = manualPaymentRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Ongeldige betaalregistratie." }, { status: 400 });
 
     const qrToken = deriveQrBearerToken(parsed.data.orderId, 1);

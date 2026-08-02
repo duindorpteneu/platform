@@ -11,7 +11,7 @@ import {
 } from "@/server/payments/mollie-service";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { consumeRateLimit } from "@/server/auth/rate-limit";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   } catch {
     return unavailable("Online betalen is tijdelijk niet beschikbaar.", "configuration");
   }
-  const guarded = guardBrowserMutation(request, { appBaseUrl: config.appBaseUrl, body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } });
+  const guarded = guardBrowserMutation(request, { appBaseUrl: config.appBaseUrl, body: BODY_POLICIES.jsonTiny });
   if (guarded || !hasTrustedPaymentOrigin(request, config.appBaseUrl)) {
     if (guarded) return guarded;
     return failure("Dit betaalverzoek kon niet veilig worden gecontroleerd.", 403);
@@ -56,13 +56,9 @@ export async function POST(request: Request) {
   const allowed = await consumeRateLimit(admin, { scope: "mollie_create", keyHash: session.tokenHash, limit: 10, windowSeconds: 600 });
   if (!allowed) return failure("Te veel betaalpogingen. Probeer het over enkele minuten opnieuw.", 429);
 
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return failure("Ongeldig betaalverzoek.", 400);
-  }
-  const parsed = mollieCreateRequestSchema.safeParse(payload);
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
+  if (!body.ok) return body.response;
+  const parsed = mollieCreateRequestSchema.safeParse(body.data);
   if (!parsed.success) return failure("Ongeldig betaalverzoek.", 400);
 
   try {

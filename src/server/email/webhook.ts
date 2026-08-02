@@ -25,10 +25,16 @@ function sendGridPublicKey(publicKey: string) {
   return createPublicKey({ key: Buffer.from(publicKey, "base64"), format: "der", type: "spki" });
 }
 
-export function verifySendGridSignature(rawBody: string, timestamp: string | null, signature: string | null, publicKey: string) {
+export function verifySendGridSignature(
+  rawBody: string | Uint8Array,
+  timestamp: string | null,
+  signature: string | null,
+  publicKey: string,
+) {
   if (!timestamp || !/^\d+$/.test(timestamp) || !signature || !publicKey) return false;
   try {
-    return verify("sha256", Buffer.from(timestamp + rawBody), sendGridPublicKey(publicKey), Buffer.from(signature, "base64"));
+    const signedPayload = Buffer.concat([Buffer.from(timestamp, "utf8"), Buffer.from(rawBody)]);
+    return verify("sha256", signedPayload, sendGridPublicKey(publicKey), Buffer.from(signature, "base64"));
   } catch {
     return false;
   }

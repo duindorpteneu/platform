@@ -3,7 +3,7 @@ import { getServerEnv } from "@/lib/env";
 import { recoverEmailJobRequestSchema } from "@/lib/email-contract";
 import { recoverEmailJob } from "@/server/email/recovery";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const guarded = guardBrowserMutation(request, {
     appBaseUrl: getServerEnv().APP_BASE_URL,
-    body: { allowedContentTypes: ["application/json"], maxBytes: 10_000 },
+    body: BODY_POLICIES.jsonSmall,
   });
   if (guarded) return guarded;
 
@@ -19,10 +19,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
     return NextResponse.json({ error: "Ongeldige e-mailjob." }, { status: 400 });
   }
-  let body: unknown;
-  try { body = await request.json(); }
-  catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-  const parsed = recoverEmailJobRequestSchema.safeParse(body);
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonSmall);
+  if (!body.ok) return body.response;
+  const parsed = recoverEmailJobRequestSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: "Controleer het herstelbesluit en het providerbewijs." }, { status: 400 });
   }

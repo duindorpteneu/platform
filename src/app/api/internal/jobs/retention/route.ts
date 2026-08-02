@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { retentionResultSchema } from "@/lib/operations-contract";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
 import { finishOperationRun, startOperationRun } from "@/server/operations/run-ledger";
+import { readEmptyRequest } from "@/server/security/route-guard";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!hasInternalBearer(request)) return NextResponse.json({ error: "Geen toegang tot de retentiejob." }, { status: 401 });
+  const empty = await readEmptyRequest(request); if (!empty.ok) return empty.response;
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "Retentiejob tijdelijk niet beschikbaar." }, { status: 503 });
   const runId = randomUUID();

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSportlinkFileName, previewSportlinkImport, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
+import {
+  normalizeSportlinkFileName,
+  previewSportlinkImport,
+  sportlinkUploadMetadata,
+  toSportlinkDatabaseRows,
+  validateSportlinkUpload,
+} from "@/server/imports/sportlink";
 
 describe("Sportlink CSV preview", () => {
   it("accepts alleen een CSV-extensie en geallowliste MIME", () => {
@@ -12,6 +18,21 @@ describe("Sportlink CSV preview", () => {
     expect(normalizeSportlinkFileName("Leden 528 personen gevonden.csv")).toBe("Leden 528 personen gevonden.csv");
     expect(normalizeSportlinkFileName("=leden<script>.csv")).toBe("_leden_script_.csv");
     expect(normalizeSportlinkFileName("leden.txt")).toBe("sportlink.csv");
+  });
+
+  it("valideert bestandsmetadata zonder de ruwe upload duurzaam op te slaan", () => {
+    expect(sportlinkUploadMetadata(new Headers({
+      "content-type": "text/csv; charset=utf-8",
+      "x-duindorp-file-name": encodeURIComponent("Sportlink leden.csv"),
+    }), 123)).toEqual({ name: "Sportlink leden.csv", type: "text/csv", size: 123 });
+    expect(() => sportlinkUploadMetadata(new Headers({
+      "content-type": "text/csv",
+      "x-duindorp-file-name": "%E0%A4%A",
+    }), 123)).toThrow("CSV_FILE_NAME_INVALID");
+    expect(() => sportlinkUploadMetadata(new Headers({
+      "content-type": "application/octet-stream",
+      "x-duindorp-file-name": "leden.csv",
+    }), 123)).toThrow("CSV_MIME_INVALID");
   });
   it("accepts semicolon CSV, normalizes relation numbers and e-mail", () => {
     const result = previewSportlinkImport([

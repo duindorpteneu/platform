@@ -15,6 +15,7 @@ Deze verificatie gebruikt alleen fictieve gegevens en provider-testmodi. Elk sce
 - [ ] Staging en production zijn aantoonbaar gescheiden volgens [ENVIRONMENT_MATRIX.md](ENVIRONMENT_MATRIX.md).
 - [ ] Alle migraties zijn op een lege stagingdatabase toegepast; fictieve seeddata is geladen.
 - [ ] HTTPS, HSTS, CSP, secure cookies en no-store voor gevoelige responses zijn actief.
+- [ ] De actieve Caddy 2.10+-configuratie bevat de route-specifieke request-bodycaps; de deploy-eindprobe heeft alle vier chunked routegroepen met proxy-`413` bewezen.
 - [ ] Eén fictief account per staffrol heeft TOTP/AAL2; er is ook een geblokkeerd account.
 - [ ] Er zijn fixtures voor één e-mail/één lid, één e-mail/drie leden, betaald, onbetaald, nalevering en dubbele uitgifteconcurrentie.
 - [ ] Mollie staat in testmode en webhook gebruikt publiek HTTPS.

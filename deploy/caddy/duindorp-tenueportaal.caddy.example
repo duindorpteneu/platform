@@ -1,8 +1,36 @@
 # Referentie voor de reeds ingerichte host-Caddy. Het deployscript leest of
 # wijzigt dit bestand niet en Caddy draait niet in Docker.
+# Vereist Caddy 2.10+ vanwege de request_body-richtlijn. Valideer deze
+# configuratie vóór een host-reload.
+
+(duindorp_request_limits) {
+	@import_api path /api/imports/preview /api/imports/commit
+	request_body @import_api {
+		max_size 12MB
+	}
+
+	@sendgrid_webhook path /api/webhooks/sendgrid
+	request_body @sendgrid_webhook {
+		max_size 2MB
+	}
+
+	@email_bulk path /api/email/bulk
+	request_body @email_bulk {
+		max_size 384KB
+	}
+
+	@standard_api {
+		path /api/*
+		not path /api/imports/preview /api/imports/commit /api/webhooks/sendgrid /api/email/bulk
+	}
+	request_body @standard_api {
+		max_size 128KB
+	}
+}
 
 staging-duindorp.dgwebservices.nl {
 	encode zstd gzip
+	import duindorp_request_limits
 	reverse_proxy 127.0.0.1:14000 {
 		health_uri /api/health
 		health_interval 30s
@@ -12,6 +40,7 @@ staging-duindorp.dgwebservices.nl {
 
 duindorp.dgwebservices.nl {
 	encode zstd gzip
+	import duindorp_request_limits
 	reverse_proxy 127.0.0.1:24000 {
 		health_uri /api/health
 		health_interval 30s

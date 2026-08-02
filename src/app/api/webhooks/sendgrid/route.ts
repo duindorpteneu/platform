@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isFreshSendGridTimestamp, parseSendGridOperationalEvents, verifySendGridSignature } from "@/server/email/webhook";
+import { BODY_POLICIES, readBodyRequest } from "@/server/security/route-guard";
+import { validateBodyHeaders } from "@/server/security/request";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -14,16 +16,29 @@ const responseSchema = z.object({
 export async function POST(request: Request) {
   const publicKey = process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY;
   if (!publicKey) return NextResponse.json({ error: "Webhook niet geconfigureerd." }, { status: 503 });
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 1_000_000) return NextResponse.json({ error: "Webhookpayload te groot." }, { status: 413 });
-  const rawBody = await request.text();
-  if (Buffer.byteLength(rawBody, "utf8") > 1_000_000) return NextResponse.json({ error: "Webhookpayload te groot." }, { status: 413 });
+  const headers = validateBodyHeaders(request, BODY_POLICIES.sendgridWebhook);
+  if (!headers.ok) {
+    return NextResponse.json(
+      { error: headers.status === 413 ? "Webhookpayload te groot." : "Ongeldig inhoudstype." },
+      { status: headers.status },
+    );
+  }
+  const body = await readBodyRequest(request, BODY_POLICIES.sendgridWebhook);
+  if (!body.ok) return body.response;
   const signature = request.headers.get("x-twilio-email-event-webhook-signature");
   const timestamp = request.headers.get("x-twilio-email-event-webhook-timestamp");
-  if (!isFreshSendGridTimestamp(timestamp) || !verifySendGridSignature(rawBody, timestamp, signature, publicKey)) {
+  if (!isFreshSendGridTimestamp(timestamp) || !verifySendGridSignature(body.data, timestamp, signature, publicKey)) {
     return NextResponse.json({ error: "Ongeldige webhookauthenticiteit." }, { status: 401 });
   }
 
+  let rawBody: string;
+  try { rawBody = new TextDecoder("utf-8", { fatal: true }).decode(body.data); }
+  catch {
+    return NextResponse.json(
+      { error: "Ongeldige webhookpayload." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   let events;
   try { events = parseSendGridOperationalEvents(rawBody); }
   catch { return NextResponse.json({ error: "Ongeldige webhookpayload." }, { status: 400 }); }

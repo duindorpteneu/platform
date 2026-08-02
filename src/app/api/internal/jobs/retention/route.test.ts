@@ -35,4 +35,14 @@ describe("POST /api/internal/jobs/retention", () => {
     expect(response.status).toBe(503);
     expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "failed", 0, "cleanup_failed");
   });
+
+  it("weigert een body voordat de retentiejob start", async () => {
+    const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", {
+      method: "POST",
+      body: "unexpected",
+    }));
+    expect(response.status).toBe(413);
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(mocks.startRun).not.toHaveBeenCalled();
+  });
 });

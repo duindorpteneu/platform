@@ -3,14 +3,16 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { generateParentSessionToken, hashParentSecret, openParentChallengeEmail, parentCodeInputSchema } from "@/server/auth/parent";
 import { consumeRateLimit, requestRateKey, valueRateKey } from "@/server/auth/rate-limit";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } }); if (guarded) return guarded;
-  const parsed = parentCodeInputSchema.safeParse(await request.json().catch(() => null));
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonTiny }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
+  if (!body.ok) return body.response;
+  const parsed = parentCodeInputSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Voer de zescijferige code in." }, { status: 400 });
   const cookieStore = await cookies();
   const email = openParentChallengeEmail(cookieStore.get("duindorp_parent_challenge")?.value ?? "");

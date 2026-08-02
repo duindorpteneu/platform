@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BODY_POLICIES, readBoundedText, RequestBodyError, validateBodyHeaders } from "@/server/security/request";
 
 export const mollieStatusSchema = z.enum(["open", "pending", "authorized", "paid", "failed", "canceled", "expired"]);
 const mollieRefundStatusSchema = z.enum(["queued", "pending", "canceled", "processing", "failed", "refunded"]);
@@ -56,13 +57,23 @@ function parseResponse(payload: unknown) {
   return parsed.data;
 }
 
+async function readMollieResponse(response: Response) {
+  try {
+    return await readBoundedText(response, { maxBytes: 100_000, timeoutMs: 5_000 });
+  } catch (error) {
+    if (error instanceof RequestBodyError && error.status === 413) {
+      throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
+    }
+    throw new Error("MOLLIE_RESPONSE_INVALID");
+  }
+}
+
 async function requestPayment(url: string, init: RequestInit, fetcher: typeof fetch) {
   const response = await fetcher(url, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) });
   if (!response.ok) throw new MollieRequestError(response.status, response.status === 429 || response.status >= 500);
   const contentLength = Number(response.headers.get("content-length") ?? 0);
   if (contentLength > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
-  const raw = await response.text();
-  if (raw.length > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
+  const raw = await readMollieResponse(response);
   try {
     return parseResponse(JSON.parse(raw));
   } catch (error) {
@@ -76,8 +87,7 @@ async function requestRefunds(url: string, init: RequestInit, fetcher: typeof fe
   if (!response.ok) throw new MollieRequestError(response.status, response.status === 429 || response.status >= 500);
   const contentLength = Number(response.headers.get("content-length") ?? 0);
   if (contentLength > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
-  const raw = await response.text();
-  if (raw.length > 100_000) throw new Error("MOLLIE_RESPONSE_TOO_LARGE");
+  const raw = await readMollieResponse(response);
   try {
     const parsed = refundListSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) throw new Error("MOLLIE_RESPONSE_INVALID");
@@ -180,13 +190,18 @@ export async function getMolliePayment(apiKey: string, providerPaymentId: string
 }
 
 export async function extractMollieWebhookPaymentId(request: Request) {
-  const raw = await request.text();
-  if (raw.length > 10_000) throw new Error("MOLLIE_WEBHOOK_INVALID");
-  const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().startsWith("application/x-www-form-urlencoded")) {
+  const headers = validateBodyHeaders(request, BODY_POLICIES.mollieWebhook);
+  if (!headers.ok) {
+    if (headers.status === 413) throw new RequestBodyError("body_too_large", 413);
     throw new Error("MOLLIE_WEBHOOK_CONTENT_TYPE_INVALID");
   }
-  const value = new URLSearchParams(raw).get("id");
+  const raw = await readBoundedText(request, BODY_POLICIES.mollieWebhook);
+  const parameters = new URLSearchParams(raw);
+  const values = parameters.getAll("id");
+  if (values.length !== 1 || [...parameters.keys()].some((key) => key !== "id")) {
+    throw new Error("MOLLIE_WEBHOOK_INVALID");
+  }
+  const value = values[0];
   if (typeof value !== "string" || !/^tr_[A-Za-z0-9]+$/.test(value)) throw new Error("MOLLIE_WEBHOOK_INVALID");
   return value;
 }

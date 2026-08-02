@@ -20,22 +20,27 @@ export function ImportPanel() {
   const [busy, setBusy] = useState<"preview" | "commit" | null>(null);
   const [inputVersion, setInputVersion] = useState(0);
 
-  function formDataForFile() {
+  function requestForFile() {
     if (!file) return null;
-    const formData = new FormData();
-    formData.append("file", file);
-    return formData;
+    return {
+      headers: {
+        "Content-Type": file.type || "text/csv",
+        "X-Duindorp-CSRF": "same-origin",
+        "X-Duindorp-File-Name": encodeURIComponent(file.name),
+      },
+      body: file,
+    };
   }
 
   async function handlePreview() {
-    const formData = formDataForFile();
-    if (!formData) return;
+    const upload = requestForFile();
+    if (!upload) return;
     setError(null);
     setSuccess(null);
     setPreview(null);
     setBusy("preview");
     try {
-      const response = await fetch("/api/imports/preview", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" }, body: formData });
+      const response = await fetch("/api/imports/preview", { method: "POST", ...upload });
       const payload = await response.json() as PreviewResponse & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Preview kon niet worden gemaakt.");
       setPreview(payload);
@@ -47,13 +52,13 @@ export function ImportPanel() {
   }
 
   async function handleCommit() {
-    const formData = formDataForFile();
-    if (!formData || !preview || preview.summary.invalid > 0) return;
+    const upload = requestForFile();
+    if (!upload || !preview || preview.summary.invalid > 0) return;
     setError(null);
     setSuccess(null);
     setBusy("commit");
     try {
-      const response = await fetch("/api/imports/commit", { method: "POST", headers: { "X-Duindorp-CSRF": "same-origin" }, body: formData });
+      const response = await fetch("/api/imports/commit", { method: "POST", ...upload });
       const payload = await response.json() as { error?: string; upserted?: number };
       if (!response.ok) throw new Error(payload.error ?? "De import kon niet worden opgeslagen.");
       setSuccess(`${payload.upserted ?? preview.summary.valid} leden zijn transactioneel verwerkt.`);

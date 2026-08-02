@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { updateSettingsRequestSchema } from "@/lib/settings-audit-contract";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { updateSettings } from "@/server/settings/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { appBaseUrl: getServerEnv().APP_BASE_URL, body: { allowedContentTypes: ["application/json"], maxBytes: 20_000 } });
+  const guarded = guardBrowserMutation(request, { appBaseUrl: getServerEnv().APP_BASE_URL, body: BODY_POLICIES.jsonMedium });
   if (guarded) return guarded;
-  let body: unknown;
-  try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-  const parsed = updateSettingsRequestSchema.safeParse(body);
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonMedium);
+  if (!body.ok) return body.response;
+  const parsed = updateSettingsRequestSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Controleer de instellingen en seizoensbedragen." }, { status: 400 });
 
   try {
@@ -30,4 +30,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "De instellingen konden niet worden verwerkt." }, { status: 500 });
   }
 }
-

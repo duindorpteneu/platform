@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { updateEmailTemplateRequestSchema, updateEmailTemplateResponseSchema } from "@/lib/email-contract";
 import { updateEmailTemplate } from "@/server/email/workspace";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
-  let body: unknown;
-  try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-  const parsed = updateEmailTemplateRequestSchema.safeParse(body);
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonMedium }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonMedium);
+  if (!body.ok) return body.response;
+  const parsed = updateEmailTemplateRequestSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Controleer onderwerp, inhoud en templateversie." }, { status: 400 });
   try {
     const { data, error } = await updateEmailTemplate(parsed.data);

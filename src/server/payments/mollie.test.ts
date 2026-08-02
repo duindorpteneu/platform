@@ -27,7 +27,7 @@ describe("Mollie provider boundary", () => {
     expect(result._links.checkout?.href).toContain("mollie.com");
   });
 
-  it("accepts only a classic Mollie form or JSON payment id", async () => {
+  it("accepts uitsluitend het klassieke Mollie-formulier", async () => {
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "id=tr_abc123" }))).resolves.toBe("tr_abc123");
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: '{"id":"tr_abc123"}' }))).rejects.toThrow("MOLLIE_WEBHOOK_CONTENT_TYPE_INVALID");
   });
@@ -72,6 +72,18 @@ describe("Mollie provider boundary", () => {
       _embedded: { refunds: [{ id: "re_test123", status: "refunded" }] },
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("begrensd ook een chunked antwoord van de Mollie API vóór JSON-parsing", async () => {
+    const fetcher = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(100_001));
+        controller.close();
+      },
+    }), { status: 200 }));
+
+    await expect(getMolliePayment("test_key", "tr_test123", fetcher as typeof fetch))
+      .rejects.toThrow("MOLLIE_RESPONSE_TOO_LARGE");
   });
 
   it("accepts checkout links only from Mollie over HTTPS", () => {

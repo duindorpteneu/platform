@@ -8,6 +8,7 @@ import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
 import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
 import { finishOperationRun, startOperationRun } from "@/server/operations/run-ledger";
+import { readEmptyRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ const completionResponseSchema = z.object({
 
 export async function POST(request: Request) {
   if (!hasInternalBearer(request)) return NextResponse.json({ error: "Geen toegang tot de worker." }, { status: 401 });
+  const empty = await readEmptyRequest(request); if (!empty.ok) return empty.response;
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "E-mailworker tijdelijk niet beschikbaar." }, { status: 503 });
   const runId = randomUUID();

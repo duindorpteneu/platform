@@ -2,16 +2,16 @@ import { NextResponse } from "next/server";
 import { emailBulkRequestSchema } from "@/lib/email-contract";
 import { createEmailPreviewToken, verifyEmailPreviewToken } from "@/server/email/preview-token";
 import { assertEligibleBulkSelection, createEmailBulk, getEmailWorkspace, renderFictionalTemplatePreview } from "@/server/email/workspace";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
-  let body: unknown;
-  try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-  const parsed = emailBulkRequestSchema.safeParse(body);
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.emailBulk }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.emailBulk);
+  if (!body.ok) return body.response;
+  const parsed = emailBulkRequestSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Controleer template en unieke bestellingen." }, { status: 400 });
   const pepper = process.env.PARENT_TOKEN_PEPPER;
   if (!pepper) return NextResponse.json({ error: "Beveiligde bevestiging is niet geconfigureerd." }, { status: 503 });

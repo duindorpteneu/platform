@@ -4,7 +4,7 @@ import { generateParentCode, hashParentSecret, normalizeParentEmail, parentEmail
 import { sendParentOtpEmail } from "@/server/email/sendgrid";
 import { getParentOtpEmailTemplate, renderParentOtpEmail } from "@/server/email/otp";
 import { consumeRateLimit, requestRateKey } from "@/server/auth/rate-limit";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
 
 export const runtime = "nodejs";
@@ -19,8 +19,10 @@ function neutralChallengeResponse(email: string) {
 }
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } }); if (guarded) return guarded;
-  const parsed = parentEmailSchema.safeParse(await request.json().catch(() => null));
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonTiny }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
+  if (!body.ok) return body.response;
+  const parsed = parentEmailSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Voer een geldig e-mailadres in." }, { status: 400 });
 
   const email = normalizeParentEmail(parsed.data.email);

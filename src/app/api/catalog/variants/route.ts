@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import { catalogMutationResponseSchema, catalogVariantRequestSchema } from "@/lib/catalog-order-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = catalogVariantRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonStandard);
+    if (!body.ok) return body.response;
+    const parsed = catalogVariantRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Controleer maat, leverancierscode en volgorde." }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
