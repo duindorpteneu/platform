@@ -31,6 +31,7 @@ function uploadRequest(body: BodyInit, headers: Record<string, string> = {}) {
 describe("POST /api/imports/preview", () => {
   beforeEach(() => {
     process.env.APP_BASE_URL = "https://tenue.example";
+    process.env.DYNAMIC_IMPORT_ENABLED = "false";
     mocks.requireStaffRole.mockReset().mockResolvedValue({ userId: "staff" });
     mocks.rpc.mockReset().mockResolvedValue({
       data: { new: 1, updated: 0, unchanged: 0 },
@@ -76,5 +77,15 @@ describe("POST /api/imports/preview", () => {
 
     expect(response.status).toBe(415);
     expect(mocks.requireStaffRole).not.toHaveBeenCalled();
+  });
+
+  it("sluit de legacyroute vóór bodyverwerking bij v2-cutover", async () => {
+    process.env.DYNAMIC_IMPORT_ENABLED = "true";
+    process.env.IMPORT_STAGING_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString("base64url");
+    const response = await POST(uploadRequest("A,B\n1,2"));
+    expect(response.status).toBe(410);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(mocks.requireStaffRole).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });

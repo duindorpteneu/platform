@@ -18,6 +18,9 @@ const serverEnvSchema = z.object({
   SUPABASE_JWKS: optionalText(),
   PARENT_TOKEN_PEPPER: optionalText(32),
   CRON_SECRET: optionalText(16),
+  DYNAMIC_IMPORT_ENABLED: z.enum(["true", "false"]).default("false"),
+  IMPORT_STAGING_ENCRYPTION_KEY: optionalText(43),
+  IMPORT_RAW_RETENTION_HOURS: z.string().regex(/^(?:[1-9]|[1-6][0-9]|7[0-2])$/).default("24").transform(Number),
   APP_BASE_URL: z.string().url().default("http://localhost:3100"),
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
   MOLLIE_API_KEY: optionalText(),
@@ -28,6 +31,16 @@ const serverEnvSchema = z.object({
   SENDGRID_REPLY_TO_EMAIL: optionalEmail,
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: optionalText(),
 }).superRefine((env, context) => {
+  if (env.IMPORT_STAGING_ENCRYPTION_KEY) {
+    const key = env.IMPORT_STAGING_ENCRYPTION_KEY;
+    const decoded = Buffer.from(key, "base64url");
+    if (!/^[A-Za-z0-9_-]{43}$/u.test(key) || decoded.byteLength !== 32 || decoded.toString("base64url") !== key) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["IMPORT_STAGING_ENCRYPTION_KEY"], message: "Importstaging vereist een canonieke 32-byte base64url-sleutel." });
+    }
+  }
+  if (env.DYNAMIC_IMPORT_ENABLED === "true" && !env.IMPORT_STAGING_ENCRYPTION_KEY) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["IMPORT_STAGING_ENCRYPTION_KEY"], message: "Importstaging-sleutel is verplicht wanneer dynamische import actief is." });
+  }
   if (env.MOLLIE_ENABLED === "true") {
     if (!env.MOLLIE_API_KEY) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["MOLLIE_API_KEY"], message: "Mollie API-key is verplicht wanneer Mollie actief is." });
@@ -66,6 +79,9 @@ export function getServerEnv() {
     SUPABASE_JWKS: process.env.SUPABASE_JWKS,
     PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
     CRON_SECRET: process.env.CRON_SECRET,
+    DYNAMIC_IMPORT_ENABLED: process.env.DYNAMIC_IMPORT_ENABLED,
+    IMPORT_STAGING_ENCRYPTION_KEY: process.env.IMPORT_STAGING_ENCRYPTION_KEY,
+    IMPORT_RAW_RETENTION_HOURS: process.env.IMPORT_RAW_RETENTION_HOURS,
     APP_BASE_URL: process.env.APP_BASE_URL,
     MOLLIE_ENABLED: process.env.MOLLIE_ENABLED,
     MOLLIE_API_KEY: process.env.MOLLIE_API_KEY,

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (!await startOperationRun(admin, "retention", runId)) {
     return NextResponse.json({ error: "Retentiejob kon niet worden gemonitord." }, { status: 503 });
   }
-  const { data, error } = await admin.schema("app").rpc("cleanup_expired_security_data", { p_now: new Date().toISOString() });
+  const { data, error } = await admin.schema("app").rpc("cleanup_expired_security_data_v2", { p_now: new Date().toISOString() });
   if (error) {
     await finishOperationRun(admin, "retention", runId, "failed", 0, "cleanup_failed");
     return NextResponse.json({ error: "Retentiejob kon niet veilig worden uitgevoerd." }, { status: 503 });

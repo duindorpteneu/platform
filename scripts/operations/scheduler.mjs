@@ -23,20 +23,13 @@ export function validateSchedulerConfig(environment = process.env) {
   return { appEnvironment, cronSecret, internalBaseUrl, heartbeatUrl, emailEnabled };
 }
 
-export function shouldRunRetention(now, lastRetentionDate) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Amsterdam",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const date = `${value.year}-${value.month}-${value.day}`;
-  const afterWindowStart = Number(value.hour) > 3 || (Number(value.hour) === 3 && Number(value.minute) >= 17);
-  return { date, due: lastRetentionDate === "" || (afterWindowStart && date !== lastRetentionDate) };
+export function shouldRunRetention(now, lastRetentionAt) {
+  const previous = lastRetentionAt ? new Date(lastRetentionAt) : null;
+  const validPrevious = previous && Number.isFinite(previous.getTime());
+  return {
+    timestamp: now.toISOString(),
+    due: !validPrevious || now.getTime() - previous.getTime() >= 5 * 60 * 1_000,
+  };
 }
 
 async function fetchJson(url, init, timeoutMs = 55_000) {
@@ -73,12 +66,22 @@ async function pingHeartbeat(config) {
 }
 
 export async function runSchedulerCycle(config, state, now = new Date()) {
-  await invokeInternal(config, "/api/internal/jobs/email", "POST");
-  const retention = shouldRunRetention(now, state.lastRetentionDate);
-  if (retention.due) {
-    await invokeInternal(config, "/api/internal/jobs/retention", "POST");
-    state.lastRetentionDate = retention.date;
+  let firstFailure;
+  try {
+    await invokeInternal(config, "/api/internal/jobs/email", "POST");
+  } catch (error) {
+    firstFailure = error;
   }
+  const retention = shouldRunRetention(now, state.lastRetentionAt);
+  if (retention.due) {
+    try {
+      await invokeInternal(config, "/api/internal/jobs/retention", "POST");
+      state.lastRetentionAt = retention.timestamp;
+    } catch (error) {
+      firstFailure ??= error;
+    }
+  }
+  if (firstFailure) throw firstFailure;
   await writeFile("/tmp/scheduler-health", now.toISOString(), { mode: 0o600 });
   await invokeInternal(config, "/api/internal/health", "GET");
   await pingHeartbeat(config);
@@ -87,7 +90,7 @@ export async function runSchedulerCycle(config, state, now = new Date()) {
 
 async function main() {
   const config = validateSchedulerConfig();
-  const state = { lastRetentionDate: "" };
+  const state = { lastRetentionAt: "" };
   let failures = 0;
   console.log(JSON.stringify({ event: "scheduler_started", environment: config.appEnvironment }));
   for (;;) {

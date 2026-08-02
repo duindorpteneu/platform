@@ -11,7 +11,7 @@ export const EDGE_BODY_PROBES = Object.freeze([
   { name: "standard-api", path: "/api/catalog/articles", bytes: 129 * 1_024 },
   { name: "email-bulk", path: "/api/email/bulk", bytes: 385 * 1_024 },
   { name: "sendgrid-webhook", path: "/api/webhooks/sendgrid", bytes: 2 * 1_024 * 1_024 + 1 },
-  { name: "sportlink-import", path: "/api/imports/preview", bytes: 12 * 1_024 * 1_024 + 1 },
+  { name: "sportlink-import", path: "/api/imports/uploads", bytes: 12 * 1_024 * 1_024 + 1 },
 ]);
 
 function chunkedBody(totalBytes, chunkBytes = 64 * 1_024) {

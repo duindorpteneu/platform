@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/env";
 import { requireStaffRole } from "@/server/auth/staff";
 import {
   previewSportlinkImport,
@@ -15,6 +16,12 @@ export async function POST(request: Request) {
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.sportlinkCsv });
   if (guarded) return guarded;
   try {
+    if (getServerEnv().DYNAMIC_IMPORT_ENABLED === "true") {
+      return NextResponse.json(
+        { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+        { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     const body = await readTextRequest(request, BODY_POLICIES.sportlinkCsv);
     if (!body.ok) return body.response;
@@ -28,6 +35,12 @@ export async function POST(request: Request) {
     const { data: changes, error: changesError } = await supabase.schema("app").rpc("get_sportlink_import_summary", {
       p_members: toSportlinkDatabaseRows(preview.members),
     });
+    if (changesError?.message?.includes("LEGACY_IMPORT_DISABLED")) {
+      return NextResponse.json(
+        { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+        { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     if (changesError || !changes || typeof changes !== "object") {
       return NextResponse.json({ error: "De importwijzigingen konden niet worden berekend." }, { status: changesError?.code === "42501" ? 403 : 500 });
     }

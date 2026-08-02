@@ -150,6 +150,7 @@ deploy_environment() {
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
   pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes
   node scripts/deploy/check-postgrest-rpcs.mjs
+  node scripts/deploy/check-import-staging-key.mjs
 
   local previous_revision="" previous_image="" runtime_backup="${runtime_directory}/.env.runtime.previous" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
@@ -193,6 +194,11 @@ deploy_environment() {
   expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER."
+  if [[ "${DYNAMIC_IMPORT_ENABLED}" == true ]]; then
+    expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte importstaging-sleutel."
+  fi
 
   check_with_retries() {
     local url="$1"

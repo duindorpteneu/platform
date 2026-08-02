@@ -41,6 +41,8 @@ function runtimeEnvironment(environment: "staging" | "production") {
     NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PARENT_TOKEN_PEPPER: "p".repeat(32),
     CRON_SECRET: "c".repeat(32),
+    DYNAMIC_IMPORT_ENABLED: "false",
+    IMPORT_RAW_RETENTION_HOURS: "24",
     ...(staging ? {} : { OPERATIONS_HEARTBEAT_URL: "https://monitor.example/ping-secret" }),
     MOLLIE_ENABLED: "false",
     EMAIL_ENABLED: "false",
@@ -145,10 +147,14 @@ describe("deployment environment isolation", () => {
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte importstaging-sleutel");
     const postgrestGate = deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs");
+    const importKeyGate = deployScript.indexOf("node scripts/deploy/check-import-staging-key.mjs");
     expect(postgrestGate)
       .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
     expect(postgrestGate).toBeLessThan(deployScript.indexOf("activated=true"));
+    expect(importKeyGate).toBeGreaterThan(postgrestGate);
+    expect(importKeyGate).toBeLessThan(deployScript.indexOf("activated=true"));
   });
 
   it("blocks staging and production until the public proxy rejects chunked oversize bodies", () => {
@@ -239,6 +245,24 @@ describe("deployment environment isolation", () => {
     const result = spawnSync(process.execPath, [configureRuntime, "validate"], { env: environment, encoding: "utf8" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("OPERATIONS_HEARTBEAT_URL");
+  });
+
+  it("requires a canonical importstaging key only when dynamic import is enabled", () => {
+    const enabled = {
+      ...runtimeEnvironment("staging"),
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64url"),
+    };
+    expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], {
+      env: enabled,
+      stdio: "pipe",
+    })).not.toThrow();
+    const missing = spawnSync(process.execPath, [configureRuntime, "validate"], {
+      env: { ...enabled, IMPORT_STAGING_ENCRYPTION_KEY: "" },
+      encoding: "utf8",
+    });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("IMPORT_STAGING_ENCRYPTION_KEY");
   });
 
   it("accepts only a P-256 SendGrid webhook verification key", () => {

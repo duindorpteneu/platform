@@ -25,10 +25,11 @@ function euro(cents: number) {
   return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(cents / 100);
 }
 
-export function MemberOverview({ list, detail, query }: {
+export function MemberOverview({ list, detail, query, staffRole }: {
   list: MemberListResponse;
   detail: MemberDetailResponse | null;
   query: MemberListQuery;
+  staffRole?: "beheerder" | "kledingcommissie" | "uitgifte";
 }) {
   const firstResult = list.filteredCount === 0 ? 0 : (query.page - 1) * MEMBER_LIST_PAGE_SIZE + 1;
   const lastResult = Math.min(query.page * MEMBER_LIST_PAGE_SIZE, list.filteredCount);
@@ -87,7 +88,7 @@ export function MemberOverview({ list, detail, query }: {
         <div className="space-y-6">
           {detail ? <MemberDetailPanel detail={detail} closeHref={closeDetailHref} /> : <section className="rounded-xl border border-brand-100 bg-brand-50 p-5"><h2 className="text-sm font-bold text-brand-900">Selecteer een lid</h2><p className="mt-1 text-xs leading-5 text-brand-700">Open een rij voor bedrag, betaling, artikelregels, QR-status, ouderkoppelingen en relevante historie.</p></section>}
           <TeamMemberStatusPanel teams={list.filterOptions.teams} initialTeam={query.team} disabled={!list.activeSeason} />
-          <ImportPanel />
+          {staffRole === "beheerder" && <ImportPanel />}
         </div>
       </div>
     </div>

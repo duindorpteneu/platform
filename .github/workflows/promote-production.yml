@@ -126,6 +126,8 @@ jobs:
           SUPABASE_JWKS: ${{ vars.SUPABASE_JWKS }}
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          DYNAMIC_IMPORT_ENABLED: ${{ vars.DYNAMIC_IMPORT_ENABLED || 'false' }}
+          IMPORT_RAW_RETENTION_HOURS: ${{ vars.IMPORT_RAW_RETENTION_HOURS || '24' }}
           SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
           SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
           SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
@@ -136,6 +138,7 @@ jobs:
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          IMPORT_STAGING_ENCRYPTION_KEY: ${{ secrets.IMPORT_STAGING_ENCRYPTION_KEY }}
           OPERATIONS_HEARTBEAT_URL: ${{ secrets.OPERATIONS_HEARTBEAT_URL }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/env";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 import {
@@ -17,6 +18,12 @@ export async function POST(request: Request) {
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.sportlinkCsv });
   if (guarded) return guarded;
   try {
+    if (getServerEnv().DYNAMIC_IMPORT_ENABLED === "true") {
+      return NextResponse.json(
+        { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+        { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
@@ -38,6 +45,12 @@ export async function POST(request: Request) {
       p_members: toSportlinkDatabaseRows(preview.members),
     });
     if (error) {
+      if (error.message?.includes("LEGACY_IMPORT_DISABLED")) {
+        return NextResponse.json(
+          { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+          { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+        );
+      }
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze import." }, { status: 403 });
       return NextResponse.json({ error: "De import kon niet transactioneel worden opgeslagen." }, { status: 500 });
     }

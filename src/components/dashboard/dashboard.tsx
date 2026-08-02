@@ -47,7 +47,7 @@ export function Dashboard({ overview, displayName }: { overview: DashboardOvervi
           <p className="mt-2 text-sm text-slate-500">{overview.activeSeason ? `Actuele stand voor seizoen ${overview.activeSeason.name}.` : "Er is nog geen actief seizoen ingesteld."}</p>
         </div>
         <div className="flex flex-col gap-2 min-[420px]:flex-row">
-          <Link href="/backoffice/leden" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 text-xs font-semibold text-ink shadow-sm transition-colors hover:border-brand-500"><Upload className="size-4 text-brand-500" /> Leden importeren</Link>
+          <Link href="/backoffice/leden/importeren" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 text-xs font-semibold text-ink shadow-sm transition-colors hover:border-brand-500"><Upload className="size-4 text-brand-500" /> Leden importeren</Link>
           <Link href="/backoffice/leveringen" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-900"><Boxes className="size-4" /> Levering registreren</Link>
         </div>
       </div>

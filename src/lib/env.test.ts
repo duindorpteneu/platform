@@ -6,6 +6,8 @@ describe("server provider configuration", () => {
     const env = parseServerEnv({ APP_BASE_URL: "http://localhost:3100" });
     expect(env.MOLLIE_ENABLED).toBe("false");
     expect(env.EMAIL_ENABLED).toBe("false");
+    expect(env.DYNAMIC_IMPORT_ENABLED).toBe("false");
+    expect(env.IMPORT_RAW_RETENTION_HOURS).toBe(24);
   });
 
   it("treats explicitly empty optional provider values as unset while disabled", () => {
@@ -28,6 +30,26 @@ describe("server provider configuration", () => {
 
   it("fails closed when Mollie is enabled without HTTPS and credentials", () => {
     expect(() => parseServerEnv({ MOLLIE_ENABLED: "true", APP_BASE_URL: "http://localhost:3100" })).toThrow();
+  });
+
+  it("vereist een canonieke aparte importstaging-sleutel bij activatie", () => {
+    expect(() => parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: "",
+    })).toThrow();
+    expect(() => parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+    })).toThrow();
+    expect(parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64url"),
+      IMPORT_RAW_RETENTION_HOURS: "72",
+    })).toMatchObject({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_RAW_RETENTION_HOURS: 72,
+    });
+    expect(() => parseServerEnv({ IMPORT_RAW_RETENTION_HOURS: "73" })).toThrow();
   });
 
   it("rejects a live Mollie key outside production", () => {

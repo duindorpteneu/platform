@@ -91,6 +91,21 @@ jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
 postgresUrl("SUPABASE_DB_URL", projectRef);
 required("PARENT_TOKEN_PEPPER", 32);
 required("CRON_SECRET", 16);
+const dynamicImportEnabled = required("DYNAMIC_IMPORT_ENABLED");
+const importStagingKey = optional("IMPORT_STAGING_ENCRYPTION_KEY");
+const importRetentionHours = required("IMPORT_RAW_RETENTION_HOURS");
+if (!["true", "false"].includes(dynamicImportEnabled)) invalid("DYNAMIC_IMPORT_ENABLED");
+if (!/^(?:[1-9]|[1-6][0-9]|7[0-2])$/.test(importRetentionHours)) invalid("IMPORT_RAW_RETENTION_HOURS");
+if (importStagingKey) {
+  try {
+    if (
+      !/^[A-Za-z0-9_-]{43}$/.test(importStagingKey)
+      || Buffer.from(importStagingKey, "base64url").length !== 32
+      || Buffer.from(importStagingKey, "base64url").toString("base64url") !== importStagingKey
+    ) invalid("IMPORT_STAGING_ENCRYPTION_KEY");
+  } catch { invalid("IMPORT_STAGING_ENCRYPTION_KEY"); }
+}
+if (dynamicImportEnabled === "true" && !importStagingKey) invalid("IMPORT_STAGING_ENCRYPTION_KEY");
 const operationsHeartbeatUrl = optional("OPERATIONS_HEARTBEAT_URL");
 if (environment === "production" && !operationsHeartbeatUrl) invalid("OPERATIONS_HEARTBEAT_URL");
 if (operationsHeartbeatUrl) {
@@ -172,6 +187,8 @@ const runtime = {
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
   CRON_SECRET: process.env.CRON_SECRET,
+  DYNAMIC_IMPORT_ENABLED: dynamicImportEnabled,
+  IMPORT_RAW_RETENTION_HOURS: importRetentionHours,
   OPERATIONS_INTERNAL_BASE_URL: "http://app:3000",
   MOLLIE_ENABLED: mollieEnabled,
   EMAIL_ENABLED: emailEnabled,
@@ -183,6 +200,7 @@ const runtime = {
     ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
     ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
+    ["IMPORT_STAGING_ENCRYPTION_KEY", importStagingKey],
   ].filter(([, value]) => value)),
 };
 await mkdir(expected.root, { recursive: true, mode: 0o700 });

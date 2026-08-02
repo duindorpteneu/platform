@@ -27,6 +27,11 @@ export const operationalHealthSchema = z.object({
       runningStale: z.boolean(),
     }).strict(),
   }).strict(),
+  importStaging: z.object({
+    pending: z.number().int().nonnegative(),
+    expired: z.number().int().nonnegative(),
+    oldestExpiresAt: z.string().datetime({ offset: true }).nullable(),
+  }).strict(),
   recentDeliveryFailures: z.number().int().nonnegative(),
   reconciliationIssues: z.number().int().nonnegative(),
   recentWebhookFailures: z.number().int().nonnegative(),
@@ -51,4 +56,5 @@ export const retentionResultSchema = z.object({
   rateLimitEvents: z.number().int().nonnegative(),
   parentSessions: z.number().int().nonnegative(),
   emailEvents: z.number().int().nonnegative(),
+  importStaging: z.number().int().nonnegative(),
 }).strict();

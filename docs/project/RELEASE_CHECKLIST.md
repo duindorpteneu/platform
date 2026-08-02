@@ -46,7 +46,8 @@ Bewijs lokale gate: `___________________________________________________________
 - [ ] Providers starten uit: `MOLLIE_ENABLED=false` en `EMAIL_ENABLED=false`.
 - [ ] Stagingsecretstore is gevuld; geen secret staat in Git, CI-output of deploymentlog.
 - [ ] Publieke `/api/health` en bearer-beveiligde `/api/internal/health` zijn gemonitord.
-- [ ] E-mailworker draait iedere minuut; retentiejob dagelijks; gemiste runs alarmeren.
+- [ ] E-mailworker draait iedere minuut; retentiejob bij start en uiterlijk iedere vijf minuten; een e-mailfout blokkeert cleanup niet en gemiste runs alarmeren.
+- [ ] De importstaging-sleutelgate draait na migraties en vóór appactivatie; wijzigen of verwijderen van de key blokkeert zolang actieve uploads bestaan.
 - [ ] Back-upmogelijkheid en geïsoleerde restorebestemming zijn bevestigd.
 - [ ] Fictieve testaccounts voor beheerder, kledingcommissie, uitgifte en ouderflows zijn ingericht met TOTP waar vereist.
 - [ ] Releaseversie, commit-SHA en canonversie zijn zichtbaar/vastgelegd.

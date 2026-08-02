@@ -4,7 +4,7 @@
 # configuratie vóór een host-reload.
 
 (duindorp_request_limits) {
-	@import_api path /api/imports/preview /api/imports/commit
+	@import_api path /api/imports/uploads /api/imports/preview /api/imports/commit
 	request_body @import_api {
 		max_size 12MB
 	}
@@ -21,7 +21,7 @@
 
 	@standard_api {
 		path /api/*
-		not path /api/imports/preview /api/imports/commit /api/webhooks/sendgrid /api/email/bulk
+		not path /api/imports/uploads /api/imports/preview /api/imports/commit /api/webhooks/sendgrid /api/email/bulk
 	}
 	request_body @standard_api {
 		max_size 128KB

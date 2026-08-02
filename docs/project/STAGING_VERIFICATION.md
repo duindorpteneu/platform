@@ -228,7 +228,7 @@ Bewijs: `________________`
 
 ## 4. Operations- en herstelgates
 
-- [ ] E-mailworker iedere minuut en dagelijkse retentiejob zijn twee cycli gevolgd.
+- [ ] E-mailworker iedere minuut en de onafhankelijke vijfminutenretentie zijn minimaal twee cycli gevolgd, inclusief één gecontroleerde e-mailfout waarbij cleanup wel doorgaat.
 - [ ] Interne health toont queue, stale/failed jobs, webhookmismatches en betaalreconciliatie zonder PII.
 - [ ] Providerflags zijn veilig uitgeschakeld; handmatige administratie bleef bruikbaar.
 - [ ] Providerflags zijn pas na smoke opnieuw ingeschakeld.

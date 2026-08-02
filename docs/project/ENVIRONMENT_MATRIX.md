@@ -35,6 +35,9 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `SUPABASE_JWKS` | Publiek maar omgevingsgebonden | Optioneel; lokale JWKS of tijdelijke lokale endpointfallback | Verplicht; gevalideerde ES256/P-256 keyset van exact het eigen project, zonder runtime-netwerkafhankelijkheid |
 | `PARENT_TOKEN_PEPPER` | Hoog geheim, server-only | Uniek, minimaal 32 tekens | Uniek per omgeving; rotatie vereist sessie-/QR-plan |
 | `CRON_SECRET` | Hoog geheim, server-only | Uniek, minimaal 16 tekens | Uniek per omgeving en uitsluitend scheduler-to-app |
+| `DYNAMIC_IMPORT_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na versleutelings-, retentie- en DB-featuregate |
+| `IMPORT_STAGING_ENCRYPTION_KEY` | Hoog geheim, server-only | Leeg zolang import uit staat; anders uniek | Uniek per omgeving; exact 32 random bytes als 43 tekens base64url zonder padding; deploy blokkeert rotatie/verwijdering met actieve uploads |
+| `IMPORT_RAW_RETENTION_HOURS` | Retentieconfiguratie | `24` | Geheel getal 1–72; veilige standaard 24 |
 | `OPERATIONS_HEARTBEAT_URL` | Hoog geheim, server-only | Leeg | Unieke externe HTTPS dead-man-switch; verplicht in production en nooit gelogd |
 | `MOLLIE_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
 | `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging, afzonderlijke live key in production |
@@ -57,7 +60,7 @@ Voor de eerste stagingdeploy legt de releasebeheerder buiten Git vast:
 4. back-upmogelijkheid en gekozen geïsoleerde restorebestemming;
 5. Mollie-testprofiel en webhook-URL;
 6. SendGrid-afzender, SPF/DKIM-status, template-ID en webhook;
-7. de projecteigen schedulercontainer die iedere minuut e-mail/health en dagelijks retentie uitvoert;
+7. de projecteigen schedulercontainer die iedere minuut e-mail/health en uiterlijk iedere vijf minuten retentie uitvoert;
 8. onafhankelijke `OPERATIONS_HEARTBEAT_URL`, alert-eigenaar en escalatiekanaal.
 
 Gebruik daarna uitsluitend fictieve `example.invalid`-leden. Maak ten minste één account per staffrol en één geblokkeerd staffaccount. Alle drie actieve accounts doorlopen TOTP enrollment; gedeelde accounts zijn verboden.
@@ -69,7 +72,8 @@ Gebruik daarna uitsluitend fictieve `example.invalid`-leden. Maak ten minste é�
 - Een reeds toegepaste migratie wordt nooit gewijzigd; correcties zijn nieuwe forward-fixmigraties.
 - Stagingacceptatie promoot alleen de geteste commit-SHA. Rebuild of dependencywijziging vereist heracceptatie.
 - Production gebruikt dezelfde artefact-SHA, maar andere secrets en providerconfiguraties.
-- Alleen de runtimeflags `MOLLIE_ENABLED` en `EMAIL_ENABLED` en hun gelijknamige beheerde databaseswitches zijn toegestaan. Providerverkeer vereist dat beide lagen aan staan.
+- Alleen de runtimeflags `MOLLIE_ENABLED`, `EMAIL_ENABLED` en `DYNAMIC_IMPORT_ENABLED` en hun gelijknamige beheerde databaseswitches zijn toegestaan. Providerverkeer en dynamische import vereisen dat beide lagen aan staan.
+- Na migraties maar vóór appactivatie bewijst de service-only importstaging-gate dat de runtimekey alle niet-verlopen uploads kan ontsleutelen; de fingerprint wordt nooit in release-output getoond.
 
 ## Scheidingscontrole vóór staging
 

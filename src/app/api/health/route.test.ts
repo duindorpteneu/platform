@@ -15,6 +15,9 @@ describe("GET /api/health", () => {
     process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = "e".repeat(44);
     process.env.PARENT_TOKEN_PEPPER = "p".repeat(32);
     process.env.CRON_SECRET = "c".repeat(16);
+    process.env.DYNAMIC_IMPORT_ENABLED = "false";
+    process.env.IMPORT_RAW_RETENTION_HOURS = "24";
+    delete process.env.IMPORT_STAGING_ENCRYPTION_KEY;
     mocks.admin.mockReset();
   });
   afterEach(() => {
@@ -27,6 +30,9 @@ describe("GET /api/health", () => {
     delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
     delete process.env.PARENT_TOKEN_PEPPER;
     delete process.env.CRON_SECRET;
+    delete process.env.DYNAMIC_IMPORT_ENABLED;
+    delete process.env.IMPORT_RAW_RETENTION_HOURS;
+    delete process.env.IMPORT_STAGING_ENCRYPTION_KEY;
   });
 
   it("returns a minimal release-aware JSON readiness response", async () => {
@@ -36,6 +42,7 @@ describe("GET /api/health", () => {
         emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
         retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-19T11:00:00.000Z", lastSucceededAt: "2026-07-19T11:00:01.000Z", stale: false, runningStale: false },
       },
+      importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
       recentDeliveryFailures: 0,
       reconciliationIssues: 0,
       recentWebhookFailures: 0,
@@ -52,6 +59,13 @@ describe("GET /api/health", () => {
     const response = await GET();
     expect(response.status).toBe(503);
     expect(JSON.stringify(await response.json())).not.toMatch(/supabase|postgres|secret/i);
+  });
+
+  it("vereist een canonieke importkey zodra runtime-import actief is", async () => {
+    process.env.DYNAMIC_IMPORT_ENABLED = "true";
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(mocks.admin).not.toHaveBeenCalled();
   });
 
   it("returns a redacted 503 when readiness throws", async () => {

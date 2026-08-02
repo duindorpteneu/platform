@@ -10,7 +10,7 @@ Dit runbook gebruikt geen productiecredentials en geeft geen toestemming voor pr
 ### Health
 
 - `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200` met uitsluitend `status`, `service`, `environment` en de volledige `revision`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
-- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie en recente webhookmismatches. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
+- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie, recente webhookmismatches en geaggregeerde importstaging. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
 - Beide responses moeten `Cache-Control: no-store` gebruiken. Bewaar nooit de bearerheader in monitorlogs.
 
 Voorbeeld vanaf een beveiligde runner:
@@ -31,6 +31,7 @@ Alarmeer direct bij:
 - één of meer recente `bounced`, `dropped` of `failed` SendGrid-events;
 - één of meer betaalreconciliatieproblemen;
 - één of meer webhookmismatches in 24 uur;
+- één of meer verlopen versleutelde importuploads na twee retentiecycli;
 - scheduler die twee verwachte uitvoeringen mist;
 - dagelijkse databaseback-up ouder dan 24 uur.
 
@@ -56,7 +57,7 @@ payload, credentials of persoonsgegevens.
 | Job | Route | Frequentie | Geldige uitkomst |
 | --- | --- | --- | --- |
 | E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200` met `status: "processed"`; `status: "paused"` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
-| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna dagelijks na 03:17 Europe/Amsterdam | `200` met `status: "completed"` en alleen verwijderde aantallen |
+| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna uiterlijk iedere vijf minuten | `200` met `status: "completed"` en alleen verwijderde aantallen |
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
 
@@ -69,7 +70,19 @@ De retentiejob:
 - verwijdert oudersessies uiterlijk 30 dagen na expiratie of intrekking;
 - verwijdert e-mailprovider-events ouder dan 12 maanden;
 - verwijdert voltooide operation-runrecords ouder dan 90 dagen, maar behoudt vastgelopen `running`-records voor onderzoek;
+- verwijdert versleutelde ruwe importuploads op hun per-upload expiry (standaard 24 uur, configureerbaar 1–72 uur) en behoudt alleen PII-vrije batch-/auditmetadata;
 - verwijdert geen orders, betalingen, fulfilments of auditregels.
+
+Roteer `IMPORT_STAGING_ENCRYPTION_KEY` alleen wanneer geen actieve raw uploads bestaan. De deploy voert na migraties en vóór appactivatie de service-only `assert_dynamic_import_staging_key`-gate uit met uitsluitend een SHA-256-fingerprint; een andere of ontbrekende key blokkeert zolang een niet-verlopen upload nog decryptie vereist. Veilige rotatie:
+
+1. zet eerst de databaseflag `dynamic_import_v2=false` en daarna `DYNAMIC_IMPORT_ENABLED=false`, zodat geen nieuwe upload wordt aangenomen;
+2. laat bestaande uploads verwerken of wacht tot de vijfminutenretentie alle expiraties heeft verwijderd; voer geen ongeautoriseerde purge uit;
+3. bevestig via geaggregeerde interne health dat `importStaging.pending=0` en `expired=0`;
+4. wijzig de omgevingsunieke key uitsluitend in de beschermde secretstore;
+5. deploy hetzelfde goedgekeurde artefact; de sleutelgate moet vóór runtimeactivatie groen zijn;
+6. activeer pas daarna eerst de databasepoort en vervolgens de runtimepoort.
+
+Cleanup en health blijven actief wanneer import uit staat. De databasepoort sluit bij v2-cutover ook de legacy preview- en commit-RPC af; het terugzetten van alleen de runtimeflag kan het oude pad daarom niet heropenen.
 
 Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna handmatig beoordeeld. Financiële administratie blijft zeven jaar wanneer fiscaal vereist. Audit blijft minimaal 24 maanden; betaalgerelateerde audit volgt financiële retentie.
 
