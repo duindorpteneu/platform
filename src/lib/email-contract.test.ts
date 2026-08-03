@@ -70,6 +70,39 @@ describe("email contracts", () => {
     }).success).toBe(false);
   });
 
+  it("accepteert fulfilment uitsluitend als immutable render- en sender-snapshot", () => {
+    const payload = {
+      id: "11111111-1111-4111-8111-111111111111",
+      kind: "transactional",
+      contextKind: "fulfilment",
+      recipientEmail: "ouder@example.nl",
+      templateKey: "partial_pickup",
+      templateRevisionId: "22222222-2222-4222-8222-222222222222",
+      brandingRevisionId: "33333333-3333-4333-8333-333333333333",
+      subject: "Deelafhaling voor Sophie",
+      preheader: "Bekijk wat nog volgt.",
+      html: "<p>Immutable HTML</p>",
+      text: "Immutable tekst",
+      fromName: "Kledingcommissie Duindorp SV",
+      fromEmail: "kleding@duindorpsv.nl",
+      replyToEmail: "kleding@duindorpsv.nl",
+      renderHash: "a".repeat(64),
+      parentAccountId: "44444444-4444-4444-8444-444444444444",
+      seasonId: "55555555-5555-4555-8555-555555555555",
+      eventCount: 2,
+      attempt: 1,
+    };
+    expect(claimedEmailJobSchema.safeParse(payload).success).toBe(true);
+    expect(claimedEmailJobSchema.safeParse({
+      ...payload,
+      payload: { memberName: "Sophie" },
+    }).success).toBe(false);
+    expect(claimedEmailJobSchema.safeParse({
+      ...payload,
+      fromName: undefined,
+    }).success).toBe(false);
+  });
+
   it("accepts an administrator workspace with a redacted portal job", () => {
     const timestamp = "2026-08-02T12:00:00.000Z";
     const templateId = "11111111-1111-4111-8111-111111111111";
@@ -111,5 +144,13 @@ describe("email contracts", () => {
       ...workspace,
       jobs: [{ ...workspace.jobs[0], recipientEmail: "ouder@example.invalid" }],
     }).success).toBe(false);
+    expect(emailWorkspaceSchema.safeParse({
+      ...workspace,
+      jobs: [{
+        ...workspace.jobs[0],
+        contextKind: "fulfilment",
+        templateKey: "package_complete",
+      }],
+    }).success).toBe(true);
   });
 });

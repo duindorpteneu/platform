@@ -19,6 +19,7 @@ Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te leze
 | `IMPORT_RAW_RETENTION_HOURS` | nee | nee | geheel getal 1–72 | raw-importretentie | workflowdefault `24` |
 | `QR_TOKEN_PEPPER_VERSION` | nee | nee | geheel getal 1–9999 | actuele QR-keyversie | verplicht vóór stagingdeploy; huidige ontbrekende naam blokkeert |
 | `QR_TOKEN_PREVIOUS_PEPPER_VERSION` | nee | nee | geheel getal 1–9999, anders dan current | tijdelijk rotatievenster | alleen samen met previous pepper |
+| `SENDGRID_FROM_NAME` | nee | nee | exact `Kledingcommissie Duindorp SV` | SendGrid | vereist vóór mailacceptatie |
 | `SENDGRID_FROM_EMAIL` | oude waarde | oude waarde | exact `kleding@duindorpsv.nl`, geverifieerd | SendGrid | door eigenaar gewijzigd; environment bijwerken vóór mailacceptatie |
 | `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
 | `SENDGRID_REPLY_TO_EMAIL` | oude waarde | oude waarde | exact `kleding@duindorpsv.nl` | SendGrid | door eigenaar gewijzigd; environment bijwerken vóór mailacceptatie |
@@ -66,6 +67,7 @@ gh variable set IMPORT_RAW_RETENTION_HOURS --repo duindorpteneu/platform --env s
 gh variable set IMPORT_RAW_RETENTION_HOURS --repo duindorpteneu/platform --env production
 gh variable set QR_TOKEN_PEPPER_VERSION --repo duindorpteneu/platform --env staging
 gh variable set QR_TOKEN_PEPPER_VERSION --repo duindorpteneu/platform --env production
+gh variable set SENDGRID_FROM_NAME --body 'Kledingcommissie Duindorp SV' --repo duindorpteneu/platform --env staging
 gh variable set SENDGRID_FROM_EMAIL --body 'kleding@duindorpsv.nl' --repo duindorpteneu/platform --env staging
 gh variable set SENDGRID_REPLY_TO_EMAIL --body 'kleding@duindorpsv.nl' --repo duindorpteneu/platform --env staging
 ```

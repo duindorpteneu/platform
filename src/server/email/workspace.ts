@@ -80,6 +80,9 @@ function formatArticleLines(lines: ClaimedOrderEmailJob["payload"]["articles"]) 
 }
 
 export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) {
+  if (job.contextKind === "fulfilment") {
+    throw new Error("MAIL_V2_SNAPSHOT_RENDER_REQUIRED");
+  }
   const baseUrl = new URL(appBaseUrl);
   const loginUrl = new URL("/login", baseUrl).toString();
   if (job.contextKind === "portal_access") {

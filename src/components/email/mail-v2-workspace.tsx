@@ -21,6 +21,7 @@ import type {
   MailBranding,
   MailTemplateKey,
   MailTipTapDocument,
+  MailV2CutoverSnapshot,
   MailV2Workspace,
 } from "@/lib/mail-v2-contract";
 import { MailV2Editor } from "@/components/email/mail-v2-editor";
@@ -99,6 +100,169 @@ function StatusNotice({ notice }: { notice: Notice }) {
         : <CheckCircle2 className="size-4 shrink-0" />}
       {notice.text}
     </div>
+  );
+}
+
+export function MailV2CutoverPanel({
+  snapshot,
+}: {
+  snapshot: MailV2CutoverSnapshot;
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState<"activate" | "pause" | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
+  const complete = snapshot.ready
+    && snapshot.catalogCount === 19
+    && snapshot.publishedCount === 19
+    && snapshot.brandingCount === 1
+    && snapshot.producerCount === 19;
+
+  async function change(action: "activate" | "pause") {
+    setBusy(action);
+    setNotice(null);
+    try {
+      await postJson("/api/email/v2/cutover", {
+        action,
+        ...(action === "activate"
+          ? { expectedRevision: snapshot.revision }
+          : {}),
+        reason,
+      });
+      setNotice({
+        tone: "success",
+        text: action === "activate"
+          ? "Mail-v2 is geactiveerd met een immutable cutoverwatermerk."
+          : "Nieuwe mail-v2-projecties zijn gepauzeerd; het watermerk blijft behouden.",
+      });
+      setReason("");
+      setConfirmed(false);
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error instanceof Error
+          ? error.message
+          : "De mailcutover kon niet worden gewijzigd.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className={`mb-6 rounded-xl border p-5 shadow-card ${
+      snapshot.enabled
+        ? "border-emerald-200 bg-emerald-50"
+        : "border-amber-200 bg-amber-50"
+    }`}>
+      <StatusNotice notice={notice} />
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+            snapshot.enabled
+              ? "bg-emerald-100 text-success"
+              : "bg-amber-100 text-amber-800"
+          }`}>
+            <ShieldCheck className="size-5" />
+          </span>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">
+              Gecontroleerde mailcutover
+            </p>
+            <h2 className="mt-1 text-sm font-bold text-brand-900">
+              {snapshot.enabled ? "Mail-v2-projectie actief" : "Mail-v2-projectie gepauzeerd"}
+            </h2>
+            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-600">
+              Activeren vereist alle 19 gepubliceerde templates, alle 19 bewezen
+              producenten en exact één contrastgevalideerde brandingrevisie.
+              Pauzeren wist het historische cutovermoment niet.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Catalogus {snapshot.catalogCount} / 19
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Gepubliceerd {snapshot.publishedCount} / 19
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Branding {snapshot.brandingCount} / 1
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Producenten {snapshot.producerCount} / 19
+              </span>
+              <span className={`rounded-full px-2.5 py-1 ${
+                complete
+                  ? "bg-emerald-100 text-success"
+                  : "bg-amber-100 text-amber-800"
+              }`}>
+                {complete ? "Preflight gereed" : "Preflight geblokkeerd"}
+              </span>
+            </div>
+            {snapshot.cutoverAt && (
+              <p className="mt-3 text-[10px] text-slate-500">
+                Immutable watermerk:{" "}
+                {new Intl.DateTimeFormat("nl-NL", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                }).format(new Date(snapshot.cutoverAt))}
+              </p>
+            )}
+          </div>
+        </div>
+        <fieldset
+          disabled={Boolean(busy)}
+          className="w-full shrink-0 space-y-3 rounded-lg border border-white/80 bg-white/70 p-4 lg:w-[360px]"
+        >
+          <label className="block text-[11px] font-bold text-brand-900">
+            Reden
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              minLength={4}
+              maxLength={500}
+              required
+              className={`${fieldClass} h-20 py-2 text-xs`}
+              placeholder="Beschrijf de uitgevoerde controle of incidentreden."
+            />
+          </label>
+          <label className="flex items-start gap-2 text-[10px] leading-4 text-slate-600">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+              className="mt-0.5 size-4 accent-brand-700"
+            />
+            <span>
+              Ik bevestig dat deze wijziging operationele mailprojectie beïnvloedt
+              en door de auditlog wordt vastgelegd.
+            </span>
+          </label>
+          {snapshot.enabled ? (
+            <button
+              type="button"
+              onClick={() => void change("pause")}
+              disabled={!confirmed || reason.trim().length < 4}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 text-xs font-bold text-amber-900 disabled:opacity-40"
+            >
+              {busy === "pause" && <Loader2 className="size-4 animate-spin" />}
+              Projectie pauzeren
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void change("activate")}
+              disabled={!complete || !confirmed || reason.trim().length < 4}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-bold text-white disabled:opacity-40"
+            >
+              {busy === "activate" && <Loader2 className="size-4 animate-spin" />}
+              Mail-v2 activeren
+            </button>
+          )}
+        </fieldset>
+      </div>
+    </section>
   );
 }
 

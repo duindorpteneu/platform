@@ -324,6 +324,7 @@ describe("deployment environment isolation", () => {
       EMAIL_ENABLED: "true",
       SENDGRID_API_KEY: "SG.test-key",
       SENDGRID_API_BASE_URL: "https://api.eu.sendgrid.com",
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
       SENDGRID_FROM_EMAIL: "danny.goldenbelt@duindorpsv.nl",
       SENDGRID_REPLY_TO_EMAIL: "danny.goldenbelt@duindorpsv.nl",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: publicKey.export({ type: "spki", format: "der" }).toString("base64"),

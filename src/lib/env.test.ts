@@ -17,12 +17,14 @@ describe("server provider configuration", () => {
       MOLLIE_API_KEY: "",
       EMAIL_ENABLED: "false",
       SENDGRID_API_KEY: "",
+      SENDGRID_FROM_NAME: "",
       SENDGRID_FROM_EMAIL: "",
       SENDGRID_REPLY_TO_EMAIL: "   ",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "",
     });
     expect(env.MOLLIE_API_KEY).toBeUndefined();
     expect(env.SENDGRID_API_KEY).toBeUndefined();
+    expect(env.SENDGRID_FROM_NAME).toBeUndefined();
     expect(env.SENDGRID_FROM_EMAIL).toBeUndefined();
     expect(env.SENDGRID_REPLY_TO_EMAIL).toBeUndefined();
     expect(env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY).toBeUndefined();
@@ -101,6 +103,7 @@ describe("server provider configuration", () => {
       EMAIL_ENABLED: "true",
       APP_BASE_URL: "http://localhost:3100",
       SENDGRID_API_KEY: "SG.test",
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
       SENDGRID_FROM_EMAIL: "tenue@duindorp.example",
       SENDGRID_REPLY_TO_EMAIL: "commissie@duindorp.example",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",

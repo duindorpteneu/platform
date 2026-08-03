@@ -2,9 +2,11 @@ import { unstable_noStore as noStore } from "next/cache";
 import {
   mailBrandingSchema,
   mailManagementResponseSchema,
+  mailV2CutoverSnapshotSchema,
   mailV2WorkspaceSchema,
   type MailBranding,
   type MailTipTapDocument,
+  type MailV2CutoverSnapshot,
   type MailV2Workspace,
 } from "@/lib/mail-v2-contract";
 import { requireStaffRole } from "@/server/auth/staff";
@@ -44,6 +46,55 @@ export async function getMailV2Workspace(): Promise<MailV2Workspace> {
     throw new Error("MAIL_V2_WORKSPACE_RESPONSE_INVALID");
   }
   return parsed.data;
+}
+
+export async function getMailV2CutoverSnapshot(): Promise<MailV2CutoverSnapshot> {
+  noStore();
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("MAIL_V2_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc(
+    "get_mail_v2_cutover_snapshot",
+  );
+  if (error) {
+    logWorkspaceFailure(error.code || "cutover_query_failed");
+    if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+    if (error.code === "PGRST106" || error.code === "PGRST202") {
+      throw new Error("MAIL_V2_SCHEMA_CONTRACT_STALE");
+    }
+    throw new Error("MAIL_V2_CUTOVER_QUERY_FAILED");
+  }
+  const parsed = mailV2CutoverSnapshotSchema.safeParse(data);
+  if (!parsed.success) {
+    logWorkspaceFailure("cutover_response_invalid");
+    throw new Error("MAIL_V2_CUTOVER_RESPONSE_INVALID");
+  }
+  return parsed.data;
+}
+
+export async function changeMailV2Cutover(
+  input:
+    | { action: "activate"; expectedRevision: string; reason: string }
+    | { action: "pause"; reason: string },
+  correlationId: string | null,
+) {
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("MAIL_V2_DATABASE_UNAVAILABLE");
+  const { data, error } = input.action === "activate"
+    ? await supabase.schema("app").rpc("activate_mail_templates_v2", {
+      p_expected_revision: input.expectedRevision,
+      p_reason: input.reason,
+      p_correlation_id: correlationId,
+    })
+    : await supabase.schema("app").rpc("pause_mail_templates_v2", {
+      p_reason: input.reason,
+      p_correlation_id: correlationId,
+    });
+  if (error) return { data: null, error };
+  const parsed = mailV2CutoverSnapshotSchema.safeParse(data);
+  if (!parsed.success) throw new Error("MAIL_V2_CUTOVER_RESPONSE_INVALID");
+  return { data: parsed.data, error: null };
 }
 
 function sourceForTemplate(

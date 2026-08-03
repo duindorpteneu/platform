@@ -454,3 +454,152 @@ export const mailManagementResponseSchema = z.object({
   publishedAt: timestamp.optional(),
   templateKey: mailTemplateKeySchema.optional(),
 }).strict();
+
+export const mailV2CutoverSnapshotSchema = z.object({
+  enabled: z.boolean(),
+  cutoverAt: timestamp.nullable(),
+  catalogCount: z.number().int().nonnegative(),
+  publishedCount: z.number().int().nonnegative(),
+  brandingCount: z.number().int().nonnegative(),
+  producerCount: z.number().int().nonnegative(),
+  ready: z.boolean(),
+  revision: contentHash,
+  reused: z.boolean().optional(),
+}).strict().superRefine((snapshot, context) => {
+  if (snapshot.ready && (
+    snapshot.catalogCount !== MAIL_TEMPLATE_KEYS.length
+    || snapshot.publishedCount !== MAIL_TEMPLATE_KEYS.length
+    || snapshot.brandingCount !== 1
+    || snapshot.producerCount !== MAIL_TEMPLATE_KEYS.length
+  )) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ready"],
+      message: "De mailcutover is alleen gereed met de volledige catalogus en branding.",
+    });
+  }
+  if (snapshot.enabled && snapshot.cutoverAt === null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["cutoverAt"],
+      message: "Een actieve mailcutover vereist een immutable watermerk.",
+    });
+  }
+});
+export type MailV2CutoverSnapshot = z.infer<
+  typeof mailV2CutoverSnapshotSchema
+>;
+
+const mailV2CutoverReasonSchema = z.string()
+  .trim()
+  .min(4)
+  .max(500)
+  .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value));
+
+export const manageMailV2CutoverRequestSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("activate"),
+    expectedRevision: contentHash,
+    reason: mailV2CutoverReasonSchema,
+  }).strict(),
+  z.object({
+    action: z.literal("pause"),
+    reason: mailV2CutoverReasonSchema,
+  }).strict(),
+]);
+
+const fulfilmentProjectionLineSchema = z.object({
+  product: z.string().trim().min(1).max(160),
+  size: z.string().trim().min(1).max(80),
+  quantity: z.number().int().min(1).max(25),
+  status: z.string().trim().min(1).max(80).optional(),
+}).strict();
+
+const fulfilmentProjectionEventSchema = z.object({
+  eventId: uuid,
+  memberFirstName: z.string().trim().min(1).max(160),
+  memberFullName: z.string().trim().min(1).max(320),
+  teamName: z.string().trim().min(1).max(160),
+  seasonName: z.string().trim().min(1).max(120),
+  packageName: z.string().trim().min(1).max(160),
+  issued: z.array(fulfilmentProjectionLineSchema).min(1).max(250),
+  remaining: z.array(fulfilmentProjectionLineSchema).max(250),
+  package: z.array(fulfilmentProjectionLineSchema).min(1).max(250),
+}).strict();
+
+export const fulfilmentMailProjectionGroupSchema = z.object({
+  groupId: uuid,
+  eligibilityRevision: contentHash,
+  eventType: z.enum(["partial_pickup", "package_complete"]),
+  template: mailTemplateSourceSchema.extend({
+    id: uuid,
+    contentHash,
+  }).strict(),
+  branding: mailBrandingSchema.extend({
+    id: uuid,
+    contentHash,
+  }).strict(),
+  events: z.array(fulfilmentProjectionEventSchema).min(1).max(10),
+}).strict().superRefine((group, context) => {
+  if (group.template.templateKey !== group.eventType) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["template", "templateKey"],
+      message: "Template en uitgifte-event komen niet overeen.",
+    });
+  }
+  const eventIds = new Set(group.events.map((event) => event.eventId));
+  if (eventIds.size !== group.events.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["events"],
+      message: "Uitgifte-events moeten uniek zijn.",
+    });
+  }
+  for (const [index, event] of group.events.entries()) {
+    if (group.eventType === "partial_pickup" && event.remaining.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "remaining"],
+        message: "Een deelafhaling vereist resterende pakketregels.",
+      });
+    }
+    if (group.eventType === "package_complete" && event.remaining.length !== 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "remaining"],
+        message: "Een eindbevestiging mag geen resterende pakketregels bevatten.",
+      });
+    }
+  }
+});
+
+export const fulfilmentMailProjectionClaimSchema = z.object({
+  leaseToken: uuid,
+  groups: z.array(fulfilmentMailProjectionGroupSchema).max(10),
+}).strict();
+
+export const fulfilmentMailProjectionClaimEnvelopeSchema = z.object({
+  leaseToken: uuid,
+  groups: z.array(z.unknown()).max(10),
+}).strict();
+
+export const fulfilmentMailProjectionFinalizeSchema = z.object({
+  groupId: uuid,
+  jobId: uuid.nullable(),
+  status: z.enum(["queued", "suppressed", "stale"]),
+  eventCount: z.number().int().min(1).max(100),
+  reused: z.boolean(),
+}).strict().superRefine((result, context) => {
+  if ((result.status === "queued") !== Boolean(result.jobId)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["jobId"],
+      message: "Alleen een gequeue-de projectie heeft een mailjob.",
+    });
+  }
+});
+
+export type FulfilmentMailProjectionGroup = z.infer<
+  typeof fulfilmentMailProjectionGroupSchema
+>;

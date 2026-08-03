@@ -26,6 +26,7 @@
     "test:db:package-concurrency": "bash scripts/test-package-concurrency.sh",
     "test:db:payment-concurrency": "bash scripts/test-payment-concurrency.sh",
     "test:db:inventory-concurrency": "bash scripts/test-inventory-concurrency.sh",
+    "test:db:mail-projection-concurrency": "bash scripts/test-mail-projection-concurrency.sh",
     "test:portal-access-browser": "node scripts/test-parent-access-browser.mjs",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
     "test:dashboard-browser": "node scripts/test-platform-browser.mjs",

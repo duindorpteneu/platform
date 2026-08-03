@@ -52,6 +52,7 @@ jobs:
       SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
       SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
       SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
+      SENDGRID_FROM_NAME: ${{ vars.SENDGRID_FROM_NAME }}
       SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
       SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
       SENDGRID_WEBHOOK_ID: ${{ vars.SENDGRID_WEBHOOK_ID }}
@@ -102,7 +103,7 @@ jobs:
           set -euo pipefail
           [[ "${SENDGRID_API_KEY}" == SG.* ]]
           [[ "${SENDGRID_API_BASE_URL}" == "https://api.sendgrid.com" || "${SENDGRID_API_BASE_URL}" == "https://api.eu.sendgrid.com" ]]
-          [[ "${SENDGRID_FROM_EMAIL}" == *@* && "${SENDGRID_REPLY_TO_EMAIL}" == *@* && "${SENDGRID_SMOKE_RECIPIENT}" == *@* ]]
+          [[ -n "${SENDGRID_FROM_NAME}" && "${SENDGRID_FROM_EMAIL}" == *@* && "${SENDGRID_REPLY_TO_EMAIL}" == *@* && "${SENDGRID_SMOKE_RECIPIENT}" == *@* ]]
           payload="${RUNNER_TEMP}/sendgrid-smoke.json"
           headers="${RUNNER_TEMP}/sendgrid-headers.txt"
           trap 'rm -f "${payload}" "${headers}"' EXIT
@@ -113,7 +114,7 @@ jobs:
               to: [{ email: process.env.SENDGRID_SMOKE_RECIPIENT }],
               custom_args: { email_job_id: randomUUID() },
             }],
-            from: { email: process.env.SENDGRID_FROM_EMAIL, name: "Duindorp SV Tenueportaal" },
+            from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME },
             reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL },
             subject: "Stagingcontrole Duindorp SV Tenueportaal",
             content: [
