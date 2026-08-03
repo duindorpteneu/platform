@@ -40,6 +40,20 @@ cleanup_data() {
 begin;
 set local session_replication_role = replica;
 
+delete from private.mail_v2_episode_transitions
+where episode_id in (
+  select id
+  from private.mail_v2_notification_episodes
+  where parent_account_id = 'ca600000-0000-4000-8000-000000000001'
+);
+delete from private.mail_v2_episode_dispatches
+where episode_id in (
+  select id
+  from private.mail_v2_notification_episodes
+  where parent_account_id = 'ca600000-0000-4000-8000-000000000001'
+);
+delete from private.mail_v2_notification_episodes
+where parent_account_id = 'ca600000-0000-4000-8000-000000000001';
 delete from private.mail_v2_projections
 where projection_batch_id in (
   select id
@@ -639,7 +653,8 @@ if ! rg -q '"reused": true' <<<"$reused_result"; then
   exit 1
 fi
 
-read -r run_count event_count batch_count <<<"$("${psql_cmd[@]}" -F ' ' -c "
+read -r run_count event_count batch_count episode_count dispatch_count \
+  <<<"$("${psql_cmd[@]}" -F ' ' -c "
 select
   (select count(*) from private.mail_v2_campaign_runs
     where preflight_id='$preflight_id'),
@@ -653,10 +668,23 @@ select
     where cohort_id in (
       select cohort_id from private.mail_v2_campaign_runs
       where preflight_id='$preflight_id'
-    ));
+    )),
+  (select count(*) from private.mail_v2_notification_episodes
+    where process_key='payment'
+      and parent_account_id='ca600000-0000-4000-8000-000000000001'
+      and scope_id='ca400000-0000-4000-8000-000000000001'
+      and status='open'),
+  (select count(*) from private.mail_v2_episode_dispatches dispatch
+    join private.mail_v2_notification_episodes episode
+      on episode.id=dispatch.episode_id
+    where episode.process_key='payment'
+      and episode.parent_account_id='ca600000-0000-4000-8000-000000000001'
+      and episode.scope_id='ca400000-0000-4000-8000-000000000001');
 ")"
-if [[ "$run_count" != "1" || "$event_count" != "1" || "$batch_count" != "1" ]]; then
-  echo "De confirmrace schreef niet exact één run, event en projectiebatch." >&2
+if [[ "$run_count" != "1" || "$event_count" != "1" \
+  || "$batch_count" != "1" || "$episode_count" != "1" \
+  || "$dispatch_count" != "1" ]]; then
+  echo "De confirmrace schreef niet exact één run, event, episodebinding en projectiebatch." >&2
   exit 1
 fi
 
