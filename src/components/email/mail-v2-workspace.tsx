@@ -111,13 +111,16 @@ export function MailV2CutoverPanel({
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState<"activate" | "pause" | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const complete = snapshot.ready
     && snapshot.catalogCount === 19
     && snapshot.publishedCount === 19
     && snapshot.brandingCount === 1
-    && snapshot.producerCount === 19;
+    && snapshot.producerCount === 19
+    && snapshot.legacyPendingCount === 0
+    && snapshot.projectionFailureCount === 0
+    && snapshot.unresolvedConfirmationCount === 0;
 
   async function change(action: "activate" | "pause") {
     setBusy(action);
@@ -151,6 +154,36 @@ export function MailV2CutoverPanel({
     }
   }
 
+  async function retryProjection(
+    failure: MailV2CutoverSnapshot["projectionFailures"][number],
+  ) {
+    setBusy(`retry:${failure.groupId}`);
+    setNotice(null);
+    try {
+      await postJson("/api/email/v2/projections/retry", {
+        groupId: failure.groupId,
+        expectedRetryCount: failure.retryCount,
+        reason,
+      });
+      setNotice({
+        tone: "success",
+        text: "De gecorrigeerde projectie is geauditeerd opnieuw vrijgegeven.",
+      });
+      setReason("");
+      setConfirmed(false);
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error instanceof Error
+          ? error.message
+          : "De mailprojectie kon niet veilig opnieuw worden vrijgegeven.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className={`mb-6 rounded-xl border p-5 shadow-card ${
       snapshot.enabled
@@ -176,7 +209,8 @@ export function MailV2CutoverPanel({
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-600">
               Activeren vereist alle 19 gepubliceerde templates, alle 19 bewezen
-              producenten en exact één contrastgevalideerde brandingrevisie.
+              producenten, exact één contrastgevalideerde brandingrevisie en een
+              lege legacywachtrij zonder projectie- of historiereconciliaties.
               Pauzeren wist het historische cutovermoment niet.
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
@@ -191,6 +225,15 @@ export function MailV2CutoverPanel({
               </span>
               <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
                 Producenten {snapshot.producerCount} / 19
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Legacywachtrij {snapshot.legacyPendingCount}
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Projectiefouten {snapshot.projectionFailureCount}
+              </span>
+              <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
+                Historiereconciliaties {snapshot.unresolvedConfirmationCount}
               </span>
               <span className={`rounded-full px-2.5 py-1 ${
                 complete
@@ -262,6 +305,52 @@ export function MailV2CutoverPanel({
           )}
         </fieldset>
       </div>
+      {snapshot.projectionFailures.length > 0 && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-white/80 p-4">
+          <h3 className="text-xs font-bold text-brand-900">
+            Herstelbare projectiefouten
+          </h3>
+          <p className="mt-1 text-[10px] leading-4 text-slate-600">
+            Controleer eerst de template of renderer. De reden en iedere retry
+            worden geaudit; dezelfde immutable domeinevents blijven gebonden.
+          </p>
+          <div className="mt-3 space-y-2">
+            {snapshot.projectionFailures.map((failure) => (
+              <div
+                key={failure.groupId}
+                className="flex flex-col gap-2 rounded-lg border border-line bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="text-[10px] text-slate-600">
+                  <p className="font-bold text-brand-900">
+                    {templateLabels[failure.templateKey]}
+                  </p>
+                  <p>
+                    {failure.eventCount} event(s) · poging {failure.retryCount}/10
+                    {" · "}
+                    {failure.suppressionReason}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void retryProjection(failure)}
+                  disabled={failure.retryCount >= 10
+                    || failure.suppressionReason === "retry_exhausted"
+                    || !confirmed
+                    || reason.trim().length < 4}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 text-[10px] font-bold text-danger disabled:opacity-40"
+                >
+                  {busy === `retry:${failure.groupId}`
+                    && <Loader2 className="size-3.5 animate-spin" />}
+                  {failure.retryCount >= 10
+                    || failure.suppressionReason === "retry_exhausted"
+                    ? "Handmatige interventie vereist"
+                    : "Opnieuw projecteren"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

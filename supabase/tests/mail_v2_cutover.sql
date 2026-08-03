@@ -74,6 +74,21 @@ select is(
   '2',
   'alleen de twee werkelijk geïmplementeerde fulfilmentproducenten zijn geregistreerd'
 );
+select is(
+  (select result->>'legacyPendingCount' from initial_mail_cutover),
+  '0',
+  'de cutoverpreflight rapporteert de claimbare legacywachtrij'
+);
+select is(
+  (select result->>'projectionFailureCount' from initial_mail_cutover),
+  '0',
+  'de cutoverpreflight rapporteert deterministische projectiefouten'
+);
+select is(
+  (select result->>'unresolvedConfirmationCount' from initial_mail_cutover),
+  '0',
+  'de cutoverpreflight rapporteert onopgeloste historische bevestigingen'
+);
 select throws_ok(
   $$select app.pause_mail_templates_v2(
     'Nog niet geactiveerde keten',
@@ -179,11 +194,113 @@ from app.mail_templates template
 where template.active
 on conflict (template_key) do nothing;
 
+insert into app.members(
+  id,
+  relation_number,
+  first_name,
+  last_name,
+  email,
+  team
+) values (
+  'e7010000-0000-4000-8000-000000000001',
+  'MAIL-CUTOVER-1',
+  'Legacy',
+  'Wachtrij',
+  'legacy-wachtrij@example.invalid',
+  'JO11-1'
+);
+insert into app.member_orders(
+  id,
+  member_id,
+  season_id,
+  amount_due_cents
+)
+select
+  'e7020000-0000-4000-8000-000000000001',
+  'e7010000-0000-4000-8000-000000000001',
+  settings.active_season_id,
+  12500
+from app.app_settings settings
+where settings.id = true;
+insert into private.email_jobs(
+  kind,
+  recipient_email,
+  template_key,
+  payload,
+  order_id,
+  template_id,
+  idempotency_key
+)
+select
+  'bulk',
+  'legacy-wachtrij@example.invalid',
+  template.template_key,
+  '{}'::jsonb,
+  'e7020000-0000-4000-8000-000000000001',
+  template.id,
+  'mail-cutover-legacy-pending-0001'
+from app.email_templates template
+where template.template_key = 'payment_reminder';
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"e7000000-0000-4000-8000-000000000001","aal":"aal2"}',
   true
 );
+set local role authenticated;
+create temporary table legacy_blocked_mail_cutover as
+select app.get_mail_v2_cutover_snapshot() result;
+select is(
+  (select result->>'legacyPendingCount' from legacy_blocked_mail_cutover),
+  '1',
+  'een claimbare legacyjob wordt exact geteld'
+);
+select is(
+  (select result->>'ready' from legacy_blocked_mail_cutover),
+  'false',
+  'een claimbare legacyjob blokkeert activering'
+);
+select throws_ok(
+  format(
+    $sql$select app.activate_mail_templates_v2(
+      %L,
+      'Legacywachtrij is nog niet aantoonbaar gedraineerd',
+      null
+    )$sql$,
+    (select result->>'revision' from legacy_blocked_mail_cutover)
+  ),
+  '23514',
+  'MAIL_V2_CUTOVER_RECONCILIATION_REQUIRED',
+  'de database weigert cutover met legacyachterstand'
+);
+reset role;
+
+update private.email_jobs
+set status = 'delivery_uncertain',
+    uncertain_at = timezone('utc', now()),
+    last_error = 'provider_result_unknown',
+    updated_at = timezone('utc', now())
+where idempotency_key = 'mail-cutover-legacy-pending-0001';
+
+set local role authenticated;
+create temporary table uncertain_blocked_mail_cutover as
+select app.get_mail_v2_cutover_snapshot() result;
+select is(
+  (select result->>'legacyPendingCount'
+   from uncertain_blocked_mail_cutover),
+  '1',
+  'een onzekere legacybezorging blijft een cutoverblocker'
+);
+reset role;
+
+update private.email_jobs
+set status = 'failed',
+    completed_at = timezone('utc', now()),
+    uncertain_at = null,
+    last_error = 'drained_before_mail_v2_cutover',
+    updated_at = timezone('utc', now())
+where idempotency_key = 'mail-cutover-legacy-pending-0001';
+
 set local role authenticated;
 create temporary table producer_ready_mail_cutover as
 select app.get_mail_v2_cutover_snapshot() result;
@@ -230,6 +347,16 @@ select is(
   (select result->>'reused' from activated_mail_cutover),
   'false',
   'eerste activatie is geen idempotent hergebruik'
+);
+select throws_ok(
+  $$select app.create_email_bulk(
+    'payment_reminder',
+    array['e7020000-0000-4000-8000-000000000001'::uuid],
+    'legacy-after-cutover'
+  )$$,
+  '55000',
+  'MAIL_V2_LEGACY_BULK_CLOSED',
+  'legacy bulk rapporteert na cutover geen vals succes'
 );
 
 create temporary table repeated_activation as

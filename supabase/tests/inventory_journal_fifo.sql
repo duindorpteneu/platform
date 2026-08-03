@@ -467,8 +467,7 @@ select throws_ok(
 );
 
 update app.payments
-set status = 'refunded',
-    refunded_at = timezone('utc', now())
+set reconciliation_issue = 'Tijdelijk betaalconflict voor regressietest'
 where id = 'f1700000-0000-4000-8000-000000000001';
 
 select is(
@@ -476,8 +475,71 @@ select is(
     select status::text
     from app.inventory_allocations
     where order_line_id = 'f1600000-0000-4000-8000-000000000001'
+    order by created_at desc
+    limit 1
   ),
   'released',
+  'een reconciliatieconflict maakt betaald ongeldig en geeft allocatie vrij'
+);
+select is(
+  (
+    select status::text
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  'queued',
+  'vrijgave plant de variant opnieuw voor een volgende kandidaat'
+);
+
+update app.payments
+set reconciliation_issue = null
+where id = 'f1700000-0000-4000-8000-000000000001';
+
+set local role service_role;
+select lives_ok(
+  $$select app.process_inventory_allocation_queue(10)$$,
+  'oplossen van het betaalconflict activeert de FIFO-queue opnieuw'
+);
+reset role;
+select is(
+  (
+    select count(*)::integer
+    from app.inventory_allocations
+    where order_line_id = 'f1600000-0000-4000-8000-000000000001'
+      and status = 'reserved'
+  ),
+  1,
+  'gereconcilieerde betaling kan opnieuw hard worden gealloceerd'
+);
+select ok(
+  exists(
+    select 1
+    from app.inventory_allocation_events allocation_event
+    join app.inventory_allocations allocation
+      on allocation.id = allocation_event.allocation_id
+    where allocation.order_line_id =
+        'f1600000-0000-4000-8000-000000000001'
+      and allocation_event.event_type = 'reserved'
+      and allocation_event.source_type = 'allocation_queue'
+      and allocation_event.source_id is not null
+  ),
+  'queueallocaties bewaren een duurzame runidentiteit voor mailconsolidatie'
+);
+
+update app.payments
+set status = 'refunded',
+    refunded_at = timezone('utc', now())
+where id = 'f1700000-0000-4000-8000-000000000001';
+
+select is(
+  (
+    select count(*)::integer
+    from app.inventory_allocations
+    where order_line_id = 'f1600000-0000-4000-8000-000000000001'
+      and status <> 'released'
+  ),
+  0,
   'refund geeft de nog niet uitgegeven allocatie transactioneel vrij'
 );
 select is(

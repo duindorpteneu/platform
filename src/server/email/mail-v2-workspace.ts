@@ -4,6 +4,7 @@ import {
   mailManagementResponseSchema,
   mailV2CutoverSnapshotSchema,
   mailV2WorkspaceSchema,
+  retryMailV2ProjectionResponseSchema,
   type MailBranding,
   type MailTipTapDocument,
   type MailV2CutoverSnapshot,
@@ -94,6 +95,34 @@ export async function changeMailV2Cutover(
   if (error) return { data: null, error };
   const parsed = mailV2CutoverSnapshotSchema.safeParse(data);
   if (!parsed.success) throw new Error("MAIL_V2_CUTOVER_RESPONSE_INVALID");
+  return { data: parsed.data, error: null };
+}
+
+export async function retryMailV2Projection(
+  input: {
+    groupId: string;
+    expectedRetryCount: number;
+    reason: string;
+  },
+  correlationId: string | null,
+) {
+  await requireStaffRole(["beheerder"]);
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) throw new Error("MAIL_V2_DATABASE_UNAVAILABLE");
+  const { data, error } = await supabase.schema("app").rpc(
+    "retry_mail_v2_domain_projection_v1",
+    {
+      p_projection_batch_id: input.groupId,
+      p_expected_retry_count: input.expectedRetryCount,
+      p_reason: input.reason,
+      p_correlation_id: correlationId,
+    },
+  );
+  if (error) return { data: null, error };
+  const parsed = retryMailV2ProjectionResponseSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error("MAIL_V2_PROJECTION_RETRY_RESPONSE_INVALID");
+  }
   return { data: parsed.data, error: null };
 }
 

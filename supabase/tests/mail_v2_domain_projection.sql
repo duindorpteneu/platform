@@ -569,5 +569,89 @@ select is(
   'na hervatten kan exact dezelfde geldige snapshot alsnog worden verzonden'
 );
 
+set local role service_role;
+create temporary table recovery_domain_claim as
+select app.claim_mail_v2_domain_projections_v1(
+  'd7150000-0000-4000-8000-000000000006',
+  10
+) result;
+grant select on recovery_domain_claim to authenticated;
+create temporary table recovery_failure as
+select app.fail_mail_v2_domain_projection_v1(
+  (select (result#>>'{groups,0,groupId}')::uuid
+   from recovery_domain_claim),
+  'd7150000-0000-4000-8000-000000000006',
+  'render_invalid'
+) result;
+reset role;
+
+select is(
+  (select result->>'status' from recovery_failure),
+  'suppressed',
+  'een deterministische rendererfout wordt veilig geparkeerd'
+);
+select ok(
+  exists(
+    select 1
+    from app.action_items item
+    where item.type = 'mail_projection_failed'
+      and item.object_id = (
+        select (result#>>'{groups,0,groupId}')::uuid
+        from recovery_domain_claim
+      )
+      and item.status = 'open'
+  ),
+  'een geparkeerde projectie opent één beheeractie'
+);
+
+set local role authenticated;
+create temporary table recovery_retry as
+select app.retry_mail_v2_domain_projection_v1(
+  (select (result#>>'{groups,0,groupId}')::uuid
+   from recovery_domain_claim),
+  0,
+  'Template gecorrigeerd en opnieuw gecontroleerd',
+  'd7150000-0000-4000-8000-000000000007'
+) result;
+reset role;
+
+select is(
+  (select result->>'status' from recovery_retry),
+  'leased',
+  'beheerder kan een herstelbare projectiefout opnieuw vrijgeven'
+);
+select is(
+  (select result->>'retryCount' from recovery_retry),
+  '1',
+  'herprojectie is expliciet en begrensd geteld'
+);
+select ok(
+  exists(
+    select 1
+    from app.action_items item
+    where item.type = 'mail_projection_failed'
+      and item.object_id = (
+        select (result#>>'{groups,0,groupId}')::uuid
+        from recovery_domain_claim
+      )
+      and item.status = 'resolved'
+      and item.resolution_source = 'system'
+  ),
+  'de herstelactie wordt na geaudite retry aantoonbaar gesloten'
+);
+
+set local role service_role;
+create temporary table recovered_domain_claim as
+select app.claim_mail_v2_domain_projections_v1(
+  'd7150000-0000-4000-8000-000000000008',
+  10
+) result;
+reset role;
+select is(
+  (select result#>>'{groups,0,groupId}' from recovered_domain_claim),
+  (select result#>>'{groups,0,groupId}' from recovery_domain_claim),
+  'retry hergebruikt dezelfde immutable eventbinding zonder duplicaat'
+);
+
 select * from finish();
 rollback;

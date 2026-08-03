@@ -300,7 +300,7 @@ export const mailProtectedValueSchemas = {
   payment_summary: z.union([
     paymentSummaryLineSchema.omit({ memberFirstName: true }),
     z.object({
-      orders: z.array(paymentSummaryLineSchema).min(1).max(10),
+      orders: z.array(paymentSummaryLineSchema).min(1).max(100),
     }).strict(),
   ]),
   payment_action: protectedActionSchema,
@@ -470,6 +470,22 @@ export const mailV2CutoverSnapshotSchema = z.object({
   publishedCount: z.number().int().nonnegative(),
   brandingCount: z.number().int().nonnegative(),
   producerCount: z.number().int().nonnegative(),
+  legacyPendingCount: z.number().int().nonnegative(),
+  projectionFailureCount: z.number().int().nonnegative(),
+  unresolvedConfirmationCount: z.number().int().nonnegative(),
+  projectionFailures: z.array(z.object({
+    groupId: uuid,
+    templateKey: mailTemplateKeySchema,
+    retryCount: z.number().int().min(0).max(10),
+    eventCount: z.number().int().min(1).max(100),
+    suppressionReason: z.enum([
+      "render_invalid",
+      "projection_response_invalid",
+      "projection_finalize_invalid",
+      "retry_exhausted",
+    ]),
+    createdAt: timestamp,
+  }).strict()).max(25),
   ready: z.boolean(),
   revision: contentHash,
   reused: z.boolean().optional(),
@@ -479,11 +495,14 @@ export const mailV2CutoverSnapshotSchema = z.object({
     || snapshot.publishedCount !== MAIL_TEMPLATE_KEYS.length
     || snapshot.brandingCount !== 1
     || snapshot.producerCount !== MAIL_TEMPLATE_KEYS.length
+    || snapshot.legacyPendingCount !== 0
+    || snapshot.projectionFailureCount !== 0
+    || snapshot.unresolvedConfirmationCount !== 0
   )) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["ready"],
-      message: "De mailcutover is alleen gereed met de volledige catalogus en branding.",
+      message: "De mailcutover vereist volledige dekking en nul open reconciliaties.",
     });
   }
   if (snapshot.enabled && snapshot.cutoverAt === null) {
@@ -497,6 +516,22 @@ export const mailV2CutoverSnapshotSchema = z.object({
 export type MailV2CutoverSnapshot = z.infer<
   typeof mailV2CutoverSnapshotSchema
 >;
+
+export const retryMailV2ProjectionRequestSchema = z.object({
+  groupId: uuid,
+  expectedRetryCount: z.number().int().min(0).max(9),
+  reason: z.string()
+    .trim()
+    .min(4)
+    .max(500)
+    .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value)),
+}).strict();
+
+export const retryMailV2ProjectionResponseSchema = z.object({
+  groupId: uuid,
+  status: z.literal("leased"),
+  retryCount: z.number().int().min(1).max(10),
+}).strict();
 
 const mailV2CutoverReasonSchema = z.string()
   .trim()
