@@ -17,7 +17,15 @@ export const emailTemplateKeySchema = z.enum([
   "qr_code_resent",
 ]);
 export const bulkEmailTemplateKeySchema = z.enum(["payment_reminder", "ready_for_pickup"]);
-export const emailJobStatusSchema = z.enum(["queued", "processing", "retry", "sent", "failed", "delivery_uncertain"]);
+export const emailJobStatusSchema = z.enum([
+  "queued",
+  "processing",
+  "retry",
+  "sent",
+  "failed",
+  "delivery_uncertain",
+  "superseded",
+]);
 export const emailDeliveryStatusSchema = z.enum(["delivered", "bounced", "deferred", "dropped", "failed"]);
 export const orderLineEmailStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up"]);
 

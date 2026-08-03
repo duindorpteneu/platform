@@ -1208,6 +1208,46 @@ select is(
   'laatste afhaling maakt één eindmail en geen extra deelmail'
 );
 
+insert into private.fulfilment_mail_projection_batches(
+  id,
+  parent_account_id,
+  season_id,
+  event_type,
+  template_revision_id,
+  branding_revision_id,
+  status,
+  lease_token,
+  lease_expires_at,
+  event_count
+)
+select
+  'e6970000-0000-4000-8000-000000000099',
+  batch.parent_account_id,
+  batch.season_id,
+  batch.event_type,
+  batch.template_revision_id,
+  batch.branding_revision_id,
+  'leased',
+  'e6980000-0000-4000-8000-000000000099',
+  clock_timestamp() + interval '100 milliseconds',
+  0
+from private.fulfilment_mail_projection_batches batch
+order by batch.created_at, batch.id
+limit 1;
+select pg_sleep(0.15);
+set local role service_role;
+select throws_ok(
+  $$select app.fail_fulfilment_mail_projection_v1(
+    'e6970000-0000-4000-8000-000000000099',
+    'e6980000-0000-4000-8000-000000000099',
+    'render_invalid'
+  )$$,
+  '40001',
+  'MAIL_PROJECTION_LEASE_CONFLICT',
+  'een na transactiestart verlopen fulfilmentlease kan niet worden afgerond'
+);
+reset role;
+
 select * from finish();
 rollback;
 reset role;

@@ -576,14 +576,74 @@ select app.claim_mail_v2_domain_projections_v1(
   10
 ) result;
 grant select on recovery_domain_claim to authenticated;
+reset role;
+
+select set_config('app.mail_v2_projection_internal', 'on', true);
+update private.mail_v2_projection_batches
+set lease_expires_at = clock_timestamp() + interval '100 milliseconds'
+where id = (
+  select (result#>>'{groups,0,groupId}')::uuid
+  from recovery_domain_claim
+);
+select set_config('app.mail_v2_projection_internal', 'off', true);
+select pg_sleep(0.15);
+
+set local role service_role;
+select throws_ok(
+  format(
+    $sql$select app.fail_mail_v2_domain_projection_v1(
+      %L::uuid,
+      'd7150000-0000-4000-8000-000000000006'::uuid,
+      'render_invalid'
+    )$sql$,
+    (select result#>>'{groups,0,groupId}' from recovery_domain_claim)
+  ),
+  '40001',
+  'MAIL_V2_DOMAIN_LEASE_CONFLICT',
+  'een na transactiestart verlopen domeinlease kan niet meer worden afgerond'
+);
+reset role;
+select set_config('app.mail_v2_projection_internal', 'on', true);
+update private.mail_v2_projection_batches
+set lease_expires_at = timezone('utc', now()) - interval '1 second'
+where id = (
+  select (result#>>'{groups,0,groupId}')::uuid
+  from recovery_domain_claim
+);
+select set_config('app.mail_v2_projection_internal', 'off', true);
+set local role service_role;
+create temporary table recovery_domain_reclaim as
+select app.claim_mail_v2_domain_projections_v1(
+  'd7150000-0000-4000-8000-000000000009',
+  10
+) result;
+select throws_ok(
+  format(
+    $sql$select app.fail_mail_v2_domain_projection_v1(
+      %L::uuid,
+      'd7150000-0000-4000-8000-000000000006'::uuid,
+      'render_invalid'
+    )$sql$,
+    (select result#>>'{groups,0,groupId}' from recovery_domain_claim)
+  ),
+  '40001',
+  'MAIL_V2_DOMAIN_LEASE_CONFLICT',
+  'een oude worker kan een opnieuw geclaimde domeinprojectie niet muteren'
+);
 create temporary table recovery_failure as
 select app.fail_mail_v2_domain_projection_v1(
   (select (result#>>'{groups,0,groupId}')::uuid
-   from recovery_domain_claim),
-  'd7150000-0000-4000-8000-000000000006',
+   from recovery_domain_reclaim),
+  'd7150000-0000-4000-8000-000000000009',
   'render_invalid'
 ) result;
 reset role;
+
+select is(
+  (select result#>>'{groups,0,groupId}' from recovery_domain_reclaim),
+  (select result#>>'{groups,0,groupId}' from recovery_domain_claim),
+  'een verlopen domeinlease wordt als dezelfde immutable batch hergeclaimd'
+);
 
 select is(
   (select result->>'status' from recovery_failure),
