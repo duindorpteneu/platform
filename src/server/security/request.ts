@@ -155,6 +155,12 @@ export const BODY_POLICIES = {
     timeoutMs: 5_000,
     maxChunks: 4_096,
   },
+  mailTemplate: {
+    allowedContentTypes: ["application/json"],
+    maxBytes: 96 * 1_024,
+    timeoutMs: 5_000,
+    maxChunks: 4_096,
+  },
   emailBulk: {
     allowedContentTypes: ["application/json"],
     maxBytes: 256 * 1_024,

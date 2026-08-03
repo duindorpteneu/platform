@@ -5,7 +5,8 @@ select no_plan();
 
 insert into app.staff_profiles(auth_user_id, display_name, role) values
   ('b0000000-0000-4000-8000-000000000001', 'Provider commissie', 'kledingcommissie'),
-  ('b0000000-0000-4000-8000-000000000002', 'Provider uitgifte', 'uitgifte');
+  ('b0000000-0000-4000-8000-000000000002', 'Provider uitgifte', 'uitgifte'),
+  ('b0000000-0000-4000-8000-000000000003', 'Provider beheerder', 'beheerder');
 
 insert into app.members(id, relation_number, first_name, last_name, email, team) values
   ('b1000000-0000-4000-8000-000000000001', 'PROVIDER-001', 'Puck', 'Provider', 'puck-provider@example.invalid', 'JO15-1'),
@@ -72,6 +73,15 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"b0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 set local role authenticated;
 select lives_ok($$select app.get_email_workspace()$$, 'AAL2 kledingcommissie kan e-mailworkspace openen');
+select throws_ok($$select app.update_email_template(
+  (select id from provider_template_ids where template_key='payment_reminder'),
+  'Veilig onderwerp', 'Veilige inhoud voor {{clubnaam}}', 1)$$,
+  '42501', 'STAFF_AUTHORIZATION_REQUIRED',
+  'kledingcommissie kan legacytemplates niet wijzigen');
+
+reset role;
+select set_config('request.jwt.claims', '{"sub":"b0000000-0000-4000-8000-000000000003","aal":"aal2"}', true);
+set local role authenticated;
 select throws_ok($$select app.update_email_template(
   (select id from provider_template_ids where template_key='payment_reminder'), 'Herinnering {{onbekend}}',
   'Dit is een veilige maar onbekende shortcode {{onbekend}}.', 1)$$,

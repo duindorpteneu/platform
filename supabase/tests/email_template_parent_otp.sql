@@ -1,9 +1,10 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(11);
 
-insert into app.staff_profiles(auth_user_id, display_name, role)
-values('e0000000-0000-4000-8000-000000000001', 'OTP commissie', 'kledingcommissie');
+insert into app.staff_profiles(auth_user_id, display_name, role) values
+  ('e0000000-0000-4000-8000-000000000001', 'OTP commissie', 'kledingcommissie'),
+  ('e0000000-0000-4000-8000-000000000002', 'OTP beheerder', 'beheerder');
 create temporary table otp_template_id as
 select id from app.email_templates where template_key='verification_code';
 grant select on otp_template_id to authenticated;
@@ -17,6 +18,15 @@ select ok(not has_function_privilege('authenticated', 'public.get_parent_otp_ema
   'browserrollen kunnen het directe OTP-template-RPC niet uitvoeren');
 
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+set local role authenticated;
+select throws_ok($$select app.update_email_template(
+  (select id from otp_template_id), 'Code voor {{clubnaam}}',
+  'Uw code is {{verificatiecode}}.', 2)$$,
+  '42501', 'STAFF_AUTHORIZATION_REQUIRED',
+  'kledingcommissie kan het OTP-template niet wijzigen');
+
+reset role;
+select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 set local role authenticated;
 select throws_ok($$select app.update_email_template(
   (select id from otp_template_id), 'Code voor {{clubnaam}}',

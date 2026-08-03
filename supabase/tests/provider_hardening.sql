@@ -3,8 +3,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
 
-insert into app.staff_profiles(auth_user_id, display_name, role)
-values('c0000000-0000-4000-8000-000000000001', 'Hardening commissie', 'kledingcommissie');
+insert into app.staff_profiles(auth_user_id, display_name, role) values
+  ('c0000000-0000-4000-8000-000000000001', 'Hardening commissie', 'kledingcommissie'),
+  ('c0000000-0000-4000-8000-000000000004', 'Hardening beheerder', 'beheerder');
 insert into app.members(id, relation_number, first_name, last_name, email, team) values
   ('c1000000-0000-4000-8000-000000000001', 'HARD-001', 'Snapshot', 'Lid', 'snapshot@example.invalid', 'JO11-1'),
   ('c1000000-0000-4000-8000-000000000002', 'HARD-002', 'Timeout', 'Lid', 'timeout@example.invalid', 'JO13-1'),
@@ -91,7 +92,7 @@ create temporary table hardening_template_id as select id from app.email_templat
 grant select on hardening_template_id to authenticated;
 select is((select template_version from snapshot_before), 1, 'job bewaart oorspronkelijke templateversie');
 
-select set_config('request.jwt.claims', '{"sub":"c0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+select set_config('request.jwt.claims', '{"sub":"c0000000-0000-4000-8000-000000000004","aal":"aal2"}', true);
 set local role authenticated;
 select lives_ok($$select app.update_email_template(
   (select id from hardening_template_id),

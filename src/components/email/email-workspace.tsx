@@ -1,11 +1,16 @@
 "use client";
 
-import { AlertTriangle, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, Palette, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { emailTemplateLabels, type BulkEmailTemplateKey, type EmailWorkspace as Workspace } from "@/lib/email-contract";
+import type { MailV2Workspace } from "@/lib/mail-v2-contract";
+import {
+  MailV2BrandingPanel,
+  MailV2TemplatesPanel,
+} from "@/components/email/mail-v2-workspace";
 
-type Tab = "templates" | "bulk" | "delivery";
+type Tab = "templates" | "branding" | "bulk" | "delivery";
 type Notice = { tone: "success" | "error"; text: string } | null;
 type Preview = { subject: string; text: string };
 
@@ -26,11 +31,35 @@ function StatusNotice({ notice }: { notice: Notice }) {
   </div>;
 }
 
-export function EmailWorkspace({ workspace, emailEnabled }: { workspace: Workspace; emailEnabled: boolean }) {
-  const [tab, setTab] = useState<Tab>("templates");
+export function EmailWorkspace({
+  workspace,
+  mailV2Workspace,
+  canManageTemplates,
+  emailEnabled,
+}: {
+  workspace: Workspace;
+  mailV2Workspace?: MailV2Workspace;
+  canManageTemplates: boolean;
+  emailEnabled: boolean;
+}) {
+  const [tab, setTab] = useState<Tab>(canManageTemplates ? "templates" : "bulk");
   const failed = workspace.jobs.filter((job) => ["failed", "delivery_uncertain"].includes(job.status) || ["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")).length;
   const queued = workspace.jobs.filter((job) => ["queued", "processing", "retry"].includes(job.status)).length;
   const delivered = workspace.jobs.filter((job) => job.deliveryStatus === "delivered").length;
+  const activeTemplateCount = mailV2Workspace
+    ? mailV2Workspace.templates.filter((template) => template.published).length
+    : workspace.templates.filter((template) => template.active).length;
+  const navigation = canManageTemplates
+    ? ([
+      { id: "templates", label: "Templates", icon: FileText },
+      { id: "branding", label: "Branding", icon: Palette },
+      { id: "bulk", label: "Bulkmail", icon: Users },
+      { id: "delivery", label: "Verzending", icon: Send },
+    ] as const)
+    : ([
+      { id: "bulk", label: "Bulkmail", icon: Users },
+      { id: "delivery", label: "Verzending", icon: Send },
+    ] as const);
 
   return <div className="mx-auto max-w-[1400px]">
     <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -39,18 +68,25 @@ export function EmailWorkspace({ workspace, emailEnabled }: { workspace: Workspa
     </header>
 
     <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric icon={FileText} label="Actieve templates" value={String(workspace.templates.filter((template) => template.active).length)} detail="Canonieke berichttypen" />
+      <Metric icon={FileText} label="Actieve templates" value={String(activeTemplateCount)} detail="Canonieke berichttypen" />
       <Metric icon={Clock3} label="In wachtrij" value={String(queued)} detail="Inclusief veilige retries" />
       <Metric icon={CheckCircle2} label="Afgeleverd" value={String(delivered)} detail="Recente operationele jobs" />
       <Metric icon={AlertTriangle} label="Aandacht nodig" value={String(failed)} detail="Failed, bounce of drop" tone={failed ? "danger" : "normal"} />
     </section>
 
     <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-white p-1 shadow-card" aria-label="E-mailonderdelen">
-      {([{ id: "templates", label: "Templates", icon: FileText }, { id: "bulk", label: "Bulkmail", icon: Users }, { id: "delivery", label: "Verzending", icon: Send }] as const).map((entry) => <button key={entry.id} type="button" onClick={() => setTab(entry.id)} className={`inline-flex h-10 min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-bold transition ${tab === entry.id ? "bg-brand-700 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-brand-900"}`}><entry.icon className="size-4" />{entry.label}</button>)}
+      {navigation.map((entry) => <button key={entry.id} type="button" onClick={() => setTab(entry.id)} className={`inline-flex h-10 min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-bold transition ${tab === entry.id ? "bg-brand-700 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-brand-900"}`}><entry.icon className="size-4" />{entry.label}</button>)}
     </nav>
 
     <div className="mt-6">
-      {tab === "templates" && <TemplatesPanel workspace={workspace} />}
+      {tab === "templates" && canManageTemplates && (
+        mailV2Workspace
+          ? <MailV2TemplatesPanel workspace={mailV2Workspace} />
+          : <TemplatesPanel workspace={workspace} />
+      )}
+      {tab === "branding" && canManageTemplates && mailV2Workspace && (
+        <MailV2BrandingPanel workspace={mailV2Workspace} />
+      )}
       {tab === "bulk" && <BulkPanel workspace={workspace} emailEnabled={emailEnabled} />}
       {tab === "delivery" && <DeliveryPanel workspace={workspace} />}
     </div>

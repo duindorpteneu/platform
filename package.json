@@ -36,6 +36,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.8",
+    "@tiptap/core": "3.29.2",
     "@tiptap/extension-link": "3.29.2",
     "@tiptap/react": "3.29.2",
     "@tiptap/starter-kit": "3.29.2",
