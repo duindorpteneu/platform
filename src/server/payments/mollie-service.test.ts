@@ -6,6 +6,7 @@ const ids = {
   order: "00000000-0000-4000-8000-000000000002",
   member: "00000000-0000-4000-8000-000000000003",
   season: "00000000-0000-4000-8000-000000000004",
+  memberSeason: "00000000-0000-4000-8000-000000000005",
 };
 
 const prepared = {
@@ -22,8 +23,9 @@ const prepared = {
     payment_id: ids.payment,
     order_id: ids.order,
     member_id: ids.member,
+    member_season_id: ids.memberSeason,
     season_id: ids.season,
-    schema_version: 1,
+    schema_version: 2,
   },
 } as const;
 
@@ -46,12 +48,12 @@ const context = {
   paymentStatus: "open",
   amountCents: 7500,
   currency: "EUR",
+  metadataSchemaVersion: 2,
   orderId: ids.order,
   memberId: ids.member,
+  memberSeasonId: ids.memberSeason,
   seasonId: ids.season,
   amountDueCents: 7500,
-  qrVersion: 0,
-  activeQrVersion: null,
 } as const;
 
 function providerPayment(overrides: Record<string, unknown> = {}) {
@@ -173,20 +175,23 @@ describe("Mollie-applicatieservice", () => {
     expect(getPayment).toHaveBeenCalledWith(config.apiKey, "tr_test123");
     expect(publicRpc).not.toHaveBeenCalled();
     expect(schema).toHaveBeenCalledWith("app");
-    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment_v2", expect.objectContaining({
       p_event_key: expect.stringMatching(/^mollie:[0-9a-f]{64}$/),
       p_status: "paid",
       p_local_payment_id: ids.payment,
       p_metadata_payment_id: ids.payment,
-      p_observation: { schema_version: 1 },
-      p_token_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      p_member_season_id: ids.memberSeason,
+      p_observation: { schema_version: 2 },
     }));
+    expect(rpc).toHaveBeenNthCalledWith(1, "get_mollie_reconciliation_context_v2", {
+      p_provider_id: "tr_test123",
+    });
   });
 
   it("behandelt een embedded providerrefund fail-closed als refunded", async () => {
     process.env.PARENT_TOKEN_PEPPER = "p".repeat(32);
     const rpc = vi.fn()
-      .mockResolvedValueOnce({ data: { ...context, paymentStatus: "paid", qrVersion: 1, activeQrVersion: 1 }, error: null })
+      .mockResolvedValueOnce({ data: { ...context, paymentStatus: "paid" }, error: null })
       .mockResolvedValueOnce({ data: { paymentId: ids.payment, orderId: ids.order, status: "refunded", effect: "refunded", eventType: "refunded" }, error: null });
     const getPayment = vi.fn().mockResolvedValue(providerPayment({
       _embedded: {
@@ -202,7 +207,7 @@ describe("Mollie-applicatieservice", () => {
       receivedAt: new Date("2026-07-18T12:00:00Z"),
     });
 
-    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment_v2", expect.objectContaining({
       p_status: "refunded",
       p_refunded_at: "2026-07-18T12:00:00.000Z",
     }));
@@ -237,7 +242,7 @@ describe("Mollie-applicatieservice", () => {
       getPayment: vi.fn().mockResolvedValue(providerPayment({ metadata: "niet-geldige-json" })),
     })).resolves.toMatchObject({ effect: "mismatch", status: "manual_review" });
 
-    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment_v2", expect.objectContaining({
       p_local_payment_id: ids.payment,
       p_metadata_payment_id: null,
       p_order_id: ids.order,
@@ -260,6 +265,42 @@ describe("Mollie-applicatieservice", () => {
       getPayment: vi.fn().mockResolvedValue(providerPayment({ status: "authorized", paidAt: null })),
     });
 
-    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment", expect.objectContaining({ p_status: "pending" }));
+    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment_v2", expect.objectContaining({ p_status: "pending" }));
+  });
+
+  it("ondersteunt een historische v1-providerpoging zonder member-season-downgrade", async () => {
+    const legacyMetadata = {
+      payment_id: ids.payment,
+      order_id: ids.order,
+      member_id: ids.member,
+      season_id: ids.season,
+      schema_version: 1 as const,
+    };
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({
+        data: { ...context, metadataSchemaVersion: 1 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          paymentId: ids.payment,
+          orderId: ids.order,
+          status: "paid",
+          effect: "paid",
+          eventType: "paid",
+        },
+        error: null,
+      });
+
+    await reconcileMollieWebhook("tr_test123", {
+      database: databaseWithAppRpc(rpc).database,
+      config,
+      getPayment: vi.fn().mockResolvedValue(providerPayment({ metadata: legacyMetadata })),
+    });
+
+    expect(rpc).toHaveBeenLastCalledWith("reconcile_mollie_payment_v2", expect.objectContaining({
+      p_member_season_id: ids.memberSeason,
+      p_observation: { schema_version: 1 },
+    }));
   });
 });

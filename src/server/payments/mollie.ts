@@ -34,13 +34,27 @@ export const molliePaymentSchema = z.object({
   _embedded: z.object({ refunds: z.array(refundSchema).max(250).optional() }).passthrough().optional(),
 }).passthrough();
 
-export const mollieMetadataSchema = z.object({
+const mollieMetadataV1Schema = z.object({
   payment_id: z.string().uuid(),
   order_id: z.string().uuid(),
   member_id: z.string().uuid(),
   season_id: z.string().uuid(),
   schema_version: z.literal(1),
 }).strict();
+
+const mollieMetadataV2Schema = z.object({
+  payment_id: z.string().uuid(),
+  order_id: z.string().uuid(),
+  member_id: z.string().uuid(),
+  member_season_id: z.string().uuid(),
+  season_id: z.string().uuid(),
+  schema_version: z.literal(2),
+}).strict();
+
+export const mollieMetadataSchema = z.discriminatedUnion("schema_version", [
+  mollieMetadataV1Schema,
+  mollieMetadataV2Schema,
+]);
 
 export type MolliePayment = z.infer<typeof molliePaymentSchema>;
 export type MollieMetadata = z.infer<typeof mollieMetadataSchema>;

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, getMolliePayment, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
 
-const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 1 as const };
+const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", member_season_id: "10000000-0000-4000-8000-000000000005", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 2 as const };
 
 describe("Mollie provider boundary", () => {
   it("formats and parses exact EUR cents without floating point", () => {
@@ -12,6 +12,19 @@ describe("Mollie provider boundary", () => {
 
   it("requires exact internal metadata", () => {
     expect(parseMollieMetadata(JSON.stringify(metadata))).toEqual(metadata);
+    expect(parseMollieMetadata({
+      payment_id: metadata.payment_id,
+      order_id: metadata.order_id,
+      member_id: metadata.member_id,
+      season_id: metadata.season_id,
+      schema_version: 1,
+    })).toEqual({
+      payment_id: metadata.payment_id,
+      order_id: metadata.order_id,
+      member_id: metadata.member_id,
+      season_id: metadata.season_id,
+      schema_version: 1,
+    });
     expect(() => parseMollieMetadata({ ...metadata, order_id: "wrong" })).toThrow("MOLLIE_METADATA_INVALID");
   });
 

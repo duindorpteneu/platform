@@ -16,7 +16,6 @@ import {
   toLocalMollieStatus,
   type MolliePayment,
 } from "@/server/payments/mollie";
-import { deriveQrBearerToken, hashQrBearerToken } from "@/server/qr/tokens";
 
 type RpcError = { code?: string; message?: string };
 type RpcResult = { data: unknown; error: RpcError | null };
@@ -204,7 +203,13 @@ function inspectProviderMetadata(value: unknown) {
         return { metadata: null, validationIssue: "MOLLIE_METADATA_INVALID" } as const;
       }
     }
-    if (typeof candidate === "object" && candidate !== null && "schema_version" in candidate && candidate.schema_version !== 1) {
+    if (
+      typeof candidate === "object"
+      && candidate !== null
+      && "schema_version" in candidate
+      && candidate.schema_version !== 1
+      && candidate.schema_version !== 2
+    ) {
       return { metadata: null, validationIssue: "MOLLIE_METADATA_SCHEMA_INVALID" } as const;
     }
     return { metadata: null, validationIssue: "MOLLIE_METADATA_INVALID" } as const;
@@ -233,7 +238,7 @@ export async function reconcileMollieWebhook(
   if (providerPayment.id !== providerPaymentId) throw new MollieServiceError("INVALID_PROVIDER_RESPONSE");
 
   const appDatabase = dependencies.database.schema("app");
-  const { data: contextData, error: contextError } = await appDatabase.rpc("get_mollie_reconciliation_context", {
+  const { data: contextData, error: contextError } = await appDatabase.rpc("get_mollie_reconciliation_context_v2", {
     p_provider_id: providerPayment.id,
   });
   if (contextError) {
@@ -264,16 +269,17 @@ export async function reconcileMollieWebhook(
       ? "refunded"
       : providerPayment.status === "authorized" ? "pending" : providerPayment.status;
   }
-  const nextQrVersion = context.data.qrVersion + 1;
-  const tokenHash = hashQrBearerToken(deriveQrBearerToken(context.data.orderId, nextQrVersion));
   const receivedAt = (dependencies.receivedAt ?? new Date()).toISOString();
-  const { data: resultData, error: resultError } = await appDatabase.rpc("reconcile_mollie_payment", {
+  const { data: resultData, error: resultError } = await appDatabase.rpc("reconcile_mollie_payment_v2", {
     p_event_key: paymentEventKey(providerPayment, status),
     p_provider_id: providerPayment.id,
     p_local_payment_id: context.data.paymentId,
     p_metadata_payment_id: metadata?.payment_id ?? null,
     p_order_id: metadata?.order_id ?? context.data.orderId,
     p_member_id: metadata?.member_id ?? context.data.memberId,
+    p_member_season_id: metadata && "member_season_id" in metadata
+      ? metadata.member_season_id
+      : context.data.memberSeasonId,
     p_season_id: metadata?.season_id ?? context.data.seasonId,
     p_amount_cents: amountCents,
     p_currency: providerPayment.amount.currency,
@@ -283,8 +289,6 @@ export async function reconcileMollieWebhook(
     p_provider_expires_at: providerPayment.expiresAt ?? null,
     p_paid_at: providerPayment.paidAt ?? null,
     p_refunded_at: status === "refunded" ? receivedAt : null,
-    p_expected_qr_version: context.data.qrVersion,
-    p_token_hash: tokenHash,
     p_validation_issue: metadataInspection.validationIssue,
     p_observation: metadata ? { schema_version: metadata.schema_version } : {},
   });

@@ -27,9 +27,12 @@ insert into app.order_lines(order_id, article_variant_id, quantity) values
 select ok(not has_function_privilege('service_role',
   'app.reconcile_mollie_payment(text,text,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,integer,text,jsonb)', 'EXECUTE'),
   'oude reconcile-wrapper zonder metadata-payment-id is voor service role ingetrokken');
-select ok(has_function_privilege('service_role',
+select ok(not has_function_privilege('service_role',
   'app.reconcile_mollie_payment(text,text,uuid,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,integer,text,text,jsonb)', 'EXECUTE'),
-  'workercontract vereist metadata-payment-id en expliciete validation issue');
+  'legacy workercontract dat betaling aan QR koppelt is ingetrokken');
+select ok(has_function_privilege('service_role',
+  'app.reconcile_mollie_payment_v2(text,text,uuid,uuid,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,text,jsonb)', 'EXECUTE'),
+  'v2-workercontract bindt member-season en activeert geen QR');
 
 insert into private.parent_accounts(id, email_normalized)
 values('c5000000-0000-4000-8000-000000000001', 'timeout@example.invalid');

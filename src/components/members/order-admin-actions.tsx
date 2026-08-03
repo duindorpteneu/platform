@@ -6,15 +6,18 @@ import { useMemo, useState } from "react";
 
 type PickedLine = { id: string; article: string; size: string };
 
-export function OrderAdminActions({ orderId, amountDueCents, paid, qrStatus, pickedLines }: {
+export function OrderAdminActions({ orderId, amountDueCents, paid, qrStatus, pickedLines, canRecordCash }: {
   orderId: string;
   amountDueCents: number;
   paid: boolean;
   qrStatus: "Actief" | "Ingetrokken" | "Niet aangemaakt";
   pickedLines: PickedLine[];
+  canRecordCash: boolean;
 }) {
   const router = useRouter();
   const [reason, setReason] = useState("");
+  const [paymentReason, setPaymentReason] = useState("");
+  const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null);
   const [correctionReason, setCorrectionReason] = useState("");
   const [targetStatus, setTargetStatus] = useState<"ready_for_pickup" | "backorder">("ready_for_pickup");
   const [selected, setSelected] = useState<string[]>([]);
@@ -32,11 +35,19 @@ export function OrderAdminActions({ orderId, amountDueCents, paid, qrStatus, pic
       const response = await fetch("/api/payments/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" },
-        body: JSON.stringify({ orderId, method: paymentMethod }),
+        body: JSON.stringify({
+          orderId,
+          method: paymentMethod,
+          amountCents: amountDueCents,
+          reason: paymentReason,
+          requestId: paymentRequestId,
+        }),
       });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Betaling registreren mislukt.");
       setPaymentMethod(null);
+      setPaymentReason("");
+      setPaymentRequestId(null);
       setMessage({ tone: "success", text: `De exacte ${paymentMethod === "cash" ? "kas" : "pin"}betaling van ${exactAmount} is geregistreerd.` });
       router.refresh();
     } catch (error) {
@@ -86,7 +97,7 @@ export function OrderAdminActions({ orderId, amountDueCents, paid, qrStatus, pic
       <div className="mt-4 rounded-lg border border-line p-4">
         <p className="text-xs font-bold text-brand-900">Exacte handmatige betaling</p>
         <p className="mt-1 text-[11px] leading-5 text-slate-500">Registreer uitsluitend het volledige verschuldigde bedrag van <strong>{exactAmount}</strong> voor dit lid. Deelbedragen zijn niet mogelijk.</p>
-        {paid ? <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-success"><CheckCircle2 className="size-4" /> Deze bestelling is betaald.</p> : paymentMethod ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">Bevestig {paymentMethod === "cash" ? "kas" : "pin"}: {exactAmount}</p><p className="mt-1 text-[11px] leading-5 text-amber-800">Controleer dat het bedrag daadwerkelijk volledig is ontvangen. Deze registratie wordt immutable en geaudit opgeslagen.</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => setPaymentMethod(null)} disabled={busy !== null} className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900">Annuleren</button><button type="button" onClick={() => void recordPayment()} disabled={busy !== null} className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white">{busy === "payment" && <Loader2 className="size-4 animate-spin" />} Exact registreren</button></div></div> : <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPaymentMethod("cash")} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 text-xs font-semibold text-brand-700 hover:bg-brand-50"><Banknote className="size-4" /> Kas</button><button type="button" onClick={() => setPaymentMethod("card")} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 text-xs font-semibold text-brand-700 hover:bg-brand-50"><CreditCard className="size-4" /> Pin</button></div>}
+        {paid ? <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-success"><CheckCircle2 className="size-4" /> Deze bestelling is betaald.</p> : !canRecordCash ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-[11px] leading-5 text-slate-500">Alleen een beheerder met MFA kan een kasbetaling registreren.</p> : paymentMethod ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">Bevestig {paymentMethod === "cash" ? "kas" : "pin"}: {exactAmount}</p><p className="mt-1 text-[11px] leading-5 text-amber-800">Controleer dat het bedrag daadwerkelijk volledig is ontvangen. Deze registratie wordt immutable en geaudit opgeslagen.</p><label htmlFor="payment-reason" className="mt-3 block text-[11px] font-semibold text-amber-950">Verplichte reden</label><textarea id="payment-reason" value={paymentReason} onChange={(event) => setPaymentReason(event.target.value)} maxLength={500} rows={2} placeholder="Bijvoorbeeld: contant ontvangen bij kledingcommissie" className="mt-1.5 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" /><p className="mt-1 text-[10px] text-amber-700">Neem geen persoonsgegevens op in de reden.</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => { setPaymentMethod(null); setPaymentReason(""); setPaymentRequestId(null); }} disabled={busy !== null} className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900">Annuleren</button><button type="button" onClick={() => void recordPayment()} disabled={busy !== null || paymentReason.trim().length < 4 || !paymentRequestId} className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white disabled:bg-slate-300">{busy === "payment" && <Loader2 className="size-4 animate-spin" />} Exact registreren</button></div></div> : <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => { setPaymentMethod("cash"); setPaymentRequestId(crypto.randomUUID()); }} disabled={busy !== null} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 text-xs font-semibold text-brand-700 hover:bg-brand-50"><Banknote className="size-4" /> Kas</button><span className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-line bg-slate-50 px-3 text-center text-[11px] font-semibold text-slate-400" aria-disabled="true"><CreditCard className="size-4" /> Pin uitgeschakeld</span></div>}
       </div>
 
       <div className="mt-4 rounded-lg border border-line p-4">

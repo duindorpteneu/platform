@@ -59,7 +59,11 @@ const genderLabels = {
   unknown: "Niet geregistreerd",
 };
 
-export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailResponse; closeHref: string }) {
+export function MemberDetailPanel({ detail, closeHref, staffRole }: {
+  detail: MemberDetailResponse;
+  closeHref: string;
+  staffRole?: "beheerder" | "kledingcommissie" | "uitgifte";
+}) {
   return (
     <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card" aria-label="Liddetail">
       <div className="flex items-start justify-between gap-4 border-b border-line bg-brand-900 p-5 text-white">
@@ -90,6 +94,7 @@ export function MemberDetailPanel({ detail, closeHref }: { detail: MemberDetailR
           paid={detail.order.paymentStatus === "Betaald"}
           qrStatus={detail.order.qrStatus}
           pickedLines={detail.order.lines.filter((line) => line.status === "picked_up").map((line) => ({ id: line.id, article: line.article, size: line.size }))}
+          canRecordCash={staffRole === "beheerder"}
         />}
 
         <MemberSizeProfile memberId={detail.id} profile={detail.sizeProfile} />

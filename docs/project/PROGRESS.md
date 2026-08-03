@@ -100,6 +100,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De identiteit/action-itemslice is lokaal groen met 412 Vitest-tests, 832 pgTAP-asserties, clean replay van 69 migrations, productieachtige legacy-upgrade, vier concurrencyharnassen, lint, typecheck en productiebuild.
 - Het ouderportaal en de beheerwerkruimte zijn pakket-first: pakketkeuze is idempotent, commerciële naam/prijs/inhoud blijven immutable snapshots en iedere pakketcomponent heeft een afzonderlijke maatprojectie, herkomst en logistieke regel. Geïmporteerde maten blijven onbevestigd; `Anders…` blijft een duurzaam conflict zonder fictieve variant. Een gereserveerde maatwijziging opent een immutable verzoek; afwijzen, goedkeuren, intrekken, vrijgeven en vervangen zijn transactioneel, geaudit en blokkeren uitgifte zolang het verzoek openstaat.
 - De pakket-/matenslice is lokaal groen met 506 Vitest-tests, 1.066 pgTAP-asserties, clean replay van 99 migrations, productionachtige legacy-upgrade, alle bestaande concurrencygates en een echte parent-confirm-vs-dynamic-importrace. Lint, typecheck, productiebuild, migrationlint en secretscan zijn groen.
+- Kasregistratie is nu uitsluitend beheerder+AAL2, vereist exact bedrag, reden en een retry-stabiele request-ID en bewaart actor, lid-seizoen en pakketsnapshot immutable. De standaard uitgeschakelde pincompatibiliteitsflag wordt in database en UI gehandhaafd; kledingcommissie ziet alleen de beheergrens. Open Molliepogingen, betaalde orders en onopgeloste reconciliatie blokkeren kas.
+- Mollie checkout en webhook delen metadata v2 met expliciet lid-seizoen; historische reeds aangemaakte v1-pogingen blijven zonder downgrade reconcileerbaar. Bedrag, EUR, order, lid, lid-seizoen, seizoen, pakketsnapshot en vastgelegde metadataversie worden server-side gecontroleerd. De server-rechten op beide legacy betaling-plus-QR-RPC's zijn ingetrokken.
+- Betaling alleen maakt geen QR meer. Zowel kas als Mollie enqueueuen idempotent uitsluitend ontvangstbevestiging; QR-activering verschuift naar de komende betaalde harde-allocatietransactie. Een echte twee-sessiestest bewijst kasretry, webhookreplay en kas-versus-webhook zonder dubbele betaling, event, mail of QR. De slice is groen met 512 Vitest-tests en 1.099 pgTAP-asserties.
 
 ## In progress
 - Phase B slices door pakketkeuze en pakketbrede maatbevestiging zijn lokaal afgerond: reproduceerbare baseline, canonaddendum, security-/releasefundering, expandmigratie, upgrade-reconciliatie, pakketrevisies, beheerdergestuurde lid-seizoengrants, dynamische import en het pakket-first ouder-/beheerproces.
@@ -111,7 +114,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
-- Bouw nu betaling/kas, ontvangstjournaal en betaalde FIFO-allocatie als volgende verticale slice; daarna volgen QR-exchange, mails/branding/reminders en de scanner-PWA.
+- Bouw nu het ontvangstjournaal, betaalde FIFO-allocatie en tekortepisodes als volgende verticale slice; daarna volgen QR-exchange, mails/branding/reminders en de scanner-PWA.
 - Voer de geautoriseerde staging-opschoning pas uit na de nieuwe migrations, targetassertie, back-up en tellingendry-run; behoud alle staff- en Auth-accounts.
 - Leg bij een latere Mollie-overgang naar `processing` of `refunded` aanvullend live webhook-/QR-intrekkingsbewijs vast; de huidige testmode-refund bleef conform providercontract `pending` en lokaal ongewijzigd.
 - Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.

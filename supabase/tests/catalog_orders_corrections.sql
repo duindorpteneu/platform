@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(52);
 
 insert into app.staff_profiles(auth_user_id, display_name, role)
 values
@@ -99,7 +99,8 @@ select throws_ok(
   '23514', 'PAID_AMOUNT_MISMATCH', 'paid vereist exact orderbedrag op tabelniveau'
 );
 select ok(not has_function_privilege('authenticated', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'trusted betaal-RPC is niet voor authenticated');
-select ok(has_function_privilege('service_role', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'trusted betaal-RPC is alleen server-side uitvoerbaar');
+select ok(not has_function_privilege('service_role', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'legacy trusted betaal-RPC is ook voor service role ingetrokken');
+select ok(has_function_privilege('authenticated', 'app.record_manual_payment_v2(uuid,app.payment_method,integer,text,uuid,uuid)', 'EXECUTE'), 'nieuwe kas-RPC valideert beheerder en AAL2 in de database');
 select throws_ok(
   $$select app.record_manual_payment_with_qr_trusted(
     'a0000000-0000-4000-8000-000000000001',
