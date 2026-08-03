@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const uuid = z.string().uuid();
 const nonNegativeInteger = z.number().int().nonnegative();
+const revisionHash = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const catalogIconTypeSchema = z.enum(["shirt", "package", "circle-dot"]);
 export const catalogOrderLineStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]);
@@ -49,6 +50,44 @@ const memberOrderSchema = z.object({
   lines: z.array(orderLineSchema).max(25),
 }).strict();
 
+const packageSizeChangeBaseSchema = z.object({
+  requestId: uuid,
+  memberId: uuid,
+  memberSeasonId: uuid,
+  memberName: z.string().trim().min(1).max(320),
+  team: z.string().trim().min(1).max(120).nullable(),
+  articleId: uuid,
+  articleName: z.string().trim().min(1).max(120),
+  currentVariantId: uuid,
+  currentSize: z.string().trim().min(1).max(80),
+  requestedAt: z.string().datetime({ offset: true }),
+  revision: revisionHash,
+  variants: z.array(z.object({
+    id: uuid,
+    label: z.string().trim().min(1).max(80),
+  }).strict()).max(500),
+});
+
+const packageSizeChangeRequestSchema = z.discriminatedUnion(
+  "requestedKind",
+  [
+    packageSizeChangeBaseSchema.extend({
+      requestedKind: z.literal("variant"),
+      requestedVariantId: uuid,
+      requestedSize: z.string().trim().min(1).max(80),
+      requestedRawValue: z.null(),
+      requestedMemberNote: z.null(),
+    }).strict(),
+    packageSizeChangeBaseSchema.extend({
+      requestedKind: z.literal("other"),
+      requestedVariantId: z.null(),
+      requestedSize: z.null(),
+      requestedRawValue: z.literal("Anders…"),
+      requestedMemberNote: z.string().trim().min(1).max(500),
+    }).strict(),
+  ],
+);
+
 export const catalogOrderWorkspaceSchema = z.object({
   activeSeason: z.object({
     id: uuid,
@@ -70,6 +109,27 @@ export const catalogOrderWorkspaceSchema = z.object({
     team: z.string().trim().min(1).max(120),
     order: memberOrderSchema.nullable(),
   }).strict()).max(10_000),
+  packageFeatureEnabled: z.boolean(),
+  packageRevisions: z.array(z.object({
+    revisionId: uuid,
+    name: z.string().trim().min(1).max(120),
+    priceCents: nonNegativeInteger.max(10_000_000),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    revisionNumber: z.number().int().positive(),
+    isDefault: z.boolean(),
+  }).strict()).max(100),
+  packageOrders: z.array(z.object({
+    memberId: uuid,
+    memberSeasonId: uuid,
+    orderId: uuid.nullable(),
+    packageRevisionId: uuid.nullable(),
+    packageName: z.string().trim().min(1).max(120).nullable(),
+    canSwitchPackage: z.boolean(),
+    revision: revisionHash,
+  }).strict()).max(10_000),
+  packageSizeChangeRequests: z.array(
+    packageSizeChangeRequestSchema,
+  ).max(10_000),
 }).strict();
 
 function uniqueValues(values: readonly string[]) {

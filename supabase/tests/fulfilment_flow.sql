@@ -57,16 +57,16 @@ select lives_ok(
 );
 
 select lives_ok(
-  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000001'::uuid])$$,
+  $$select app.reserve_order_lines_v2((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000001'::uuid])$$,
   'eerste artikelregel wordt gereserveerd'
 );
 select lives_ok(
-  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000002'), array['36000000-0000-4000-8000-000000000002'::uuid])$$,
+  $$select app.reserve_order_lines_v2((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000002'), array['36000000-0000-4000-8000-000000000002'::uuid])$$,
   'tweede artikelregel wordt apart gereserveerd'
 );
 
 select throws_ok(
-  $$select app.reserve_order_lines((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000003'::uuid])$$,
+  $$select app.reserve_order_lines_v2((select drl.id from app.delivery_receipt_lines drl join app.delivery_receipts dr on dr.id = drl.receipt_id where dr.supplier = 'DB-testleverancier' and drl.article_variant_id = '33000000-0000-4000-8000-000000000001'), array['36000000-0000-4000-8000-000000000003'::uuid])$$,
   '23514',
   'INSUFFICIENT_STOCK',
   'reserveren boven beschikbare voorraad wordt geblokkeerd'
@@ -86,17 +86,17 @@ select is(
   'uitgifte retourneert expliciet null zonder leeg of fictief relatienummer'
 );
 select lives_ok(
-  $$select app.commit_fulfilment('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000001'::uuid], 'DB-testbalie', repeat('a', 64))$$,
+  $$select app.commit_fulfilment_v2('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000001'::uuid], 'DB-testbalie', repeat('a', 64))$$,
   'eerste deeluitgifte slaagt'
 );
 select throws_ok(
-  $$select app.commit_fulfilment('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000001'::uuid], 'DB-testbalie', repeat('a', 64))$$,
+  $$select app.commit_fulfilment_v2('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000001'::uuid], 'DB-testbalie', repeat('a', 64))$$,
   '23514',
   'ORDER_LINE_NOT_READY',
   'dezelfde regel kan niet dubbel worden uitgegeven'
 );
 select lives_ok(
-  $$select app.commit_fulfilment('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000002'::uuid], 'DB-testbalie', repeat('a', 64))$$,
+  $$select app.commit_fulfilment_v2('35000000-0000-4000-8000-000000000001', array['36000000-0000-4000-8000-000000000002'::uuid], 'DB-testbalie', repeat('a', 64))$$,
   'dezelfde QR rondt een later uitgiftemoment af'
 );
 

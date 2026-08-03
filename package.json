@@ -23,6 +23,7 @@
     "test:db:variant-concurrency": "bash scripts/test-variant-alias-concurrency.sh",
     "test:db:action-concurrency": "bash scripts/test-action-item-concurrency.sh",
     "test:db:import-concurrency": "bash scripts/test-dynamic-import-concurrency.sh",
+    "test:db:package-concurrency": "bash scripts/test-package-concurrency.sh",
     "test:portal-access-browser": "node scripts/test-parent-access-browser.mjs",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
     "test:dashboard-browser": "node scripts/test-platform-browser.mjs",

@@ -24,6 +24,8 @@ cleanup_data() {
   "${psql_cmd[@]}" \
     -v flag_before="$flag_before" \
     -v active_season_before="$active_season_before" <<'SQL'
+begin;
+set local session_replication_role = replica;
 delete from app.audit_logs
 where entity_id in (
   'dc200000-0000-4000-8000-000000000001',
@@ -32,6 +34,12 @@ where entity_id in (
 );
 delete from app.action_items
 where season_id = 'dc100000-0000-4000-8000-000000000001';
+delete from app.member_size_selection_history
+where member_season_id in (
+  select id
+  from app.member_seasons
+  where season_id = 'dc100000-0000-4000-8000-000000000001'
+);
 delete from app.member_article_sizes
 where season_id = 'dc100000-0000-4000-8000-000000000001';
 delete from app.member_seasons
@@ -115,6 +123,7 @@ where auth_user_id = 'dc000000-0000-4000-8000-000000000001';
 update app.release_feature_flags
 set enabled = :'flag_before'::boolean
 where key = 'dynamic_import_v2';
+commit;
 SQL
 }
 

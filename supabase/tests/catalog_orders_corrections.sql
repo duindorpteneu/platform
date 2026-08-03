@@ -178,13 +178,13 @@ select lives_ok(
   ]'::jsonb)$$, 'voorraad voor beide varianten wordt ontvangen'
 );
 select lives_ok(
-  $$select app.reserve_order_lines(
+  $$select app.reserve_order_lines_v2(
     (select line.id from app.delivery_receipt_lines line join app.delivery_receipts receipt on receipt.id=line.receipt_id where receipt.supplier='Sprint leverancier' and line.article_variant_id='a3000000-0000-4000-8000-000000000001'),
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) and article_variant_id='a3000000-0000-4000-8000-000000000001')]
   )$$, 'eerste variant wordt gereserveerd'
 );
 select lives_ok(
-  $$select app.reserve_order_lines(
+  $$select app.reserve_order_lines_v2(
     (select line.id from app.delivery_receipt_lines line join app.delivery_receipts receipt on receipt.id=line.receipt_id where receipt.supplier='Sprint leverancier' and line.article_variant_id='a3000000-0000-4000-8000-000000000002'),
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) and article_variant_id='a3000000-0000-4000-8000-000000000002')]
   )$$, 'tweede variant wordt gereserveerd'
@@ -198,7 +198,7 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 set local role authenticated;
 select lives_ok(
-  $$select app.commit_fulfilment(
+  $$select app.commit_fulfilment_v2(
     (select (result->>'orderId')::uuid from saved_order),
     array[
       (select id from selected_sprint_lines where article_variant_id='a3000000-0000-4000-8000-000000000001'),
@@ -208,7 +208,7 @@ select lives_ok(
   )$$, 'uitgifte voltooit beide gereserveerde regels'
 );
 select throws_ok(
-  $$select app.correct_fulfilment(
+  $$select app.correct_fulfilment_v2(
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)],
     'ready_for_pickup', 'Uitgiftefout'
   )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifterol kan een uitgifte niet corrigeren'
@@ -218,21 +218,21 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 set local role authenticated;
 select lives_ok(
-  $$select app.correct_fulfilment(
+  $$select app.correct_fulfilment_v2(
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)],
     'ready_for_pickup', 'Verkeerde tas meegegeven'
   )$$, 'correctie naar Af te halen slaagt'
 );
 select is((select status::text from app.inventory_reservations where order_line_id=(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)), 'reserved', 'Af te halen herstelt de reservering');
 select lives_ok(
-  $$select app.correct_fulfilment(
+  $$select app.correct_fulfilment_v2(
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)],
     'backorder', 'Artikel bleek niet meegegeven'
   )$$, 'correctie naar Nalevering slaagt'
 );
 select is((select status::text from app.inventory_reservations where order_line_id=(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)), 'released', 'Nalevering geeft de reservering vrij');
 select throws_ok(
-  $$select app.correct_fulfilment(
+  $$select app.correct_fulfilment_v2(
     array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)],
     'backorder', 'Nogmaals proberen'
   )$$, '23514', 'ORDER_LINE_NOT_PICKED_UP', 'dezelfde uitgifte kan niet dubbel worden gecorrigeerd'

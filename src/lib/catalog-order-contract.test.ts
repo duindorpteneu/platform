@@ -57,7 +57,26 @@ describe("catalogus- en bestelcontract", () => {
   });
 
   it("valideert de workspace strikt en weigert onverwachte PII", () => {
-    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], teamOptions: ["JO9-1"], articles: [], members: [] };
+    const workspace = {
+      activeSeason: {
+        id,
+        name: "2026/2027",
+        defaultAmountCents: 8_700,
+      },
+      seasons: [{
+        id,
+        name: "2026/2027",
+        status: "open",
+        active: true,
+      }],
+      teamOptions: ["JO9-1"],
+      articles: [],
+      members: [],
+      packageFeatureEnabled: true,
+      packageRevisions: [],
+      packageOrders: [],
+      packageSizeChangeRequests: [],
+    };
     expect(catalogOrderWorkspaceSchema.safeParse(workspace).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({
       ...workspace,
@@ -70,5 +89,53 @@ describe("catalogus- en bestelcontract", () => {
       }],
     }).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
+    const sizeRequest = {
+      requestId: id,
+      memberId: secondId,
+      memberSeasonId: id,
+      memberName: "Voornaam Lid",
+      team: "JO9-1",
+      articleId: secondId,
+      articleName: "Broek",
+      currentVariantId: id,
+      currentSize: "152",
+      requestedKind: "other",
+      requestedVariantId: null,
+      requestedSize: null,
+      requestedRawValue: "Anders…",
+      requestedMemberNote: "Langere maat nodig",
+      requestedAt: "2026-08-02T10:00:00+00:00",
+      revision: "a".repeat(64),
+      variants: [{ id: secondId, label: "164" }],
+    };
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      packageSizeChangeRequests: [sizeRequest],
+    }).success).toBe(true);
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      packageSizeChangeRequests: [{
+        ...sizeRequest,
+        requestedKind: "variant",
+        requestedVariantId: secondId,
+      }],
+    }).success).toBe(false);
+    for (const forbidden of [
+      "parentAccountId",
+      "dateOfBirth",
+      "email",
+      "orderLineId",
+      "reservationId",
+    ]) {
+      expect(catalogOrderWorkspaceSchema.safeParse({
+        ...workspace,
+        packageSizeChangeRequests: [{
+          ...sizeRequest,
+          [forbidden]: forbidden === "email"
+            ? "ouder@example.invalid"
+            : secondId,
+        }],
+      }).success).toBe(false);
+    }
   });
 });

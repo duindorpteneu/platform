@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Selecteer regels, doelstatus en een verplichte reden." }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
-    const { data, error } = await supabase.schema("app").rpc("correct_fulfilment", {
+    const { data, error } = await supabase.schema("app").rpc("correct_fulfilment_v2", {
       p_order_line_ids: parsed.data.orderLineIds,
       p_target_status: parsed.data.targetStatus,
       p_reason: parsed.data.reason,

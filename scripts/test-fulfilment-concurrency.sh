@@ -72,7 +72,7 @@ run_first() {
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
-select app.commit_fulfilment(
+select app.commit_fulfilment_v2(
   '45000000-0000-4000-8000-000000000001',
   array['46000000-0000-4000-8000-000000000001'::uuid],
   'Race-balie één',
@@ -88,7 +88,7 @@ run_second() {
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
-select app.commit_fulfilment(
+select app.commit_fulfilment_v2(
   '45000000-0000-4000-8000-000000000001',
   array['46000000-0000-4000-8000-000000000001'::uuid],
   'Race-balie twee',

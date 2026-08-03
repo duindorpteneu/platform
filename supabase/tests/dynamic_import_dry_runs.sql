@@ -144,6 +144,11 @@ insert into app.member_article_sizes(
   'staff',
   timezone('utc', now())
 );
+insert into private.parent_accounts(id, email_normalized)
+values(
+  'd6000000-0000-4000-8000-000000000001',
+  'ouder-dry-run@example.invalid'
+);
 insert into app.member_article_sizes(
   member_id,
   season_id,
@@ -153,7 +158,9 @@ insert into app.member_article_sizes(
   selection_status,
   selection_source,
   raw_value,
-  member_note
+  member_note,
+  confirmed_at,
+  confirmed_by_parent_account_id
 ) values(
   'd4000000-0000-4000-8000-000000000004',
   'd1000000-0000-4000-8000-000000000001',
@@ -168,7 +175,9 @@ insert into app.member_article_sizes(
   'conflict',
   'parent',
   'Eigen pasvorm',
-  'Graag samen met de kledingcommissie meten'
+  'Graag samen met de kledingcommissie meten',
+  timezone('utc', now()),
+  'd6000000-0000-4000-8000-000000000001'
 );
 create temporary table skip_member_before as
 select
@@ -388,7 +397,7 @@ select is(
     1,
     'd8000000-0000-4000-8000-000000000001',
     repeat('8', 64),
-    null
+    'dc000000-0000-4000-8000-000000000001'
   )->>'status',
   'queued_preview',
   'beheerder queueert een actor- en mappinggebonden dry-run'
@@ -810,7 +819,7 @@ select is(
     ),
     'da000000-0000-4000-8000-000000000001',
     repeat('9', 64),
-    null
+    'dc000000-0000-4000-8000-000000000002'
   )->>'status',
   'commit_queued',
   'beheerder bevestigt exact het getoonde immutable dry-runplan'
@@ -915,6 +924,21 @@ select is(
   'de commit heranalyseert en verwerkt alle rijen in één transactionele chunk'
 );
 reset role;
+select ok(
+  exists(
+    select 1
+    from app.member_size_selection_history history
+    where history.import_run_id =
+        'd7000000-0000-4000-8000-000000000001'
+      and history.import_source_row in (2, 4)
+      and history.selection_source = 'import'
+      and history.correlation_id =
+        'dc000000-0000-4000-8000-000000000001'
+      and history.actor_user_id =
+        'd0000000-0000-4000-8000-000000000001'
+  ),
+  'maathistorie bewaart run, bronrijnummer, correlatie en importactor zonder CSV'
+);
 select is(
   (
     select string_agg(

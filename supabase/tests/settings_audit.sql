@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(32);
 
 insert into app.seasons(id, name, starts_on, ends_on, default_amount_cents, status) values
   ('f1000000-0000-4000-8000-000000000001', '2036/37 instellingen', '2036-07-01', '2037-06-30', 12500, 'open'),
@@ -45,19 +45,35 @@ reset role;
 insert into app.audit_logs(actor_user_id, action, entity_type, metadata) values
   ('f0000000-0000-4000-8000-000000000001', 'payment.manual.recorded', 'payment', '{}'::jsonb),
   ('f0000000-0000-4000-8000-000000000001', 'settings.updated', 'app_settings', '{}'::jsonb),
-  ('f0000000-0000-4000-8000-000000000001', 'auth.failed', 'staff_session', '{}'::jsonb);
+  ('f0000000-0000-4000-8000-000000000001', 'auth.failed', 'staff_session', '{}'::jsonb),
+  (
+    null,
+    'order.package_selection.requested',
+    'member_order',
+    '{"parentAccountId":"f9000000-0000-4000-8000-000000000001"}'::jsonb
+  );
 set local role authenticated;
 
-select is(app.get_audit_workspace(null,null,null,null,50)->>'viewerRole', 'beheerder', 'beheerder krijgt volledige auditworkspace');
-select is(jsonb_array_length(app.get_audit_workspace(null,null,null,null,50)->'categories'), 8, 'beheerder krijgt alle acht categorieën');
+select is(app.get_audit_workspace_v2(null,null,null,null,50)->>'viewerRole', 'beheerder', 'beheerder krijgt volledige auditworkspace');
+select is(jsonb_array_length(app.get_audit_workspace_v2(null,null,null,null,50)->'categories'), 8, 'beheerder krijgt alle acht categorieën');
+select ok(
+  app.get_audit_workspace_v2(null,null,null,null,100)::text
+    like '%f9000000-0000-4000-8000-000000000001%',
+  'beheerder behoudt de technische ouderactor in de beveiligde auditprojectie'
+);
 select set_config('request.jwt.claims', '{"sub":"f0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 select throws_ok($$select app.get_settings_workspace()$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie heeft geen instellingenworkspace');
-select is(app.get_audit_workspace(null,null,null,null,100)->>'viewerRole', 'kledingcommissie', 'kledingcommissie krijgt operationele auditworkspace');
-select is(jsonb_array_length(app.get_audit_workspace(null,null,null,null,100)->'categories'), 6, 'kledingcommissie krijgt alleen operationele categorieën');
+select is(app.get_audit_workspace_v2(null,null,null,null,100)->>'viewerRole', 'kledingcommissie', 'kledingcommissie krijgt operationele auditworkspace');
+select is(jsonb_array_length(app.get_audit_workspace_v2(null,null,null,null,100)->'categories'), 6, 'kledingcommissie krijgt alleen operationele categorieën');
+select ok(
+  app.get_audit_workspace_v2(null,null,null,null,100)::text
+    not like '%f9000000-0000-4000-8000-000000000001%',
+  'kledingcommissie krijgt geen technische ouderactor in auditmetadata'
+);
 select ok(not exists(select 1 from app.audit_logs where action in ('settings.updated','auth.failed')), 'RLS verbergt settings- en securityaudit voor kledingcommissie');
-select throws_ok($$select app.get_audit_workspace('settings',null,null,null,50)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie kan beveiligde categorie niet forceren');
+select throws_ok($$select app.get_audit_workspace_v2('settings',null,null,null,50)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie kan beveiligde categorie niet forceren');
 select set_config('request.jwt.claims', '{"sub":"f0000000-0000-4000-8000-000000000003","aal":"aal2"}', true);
-select throws_ok($$select app.get_audit_workspace(null,null,null,null,50)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifterol krijgt geen auditworkspace');
+select throws_ok($$select app.get_audit_workspace_v2(null,null,null,null,50)$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifterol krijgt geen auditworkspace');
 select set_config('request.jwt.claims', '{"sub":"f0000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
 select throws_ok($$select app.get_settings_workspace()$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'instellingen vereisen aantoonbaar AAL2');
 

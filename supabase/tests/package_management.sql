@@ -179,7 +179,7 @@ select throws_ok(
 );
 
 create temporary table first_publish as
-select app.publish_package_revision(
+select app.publish_package_revision_v2(
   (select (result->>'revisionId')::uuid from first_draft),
   false,
   (select result->>'contentHash' from first_update),
@@ -257,7 +257,7 @@ select is(
   'nieuwe draftrevisie kan worden aangepast'
 );
 create temporary table second_publish as
-select app.publish_package_revision(
+select app.publish_package_revision_v2(
   (select (result->>'revisionId')::uuid from second_revision),
   false,
   (select result->>'contentHash' from second_update),
@@ -283,6 +283,46 @@ select is(
   'default volgt de nieuwe revisie van dezelfde template'
 );
 
+create temporary table optional_draft as
+select app.upsert_package_draft(
+  null,
+  null,
+  'fb100000-0000-4000-8000-000000000001',
+  'training',
+  'Training',
+  'Niet-standaard pakketkeuze',
+  9900,
+  '[{"articleId":"fb200000-0000-4000-8000-000000000001","quantity":1,"sortOrder":10}]'::jsonb,
+  null,
+  null
+) result;
+create temporary table optional_publish as
+select app.publish_package_revision_v2(
+  (select (result->>'revisionId')::uuid from optional_draft),
+  false,
+  (select result->>'contentHash' from optional_draft),
+  null
+) result;
+select is(
+  (select result->>'default' from optional_publish),
+  'false',
+  'een tweede template kan bewust niet-standaard worden gepubliceerd'
+);
+select is(
+  (select name from app.package_template_revisions
+    where season_id = 'fb100000-0000-4000-8000-000000000001'
+      and active and is_default),
+  'Speler tenue v2',
+  'niet-standaard publicatie behoudt de bestaande seizoensdefault'
+);
+select is(
+  (select count(*) from app.package_template_revisions
+    where season_id = 'fb100000-0000-4000-8000-000000000001'
+      and active and is_default),
+  1::bigint,
+  'niet-standaard publicatie bewaart exact één actieve default'
+);
+
 create temporary table keeper_draft as
 select app.upsert_package_draft(
   null,
@@ -297,7 +337,7 @@ select app.upsert_package_draft(
   null
 ) result;
 create temporary table keeper_publish as
-select app.publish_package_revision(
+select app.publish_package_revision_v2(
   (select (result->>'revisionId')::uuid from keeper_draft),
   true,
   (select result->>'contentHash' from keeper_draft),
@@ -398,8 +438,8 @@ select ok(
 );
 select is(
   jsonb_array_length(app.get_package_workspace()->'templates'),
-  2,
-  'workspace toont beide door beheer aangemaakte templates'
+  3,
+  'workspace toont alle door beheer aangemaakte templates'
 );
 
 reset role;

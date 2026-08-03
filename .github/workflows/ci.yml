@@ -120,6 +120,9 @@ jobs:
       - name: Run dynamic-import concurrency test
         run: pnpm test:db:import-concurrency
 
+      - name: Run package concurrency test
+        run: pnpm test:db:package-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 

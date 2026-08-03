@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleOff, ClipboardList, Loader2, LockKeyhole, Search, Shirt, UsersRound } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleOff, ClipboardList, Loader2, LockKeyhole, PackageCheck, Search, Shirt, UsersRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCentsForEuroInput, parseEuroAmountToCents, type CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-contract";
@@ -8,6 +8,9 @@ import { TeamArticleBulkPanel } from "@/components/orders/team-article-bulk-pane
 
 type Member = Workspace["members"][number];
 type Article = Workspace["articles"][number];
+type PackageOrder = Workspace["packageOrders"][number];
+type PackageRevision = Workspace["packageRevisions"][number];
+type PackageSizeChange = Workspace["packageSizeChangeRequests"][number];
 type DraftLine = { articleId: string; variantId: string; quantity: number };
 type Notice = { tone: "error" | "success"; text: string } | null;
 
@@ -20,7 +23,41 @@ async function saveOrder(body: unknown) {
   if (!response.ok) throw new Error(payload.error ?? "De bestelling kon niet worden opgeslagen.");
 }
 
-export function OrdersWorkspace({ workspace }: { workspace: Workspace }) {
+async function postMutation(path: string, body: unknown) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Duindorp-CSRF": "same-origin",
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json() as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "De wijziging kon niet worden verwerkt.");
+  }
+}
+
+export function isLegacyOrder(
+  member: Member,
+  packageOrder: PackageOrder | null,
+) {
+  return Boolean(member.order && !packageOrder?.packageRevisionId);
+}
+
+export function requestedSizeLabel(request: PackageSizeChange) {
+  return request.requestedKind === "variant"
+    ? request.requestedSize ?? "Onbekende maat"
+    : request.requestedRawValue ?? "Anders…";
+}
+
+export function OrdersWorkspace({
+  workspace,
+  canManagePackages,
+}: {
+  workspace: Workspace;
+  canManagePackages: boolean;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [memberId, setMemberId] = useState<string | null>(null);
@@ -29,6 +66,12 @@ export function OrdersWorkspace({ workspace }: { workspace: Workspace }) {
   const [notice, setNotice] = useState<Notice>(null);
   const [saving, setSaving] = useState(false);
   const selected = workspace.members.find((member) => member.id === memberId) ?? null;
+  const selectedPackageOrder = selected
+    ? workspace.packageOrders.find((order) => order.memberId === selected.id) ?? null
+    : null;
+  const selectedHasLegacyOrder = selected
+    ? isLegacyOrder(selected, selectedPackageOrder)
+    : false;
 
   const filteredMembers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("nl-NL");
@@ -106,11 +149,29 @@ export function OrdersWorkspace({ workspace }: { workspace: Workspace }) {
       {[{ label: "Actieve leden", value: counts.total }, { label: "Met bestelling", value: counts.ordered }, { label: "Betaald", value: counts.paid }].map((metric) => <div key={metric.label} className="rounded-xl border border-line bg-white px-5 py-4 shadow-card"><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{metric.label}</p><p className="mt-2 text-2xl font-bold text-brand-900">{metric.value.toLocaleString("nl-NL")}</p></div>)}
     </section>
 
-    <TeamArticleBulkPanel
-      teams={workspace.teamOptions}
-      articles={workspace.activeSeason ? workspace.articles.filter((article) => article.active && article.seasonIds.includes(workspace.activeSeason!.id)).map((article) => ({ ...article, variants: article.variants.filter((variant) => variant.active) })).filter((article) => article.variants.length > 0) : []}
-      disabled={!workspace.activeSeason}
-    />
+    {canManagePackages && workspace.packageSizeChangeRequests.length > 0 && (
+      <PackageSizeChangesPanel
+        requests={workspace.packageSizeChangeRequests}
+        onResolved={(message) => {
+          setNotice({ tone: "success", text: message });
+          router.refresh();
+        }}
+      />
+    )}
+
+    {!workspace.packageFeatureEnabled ? (
+      <TeamArticleBulkPanel
+        teams={workspace.teamOptions}
+        articles={workspace.activeSeason ? workspace.articles.filter((article) => article.active && article.seasonIds.includes(workspace.activeSeason!.id)).map((article) => ({ ...article, variants: article.variants.filter((variant) => variant.active) })).filter((article) => article.variants.length > 0) : []}
+        disabled={!workspace.activeSeason}
+      />
+    ) : (
+      <div className="mt-6 rounded-xl border border-brand-100 bg-brand-50 p-5 text-xs leading-5 text-brand-800">
+        Nieuwe bestellingen worden als commercieel pakket aangemaakt. Bestaande
+        losse artikelbestellingen blijven uitsluitend als historische
+        compatibiliteitsflow beschikbaar.
+      </div>
+    )}
 
     <div className="mt-6 grid items-start gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
       <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
@@ -118,9 +179,358 @@ export function OrdersWorkspace({ workspace }: { workspace: Workspace }) {
         {filteredMembers.length === 0 ? <div className="px-6 py-16 text-center"><CircleOff className="mx-auto size-8 text-slate-300" /><p className="mt-4 text-sm font-semibold text-slate-600">Geen leden gevonden</p><p className="mt-1 text-xs text-slate-400">Pas de zoekterm aan.</p></div> : <div className="max-h-[680px] divide-y divide-line overflow-y-auto">{filteredMembers.map((member) => <button key={member.id} type="button" onClick={() => chooseMember(member)} className={"flex w-full items-center gap-3 px-5 py-4 text-left transition " + (memberId === member.id ? "bg-brand-50" : "hover:bg-slate-50")}><span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><UsersRound className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-ink">{member.name}</span><span className="mt-1 block truncate text-[10px] text-slate-400">{member.relationNumber ?? "Geen relatienummer"} · {member.team}</span></span><span className={"rounded-full px-2 py-1 text-[9px] font-bold " + (member.order?.paid ? "bg-emerald-50 text-success" : member.order ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500")}>{member.order?.paid ? "Betaald" : member.order ? "Open" : "Geen order"}</span></button>)}</div>}
       </aside>
 
-      {!selected ? <section className="rounded-xl border border-brand-100 bg-brand-50 px-8 py-20 text-center"><ClipboardList className="mx-auto size-9 text-brand-400" /><h2 className="mt-5 text-base font-bold text-brand-900">Selecteer een lid</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-brand-700">Open een actief lid om de huidige seizoensbestelling te bekijken of veilig aan te maken.</p></section> : <OrderEditor member={selected} articles={editableArticles} activeSeason={workspace.activeSeason} amount={amount} lines={lines} saving={saving} onAmount={setAmount} onVariant={updateLine} onQuantity={updateQuantity} onSubmit={submit} />}
+      {!selected ? (
+        <section className="rounded-xl border border-brand-100 bg-brand-50 px-8 py-20 text-center"><ClipboardList className="mx-auto size-9 text-brand-400" /><h2 className="mt-5 text-base font-bold text-brand-900">Selecteer een lid</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-brand-700">Open een actief lid om de huidige seizoensbestelling te bekijken of veilig aan te maken.</p></section>
+      ) : workspace.packageFeatureEnabled && !selectedHasLegacyOrder ? (
+        <PackageOrderEditor
+          member={selected}
+          packageOrder={selectedPackageOrder}
+          revisions={workspace.packageRevisions}
+          activeSeason={workspace.activeSeason}
+          canManage={canManagePackages}
+          onChanged={(message) => {
+            setNotice({ tone: "success", text: message });
+            router.refresh();
+          }}
+        />
+      ) : (
+        <OrderEditor member={selected} articles={editableArticles} activeSeason={workspace.activeSeason} amount={amount} lines={lines} saving={saving} onAmount={setAmount} onVariant={updateLine} onQuantity={updateQuantity} onSubmit={submit} />
+      )}
     </div>
   </div>;
+}
+
+function PackageOrderEditor({
+  member,
+  packageOrder,
+  revisions,
+  activeSeason,
+  canManage,
+  onChanged,
+}: {
+  member: Member;
+  packageOrder: PackageOrder | null;
+  revisions: PackageRevision[];
+  activeSeason: Workspace["activeSeason"];
+  canManage: boolean;
+  onChanged: (message: string) => void;
+}) {
+  const defaultRevision = packageOrder?.packageRevisionId
+    ?? revisions.find((revision) => revision.isDefault)?.revisionId
+    ?? revisions[0]?.revisionId
+    ?? "";
+  const [revisionId, setRevisionId] = useState(defaultRevision);
+  const [reason, setReason] = useState("");
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const currentPackage = revisions.find(
+    (revision) => revision.revisionId === packageOrder?.packageRevisionId,
+  );
+  const mutable = canManage
+    && Boolean(activeSeason)
+    && Boolean(revisionId)
+    && Boolean(packageOrder)
+    && (!packageOrder?.orderId || packageOrder.canSwitchPackage);
+
+  useEffect(() => {
+    setRevisionId(defaultRevision);
+    setReason("");
+    setRequestId(crypto.randomUUID());
+    setError(null);
+  }, [defaultRevision, member.id]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!packageOrder || !mutable || reason.trim().length < 3) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await postMutation("/api/orders/package", {
+        memberSeasonId: packageOrder.memberSeasonId,
+        packageRevisionId: revisionId,
+        revision: packageOrder.revision,
+        reason,
+        requestId,
+      });
+      onChanged(
+        packageOrder.packageRevisionId
+          ? "Pakketkeuze is gecontroleerd bijgewerkt."
+          : "Pakketorder is aangemaakt.",
+      );
+    } catch (mutationError) {
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "Het pakket kon niet worden verwerkt.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="overflow-hidden rounded-xl border border-line bg-white shadow-card"
+    >
+      <div className="flex flex-col gap-4 border-b border-line px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">
+            {activeSeason?.name ?? "Geen actief seizoen"}
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-brand-900">
+            {member.name}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {member.relationNumber ?? "Geen relatienummer"} · {member.team}
+          </p>
+        </div>
+        <span className="inline-flex h-8 items-center gap-2 self-start rounded-full bg-brand-50 px-3 text-[10px] font-bold text-brand-800">
+          <PackageCheck className="size-3.5" />
+          {currentPackage?.name ?? packageOrder?.packageName ?? "Nog geen pakket"}
+        </span>
+      </div>
+
+      {!canManage && (
+        <div className="border-b border-amber-200 bg-amber-50 px-6 py-4 text-xs leading-5 text-amber-800">
+          Alleen een beheerder met MFA kan een pakket kiezen of wisselen.
+        </div>
+      )}
+      {packageOrder?.orderId && !packageOrder.canSwitchPackage && (
+        <div className="border-b border-brand-100 bg-brand-50 px-6 py-4 text-xs leading-5 text-brand-800">
+          Dit pakket is betaald, gereserveerd of deels uitgegeven. Een gewone
+          pakketwissel is daarom geblokkeerd.
+        </div>
+      )}
+      {error && (
+        <div role="alert" className="border-b border-red-100 bg-red-50 px-6 py-4 text-xs text-danger">
+          {error}
+        </div>
+      )}
+
+      <fieldset disabled={!mutable || saving} className="space-y-5 p-6">
+        {revisions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line px-6 py-10 text-center">
+            <PackageCheck className="mx-auto size-7 text-slate-300" />
+            <p className="mt-3 text-xs font-semibold text-slate-600">
+              Nog geen gepubliceerd pakket
+            </p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-400">
+              Voeg eerst zelf producten, maten en minimaal één gepubliceerd
+              pakket toe onder Pakketten.
+            </p>
+          </div>
+        ) : (
+          <>
+            <label className="block text-xs font-semibold text-ink">
+              Pakket
+              <select
+                value={revisionId}
+                onChange={(event) => {
+                  setRevisionId(event.target.value);
+                  setRequestId(crypto.randomUUID());
+                }}
+                className={"mt-2 " + fieldClass}
+              >
+                {revisions.map((revision) => (
+                  <option key={revision.revisionId} value={revision.revisionId}>
+                    {revision.name} · {(revision.priceCents / 100).toLocaleString(
+                      "nl-NL",
+                      { style: "currency", currency: revision.currency },
+                    )}
+                    {revision.isDefault ? " · standaard" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-ink">
+              Reden
+              <textarea
+                value={reason}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                  setRequestId(crypto.randomUUID());
+                }}
+                minLength={3}
+                maxLength={500}
+                required
+                rows={3}
+                placeholder="Bijvoorbeeld: pakket gekozen na controle met lid"
+                className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50"
+              />
+            </label>
+          </>
+        )}
+      </fieldset>
+
+      <div className="flex items-center justify-end border-t border-line bg-slate-50/60 px-6 py-4">
+        <button
+          type="submit"
+          disabled={!mutable || saving || reason.trim().length < 3}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+          {packageOrder?.packageRevisionId ? "Pakket wijzigen" : "Pakket kiezen"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PackageSizeChangesPanel({
+  requests,
+  onResolved,
+}: {
+  requests: PackageSizeChange[];
+  onResolved: (message: string) => void;
+}) {
+  return (
+    <section className="mt-6 rounded-xl border border-amber-200 bg-white shadow-card">
+      <div className="border-b border-amber-100 bg-amber-50 px-5 py-4">
+        <h2 className="text-sm font-bold text-amber-950">
+          Maatwijzigingen na reservering
+        </h2>
+        <p className="mt-1 text-xs leading-5 text-amber-800">
+          Beslis iedere wijziging expliciet. Goedkeuren geeft de oude
+          reservering vrij en maakt een nieuwe naleverregel.
+        </p>
+      </div>
+      <div className="divide-y divide-line">
+        {requests.map((request) => (
+          <PackageSizeChangeCard
+            key={request.requestId}
+            request={request}
+            onResolved={onResolved}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PackageSizeChangeCard({
+  request,
+  onResolved,
+}: {
+  request: PackageSizeChange;
+  onResolved: (message: string) => void;
+}) {
+  const initialVariant = request.requestedVariantId
+    && request.variants.some(
+      (variant) => variant.id === request.requestedVariantId,
+    )
+    ? request.requestedVariantId
+    : "";
+  const [variantId, setVariantId] = useState(initialVariant);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(decision: "approve" | "reject") {
+    if (reason.trim().length < 3 || (decision === "approve" && !variantId)) {
+      return;
+    }
+    setSaving(decision);
+    setError(null);
+    try {
+      await postMutation("/api/orders/package-size-change", {
+        requestId: request.requestId,
+        decision,
+        approvedVariantId: decision === "approve" ? variantId : null,
+        reason,
+        revision: request.revision,
+      });
+      onResolved(
+        decision === "approve"
+          ? "Maatwijziging goedgekeurd; de nieuwe regel wacht op voorraad."
+          : "Maatwijziging afgewezen; de bestaande reservering blijft gelden.",
+      );
+    } catch (mutationError) {
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "Het maatverzoek kon niet worden verwerkt.",
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  return (
+    <article className="grid gap-5 p-5 lg:grid-cols-[minmax(220px,0.8fr)_minmax(300px,1.2fr)]">
+      <div>
+        <p className="text-xs font-bold text-brand-900">{request.memberName}</p>
+        <p className="mt-1 text-[10px] text-slate-400">
+          {request.team ?? "Geen team"} · {request.articleName}
+        </p>
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-lg bg-slate-50 p-3">
+            <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Gereserveerd</dt>
+            <dd className="mt-1 font-semibold text-ink">{request.currentSize}</dd>
+          </div>
+          <div className="rounded-lg bg-amber-50 p-3">
+            <dt className="text-[9px] font-bold uppercase tracking-wide text-amber-700">Gevraagd</dt>
+            <dd className="mt-1 font-semibold text-amber-950">{requestedSizeLabel(request)}</dd>
+          </div>
+        </dl>
+        {request.requestedMemberNote && (
+          <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            {request.requestedMemberNote}
+          </p>
+        )}
+      </div>
+      <div className="space-y-3">
+        <label className="block text-xs font-semibold text-ink">
+          Concrete geldige maat bij goedkeuren
+          <select
+            value={variantId}
+            onChange={(event) => setVariantId(event.target.value)}
+            className={"mt-2 " + fieldClass}
+          >
+            <option value="">Selecteer een actieve maat</option>
+            {request.variants.map((variant) => (
+              <option key={variant.id} value={variant.id}>
+                {variant.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs font-semibold text-ink">
+          Beslisreden
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            minLength={3}
+            maxLength={500}
+            rows={2}
+            className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </label>
+        {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={Boolean(saving) || reason.trim().length < 3 || !variantId}
+            onClick={() => decide("approve")}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {saving === "approve" && <Loader2 className="size-4 animate-spin" />}
+            Goedkeuren
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(saving) || reason.trim().length < 3}
+            onClick={() => decide("reject")}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-4 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {saving === "reject" && <Loader2 className="size-4 animate-spin" />}
+            Afwijzen
+          </button>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function OrderEditor({ member, articles, activeSeason, amount, lines, saving, onAmount, onVariant, onQuantity, onSubmit }: {

@@ -84,7 +84,13 @@ select is((app.get_backoffice_dashboard() #>> '{metrics,backorderOrders}')::inte
 select is((app.get_backoffice_dashboard() #>> '{metrics,readyOrders}')::integer, 2, 'orders met gereedstaande regels worden uniek geteld');
 select is(jsonb_array_length(app.get_backoffice_dashboard()->'recentMembers'), 2, 'recente leden bevat alleen actieve seizoensorders');
 select ok(position('email' in (app.get_backoffice_dashboard()->'recentMembers')::text) = 0, 'dashboardresponse bevat geen e-mailadres');
-select is(jsonb_array_length(app.get_backoffice_dashboard()->'activities'), 2, 'QR-lookups worden niet als dashboardactiviteit getoond');
+select ok(
+  not (
+    app.get_backoffice_dashboard()->'activities'
+      @> '[{"action":"qr.lookup"}]'::jsonb
+  ),
+  'dashboard toont nooit QR-lookups als activiteit'
+);
 select is(app.get_backoffice_dashboard() #>> '{activeSeason,name}', 'Dashboardseizoen', 'actief seizoen komt uit app-instellingen');
 
 reset role;

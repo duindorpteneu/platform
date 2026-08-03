@@ -96,7 +96,7 @@ export async function publishPackageRevision(
   correlationId: string | null,
 ) {
   const supabase = await packageClient();
-  const { data, error } = await supabase.schema("app").rpc("publish_package_revision", {
+  const { data, error } = await supabase.schema("app").rpc("publish_package_revision_v2", {
     p_revision_id: revisionId,
     p_make_default: makeDefault,
     p_expected_hash: expectedHash,

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
 
-    const { data, error } = await supabase.schema("app").rpc("reserve_order_lines", {
+    const { data, error } = await supabase.schema("app").rpc("reserve_order_lines_v2", {
       p_receipt_line_id: parsed.data.receiptLineId,
       p_order_line_ids: parsed.data.orderLineIds,
     });

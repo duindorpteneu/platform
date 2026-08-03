@@ -206,7 +206,7 @@ set local role authenticated;
 select lives_ok($$select app.register_delivery_receipt(current_date, 'Provider leverancier', 'PROVIDER-READY',
   '[{"variant_id":"b3000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb)$$,
   'voorraad voor ready-event wordt ontvangen');
-select lives_ok($$select app.reserve_order_lines(
+select lives_ok($$select app.reserve_order_lines_v2(
   (select line.id from app.delivery_receipt_lines line join app.delivery_receipts receipt on receipt.id=line.receipt_id
     where receipt.packing_slip_reference='PROVIDER-READY'), array['b5000000-0000-4000-8000-000000000002'::uuid])$$,
   'reserveren enqueuet ready-event');
