@@ -283,6 +283,13 @@ const protectedActionSchema = z.object({
   label: z.string().trim().min(2).max(120),
 }).strict();
 
+const paymentSummaryLineSchema = z.object({
+  memberFirstName: z.string().trim().min(1).max(160),
+  packageName: z.string().trim().min(1).max(160),
+  amountCents: z.number().int().min(0).max(10_000_000),
+  currency: z.literal("EUR"),
+}).strict();
+
 export const mailProtectedValueSchemas = {
   portal_route: protectedActionSchema,
   otp_code: z.object({ code: z.string().regex(/^\d{6}$/u) }).strict(),
@@ -290,11 +297,12 @@ export const mailProtectedValueSchemas = {
   otp_warning: z.object({}).strict(),
   size_table: protectedTableSchema,
   size_action: protectedActionSchema,
-  payment_summary: z.object({
-    packageName: z.string().trim().min(1).max(160),
-    amountCents: z.number().int().min(0).max(10_000_000),
-    currency: z.literal("EUR"),
-  }).strict(),
+  payment_summary: z.union([
+    paymentSummaryLineSchema.omit({ memberFirstName: true }),
+    z.object({
+      orders: z.array(paymentSummaryLineSchema).min(1).max(10),
+    }).strict(),
+  ]),
   payment_action: protectedActionSchema,
   ready_items: protectedTableSchema,
   stock_items: protectedTableSchema,
@@ -602,4 +610,148 @@ export const fulfilmentMailProjectionFinalizeSchema = z.object({
 
 export type FulfilmentMailProjectionGroup = z.infer<
   typeof fulfilmentMailProjectionGroupSchema
+>;
+
+export const mailV2DomainTemplateKeySchema = mailTemplateKeySchema.exclude([
+  "login_otp",
+  "partial_pickup",
+  "package_complete",
+]);
+
+const mailV2DomainMemberPayloadSchema = z.object({
+  memberSeasonId: uuid,
+  memberFirstName: z.string().trim().min(1).max(160),
+  memberFullName: z.string().trim().min(1).max(320),
+  teamName: z.string().trim().min(1).max(160),
+  seasonName: z.string().trim().min(1).max(120),
+  orderId: uuid.optional(),
+  packageName: z.string().trim().min(1).max(160),
+  amountCents: z.number().int().min(0).max(10_000_000).optional(),
+  currency: z.literal("EUR"),
+  lines: z.array(fulfilmentProjectionLineSchema).max(250),
+}).strict();
+
+const mailV2DomainFailurePayloadSchema = z.object({
+  jobId: uuid,
+  reason: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,63}$/u),
+}).strict();
+
+const mailV2DomainProjectionEventSchema = z.object({
+  eventId: uuid,
+  payload: z.union([
+    mailV2DomainMemberPayloadSchema,
+    mailV2DomainFailurePayloadSchema,
+  ]),
+}).strict();
+
+export const mailV2DomainProjectionGroupSchema = z.object({
+  groupId: uuid,
+  eligibilityRevision: contentHash,
+  templateKey: mailV2DomainTemplateKeySchema,
+  template: mailTemplateSourceSchema.extend({
+    id: uuid,
+    contentHash,
+  }).strict(),
+  branding: mailBrandingSchema.extend({
+    id: uuid,
+    contentHash,
+  }).strict(),
+  events: z.array(mailV2DomainProjectionEventSchema).min(1).max(100),
+}).strict().superRefine((group, context) => {
+  if (group.template.templateKey !== group.templateKey) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["template", "templateKey"],
+      message: "Template en domeinevent komen niet overeen.",
+    });
+  }
+  if (new Set(group.events.map((event) => event.eventId)).size !== group.events.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["events"],
+      message: "Domeinevents moeten uniek zijn.",
+    });
+  }
+  const internal = group.templateKey === "internal_email_failure";
+  if (internal && group.events.length !== 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["events"],
+      message: "Een interne foutmelding verwijst naar exact één mailjob.",
+    });
+  }
+  for (const [index, event] of group.events.entries()) {
+    if ("jobId" in event.payload) {
+      if (!internal) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["events", index, "payload"],
+          message: "Domeinevent en doelgroepcontext komen niet overeen.",
+        });
+      }
+      continue;
+    }
+    if (internal) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "payload"],
+        message: "Domeinevent en doelgroepcontext komen niet overeen.",
+      });
+      continue;
+    }
+    const requiresOrder = ![
+      "portal_access_invite",
+      "portal_access_reminder",
+    ].includes(group.templateKey);
+    if (requiresOrder && !event.payload.orderId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "payload", "orderId"],
+        message: "Dit mailproces vereist een pakketorder.",
+      });
+    }
+    if ([
+      "payment_request",
+      "payment_reminder",
+      "payment_received_waiting_stock",
+      "available_payment_required",
+    ].includes(group.templateKey) && event.payload.amountCents === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "payload", "amountCents"],
+        message: "Dit mailproces vereist een exact pakkettotaal.",
+      });
+    }
+    if ([
+      "size_fill_request",
+      "size_fill_reminder",
+      "size_review_request",
+      "size_review_reminder",
+      "size_confirmed",
+      "payment_received_waiting_stock",
+      "available_payment_required",
+      "pickup_ready",
+      "pickup_reminder",
+      "out_of_stock",
+      "back_in_stock",
+    ].includes(group.templateKey) && event.payload.lines.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "payload", "lines"],
+        message: "Dit mailproces vereist ten minste één pakketregel.",
+      });
+    }
+  }
+});
+
+export const mailV2DomainProjectionClaimEnvelopeSchema = z.object({
+  leaseToken: uuid,
+  groups: z.array(z.unknown()).max(10),
+}).strict();
+
+export const mailV2DomainProjectionFinalizeSchema =
+  fulfilmentMailProjectionFinalizeSchema;
+
+export type MailV2DomainProjectionGroup = z.infer<
+  typeof mailV2DomainProjectionGroupSchema
 >;

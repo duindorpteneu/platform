@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { mailTemplateKeySchema as mailV2TemplateKeySchema } from "@/lib/mail-v2-contract";
+import {
+  mailTemplateKeySchema as mailV2TemplateKeySchema,
+  mailV2DomainTemplateKeySchema,
+} from "@/lib/mail-v2-contract";
 
 const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
@@ -83,6 +86,12 @@ const emailWorkspaceJobSchema = z.discriminatedUnion("contextKind", [
       "partial_pickup",
       "package_complete",
     ]),
+  }).strict(),
+  z.object({
+    ...emailWorkspaceJobBase,
+    contextKind: z.literal("mail_v2"),
+    orderId: z.null(),
+    templateKey: mailV2DomainTemplateKeySchema,
   }).strict(),
 ]);
 
@@ -261,10 +270,39 @@ const claimedFulfilmentEmailJobSchema = z.object({
   attempt: z.number().int().min(1).max(5),
 }).strict();
 
+const claimedMailV2DomainEmailJobSchema = z.object({
+  id: uuid,
+  kind: z.enum(["transactional", "bulk"]),
+  contextKind: z.literal("mail_v2"),
+  recipientEmail: z.string().trim().email().max(320),
+  templateKey: mailV2DomainTemplateKeySchema,
+  templateRevisionId: uuid,
+  brandingRevisionId: uuid,
+  subject: z.string().trim().min(1).max(200).refine(
+    (value) => !/[\r\n]/u.test(value),
+  ),
+  preheader: z.string().trim().min(1).max(240).refine(
+    (value) => !/[\r\n]/u.test(value),
+  ),
+  html: z.string().trim().min(1).max(50_000),
+  text: z.string().trim().min(1).max(20_000),
+  fromName: z.string().trim().min(3).max(120).refine(
+    (value) => !/[\r\n]/u.test(value),
+  ),
+  fromEmail: z.string().trim().email().max(320),
+  replyToEmail: z.string().trim().email().max(320),
+  renderHash: z.string().regex(/^[0-9a-f]{64}$/u),
+  parentAccountId: uuid.nullable(),
+  seasonId: uuid,
+  eventCount: z.number().int().min(1).max(100),
+  attempt: z.number().int().min(1).max(5),
+}).strict();
+
 export const claimedEmailJobSchema = z.discriminatedUnion("contextKind", [
   claimedOrderEmailJobSchema,
   claimedPortalAccessEmailJobSchema,
   claimedFulfilmentEmailJobSchema,
+  claimedMailV2DomainEmailJobSchema,
 ]).superRefine((value, context) => {
   if (value.contextKind === "order" && value.orderId !== value.payload.orderId) {
     context.addIssue({
@@ -278,6 +316,30 @@ export const claimedEmailJobSchema = z.discriminatedUnion("contextKind", [
       code: z.ZodIssueCode.custom,
       path: ["payload", "parentAccountId"],
       message: "Ouderaccountcontext komt niet overeen.",
+    });
+  }
+  if (
+    value.contextKind === "mail_v2"
+    && (
+      (value.templateKey === "internal_email_failure")
+      !== (value.parentAccountId === null)
+    )
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["parentAccountId"],
+      message: "Interne en oudergerichte mailcontext komen niet overeen.",
+    });
+  }
+  if (
+    value.contextKind === "mail_v2"
+    && value.templateKey === "internal_email_failure"
+    && value.kind !== "transactional"
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["kind"],
+      message: "Interne foutmeldingen zijn uitsluitend transactioneel.",
     });
   }
 });

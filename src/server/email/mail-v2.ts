@@ -328,6 +328,16 @@ function renderProtectedBlock(
     }
     case "payment_summary": {
       const value = protectedValue(kind, values);
+      if ("orders" in value) {
+        const rows = value.orders.map((order) => ({
+          ...order,
+          amount: formatMoney(order.amountCents),
+        }));
+        return {
+          html: `<div style="background-color:#EEF4FD;border-radius:8px;margin:16px 0;padding:16px"><table role="presentation" style="border-collapse:collapse;width:100%"><tbody>${rows.map((order) => `<tr><td style="border-bottom:1px solid #DDE3EC;color:#0B2E63;font-size:14px;font-weight:700;padding:8px 0">${escapeHtml(order.memberFirstName)} · ${escapeHtml(order.packageName)}</td><td style="border-bottom:1px solid #DDE3EC;color:#172033;font-size:14px;font-weight:700;padding:8px 0;text-align:right">${escapeHtml(order.amount)}</td></tr>`).join("")}</tbody></table><p style="color:#172033;font-size:12px;line-height:1.6;margin:12px 0 0">Ieder pakket wordt afzonderlijk en voor het exact vermelde bedrag betaald.</p></div>`,
+          text: `${rows.map((order) => `${order.memberFirstName} · ${order.packageName}: ${order.amount}`).join("\n")}\nIeder pakket wordt afzonderlijk en voor het exact vermelde bedrag betaald.`,
+        };
+      }
       const amount = formatMoney(value.amountCents);
       return {
         html: `<div style="background-color:#EEF4FD;border-radius:8px;margin:16px 0;padding:16px"><p style="color:#0B2E63;font-size:14px;font-weight:700;margin:0 0 8px">${escapeHtml(value.packageName)}</p><p style="color:#172033;font-size:20px;font-weight:700;margin:0">${escapeHtml(amount)}</p></div>`,

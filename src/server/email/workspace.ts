@@ -80,7 +80,7 @@ function formatArticleLines(lines: ClaimedOrderEmailJob["payload"]["articles"]) 
 }
 
 export function renderClaimedEmailJob(job: ClaimedEmailJob, appBaseUrl: string) {
-  if (job.contextKind === "fulfilment") {
+  if (job.contextKind === "fulfilment" || job.contextKind === "mail_v2") {
     throw new Error("MAIL_V2_SNAPSHOT_RENDER_REQUIRED");
   }
   const baseUrl = new URL(appBaseUrl);

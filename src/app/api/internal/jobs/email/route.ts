@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { emailJobClaimResponseSchema, type ClaimedEmailJob } from "@/lib/email-contract";
 import { getServerEnv } from "@/lib/env";
-import { projectFulfilmentMail } from "@/server/email/mail-v2-projector";
+import {
+  projectFulfilmentMail,
+  projectMailV2DomainEvents,
+} from "@/server/email/mail-v2-projector";
 import { sendEmailJob } from "@/server/email/sendgrid";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
@@ -88,7 +91,10 @@ export async function POST(request: Request) {
   const appBaseUrl = env.APP_BASE_URL;
   let projection;
   try {
-    projection = await projectFulfilmentMail(admin, appBaseUrl);
+    projection = {
+      fulfilment: await projectFulfilmentMail(admin, appBaseUrl),
+      domain: await projectMailV2DomainEvents(admin, appBaseUrl),
+    };
   } catch {
     await finishOperationRun(
       admin,
@@ -115,7 +121,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ongeldig claimantwoord van de database." }, { status: 502 });
   }
 
-  const counts = { claimed: claim.data.jobs.length, sent: 0, retry: 0, failed: 0, delivery_uncertain: 0, completionErrors: projection.errors };
+  const counts = {
+    claimed: claim.data.jobs.length,
+    sent: 0,
+    retry: 0,
+    failed: 0,
+    deferred: 0,
+    delivery_uncertain: 0,
+    completionErrors: projection.fulfilment.errors + projection.domain.errors,
+  };
   for (let offset = 0; offset < claim.data.jobs.length; offset += 5) {
     const settled = await Promise.allSettled(
       claim.data.jobs.slice(offset, offset + 5).map(
@@ -142,18 +156,19 @@ export async function POST(request: Request) {
     sent: counts.sent,
     retry: counts.retry,
     failed: counts.failed,
+    deferred: counts.deferred,
     deliveryUncertain: counts.delivery_uncertain,
     completionErrors: counts.completionErrors,
     projected: projection,
   }, { status: counts.completionErrors > 0 ? 503 : 200 });
 }
 
-async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: string, admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>, counts: { sent: number; retry: number; failed: number; delivery_uncertain: number; completionErrors: number }) {
+async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: string, admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>, counts: { sent: number; retry: number; failed: number; deferred: number; delivery_uncertain: number; completionErrors: number }) {
   let outcome: "sent" | "retry" | "failed" | "delivery_uncertain" = "failed";
   let providerMessageId: string | null = null;
   let errorCode: string | null = "render_invalid";
   const authorization = await admin.schema("app").rpc(
-    "authorize_claimed_email_job_v2",
+    "authorize_claimed_email_job_v3",
     {
       p_job_id: job.id,
       p_claim_token: claimToken,
@@ -163,14 +178,16 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
     throw new Error("EMAIL_JOB_AUTHORIZATION_FAILED");
   }
   if (!authorization.data) {
-    counts.failed += 1;
+    counts.deferred += 1;
     return;
   }
   try {
     const rendered = job.contextKind === "fulfilment"
+      || job.contextKind === "mail_v2"
       ? { subject: job.subject, text: job.text, html: job.html }
       : renderClaimedEmailJob(job, appBaseUrl);
     const sender = job.contextKind === "fulfilment"
+      || job.contextKind === "mail_v2"
       ? {
         fromName: job.fromName,
         fromEmail: job.fromEmail,

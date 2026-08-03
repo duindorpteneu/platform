@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   startRun: vi.fn(),
   finishRun: vi.fn(),
   project: vi.fn(),
+  projectDomain: vi.fn(),
 }));
 vi.mock("@/server/operations/internal-auth", () => ({ hasInternalBearer: mocks.bearer }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
@@ -18,6 +19,7 @@ vi.mock("@/server/email/sendgrid", () => ({ sendEmailJob: mocks.send }));
 vi.mock("@/server/email/workspace", () => ({ renderClaimedEmailJob: mocks.render }));
 vi.mock("@/server/email/mail-v2-projector", () => ({
   projectFulfilmentMail: mocks.project,
+  projectMailV2DomainEvents: mocks.projectDomain,
 }));
 vi.mock("@/server/operations/run-ledger", () => ({ startOperationRun: mocks.startRun, finishOperationRun: mocks.finishRun }));
 
@@ -87,6 +89,16 @@ const fulfilmentJob = {
   attempt: 1,
 };
 
+const domainJob = {
+  ...fulfilmentJob,
+  id: "71000000-0000-4000-8000-000000000004",
+  kind: "bulk",
+  contextKind: "mail_v2",
+  templateKey: "payment_reminder",
+  subject: "Betalingsherinnering",
+  preheader: "Bekijk de afzonderlijke pakketbedragen.",
+};
+
 describe("POST /api/internal/jobs/email", () => {
   beforeEach(() => {
     process.env.EMAIL_ENABLED = "true";
@@ -108,12 +120,19 @@ describe("POST /api/internal/jobs/email", () => {
       deferred: 0,
       errors: 0,
     });
+    mocks.projectDomain.mockReset().mockResolvedValue({
+      claimed: 0,
+      queued: 0,
+      suppressed: 0,
+      deferred: 0,
+      errors: 0,
+    });
     mocks.render.mockReset().mockReturnValue({ subject: "Onderwerp", text: "Bericht", html: "<p>Bericht</p>" });
     mocks.send.mockReset().mockResolvedValue({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
     mocks.rpc.mockReset().mockImplementation((name: string, args: Record<string, unknown>) => {
       if (name === "get_email_worker_preflight_v1") return Promise.resolve({ data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 }, error: null });
       if (name === "claim_email_jobs_v3") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
-      if (name === "authorize_claimed_email_job_v2") return Promise.resolve({ data: true, error: null });
+      if (name === "authorize_claimed_email_job_v3") return Promise.resolve({ data: true, error: null });
       if (name === "complete_email_job") return Promise.resolve({ data: { jobId: args.p_job_id, status: args.p_outcome, attempts: 1, availableAt: "2026-07-21T10:00:00.000Z" }, error: null });
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
@@ -205,7 +224,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v2") {
+      if (name === "authorize_claimed_email_job_v3") {
         return Promise.resolve({ data: true, error: null });
       }
       if (name === "complete_email_job") {
@@ -245,7 +264,7 @@ describe("POST /api/internal/jobs/email", () => {
       fromEmail: "kleding@duindorpsv.nl",
     }));
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "authorize_claimed_email_job_v2",
+      "authorize_claimed_email_job_v3",
       expect.objectContaining({
         p_job_id: portalJob.id,
       }),
@@ -274,7 +293,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v2") {
+      if (name === "authorize_claimed_email_job_v3") {
         return Promise.resolve({ data: false, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
@@ -290,7 +309,8 @@ describe("POST /api/internal/jobs/email", () => {
     expect(await response.json()).toMatchObject({
       claimed: 1,
       sent: 0,
-      failed: 1,
+      failed: 0,
+      deferred: 1,
       completionErrors: 0,
     });
     expect(mocks.render).not.toHaveBeenCalled();
@@ -315,7 +335,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v2") {
+      if (name === "authorize_claimed_email_job_v3") {
         return Promise.resolve({ data: true, error: null });
       }
       if (name === "complete_email_job") {
@@ -355,6 +375,99 @@ describe("POST /api/internal/jobs/email", () => {
     });
   });
 
+  it("verstuurt een generieke v2-job uitsluitend uit de immutable snapshots", async () => {
+    mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "get_email_worker_preflight_v1") {
+        return Promise.resolve({
+          data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
+          error: null,
+        });
+      }
+      if (name === "claim_email_jobs_v3") {
+        return Promise.resolve({
+          data: { claimToken: args.p_claim_token, jobs: [domainJob] },
+          error: null,
+        });
+      }
+      if (name === "authorize_claimed_email_job_v3") {
+        return Promise.resolve({ data: true, error: null });
+      }
+      if (name === "complete_email_job") {
+        return Promise.resolve({
+          data: {
+            jobId: args.p_job_id,
+            status: args.p_outcome,
+            attempts: 1,
+            availableAt: "2026-07-21T10:00:00.000Z",
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: { code: "PGRST202" } });
+    });
+    mocks.send.mockResolvedValueOnce({
+      delivered: true,
+      providerMessageId: "sg-domain",
+    });
+
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/email",
+      { method: "POST" },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(mocks.render).not.toHaveBeenCalled();
+    expect(mocks.send).toHaveBeenCalledWith({
+      jobId: domainJob.id,
+      recipientEmail: domainJob.recipientEmail,
+      subject: domainJob.subject,
+      html: domainJob.html,
+      text: domainJob.text,
+      fromName: domainJob.fromName,
+      fromEmail: domainJob.fromEmail,
+      replyToEmail: domainJob.replyToEmail,
+    });
+  });
+
+  it("verzendt en completeert niets wanneer een domeinjob send-time afvalt", async () => {
+    mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "get_email_worker_preflight_v1") {
+        return Promise.resolve({
+          data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
+          error: null,
+        });
+      }
+      if (name === "claim_email_jobs_v3") {
+        return Promise.resolve({
+          data: { claimToken: args.p_claim_token, jobs: [domainJob] },
+          error: null,
+        });
+      }
+      if (name === "authorize_claimed_email_job_v3") {
+        return Promise.resolve({ data: false, error: null });
+      }
+      return Promise.resolve({ data: null, error: { code: "PGRST202" } });
+    });
+
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/email",
+      { method: "POST" },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      claimed: 1,
+      deferred: 1,
+      failed: 0,
+      completionErrors: 0,
+    });
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      "complete_email_job",
+      expect.anything(),
+    );
+  });
+
   it("does no work when the runledger cannot be started", async () => {
     mocks.startRun.mockResolvedValueOnce(false);
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/email", { method: "POST" }));
@@ -374,6 +487,29 @@ describe("POST /api/internal/jobs/email", () => {
 
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("gevoelige providercontext");
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "email_worker",
+      expect.any(String),
+      "failed",
+      0,
+      "projection_failed",
+    );
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("sluit de operation-run af wanneer de domeinprojector onverwacht faalt", async () => {
+    mocks.projectDomain.mockRejectedValueOnce(
+      new Error("gevoelige domeincontext"),
+    );
+
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/email",
+      { method: "POST" },
+    ));
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("gevoelige domeincontext");
     expect(mocks.finishRun).toHaveBeenCalledWith(
       expect.anything(),
       "email_worker",
