@@ -7,6 +7,7 @@ import {
   projectFulfilmentMail,
   projectMailV2DomainEvents,
 } from "@/server/email/mail-v2-projector";
+import { runDueMailReminders } from "@/server/email/mail-v2-reminders";
 import { sendEmailJob } from "@/server/email/sendgrid";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
@@ -89,6 +90,27 @@ export async function POST(request: Request) {
     );
   }
   const appBaseUrl = env.APP_BASE_URL;
+  let reminders;
+  try {
+    reminders = await runDueMailReminders(
+      admin,
+      new Date().toISOString(),
+      500,
+    );
+  } catch {
+    await finishOperationRun(
+      admin,
+      "email_worker",
+      runId,
+      "failed",
+      0,
+      "reminder_planner_failed",
+    );
+    return NextResponse.json(
+      { error: "Herinneringsplanning kon niet veilig worden verwerkt." },
+      { status: 503 },
+    );
+  }
   let projection;
   try {
     projection = {
@@ -159,7 +181,7 @@ export async function POST(request: Request) {
     deferred: counts.deferred,
     deliveryUncertain: counts.delivery_uncertain,
     completionErrors: counts.completionErrors,
-    projected: projection,
+    projected: { reminders, ...projection },
   }, { status: counts.completionErrors > 0 ? 503 : 200 });
 }
 

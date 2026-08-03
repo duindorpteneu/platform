@@ -33,7 +33,7 @@ describe("email contracts", () => {
   it("requires immutable template snapshots on claimed jobs", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const payload = {
-      id, kind: "transactional", contextKind: "order", recipientEmail: "ouder@example.nl", templateKey: "payment_received",
+      id, deliveryAttemptId: "11111111-1111-4111-8111-111111111112", kind: "transactional", contextKind: "order", recipientEmail: "ouder@example.nl", templateKey: "payment_received",
       templateVersion: 3, subjectSource: "Betaling ontvangen", bodySource: "Uw betaling is veilig ontvangen.",
       allowedShortcodes: ["{{volledige_naam}}"], orderId: id, parentAccountId: null, attempt: 1,
       payload: { orderId: id, memberId: "22222222-2222-4222-8222-222222222222", firstName: "Sophie", fullName: "Sophie de Bruin", team: "JO11-1", relationNumber: "DSV-1", season: "2026/27", amountCents: 12500, clubName: "Duindorp SV", contactEmail: "kleding@duindorpsv.nl", pickupLocation: "Clubhuis", qrVersion: 1, articles: [], articlesReady: [], articlesBackorder: [] },
@@ -46,6 +46,7 @@ describe("email contracts", () => {
     const parentAccountId = "22222222-2222-4222-8222-222222222222";
     const payload = {
       id: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId: "11111111-1111-4111-8111-111111111112",
       kind: "transactional",
       contextKind: "portal_access",
       recipientEmail: "ouder@example.nl",
@@ -73,6 +74,7 @@ describe("email contracts", () => {
   it("accepteert fulfilment uitsluitend als immutable render- en sender-snapshot", () => {
     const payload = {
       id: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId: "11111111-1111-4111-8111-111111111112",
       kind: "transactional",
       contextKind: "fulfilment",
       recipientEmail: "ouder@example.nl",
@@ -106,6 +108,7 @@ describe("email contracts", () => {
   it("accepteert generieke v2-jobs alleen met passende immutable doelgroepcontext", () => {
     const payload = {
       id: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId: "11111111-1111-4111-8111-111111111112",
       kind: "bulk",
       contextKind: "mail_v2",
       recipientEmail: "ouder@example.nl",

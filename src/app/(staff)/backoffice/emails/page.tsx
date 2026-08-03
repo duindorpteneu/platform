@@ -4,6 +4,7 @@ import {
   getMailV2Workspace,
 } from "@/server/email/mail-v2-workspace";
 import { getMailV2CampaignWorkspace } from "@/server/email/mail-v2-campaigns";
+import { getMailReminderWorkspace } from "@/server/email/mail-v2-reminders";
 import { getEmailWorkspace } from "@/server/email/workspace";
 
 export const dynamic = "force-dynamic";
@@ -12,19 +13,26 @@ export default async function EmailsPage() {
   const { workspace, staff } = await getEmailWorkspace();
   const canManageTemplates = staff.role === "beheerder";
   const campaignWorkspacePromise = getMailV2CampaignWorkspace();
-  const [mailV2Workspace, mailV2Cutover, campaignWorkspace] = canManageTemplates
+  const [
+    mailV2Workspace,
+    mailV2Cutover,
+    campaignWorkspace,
+    reminderWorkspace,
+  ] = canManageTemplates
     ? await Promise.all([
       getMailV2Workspace(),
       getMailV2CutoverSnapshot(),
       campaignWorkspacePromise,
+      getMailReminderWorkspace(),
     ])
-    : [undefined, undefined, await campaignWorkspacePromise];
+    : [undefined, undefined, await campaignWorkspacePromise, undefined];
   return (
     <EmailWorkspace
       workspace={workspace}
       mailV2Workspace={mailV2Workspace}
       mailV2Cutover={mailV2Cutover}
       campaignWorkspace={campaignWorkspace}
+      reminderWorkspace={reminderWorkspace}
       canManageTemplates={canManageTemplates}
       emailEnabled={process.env.EMAIL_ENABLED === "true"}
     />

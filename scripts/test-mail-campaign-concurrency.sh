@@ -26,20 +26,48 @@ allocator_marker="$test_tmp_dir/allocator-writer-holding"
 payment_writer_log="$test_tmp_dir/payment-writer.log"
 payment_campaign_log="$test_tmp_dir/payment-campaign.log"
 payment_marker="$test_tmp_dir/payment-writer-holding"
+reminder_first_log="$test_tmp_dir/reminder-first.log"
+reminder_second_log="$test_tmp_dir/reminder-second.log"
 previous_flag="$("${psql_cmd[@]}" -c \
   "select enabled::text from app.release_feature_flags where key='mail_templates_v2'")"
 previous_cutover="$("${psql_cmd[@]}" -c \
   "select exists(select 1 from private.release_cutovers where key='mail_templates_v2')::text")"
 created_template_revision="false"
+created_reminder_template_revision="false"
 
 cleanup_data() {
   "${psql_cmd[@]}" \
     -v previous_flag="$previous_flag" \
     -v previous_cutover="$previous_cutover" \
-    -v created_template_revision="$created_template_revision" <<'SQL'
+    -v created_template_revision="$created_template_revision" \
+    -v created_reminder_template_revision="$created_reminder_template_revision" <<'SQL'
 begin;
 set local session_replication_role = replica;
 
+create temporary table cleanup_mail_jobs as
+select batch.email_job_id id
+from private.mail_v2_projection_batches batch
+where batch.cohort_id in (
+  select cohort_id
+  from private.mail_v2_campaign_runs
+  where actor_user_id = 'ca000000-0000-4000-8000-000000000001'
+)
+  and batch.email_job_id is not null;
+create temporary table cleanup_projection_batches as
+select batch.id
+from private.mail_v2_projection_batches batch
+where batch.cohort_id in (
+  select cohort_id
+  from private.mail_v2_campaign_runs
+  where actor_user_id = 'ca000000-0000-4000-8000-000000000001'
+);
+
+delete from private.mail_reminder_runs
+where rule_id = 'ca850000-0000-4000-8000-000000000001';
+delete from private.mail_reminder_rule_revisions
+where rule_id = 'ca850000-0000-4000-8000-000000000001';
+delete from app.mail_reminder_rules
+where id = 'ca850000-0000-4000-8000-000000000001';
 delete from private.mail_v2_episode_transitions
 where episode_id in (
   select id
@@ -70,8 +98,13 @@ where cohort_id in (
   from private.mail_v2_campaign_runs
   where actor_user_id = 'ca000000-0000-4000-8000-000000000001'
 );
+delete from app.audit_logs
+where action = 'mail_v2.domain.queued'
+  and (metadata->>'projectionBatchId')::uuid in (
+    select id from cleanup_projection_batches
+  );
 delete from private.mail_v2_domain_events
-where source_type = 'mail_campaign'
+where source_type in ('mail_campaign', 'mail_reminder_rule')
   and member_season_id in (
     select id
     from app.member_seasons
@@ -79,6 +112,8 @@ where source_type = 'mail_campaign'
   );
 delete from private.mail_v2_campaign_runs
 where actor_user_id = 'ca000000-0000-4000-8000-000000000001';
+delete from private.email_jobs
+where id in (select id from cleanup_mail_jobs);
 delete from private.mail_v2_campaign_preflight_items
 where preflight_id in (
   select id
@@ -99,6 +134,8 @@ delete from app.payments
 where id = 'ca900000-0000-4000-8000-000000000001';
 delete from app.order_lines
 where order_id = 'ca400000-0000-4000-8000-000000000001';
+delete from private.inventory_allocation_queue
+where article_variant_id = 'ca200000-0000-4000-8000-000000000001';
 delete from app.member_orders
 where id = 'ca400000-0000-4000-8000-000000000001';
 delete from app.order_package_snapshot_items
@@ -128,6 +165,9 @@ where auth_user_id = 'ca000000-0000-4000-8000-000000000001';
 delete from app.mail_template_revisions
 where id = 'ca700000-0000-4000-8000-000000000001'
   and :'created_template_revision'::boolean;
+delete from app.mail_template_revisions
+where id = 'ca700000-0000-4000-8000-000000000002'
+  and :'created_reminder_template_revision'::boolean;
 
 update app.release_feature_flags
 set enabled = :'previous_flag'::boolean
@@ -156,8 +196,15 @@ if [[ "$("${psql_cmd[@]}" -c \
   "select count(*) from app.mail_template_revisions where template_key='payment_request' and status='published'")" == "0" ]]; then
   created_template_revision="true"
 fi
+if [[ "$("${psql_cmd[@]}" -c \
+  "select count(*) from app.mail_template_revisions where template_key='payment_reminder' and status='published'")" == "0" ]]; then
+  created_reminder_template_revision="true"
+fi
 
-"${psql_cmd[@]}" -v create_revision="$created_template_revision" >/dev/null <<'SQL'
+"${psql_cmd[@]}" \
+  -v create_revision="$created_template_revision" \
+  -v create_reminder_revision="$created_reminder_template_revision" \
+  >/dev/null <<'SQL'
 insert into app.staff_profiles(auth_user_id, display_name, role)
 values (
   'ca000000-0000-4000-8000-000000000001',
@@ -305,12 +352,84 @@ where draft.template_key = 'payment_request'
   and draft.status = 'draft'
   and :'create_revision'::boolean;
 
+insert into app.mail_template_revisions(
+  id,
+  template_key,
+  revision,
+  status,
+  internal_name,
+  subject_source,
+  preheader_source,
+  body_tiptap,
+  sanitized_html_source,
+  text_fallback_source,
+  schema_version,
+  content_hash,
+  creation_source,
+  published_at
+)
+select
+  'ca700000-0000-4000-8000-000000000002',
+  draft.template_key,
+  999,
+  'published',
+  draft.internal_name,
+  draft.subject_source,
+  draft.preheader_source,
+  draft.body_tiptap,
+  '<p>Veilige reminderconcurrencytemplate</p>',
+  draft.text_fallback_source,
+  draft.schema_version,
+  repeat('b', 64),
+  'system',
+  timezone('utc', now())
+from app.mail_template_revisions draft
+where draft.template_key = 'payment_reminder'
+  and draft.status = 'draft'
+  and :'create_reminder_revision'::boolean;
+
 insert into private.release_cutovers(key, activated_at)
 values ('mail_templates_v2', timezone('utc', now()) - interval '1 minute')
 on conflict (key) do nothing;
 update app.release_feature_flags
 set enabled = true
 where key = 'mail_templates_v2';
+
+select set_config('app.mail_reminder_rule_internal', 'on', true);
+insert into app.mail_reminder_rules(
+  id,
+  season_id,
+  template_key,
+  internal_name,
+  first_delay_hours,
+  frequency_hours,
+  maximum_dispatches,
+  cooldown_hours,
+  end_at,
+  quiet_start,
+  quiet_end,
+  active,
+  created_by,
+  updated_by
+)
+select
+  'ca850000-0000-4000-8000-000000000001',
+  settings.active_season_id,
+  'payment_reminder',
+  'Reminder concurrency',
+  1,
+  24,
+  3,
+  1,
+  timestamptz '2099-08-31 22:00:00+00',
+  time '23:00',
+  time '06:00',
+  true,
+  'ca000000-0000-4000-8000-000000000001',
+  'ca000000-0000-4000-8000-000000000001'
+from app.app_settings settings
+where settings.id = true;
+select set_config('app.mail_reminder_rule_internal', 'off', true);
 
 begin;
 select set_config(
@@ -688,4 +807,157 @@ if [[ "$run_count" != "1" || "$event_count" != "1" \
   exit 1
 fi
 
-echo "Mailcampagne-concurrencytest geslaagd: uitgifte-, allocator- en betaallockordes geven alleen veilige retries; twee preflights leveren exact één episode, run en projectiebatch."
+"${psql_cmd[@]}" >/dev/null <<'SQL'
+begin;
+set local role service_role;
+create temporary table reminder_initial_claim as
+select app.claim_mail_v2_domain_projections_v1(
+  'ca860000-0000-4000-8000-000000000001',
+  10
+) result;
+reset role;
+create temporary table reminder_initial_hash as
+select private.mail_v2_render_hash(
+  (
+    select (result #>> '{groups,0,groupId}')::uuid
+    from reminder_initial_claim
+  ),
+  (
+    select result #>> '{groups,0,eligibilityRevision}'
+    from reminder_initial_claim
+  ),
+  (
+    select (result #>> '{groups,0,template,id}')::uuid
+    from reminder_initial_claim
+  ),
+  (
+    select (result #>> '{groups,0,branding,id}')::uuid
+    from reminder_initial_claim
+  ),
+  'Betaalverzoek',
+  'Betaal het vaste pakketbedrag.',
+  '<p>Betaal het vaste pakketbedrag.</p>',
+  'Betaal het vaste pakketbedrag.'
+) render_hash;
+grant select on reminder_initial_claim, reminder_initial_hash to service_role;
+set local role service_role;
+create temporary table reminder_initial_finalize as
+select app.finalize_mail_v2_domain_projection_v1(
+  (
+    select (result #>> '{groups,0,groupId}')::uuid
+    from reminder_initial_claim
+  ),
+  (
+    select (result->>'leaseToken')::uuid
+    from reminder_initial_claim
+  ),
+  (
+    select result #>> '{groups,0,eligibilityRevision}'
+    from reminder_initial_claim
+  ),
+  'Betaalverzoek',
+  'Betaal het vaste pakketbedrag.',
+  '<p>Betaal het vaste pakketbedrag.</p>',
+  'Betaal het vaste pakketbedrag.',
+  (select render_hash from reminder_initial_hash)
+) result;
+reset role;
+update private.email_jobs
+set status = 'sent',
+    sent_at = (
+      date_trunc(
+        'day',
+        statement_timestamp() at time zone 'Europe/Amsterdam'
+      ) + interval '10 hours'
+    ) at time zone 'Europe/Amsterdam',
+    completed_at = (
+      date_trunc(
+        'day',
+        statement_timestamp() at time zone 'Europe/Amsterdam'
+      ) + interval '10 hours'
+    ) at time zone 'Europe/Amsterdam',
+    updated_at = statement_timestamp()
+where id = (
+  select (result->>'jobId')::uuid
+  from reminder_initial_finalize
+);
+commit;
+SQL
+
+"${psql_cmd[@]}" >"$reminder_first_log" 2>&1 <<'SQL' &
+begin;
+select pg_advisory_xact_lock(
+  hashtextextended(
+    'mail-reminder-rule:ca850000-0000-4000-8000-000000000001',
+    0
+  )
+);
+set local role service_role;
+select app.run_due_mail_reminders_v1(
+  (
+    date_trunc(
+      'day',
+      statement_timestamp() at time zone 'Europe/Amsterdam'
+    ) + interval '12 hours'
+  ) at time zone 'Europe/Amsterdam',
+  100
+);
+reset role;
+select pg_sleep(1);
+commit;
+SQL
+reminder_first_pid=$!
+sleep 0.2
+"${psql_cmd[@]}" >"$reminder_second_log" 2>&1 <<'SQL' &
+begin;
+set local role service_role;
+select app.run_due_mail_reminders_v1(
+  (
+    date_trunc(
+      'day',
+      statement_timestamp() at time zone 'Europe/Amsterdam'
+    ) + interval '12 hours'
+  ) at time zone 'Europe/Amsterdam',
+  100
+);
+commit;
+SQL
+reminder_second_pid=$!
+
+reminder_first_status=0
+reminder_second_status=0
+wait "$reminder_first_pid" || reminder_first_status=$?
+wait "$reminder_second_pid" || reminder_second_status=$?
+if [[ "$reminder_first_status" -ne 0 || "$reminder_second_status" -ne 0 ]]; then
+  echo "De herinneringsplannerrace kon niet veilig worden voltooid." >&2
+  sed -n '1,120p' "$reminder_first_log" >&2
+  sed -n '1,120p' "$reminder_second_log" >&2
+  exit 1
+fi
+
+read -r reminder_event_count reminder_dispatch_count reminder_run_count \
+  reminder_failure_count <<<"$("${psql_cmd[@]}" -F ' ' -c "
+select
+  (select count(*) from private.mail_v2_domain_events
+    where source_type='mail_reminder_rule'
+      and source_id='ca850000-0000-4000-8000-000000000001'),
+  (select coalesce(sum(dispatched_count), 0)
+    from private.mail_reminder_runs
+    where rule_id='ca850000-0000-4000-8000-000000000001'),
+  (select count(*) from private.mail_reminder_runs
+    where rule_id='ca850000-0000-4000-8000-000000000001'),
+  (select count(*) from private.mail_reminder_runs
+    where rule_id='ca850000-0000-4000-8000-000000000001'
+      and status='failed');
+")"
+if [[ "$reminder_event_count" != "1" \
+  || "$reminder_dispatch_count" != "1" \
+  || "$reminder_run_count" != "2" \
+  || "$reminder_failure_count" != "0" ]]; then
+  echo "Twee gelijktijdige planners produceerden niet exact één herinnering: events=$reminder_event_count dispatches=$reminder_dispatch_count runs=$reminder_run_count failures=$reminder_failure_count." >&2
+  sed -n '1,120p' "$reminder_first_log" >&2
+  sed -n '1,120p' "$reminder_second_log" >&2
+  exit 1
+fi
+
+echo "Mailcampagne- en reminderconcurrency geslaagd: lockordes geven veilige retries en twee planners produceren exact één verschuldigd reminder-event."

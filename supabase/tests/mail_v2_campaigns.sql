@@ -440,11 +440,9 @@ select is(
   'kledingcommissie krijgt geen toegangsdoelgroepen'
 );
 select ok(
-  not (
-    app.get_mail_v2_campaign_workspace_v1()->'allowedTemplates'
-      ? 'payment_reminder'
-  ),
-  'een reminder zonder complete planner-capability blijft verborgen'
+  app.get_mail_v2_campaign_workspace_v1()->'allowedTemplates'
+    ? 'payment_reminder',
+  'een reminder met complete planner-capability is operationeel beschikbaar'
 );
 select throws_ok(
   $$select app.preview_mail_v2_campaign_v1(

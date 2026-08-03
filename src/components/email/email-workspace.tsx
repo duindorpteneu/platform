@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, Palette, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BellRing, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, Palette, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { emailTemplateLabels, type BulkEmailTemplateKey, type EmailWorkspace as Workspace } from "@/lib/email-contract";
@@ -13,14 +13,16 @@ import {
   type MailV2CampaignWorkspace,
   type MailV2CutoverSnapshot,
   type MailV2Workspace,
+  type MailReminderWorkspace,
 } from "@/lib/mail-v2-contract";
 import {
   MailV2BrandingPanel,
   MailV2CutoverPanel,
   MailV2TemplatesPanel,
 } from "@/components/email/mail-v2-workspace";
+import { MailV2RemindersPanel } from "@/components/email/mail-v2-reminders-panel";
 
-type Tab = "templates" | "branding" | "bulk" | "delivery";
+type Tab = "templates" | "branding" | "reminders" | "bulk" | "delivery";
 type Notice = { tone: "success" | "error"; text: string } | null;
 type Preview = { subject: string; text: string };
 type CampaignTarget = {
@@ -72,6 +74,7 @@ export function EmailWorkspace({
   mailV2Workspace,
   mailV2Cutover,
   campaignWorkspace,
+  reminderWorkspace,
   canManageTemplates,
   emailEnabled,
 }: {
@@ -79,6 +82,7 @@ export function EmailWorkspace({
   mailV2Workspace?: MailV2Workspace;
   mailV2Cutover?: MailV2CutoverSnapshot;
   campaignWorkspace: MailV2CampaignWorkspace;
+  reminderWorkspace?: MailReminderWorkspace;
   canManageTemplates: boolean;
   emailEnabled: boolean;
 }) {
@@ -93,6 +97,7 @@ export function EmailWorkspace({
     ? ([
       { id: "templates", label: "Templates", icon: FileText },
       { id: "branding", label: "Branding", icon: Palette },
+      { id: "reminders", label: "Herinneringen", icon: BellRing },
       { id: "bulk", label: "Bulkmail", icon: Users },
       { id: "delivery", label: "Verzending", icon: Send },
     ] as const)
@@ -131,6 +136,9 @@ export function EmailWorkspace({
       )}
       {tab === "branding" && canManageTemplates && mailV2Workspace && (
         <MailV2BrandingPanel workspace={mailV2Workspace} />
+      )}
+      {tab === "reminders" && canManageTemplates && reminderWorkspace && (
+        <MailV2RemindersPanel workspace={reminderWorkspace} />
       )}
       {tab === "bulk" && (
         campaignWorkspace.cutoverStarted

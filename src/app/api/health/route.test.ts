@@ -147,6 +147,28 @@ describe("GET /api/health", () => {
     expect(await response.json()).toMatchObject({ status: "degraded" });
   });
 
+  it("blokkeert deploy-readiness bij een recente herinneringsplannerfout", async () => {
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            ...healthyOperationalState,
+            reminderPlanner: {
+              activeRules: 1,
+              failedRunsRecent: 1,
+              activeRulesNeverRun: 0,
+              lastCompletedAt: "2026-08-03T08:00:00.000Z",
+            },
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ status: "degraded" });
+  });
+
   it("houdt publieke liveness beschikbaar bij een zachte operationele storing", async () => {
     mocks.admin.mockReturnValue({
       schema: () => ({

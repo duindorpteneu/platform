@@ -20,6 +20,17 @@ export const operationalHealthSchema = z.object({
     unboundLegacyEvents: 0,
     processingWithoutCurrentAttempt: 0,
   }),
+  reminderPlanner: z.object({
+    activeRules: z.number().int().nonnegative(),
+    failedRunsRecent: z.number().int().nonnegative(),
+    activeRulesNeverRun: z.number().int().nonnegative(),
+    lastCompletedAt: z.string().datetime({ offset: true }).nullable(),
+  }).strict().default({
+    activeRules: 0,
+    failedRunsRecent: 0,
+    activeRulesNeverRun: 0,
+    lastCompletedAt: null,
+  }),
   operations: z.object({
     emailWorker: z.object({
       required: z.boolean(),
@@ -107,6 +118,8 @@ export function operationalHealthIsDegraded(
     || data.emailJobs.deliveryUncertain > 0
     || data.emailJobs.failed > 0
     || emailDeliveryAttemptHealthHasIntegrityBlocker(data)
+    || data.reminderPlanner.failedRunsRecent > 0
+    || data.reminderPlanner.activeRulesNeverRun > 0
     || data.recentDeliveryFailures > 0
     || data.reconciliationIssues > 0
     || data.recentWebhookFailures > 0

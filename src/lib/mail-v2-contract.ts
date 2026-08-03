@@ -707,6 +707,118 @@ export type MailV2CampaignWorkspace = z.infer<
   typeof mailV2CampaignWorkspaceSchema
 >;
 
+export const MAIL_REMINDER_TEMPLATE_KEYS = [
+  "portal_access_reminder",
+  "size_fill_reminder",
+  "size_review_reminder",
+  "payment_reminder",
+  "pickup_reminder",
+] as const satisfies readonly MailTemplateKey[];
+
+export const mailReminderTemplateKeySchema = z.enum(
+  MAIL_REMINDER_TEMPLATE_KEYS,
+);
+export type MailReminderTemplateKey = z.infer<
+  typeof mailReminderTemplateKeySchema
+>;
+
+const localTimeSchema = z.string().regex(
+  /^(?:[01]\d|2[0-3]):[0-5]\d$/u,
+);
+
+export const mailReminderRuleSchema = z.object({
+  id: uuid,
+  seasonId: uuid,
+  templateKey: mailReminderTemplateKeySchema,
+  internalName: z.string().trim().min(3).max(120),
+  firstDelayHours: z.number().int().min(1).max(2_160),
+  frequencyHours: z.number().int().min(1).max(2_160),
+  maximumDispatches: z.number().int().min(1).max(20),
+  cooldownHours: z.number().int().min(1).max(720),
+  endAt: timestamp.nullable(),
+  quietStart: localTimeSchema,
+  quietEnd: localTimeSchema,
+  timezone: z.literal("Europe/Amsterdam"),
+  active: z.boolean(),
+  revision: z.number().int().positive(),
+  dueNow: z.number().int().nonnegative(),
+  nextDueAt: timestamp.nullable(),
+  lastRunAt: timestamp.nullable(),
+  lastRunStatus: z.enum([
+    "succeeded",
+    "quiet_hours",
+    "inactive",
+    "failed",
+  ]).nullable(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+}).strict();
+export type MailReminderRule = z.infer<typeof mailReminderRuleSchema>;
+
+export const mailReminderWorkspaceSchema = z.object({
+  timezone: z.literal("Europe/Amsterdam"),
+  newRulesDefaultActive: z.literal(false),
+  rules: z.array(mailReminderRuleSchema).max(500),
+  seasons: z.array(z.object({
+    id: uuid,
+    name: z.string().trim().min(1).max(120),
+    status: z.enum(["open", "archived"]),
+  }).strict()).max(100),
+}).strict();
+export type MailReminderWorkspace = z.infer<
+  typeof mailReminderWorkspaceSchema
+>;
+
+const mailReminderConfigSchema = z.object({
+  internalName: z.string().trim().min(3).max(120),
+  firstDelayHours: z.number().int().min(1).max(2_160),
+  frequencyHours: z.number().int().min(1).max(2_160),
+  maximumDispatches: z.number().int().min(1).max(20),
+  cooldownHours: z.number().int().min(1).max(720),
+  endAt: timestamp.nullable(),
+  quietStart: localTimeSchema,
+  quietEnd: localTimeSchema,
+}).strict().superRefine((value, context) => {
+  if (value.quietStart === value.quietEnd) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["quietEnd"],
+      message: "Het begin en einde van de stille uren moeten verschillen.",
+    });
+  }
+});
+
+export const manageMailReminderRequestSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("save"),
+    ruleId: uuid.nullable(),
+    seasonId: uuid,
+    templateKey: mailReminderTemplateKeySchema,
+    expectedRevision: z.number().int().positive().nullable(),
+    config: mailReminderConfigSchema,
+  }).strict(),
+  z.object({
+    action: z.literal("toggle"),
+    ruleId: uuid,
+    expectedRevision: z.number().int().positive(),
+    active: z.boolean(),
+    reason: z.string().trim().min(3).max(240).refine(
+      (value) => !/[\u0000-\u001f\u007f]/u.test(value),
+    ),
+  }).strict(),
+]);
+
+export const runMailRemindersResponseSchema = z.object({
+  status: z.enum(["paused", "completed"]),
+  candidateCount: z.number().int().nonnegative(),
+  dispatchedCount: z.number().int().nonnegative(),
+  skippedCount: z.number().int().nonnegative(),
+  failedRuleCount: z.number().int().nonnegative(),
+}).strict();
+export type RunMailRemindersResponse = z.infer<
+  typeof runMailRemindersResponseSchema
+>;
+
 const mailV2CutoverReasonSchema = z.string()
   .trim()
   .min(4)

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   finishRun: vi.fn(),
   project: vi.fn(),
   projectDomain: vi.fn(),
+  reminders: vi.fn(),
 }));
 vi.mock("@/server/operations/internal-auth", () => ({ hasInternalBearer: mocks.bearer }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
@@ -20,6 +21,9 @@ vi.mock("@/server/email/workspace", () => ({ renderClaimedEmailJob: mocks.render
 vi.mock("@/server/email/mail-v2-projector", () => ({
   projectFulfilmentMail: mocks.project,
   projectMailV2DomainEvents: mocks.projectDomain,
+}));
+vi.mock("@/server/email/mail-v2-reminders", () => ({
+  runDueMailReminders: mocks.reminders,
 }));
 vi.mock("@/server/operations/run-ledger", () => ({ startOperationRun: mocks.startRun, finishOperationRun: mocks.finishRun }));
 
@@ -130,6 +134,13 @@ describe("POST /api/internal/jobs/email", () => {
       suppressed: 0,
       deferred: 0,
       errors: 0,
+    });
+    mocks.reminders.mockReset().mockResolvedValue({
+      status: "completed",
+      candidateCount: 0,
+      dispatchedCount: 0,
+      skippedCount: 0,
+      failedRuleCount: 0,
     });
     mocks.render.mockReset().mockReturnValue({ subject: "Onderwerp", text: "Bericht", html: "<p>Bericht</p>" });
     mocks.send.mockReset().mockResolvedValue({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
@@ -509,6 +520,31 @@ describe("POST /api/internal/jobs/email", () => {
       "projection_failed",
     );
     expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("stopt vóór projectie en claim wanneer de herinneringsplanner faalt", async () => {
+    mocks.reminders.mockRejectedValueOnce(new Error("gevoelige plannercontext"));
+
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/email",
+      { method: "POST" },
+    ));
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("gevoelige plannercontext");
+    expect(mocks.project).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      "claim_email_jobs_v4",
+      expect.anything(),
+    );
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "email_worker",
+      expect.any(String),
+      "failed",
+      0,
+      "reminder_planner_failed",
+    );
   });
 
   it("sluit de operation-run af wanneer de domeinprojector onverwacht faalt", async () => {
