@@ -43,6 +43,7 @@ Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te leze
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_SMOKE_RECIPIENT` | ja | nee | `info@dgwebservices.nl`, beheerde test-inbox | provider-smoke | uitsluitend gebruikt door de handmatige staging-smoke |
+| `STAGING_CLEANUP_BACKUP_PASSPHRASE` | nog te verifiëren | niet van toepassing | unieke, hoog-entropische passphrase van minimaal 32 tekens | uitsluitend client-side encryptie/decryptie van de tijdelijke pre-wipeback-up | verplicht vóór `Staging domain cleanup` in modus `apply`; nooit als productionsecret gebruiken |
 
 Bij toekomstige rotatie of provideractivering worden secrets uitsluitend interactief gezet (gebruik geen `--body`):
 
@@ -57,6 +58,7 @@ gh secret set IMPORT_STAGING_ENCRYPTION_KEY --repo duindorpteneu/platform --env 
 gh secret set IMPORT_STAGING_ENCRYPTION_KEY --repo duindorpteneu/platform --env production
 gh secret set QR_TOKEN_PEPPER --repo duindorpteneu/platform --env staging
 gh secret set QR_TOKEN_PEPPER --repo duindorpteneu/platform --env production
+gh secret set STAGING_CLEANUP_BACKUP_PASSPHRASE --repo duindorpteneu/platform --env staging
 ```
 
 De niet-geheime Mollie-profielbinding wordt na controle van het bedoelde testprofiel gezet met:

@@ -157,6 +157,22 @@ Deze logische oefening bewijst het technische dump-/herstelpad en de gemeten RPO
 
 Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan vier uur duurt, providerverkeer mogelijk is, integriteitscontroles falen of credentials/data buiten de geïsoleerde omgeving terechtkomen.
 
+### Geautoriseerde staging-domeinopschoning
+
+Gebruik uitsluitend de handmatige workflow `Staging domain cleanup`. Deze procedure mag nooit tegen production worden gebruikt en vervangt geen migratie, seed of algemene databasereset.
+
+1. Deploy eerst exact de beoogde `main`-SHA naar staging. Zet de runtime- én databaseswitches voor Mollie, e-mail en dynamische import uit.
+2. Start modus `dry-run` met de live SHA en bevestiging `STAGING-CLEANUP-DRY-RUN`. Controleer het PII-vrije artifact met tellingen voor exact 90 wistabellen, 27 behouden tabellen en alle veiligheidsblockers.
+3. Modus `apply` vereist bevestiging `STAGING-CLEANUP-APPLY`, exact origin `https://staging-duindorp.dgwebservices.nl`, exact Supabase-project `dxbdjtbyghsovlrdcwcr` en secret `STAGING_CLEANUP_BACKUP_PASSPHRASE`. De bekende production-ref en iedere andere project-ref worden geweigerd.
+4. De stagingrunner controleert Rootless Docker, runtimepad, Composeproject, actieve image en live SHA en stopt uitsluitend `app` en `scheduler` van `duindorpteneu-staging`. De deploylock en workflowconcurrency voorkomen overlap met deployment en Mollieacceptatie.
+5. PostgreSQL 17 maakt een verse dump van `app`, `private`, `public`, `auth` en `supabase_migrations`. De dump wordt lokaal AES-256 versleuteld, weer gedecrypteerd en in een container met `--network none` volledig hersteld en geverifieerd vóór de eerste datamutatie.
+6. Na backup wordt de operationele SHA-256-statedigest opnieuw berekend. De transactie neemt `ACCESS EXCLUSIVE`-locks op de vaste 90-tabellenallowlist, vergelijkt onder lock dezelfde digest en gebruikt één `TRUNCATE ... RESTART IDENTITY` zonder `CASCADE`.
+7. `auth.*`, `app.staff_profiles`, seizoenen, instellingen, templates, branding, reminderregels/-runs, audit, featureflags, migratie-/operationele ledgers, staffsessies en supplierconfiguratie blijven behouden. De audit groeit met exact één PII-vrije `staging.domain_cleanup.completed`-regel.
+8. Iedere doelrij moet na commit nul zijn. Staff-/Auth-ID's, beheerderstatus, configuratiedigest, constraints en migratieledger moeten exact gelijk blijven. Daarna worden exact dezelfde appimage en scheduler herstart en opnieuw gezond verklaard.
+9. Bewaar het encrypted back-upartifact en geredigeerde bewijs dertig dagen. De decryptiesleutel blijft uitsluitend in het afgeschermde stagingenvironment. Een mislukking vóór commit rolt atomair terug; na commit is herstel alleen vanuit dit artifact toegestaan.
+
+Verwijder of wijzig nooit de allowlist om een driftfout te omzeilen. Een nieuwe `app`- of `private`-tabel vereist eerst een bewuste preserve/wipebeslissing, testaanpassing en review.
+
 ## 6. Incidentprocedures
 
 ### Verloren of gecompromitteerd staffaccount

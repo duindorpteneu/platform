@@ -145,6 +145,9 @@ jobs:
       - name: Run supplier planning concurrency test
         run: pnpm test:db:supplier-concurrency
 
+      - name: Run staging cleanup transaction contract
+        run: pnpm test:db:staging-cleanup
+
       - name: Build browser-test application
         run: pnpm build
 

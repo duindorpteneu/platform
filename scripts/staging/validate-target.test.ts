@@ -1,7 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error The workflow entrypoint is intentionally plain Node.js ESM.
-import { RESTORE_CONFIRMATION, STAGING_ORIGIN, validateStagingRestoreTarget } from "./validate-target.mjs";
+import * as targetContract from "./validate-target.mjs";
+
+const {
+  CLEANUP_APPLY_CONFIRMATION,
+  CLEANUP_DRY_RUN_CONFIRMATION,
+  PRODUCTION_PROJECT_REF,
+  RESTORE_CONFIRMATION,
+  STAGING_ORIGIN,
+  STAGING_PROJECT_REF,
+  validateStagingCleanupTarget,
+  validateStagingRestoreTarget,
+} = targetContract;
 
 const projectRef = "abcdefghijklmnopqrst";
 const releaseSha = "a".repeat(40);
@@ -54,5 +65,48 @@ describe("validateStagingRestoreTarget", () => {
     ["CONFIRM_TARGET", "staging"],
   ])("weigert een onveilige waarde voor %s", (name, value) => {
     expect(() => validateStagingRestoreTarget(values({ [name]: value }))).toThrow();
+  });
+});
+
+describe("validateStagingCleanupTarget", () => {
+  function cleanupValues(mode: "dry-run" | "apply") {
+    return values({
+      CLEANUP_MODE: mode,
+      SUPABASE_PROJECT_REF: STAGING_PROJECT_REF,
+      SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
+      CONFIRM_TARGET: mode === "apply"
+        ? CLEANUP_APPLY_CONFIRMATION
+        : CLEANUP_DRY_RUN_CONFIRMATION,
+    });
+  }
+
+  it.each(["dry-run", "apply"] as const)("accepteert %s uitsluitend op het vaste stagingproject", (mode) => {
+    expect(validateStagingCleanupTarget(cleanupValues(mode))).toMatchObject({
+      mode,
+      projectRef: STAGING_PROJECT_REF,
+      appUrl: STAGING_ORIGIN,
+    });
+  });
+
+  it("weigert production ook wanneer URL en database onderling overeenkomen", () => {
+    expect(() => validateStagingCleanupTarget({
+      ...cleanupValues("apply"),
+      SUPABASE_PROJECT_REF: PRODUCTION_PROJECT_REF,
+      SUPABASE_DB_URL: `postgresql://postgres:secret@db.${PRODUCTION_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
+    })).toThrow("productionproject");
+  });
+
+  it.each([
+    { CLEANUP_MODE: "apply", CONFIRM_TARGET: CLEANUP_DRY_RUN_CONFIRMATION },
+    { CLEANUP_MODE: "dry-run", CONFIRM_TARGET: CLEANUP_APPLY_CONFIRMATION },
+    { CLEANUP_MODE: "apply", SUPABASE_PROJECT_REF: projectRef, SUPABASE_DB_URL: `postgresql://postgres:secret@db.${projectRef}.supabase.co:5432/postgres?sslmode=require` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://wrong:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require` },
+    { CLEANUP_MODE: "erase", CONFIRM_TARGET: CLEANUP_APPLY_CONFIRMATION },
+  ])("weigert een cleanupcontract dat niet exact overeenkomt", (override) => {
+    expect(() => validateStagingCleanupTarget({
+      ...cleanupValues("apply"),
+      ...override,
+    })).toThrow();
   });
 });
