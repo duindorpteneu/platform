@@ -151,6 +151,49 @@ begin
   then
     raise exception 'UPGRADE_FULFILMENT_OR_QR_RECONCILIATION_MISMATCH';
   end if;
+  if (select count(*) from app.inventory_allocations
+      where legacy_reservation_id::text like 'eb82%') <> 3
+    or (select count(*) from app.inventory_allocations
+        where legacy_reservation_id::text like 'eb82%'
+          and reconciliation_status = 'review_required') <> 1
+    or (select count(*) from app.inventory_allocations
+        where legacy_reservation_id::text like 'eb82%'
+          and status = 'reserved') <> 1
+    or (select count(*) from app.inventory_allocations
+        where legacy_reservation_id::text like 'eb82%'
+          and status = 'fulfilled') <> 1
+    or (select count(*) from app.inventory_allocations
+        where legacy_reservation_id::text like 'eb82%'
+          and status = 'released') <> 1
+  then
+    raise exception 'UPGRADE_INVENTORY_ALLOCATION_BACKFILL_MISMATCH';
+  end if;
+  if (select count(*) from private.inventory_legacy_reconciliation
+      where receipt_line_id::text like 'eb81%' and status = 'pending') <> 2
+    or (select sum(unassigned_quantity)
+        from private.inventory_legacy_reconciliation
+        where receipt_line_id::text like 'eb81%') <> 5
+    or (select coalesce(sum(on_hand_delta), 0) from app.inventory_movements
+        where source_type = 'inventory_reservation'
+          and source_id::text like 'eb82%') <> 1
+    or (select coalesce(sum(reserved_delta), 0) from app.inventory_movements
+        where source_type = 'inventory_reservation'
+          and source_id::text like 'eb82%') <> 1
+    or (select coalesce(sum(issued_delta), 0) from app.inventory_movements
+        where source_type = 'inventory_reservation'
+          and source_id::text like 'eb82%') <> 1
+  then
+    raise exception 'UPGRADE_INVENTORY_JOURNAL_BACKFILL_MISMATCH';
+  end if;
+  if (private.inventory_reconciliation_report()->>'pendingCandidates')::integer <> 2
+    or (private.inventory_reconciliation_report()->>'pendingQuantity')::integer <> 5
+    or (private.inventory_reconciliation_report()->>'reviewAllocations')::integer <> 1
+    or (private.inventory_reconciliation_report()->>'ready')::boolean
+    or (select enabled from app.release_feature_flags
+        where key = 'allocation_qr_v2')
+  then
+    raise exception 'UPGRADE_INVENTORY_CUTOVER_NOT_BLOCKED';
+  end if;
 
   select count(*) into invalid_constraints
   from pg_constraint constraint_row
@@ -166,7 +209,14 @@ begin
       'package_template_revisions',
       'package_template_items',
       'order_package_snapshots',
-      'order_package_snapshot_items'
+      'order_package_snapshot_items',
+      'inventory_delivery_drafts',
+      'inventory_delivery_draft_lines',
+      'inventory_allocations',
+      'inventory_allocation_events',
+      'inventory_movements',
+      'inventory_legacy_reconciliation',
+      'inventory_legacy_assignments'
     )
     and not constraint_row.convalidated;
   if invalid_constraints <> 0 then
@@ -184,6 +234,13 @@ begin
     ('app', 'package_template_items'),
     ('app', 'order_package_snapshots'),
     ('app', 'order_package_snapshot_items'),
+    ('app', 'inventory_delivery_drafts'),
+    ('app', 'inventory_delivery_draft_lines'),
+    ('app', 'inventory_allocations'),
+    ('app', 'inventory_allocation_events'),
+    ('app', 'inventory_movements'),
+    ('private', 'inventory_legacy_reconciliation'),
+    ('private', 'inventory_legacy_assignments'),
     ('private', 'migration_reconciliations')
   ) expected(schema_name, table_name)
   left join pg_namespace namespace_row on namespace_row.nspname = expected.schema_name
@@ -197,7 +254,7 @@ begin
   end if;
 
   if (select count(*) from supabase_migrations.schema_migrations
-      where version = '20260802180000') <> 1 then
+      where version in ('20260802180000', '20260802263000', '20260802264000')) <> 3 then
     raise exception 'UPGRADE_MIGRATION_LEDGER_MISMATCH';
   end if;
 end;

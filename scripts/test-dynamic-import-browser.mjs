@@ -46,7 +46,7 @@ function sql(databaseUrl, query, capture = false) {
     [databaseUrl, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-At", "-c", query],
     {
       encoding: "utf8",
-      stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore",
+      stdio: capture ? ["ignore", "pipe", "ignore"] : ["ignore", "ignore", "inherit"],
     },
   );
   return capture ? result.trim() : "";
@@ -82,6 +82,8 @@ function cleanupSql(userId, featureFlag) {
     where member_season_id in (select id from browser_member_seasons);
     delete from app.member_article_sizes
     where member_id in (select id from browser_members);
+    delete from private.inventory_allocation_queue
+    where article_variant_id = '${variantId}';
     delete from private.dynamic_import_run_leases
     where run_id in (select id from browser_runs);
     delete from private.dynamic_import_row_plans
@@ -528,9 +530,13 @@ try {
     ]);
   }
   if (userId) {
-    try {
-      sql(local.DB_URL, cleanupSql(userId, featureFlag));
-    } finally {
+    if (process.env.DYNAMIC_IMPORT_DISPOSABLE_DB !== "1") {
+      try {
+        sql(local.DB_URL, cleanupSql(userId, featureFlag));
+      } finally {
+        await admin.auth.admin.deleteUser(userId);
+      }
+    } else {
       await admin.auth.admin.deleteUser(userId);
     }
   }

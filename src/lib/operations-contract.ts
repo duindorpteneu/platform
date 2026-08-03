@@ -92,13 +92,13 @@ export function operationalHealthIsDegraded(
 
 export const operationStartResponseSchema = z.object({
   runId: z.string().uuid(),
-  operation: z.enum(["email_worker", "import_worker", "retention"]),
+  operation: z.enum(["email_worker", "import_worker", "inventory_allocator", "retention"]),
   startedAt: z.string().datetime({ offset: true }),
 }).strict();
 
 export const operationFinishResponseSchema = z.object({
   runId: z.string().uuid(),
-  operation: z.enum(["email_worker", "import_worker", "retention"]),
+  operation: z.enum(["email_worker", "import_worker", "inventory_allocator", "retention"]),
   status: z.enum(["succeeded", "failed", "paused"]),
   finishedAt: z.string().datetime({ offset: true }),
 }).strict();

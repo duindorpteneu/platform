@@ -39,6 +39,17 @@ const generatedSource = `${source.slice(0, startIndex)}${source.slice(endIndex)}
   .replace(
     'variantForm.getByLabel("Leverancierscode").fill("BROWSER-164")',
     'variantForm.getByLabel("Maatcode / leverancierscode", { exact: true }).fill("BROWSER-164")',
+  )
+  .replace(
+    'page.getByRole("heading", { name: "Voorraad per variant" })',
+    'page.getByRole("heading", { name: "Voorraad en vraag per maat" })',
+  )
+  .replace(
+    'await page.getByText("Bevestig kas: € 130,00", { exact: true }).waitFor({ timeout: 5_000 });',
+    [
+      'await page.getByText("Bevestig kas: € 130,00", { exact: true }).waitFor({ timeout: 5_000 });',
+      '  await page.locator("#payment-reason").fill("Contant ontvangen tijdens browseracceptatie");',
+    ].join("\n"),
   );
 
 await writeFile(
@@ -47,10 +58,10 @@ await writeFile(
   { encoding: "utf8", mode: 0o600 },
 );
 
-function run(script) {
+function run(script, extraEnv = {}) {
   const result = spawnSync(process.execPath, [script], {
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -59,9 +70,25 @@ function run(script) {
   }
 }
 
+function resetLocalDatabase() {
+  const result = spawnSync("pnpm", ["db:reset"], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`Lokale testdatabase resetten mislukte met status ${result.status}.`);
+  }
+}
+
+resetLocalDatabase();
 try {
   run(generatedPath);
-  run(path.resolve("scripts/test-dynamic-import-browser.mjs"));
+  run(path.resolve("scripts/test-dynamic-import-browser.mjs"), {
+    DYNAMIC_IMPORT_DISPOSABLE_DB: "1",
+  });
 } finally {
   await rm(generatedPath, { force: true });
+  resetLocalDatabase();
 }
