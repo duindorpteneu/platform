@@ -52,18 +52,57 @@ export async function POST(request: Request) {
 
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "Webhookverwerking tijdelijk niet beschikbaar." }, { status: 503 });
-  const { data, error } = await admin.schema("app").rpc("record_sendgrid_events_v2", {
-    p_events: events.map((event) => ({
-      email_job_id: event.emailJobId,
-      delivery_attempt_id: event.deliveryAttemptId,
-      event_id: event.providerEventId,
-      provider_message_id: event.providerMessageId,
-      event_type: event.eventType,
-      occurred_at: event.occurredAt,
-    })),
-  });
-  if (error) return NextResponse.json({ error: "Webhook kon niet veilig worden verwerkt." }, { status: 422 });
-  const parsed = responseSchema.safeParse(data);
-  if (!parsed.success) return NextResponse.json({ error: "Ongeldig antwoord van de database." }, { status: 502 });
-  return NextResponse.json(parsed.data, { status: 202 });
+  const queuedEvents = events.filter(
+    (event) => event.target === "email_job",
+  );
+  const otpEvents = events.filter(
+    (event) => event.target === "parent_otp",
+  );
+  const results: z.infer<typeof responseSchema>[] = [];
+  if (queuedEvents.length > 0) {
+    const { data, error } = await admin.schema("app").rpc(
+      "record_sendgrid_events_v2",
+      {
+        p_events: queuedEvents.map((event) => ({
+          email_job_id: event.emailJobId,
+          delivery_attempt_id: event.deliveryAttemptId,
+          event_id: event.providerEventId,
+          provider_message_id: event.providerMessageId,
+          event_type: event.eventType,
+          occurred_at: event.occurredAt,
+        })),
+      },
+    );
+    if (error) return NextResponse.json({ error: "Webhook kon niet veilig worden verwerkt." }, { status: 422 });
+    const parsed = responseSchema.safeParse(data);
+    if (!parsed.success) return NextResponse.json({ error: "Ongeldig antwoord van de database." }, { status: 502 });
+    results.push(parsed.data);
+  }
+  if (otpEvents.length > 0) {
+    const { data, error } = await admin.schema("app").rpc(
+      "record_parent_otp_sendgrid_events_v1",
+      {
+        p_events: otpEvents.map((event) => ({
+          delivery_attempt_id: event.deliveryAttemptId,
+          event_id: event.providerEventId,
+          provider_message_id: event.providerMessageId,
+          event_type: event.eventType,
+          occurred_at: event.occurredAt,
+        })),
+      },
+    );
+    if (error) return NextResponse.json({ error: "Webhook kon niet veilig worden verwerkt." }, { status: 422 });
+    const parsed = responseSchema.safeParse(data);
+    if (!parsed.success) return NextResponse.json({ error: "Ongeldig antwoord van de database." }, { status: 502 });
+    results.push(parsed.data);
+  }
+  const aggregate = results.reduce(
+    (total, result) => ({
+      recorded: total.recorded + result.recorded,
+      ignored: total.ignored + result.ignored,
+      quarantined: total.quarantined + result.quarantined,
+    }),
+    { recorded: 0, ignored: 0, quarantined: 0 },
+  );
+  return NextResponse.json(aggregate, { status: 202 });
 }

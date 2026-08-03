@@ -31,6 +31,19 @@ export const operationalHealthSchema = z.object({
     activeRulesNeverRun: 0,
     lastCompletedAt: null,
   }),
+  parentOtpDelivery: z.object({
+    stalePrepared: z.number().int().nonnegative(),
+    deliveryUncertainRecent: z.number().int().nonnegative(),
+    sendFailuresRecent: z.number().int().nonnegative(),
+    quarantinedEvents: z.number().int().nonnegative(),
+    providerFailuresRecent: z.number().int().nonnegative(),
+  }).strict().default({
+    stalePrepared: 0,
+    deliveryUncertainRecent: 0,
+    sendFailuresRecent: 0,
+    quarantinedEvents: 0,
+    providerFailuresRecent: 0,
+  }),
   operations: z.object({
     emailWorker: z.object({
       required: z.boolean(),
@@ -120,6 +133,11 @@ export function operationalHealthIsDegraded(
     || emailDeliveryAttemptHealthHasIntegrityBlocker(data)
     || data.reminderPlanner.failedRunsRecent > 0
     || data.reminderPlanner.activeRulesNeverRun > 0
+    || data.parentOtpDelivery.stalePrepared > 0
+    || data.parentOtpDelivery.deliveryUncertainRecent > 0
+    || data.parentOtpDelivery.sendFailuresRecent > 0
+    || data.parentOtpDelivery.quarantinedEvents > 0
+    || data.parentOtpDelivery.providerFailuresRecent > 0
     || data.recentDeliveryFailures > 0
     || data.reconciliationIssues > 0
     || data.recentWebhookFailures > 0
@@ -182,4 +200,5 @@ export const retentionResultSchema = z.object({
   importPartialFailures: z.number().int().nonnegative(),
   importPlansPurged: z.number().int().nonnegative(),
   campaignPreflights: z.number().int().nonnegative(),
+  otpDeliveryHistory: z.number().int().nonnegative(),
 }).strict();

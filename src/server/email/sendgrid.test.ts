@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sendEmailJob, sendParentOtpEmail } from "@/server/email/sendgrid";
+import {
+  sendEmailJob,
+  sendParentOtpEmail,
+  sendParentOtpV2Email,
+} from "@/server/email/sendgrid";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 
 const originalEnv = { ...process.env };
@@ -57,6 +61,58 @@ describe("SendGrid delivery boundary", () => {
       subject: "Uw verificatiecode", text: "Code 123456", html: "<p>Code 123456</p>",
     })).resolves.toEqual({ delivered: false, reason: "configuration_error" });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("correleert v2-OTP zonder code of ontvanger in provider-metadata", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 202,
+        headers: { "x-message-id": "otp-http-message-1" },
+      }),
+    );
+    vi.stubGlobal("fetch", request);
+    await expect(sendParentOtpV2Email({
+      ...sender,
+      deliveryAttemptId,
+      recipientEmail: "ouder@example.nl",
+      subject: "Uw verificatiecode",
+      text: "Code 123456",
+      html: "<p>Code 123456</p>",
+    })).resolves.toEqual({
+      delivered: true,
+      providerMessageId: "otp-http-message-1",
+    });
+    const body = JSON.parse(request.mock.calls[0][1].body as string);
+    expect(body.personalizations[0].custom_args).toEqual({
+      delivery_kind: "parent_otp",
+      otp_delivery_attempt_id: deliveryAttemptId,
+    });
+    expect(JSON.stringify(body.personalizations[0].custom_args))
+      .not.toMatch(/123456|ouder@example\.nl/u);
+    expect(body.tracking_settings).toEqual({
+      click_tracking: { enable: false, enable_text: false },
+      open_tracking: { enable: false },
+      subscription_tracking: { enable: false },
+    });
+  });
+
+  it("herhaalt een onzekere v2-OTP-aflevering niet automatisch", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+    );
+    await expect(sendParentOtpV2Email({
+      ...sender,
+      deliveryAttemptId,
+      recipientEmail: "ouder@example.nl",
+      subject: "Uw verificatiecode",
+      text: "Code 123456",
+      html: "<p>Code 123456</p>",
+    })).resolves.toEqual({
+      delivered: false,
+      reason: "delivery_uncertain",
+      outcome: "delivery_uncertain",
+    });
   });
 
   it("sends a rendered job without PII in custom arguments", async () => {

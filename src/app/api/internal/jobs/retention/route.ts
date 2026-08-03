@@ -59,9 +59,25 @@ export async function POST(request: Request) {
       await closeFailedRun(admin, runId, "campaign_cleanup_failed");
       return NextResponse.json({ error: "Retentiejob kon niet veilig worden uitgevoerd." }, { status: 503 });
     }
+    const {
+      data: otpDeliveryHistory,
+      error: otpDeliveryRetentionError,
+    } = await admin.schema("app").rpc(
+      "purge_parent_otp_delivery_history_v1",
+      {
+        p_now: now,
+        p_retention_days: 90,
+        p_limit: 500,
+      },
+    );
+    if (otpDeliveryRetentionError) {
+      await closeFailedRun(admin, runId, "otp_delivery_cleanup_failed");
+      return NextResponse.json({ error: "Retentiejob kon niet veilig worden uitgevoerd." }, { status: 503 });
+    }
     const parsed = retentionResultSchema.safeParse({
       ...(data && typeof data === "object" ? data : {}),
       campaignPreflights,
+      otpDeliveryHistory,
     });
     if (!parsed.success) {
       await closeFailedRun(admin, runId, "cleanup_response_invalid");

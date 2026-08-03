@@ -169,6 +169,29 @@ describe("GET /api/health", () => {
     expect(await response.json()).toMatchObject({ status: "degraded" });
   });
 
+  it("blokkeert deploy-readiness bij een onzekere OTP-aflevering", async () => {
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            ...healthyOperationalState,
+            parentOtpDelivery: {
+              stalePrepared: 0,
+              deliveryUncertainRecent: 1,
+              sendFailuresRecent: 0,
+              quarantinedEvents: 0,
+              providerFailuresRecent: 0,
+            },
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ status: "degraded" });
+  });
+
   it("houdt publieke liveness beschikbaar bij een zachte operationele storing", async () => {
     mocks.admin.mockReturnValue({
       schema: () => ({

@@ -343,6 +343,50 @@ const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
 const contentHash = z.string().regex(/^[0-9a-f]{64}$/u);
 
+const parentOtpTemplateSnapshotSchema = mailTemplateSourceSchema.extend({
+  id: uuid,
+  templateKey: z.literal("login_otp"),
+  contentHash,
+}).strict();
+
+const parentOtpBrandingSnapshotSchema = mailBrandingSchema.extend({
+  id: uuid,
+  contentHash,
+}).strict();
+
+export const parentOtpV2PreparationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("unavailable") }).strict(),
+  z.object({ status: z.literal("blocked") }).strict(),
+  z.object({ status: z.literal("ineligible") }).strict(),
+  z.object({
+    status: z.literal("prepared"),
+    deliveryAttemptId: uuid,
+    expiresInMinutes: z.literal(10),
+    template: parentOtpTemplateSnapshotSchema,
+    branding: parentOtpBrandingSnapshotSchema,
+  }).strict(),
+]);
+export type ParentOtpV2Preparation = z.infer<
+  typeof parentOtpV2PreparationSchema
+>;
+export type PreparedParentOtpV2 = Extract<
+  ParentOtpV2Preparation,
+  { status: "prepared" }
+>;
+
+export const parentOtpV2CompletionSchema = z.object({
+  status: z.literal("completed"),
+  outcome: z.enum([
+    "accepted",
+    "provider_rejected",
+    "delivery_uncertain",
+    "configuration_error",
+    "disabled",
+    "render_failed",
+  ]),
+  reused: z.boolean(),
+}).strict();
+
 export const mailTemplateRevisionSchema = z.object({
   id: uuid,
   revision: z.number().int().positive(),

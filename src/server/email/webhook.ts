@@ -4,8 +4,7 @@ import { z } from "zod";
 export const sendGridEventTypeSchema = z.enum(["delivered", "bounced", "deferred", "dropped", "failed"]);
 export type SendGridEventType = z.infer<typeof sendGridEventTypeSchema>;
 
-export type SendGridOperationalEvent = {
-  emailJobId: string;
+type SendGridEventIdentity = {
   deliveryAttemptId: string;
   providerEventId: string;
   providerMessageId: string;
@@ -13,10 +12,21 @@ export type SendGridOperationalEvent = {
   occurredAt: string;
 };
 
+export type SendGridOperationalEvent =
+  | SendGridEventIdentity & {
+      target: "email_job";
+      emailJobId: string;
+    }
+  | SendGridEventIdentity & {
+      target: "parent_otp";
+    };
+
 const eventEnvelopeSchema = z.object({
   event: z.string().min(1).max(80),
+  delivery_kind: z.string().min(1).max(80).optional(),
   email_job_id: z.string().uuid().optional(),
   delivery_attempt_id: z.string().uuid().optional(),
+  otp_delivery_attempt_id: z.string().uuid().optional(),
   sg_event_id: z.string().min(1).max(240).optional(),
   sg_message_id: z.string().min(1).max(240).optional(),
   timestamp: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]).optional(),
@@ -63,11 +73,26 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
   for (const envelope of envelopes.data) {
     const eventType = normalizeEventType(envelope.event);
     if (!eventType) continue;
-    // Direct OTP and controlled provider-smoke messages do not have a durable
-    // queue job. Their signed operational events are valid but not correlatable.
-    if (!envelope.email_job_id) continue;
+    const hasQueuedIdentity = Boolean(
+      envelope.email_job_id || envelope.delivery_attempt_id,
+    );
+    const hasOtpIdentity = Boolean(envelope.otp_delivery_attempt_id);
+    if (!hasQueuedIdentity && !hasOtpIdentity) {
+      if (envelope.delivery_kind === "parent_otp") {
+        throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+      }
+      continue;
+    }
+    if (hasQueuedIdentity && hasOtpIdentity) {
+      throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+    }
     if (
-      !envelope.delivery_attempt_id
+      (hasQueuedIdentity && (
+        !envelope.email_job_id
+        || !envelope.delivery_attempt_id
+        || envelope.delivery_kind === "parent_otp"
+      ))
+      || (hasOtpIdentity && envelope.delivery_kind !== "parent_otp")
       || !envelope.sg_event_id
       || !envelope.sg_message_id
       || envelope.timestamp === undefined
@@ -77,24 +102,33 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
     const seconds = Number(envelope.timestamp);
     const occurredAt = new Date(seconds * 1_000);
     if (!Number.isFinite(seconds) || Number.isNaN(occurredAt.getTime())) throw new Error("SENDGRID_EVENT_TIMESTAMP_INVALID");
-    const event = {
-      emailJobId: envelope.email_job_id,
-      deliveryAttemptId: envelope.delivery_attempt_id,
+    const identity = {
+      deliveryAttemptId: hasOtpIdentity
+        ? envelope.otp_delivery_attempt_id!
+        : envelope.delivery_attempt_id!,
       providerEventId: envelope.sg_event_id,
       providerMessageId: envelope.sg_message_id,
       eventType,
       occurredAt: occurredAt.toISOString(),
     };
-    const identity = JSON.stringify([
+    const event: SendGridOperationalEvent = hasOtpIdentity
+      ? { target: "parent_otp", ...identity }
+      : {
+          target: "email_job",
+          emailJobId: envelope.email_job_id!,
+          ...identity,
+        };
+    const dedupeIdentity = JSON.stringify([
+      event.target,
       event.providerEventId,
-      event.emailJobId,
+      event.target === "email_job" ? event.emailJobId : null,
       event.deliveryAttemptId,
       event.providerMessageId,
       event.eventType,
       event.occurredAt,
     ]);
-    if (unique.has(identity)) continue;
-    unique.add(identity);
+    if (unique.has(dedupeIdentity)) continue;
+    unique.add(dedupeIdentity);
     events.push(event);
   }
   return events;

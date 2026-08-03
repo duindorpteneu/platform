@@ -83,7 +83,7 @@ describe("GET /api/internal/health", () => {
     const response = await GET(new Request("https://tenue.example/api/internal/health"));
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_operational_health_v7",
+      "get_operational_health_v9",
       {
         p_current_key_version: 1,
         p_current_pepper_fingerprint:
@@ -105,7 +105,7 @@ describe("GET /api/internal/health", () => {
     );
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_operational_health_v7",
+      "get_operational_health_v9",
       {
         p_current_key_version: 3,
         p_current_pepper_fingerprint:
@@ -125,6 +125,15 @@ describe("GET /api/internal/health", () => {
     ["stale import", { importRuns: { ...healthy.importRuns, processingStale: 1 } }],
     ["import reconciliation", { importRuns: { ...healthy.importRuns, reconciliationRequired: 1 } }],
     ["stale import backlog", { importRuns: { ...healthy.importRuns, backlogStale: true } }],
+    ["OTP-providerquarantaine", {
+      parentOtpDelivery: {
+        stalePrepared: 0,
+        deliveryUncertainRecent: 0,
+        sendFailuresRecent: 0,
+        quarantinedEvents: 1,
+        providerFailuresRecent: 0,
+      },
+    }],
   ])("returns HTTP 503 for %s", async (_label, patch) => {
     mocks.rpc.mockResolvedValueOnce({ data: { ...healthy, ...patch }, error: null });
     const response = await GET(new Request("https://tenue.example/api/internal/health"));

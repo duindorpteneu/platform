@@ -15,6 +15,10 @@ const renderedMessageSchema = z.object({
   replyToEmail: z.string().trim().email().max(320),
 }).strict();
 
+const parentOtpV2MessageSchema = renderedMessageSchema
+  .omit({ jobId: true })
+  .strict();
+
 export type SendGridDeliveryResult =
   | { delivered: true; providerMessageId: string }
   | {
@@ -95,6 +99,96 @@ export async function sendParentOtpEmail(recipientEmail: string, message: { subj
     return { delivered: true as const };
   } catch {
     return { delivered: false as const, reason: "provider_error" as const };
+  }
+}
+
+export async function sendParentOtpV2Email(
+  message: z.input<typeof parentOtpV2MessageSchema>,
+): Promise<SendGridDeliveryResult> {
+  const configuration = providerConfiguration();
+  if (!configuration.enabled) {
+    return {
+      delivered: false,
+      reason: "disabled",
+      outcome: "failed",
+    };
+  }
+  if (!configuration.configured) {
+    return {
+      delivered: false,
+      reason: "configuration_error",
+      outcome: "failed",
+    };
+  }
+  const parsed = parentOtpV2MessageSchema.safeParse(message);
+  if (
+    !parsed.success
+    || parsed.data.fromName !== configuration.fromName
+    || parsed.data.fromEmail !== configuration.fromEmail
+    || parsed.data.replyToEmail !== configuration.replyToEmail
+  ) {
+    return {
+      delivered: false,
+      reason: "configuration_error",
+      outcome: "failed",
+    };
+  }
+
+  try {
+    const response = await mailSend(configuration.apiKey, {
+      personalizations: [{
+        to: [{ email: parsed.data.recipientEmail }],
+        custom_args: {
+          delivery_kind: "parent_otp",
+          otp_delivery_attempt_id: parsed.data.deliveryAttemptId,
+        },
+      }],
+      from: {
+        email: parsed.data.fromEmail,
+        name: parsed.data.fromName,
+      },
+      reply_to: { email: parsed.data.replyToEmail },
+      subject: parsed.data.subject,
+      content: [
+        { type: "text/plain", value: parsed.data.text },
+        { type: "text/html", value: parsed.data.html },
+      ],
+      tracking_settings: {
+        click_tracking: { enable: false, enable_text: false },
+        open_tracking: { enable: false },
+        subscription_tracking: { enable: false },
+      },
+    });
+    if (!response.ok) {
+      if (response.status === 408 || response.status >= 500) {
+        return {
+          delivered: false,
+          reason: "delivery_uncertain",
+          outcome: "delivery_uncertain",
+        };
+      }
+      return {
+        delivered: false,
+        reason: "provider_rejected",
+        outcome: "failed",
+      };
+    }
+    const providerMessageId =
+      response.headers.get("x-message-id")?.trim();
+    if (!providerMessageId) {
+      return {
+        delivered: false,
+        reason: "delivery_uncertain",
+        outcome: "delivery_uncertain",
+      };
+    }
+    return { delivered: true, providerMessageId };
+  } catch {
+    return {
+      delivered: false,
+      reason: "delivery_uncertain",
+      outcome: "delivery_uncertain",
+    };
   }
 }
 

@@ -65,6 +65,53 @@ describe("POST /api/webhooks/sendgrid", () => {
     });
   });
 
+  it("routeert een gemengde batch naar gescheiden queue- en OTP-ledgers", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => ({
+      data: name === "record_sendgrid_events_v2"
+        ? { recorded: 1, ignored: 0, quarantined: 0 }
+        : { recorded: 0, ignored: 1, quarantined: 0 },
+      error: null,
+    }));
+    const rawBody = new TextEncoder().encode(JSON.stringify([
+      {
+        event: "delivered",
+        email_job_id: "11111111-1111-4111-8111-111111111111",
+        delivery_attempt_id:
+          "22222222-2222-4222-8222-222222222222",
+        sg_event_id: "event-queue",
+        sg_message_id: "message-queue",
+        timestamp: 1_785_680_000,
+      },
+      {
+        event: "delivered",
+        delivery_kind: "parent_otp",
+        otp_delivery_attempt_id:
+          "33333333-3333-4333-8333-333333333333",
+        sg_event_id: "event-otp",
+        sg_message_id: "message-otp",
+        timestamp: 1_785_680_000,
+      },
+    ]));
+    const response = await POST(signedRequest(rawBody));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      recorded: 1,
+      ignored: 1,
+      quarantined: 0,
+    });
+    expect(mocks.rpc).toHaveBeenNthCalledWith(
+      2,
+      "record_parent_otp_sendgrid_events_v1",
+      {
+        p_events: [expect.objectContaining({
+          delivery_attempt_id:
+            "33333333-3333-4333-8333-333333333333",
+          event_id: "event-otp",
+        })],
+      },
+    );
+  });
+
   it("weigert gewijzigde bytes ondanks een verder geldige envelop", async () => {
     const original = new TextEncoder().encode("[]");
     const request = signedRequest(original);

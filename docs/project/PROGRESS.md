@@ -117,6 +117,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 ## In progress
 - Phase B slices door pakketkeuze en pakketbrede maatbevestiging zijn lokaal afgerond: reproduceerbare baseline, canonaddendum, security-/releasefundering, expandmigratie, upgrade-reconciliatie, pakketrevisies, beheerdergestuurde lid-seizoengrants, dynamische import en het pakket-first ouder-/beheerproces.
 - De dependencybaseline is opnieuw gemeten na de aangescherpte GHSA voor `brace-expansion`. Next.js, Sharp en PostCSS blijven gepind; alle aanwezige `brace-expansion`-majorlijnen zijn nu minimaal 1.1.18, 2.1.4 en 5.0.9. `pnpm audit --audit-level high` is groen met uitsluitend één niet-blockerende moderate builddependency en blijft een harde CI-/deploygate.
+- `LOGIN_OTP` gebruikt na mail-v2-cutover de gepubliceerde TipTap-template en branding via een afzonderlijke immutable afleverledger. Code en ontvanger komen niet in jobs, auditmetadata of SendGrid-custom-args; providerreplay en conflicten zijn attempt-gebonden, onzekere afleveringen worden niet automatisch herhaald en beide healthroutes blokkeren op stale/uncertain/failure/quarantine. Daarmee is producentdekking lokaal `19 / 19`.
 - Alle muterende API-routes hebben nu een expliciete bodypolicy met werkelijke streamlimieten voor bytes, tijd en fragmentatie; chunked en gecomprimeerde bypasses, directe bodyconsumers en bodies op inhoudsloze mutaties worden geweigerd. Sportlink gebruikt een begrensde raw-CSV-upload, SendGrid verifieert de exacte bytes vóór parsing en Mollie-webhook- en providerresponses zijn begrensd. De Caddy-referentie heeft niet-overlappende edgecaps en iedere staging-/productiondeploy blokkeert voortaan zonder vier succesvolle publieke chunked proxyprobes.
 - De QR-bearer in queryparameters is vervangen door een random nonce-afgeleide, gehashte en versiegebonden locator met current/previous keyring. Een geauthenticeerde beheerder/uitgifterol wisselt die via POST in voor een sessiegebonden, twee minuten geldige, single-use grant; uitgifte hercontroleert betaling en concrete allocaties transactioneel.
 - De scannerroute is de enige PWA en werkt bewust netwerk-only. Lokale Playwrightacceptatie bewijst medewerkerssessiebehoud, geen QR/grant in browseropslag, minimale voornaam/geslacht-response, geen URL/referrerlek en dezelfde QR voor deeluitgifte plus finale nalevering.
@@ -126,7 +127,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
-- Bouw nu de `LOGIN_OTP`-producent af, en daarna de supplier-aggregaatgrens.
+- Bouw nu de supplier-aggregaatgrens af.
 - Voer de geautoriseerde staging-opschoning pas uit na de nieuwe migrations, targetassertie, back-up en tellingendry-run; behoud alle staff- en Auth-accounts.
 - Leg bij een latere Mollie-overgang naar `processing` of `refunded` aanvullend live webhook-/QR-intrekkingsbewijs vast; de huidige testmode-refund bleef conform providercontract `pending` en lokaal ongewijzigd.
 - Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.

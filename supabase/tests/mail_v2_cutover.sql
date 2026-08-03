@@ -71,8 +71,8 @@ select is(
 );
 select is(
   (select result->>'producerCount' from initial_mail_cutover),
-  '18',
-  'alle bewezen automatische, fulfilment-, campagne- en reminderproducenten zijn geregistreerd'
+  '19',
+  'alle bewezen producenten inclusief LOGIN_OTP zijn geregistreerd'
 );
 select is(
   (select result->>'legacyPendingCount' from initial_mail_cutover),
@@ -143,6 +143,12 @@ begin
 end;
 $$;
 
+reset role;
+update private.mail_v2_process_capabilities
+set enabled = false
+where template_key = 'login_otp';
+set local role authenticated;
+
 create temporary table ready_mail_cutover as
 select app.get_mail_v2_cutover_snapshot() result;
 select is(
@@ -192,7 +198,9 @@ insert into private.mail_v2_process_capabilities(
 select template.template_key, 1
 from app.mail_templates template
 where template.active
-on conflict (template_key) do nothing;
+on conflict (template_key) do update
+set enabled = true,
+    producer_version = excluded.producer_version;
 
 insert into app.members(
   id,
