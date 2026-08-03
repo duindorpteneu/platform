@@ -9,6 +9,17 @@ export const operationalHealthSchema = z.object({
     failed: z.number().int().nonnegative(),
     oldestPendingAt: z.string().datetime({ offset: true }).nullable(),
   }).strict(),
+  emailDeliveryAttempts: z.object({
+    legacyAmbiguous: z.number().int().nonnegative(),
+    quarantinedEvents: z.number().int().nonnegative(),
+    unboundLegacyEvents: z.number().int().nonnegative(),
+    processingWithoutCurrentAttempt: z.number().int().nonnegative(),
+  }).strict().default({
+    legacyAmbiguous: 0,
+    quarantinedEvents: 0,
+    unboundLegacyEvents: 0,
+    processingWithoutCurrentAttempt: 0,
+  }),
   operations: z.object({
     emailWorker: z.object({
       required: z.boolean(),
@@ -80,12 +91,22 @@ export const operationalHealthSchema = z.object({
   dbTime: z.string().datetime({ offset: true }),
 }).strict();
 
+export function emailDeliveryAttemptHealthHasIntegrityBlocker(
+  data: z.infer<typeof operationalHealthSchema>,
+) {
+  return data.emailDeliveryAttempts.legacyAmbiguous > 0
+    || data.emailDeliveryAttempts.quarantinedEvents > 0
+    || data.emailDeliveryAttempts.unboundLegacyEvents > 0
+    || data.emailDeliveryAttempts.processingWithoutCurrentAttempt > 0;
+}
+
 export function operationalHealthIsDegraded(
   data: z.infer<typeof operationalHealthSchema>,
 ) {
   return data.emailJobs.processingStale > 0
     || data.emailJobs.deliveryUncertain > 0
     || data.emailJobs.failed > 0
+    || emailDeliveryAttemptHealthHasIntegrityBlocker(data)
     || data.recentDeliveryFailures > 0
     || data.reconciliationIssues > 0
     || data.recentWebhookFailures > 0

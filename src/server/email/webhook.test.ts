@@ -21,21 +21,39 @@ describe("SendGrid event webhook", () => {
 
   it("keeps only operational events, maps bounce and deduplicates", () => {
     const jobId = "11111111-1111-4111-8111-111111111111";
+    const deliveryAttemptId = "22222222-2222-4222-8222-222222222222";
     const rawBody = JSON.stringify([
       { event: "open", sg_event_id: "ignored", sg_message_id: "message-0", timestamp: 1_784_376_000 },
-      { event: "bounce", email_job_id: jobId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
-      { event: "bounce", email_job_id: jobId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
-      { event: "deferred", email_job_id: jobId, sg_event_id: "event-2", timestamp: "1784376002" },
+      { event: "bounce", email_job_id: jobId, delivery_attempt_id: deliveryAttemptId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
+      { event: "bounce", email_job_id: jobId, delivery_attempt_id: deliveryAttemptId, sg_event_id: "event-1", sg_message_id: "message-1", timestamp: 1_784_376_001 },
+      { event: "deferred", email_job_id: jobId, delivery_attempt_id: deliveryAttemptId, sg_event_id: "event-2", sg_message_id: "message-1", timestamp: "1784376002" },
     ]);
     expect(parseSendGridOperationalEvents(rawBody)).toEqual([
-      { emailJobId: jobId, providerEventId: "event-1", providerMessageId: "message-1", eventType: "bounced", occurredAt: "2026-07-18T12:00:01.000Z" },
-      { emailJobId: jobId, providerEventId: "event-2", providerMessageId: null, eventType: "deferred", occurredAt: "2026-07-18T12:00:02.000Z" },
+      { emailJobId: jobId, deliveryAttemptId, providerEventId: "event-1", providerMessageId: "message-1", eventType: "bounced", occurredAt: "2026-07-18T12:00:01.000Z" },
+      { emailJobId: jobId, deliveryAttemptId, providerEventId: "event-2", providerMessageId: "message-1", eventType: "deferred", occurredAt: "2026-07-18T12:00:02.000Z" },
     ]);
   });
 
   it("rejects an operational event without provider identity", () => {
     expect(parseSendGridOperationalEvents('[{"event":"delivered","timestamp":1784376000}]')).toEqual([]);
     expect(() => parseSendGridOperationalEvents('[{"event":"delivered","email_job_id":"11111111-1111-4111-8111-111111111111","timestamp":1784376000}]')).toThrow("SENDGRID_EVENT_IDENTITY_INVALID");
+  });
+
+  it("preserves a contradictory duplicate event ID for database quarantine", () => {
+    const emailJobId = "11111111-1111-4111-8111-111111111111";
+    const deliveryAttemptId = "22222222-2222-4222-8222-222222222222";
+    const shared = {
+      email_job_id: emailJobId,
+      delivery_attempt_id: deliveryAttemptId,
+      sg_event_id: "collision",
+      sg_message_id: "message-1",
+      timestamp: 1_784_376_001,
+    };
+    expect(parseSendGridOperationalEvents(JSON.stringify([
+      { ...shared, event: "delivered" },
+      { ...shared, event: "bounce" },
+      { ...shared, event: "bounce" },
+    ]))).toHaveLength(2);
   });
 
   it("matches the database boundary of at most 500 events", () => {

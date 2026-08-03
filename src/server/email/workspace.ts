@@ -9,7 +9,7 @@ export async function getEmailWorkspace() {
   const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("EMAIL_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("get_email_workspace_v3");
+  const { data, error } = await supabase.schema("app").rpc("get_email_workspace_v4");
   if (error) {
     if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
     throw new Error("EMAIL_WORKSPACE_QUERY_FAILED");

@@ -6,8 +6,9 @@ export type SendGridEventType = z.infer<typeof sendGridEventTypeSchema>;
 
 export type SendGridOperationalEvent = {
   emailJobId: string;
+  deliveryAttemptId: string;
   providerEventId: string;
-  providerMessageId: string | null;
+  providerMessageId: string;
   eventType: SendGridEventType;
   occurredAt: string;
 };
@@ -15,6 +16,7 @@ export type SendGridOperationalEvent = {
 const eventEnvelopeSchema = z.object({
   event: z.string().min(1).max(80),
   email_job_id: z.string().uuid().optional(),
+  delivery_attempt_id: z.string().uuid().optional(),
   sg_event_id: z.string().min(1).max(240).optional(),
   sg_message_id: z.string().min(1).max(240).optional(),
   timestamp: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]).optional(),
@@ -56,24 +58,44 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
   try { body = JSON.parse(rawBody); } catch { throw new Error("SENDGRID_EVENT_BODY_INVALID"); }
   const envelopes = z.array(eventEnvelopeSchema).max(500).safeParse(body);
   if (!envelopes.success) throw new Error("SENDGRID_EVENT_BODY_INVALID");
-  const unique = new Map<string, SendGridOperationalEvent>();
+  const unique = new Set<string>();
+  const events: SendGridOperationalEvent[] = [];
   for (const envelope of envelopes.data) {
     const eventType = normalizeEventType(envelope.event);
     if (!eventType) continue;
     // Direct OTP and controlled provider-smoke messages do not have a durable
     // queue job. Their signed operational events are valid but not correlatable.
     if (!envelope.email_job_id) continue;
-    if (!envelope.sg_event_id || envelope.timestamp === undefined) throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+    if (
+      !envelope.delivery_attempt_id
+      || !envelope.sg_event_id
+      || !envelope.sg_message_id
+      || envelope.timestamp === undefined
+    ) {
+      throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
+    }
     const seconds = Number(envelope.timestamp);
     const occurredAt = new Date(seconds * 1_000);
     if (!Number.isFinite(seconds) || Number.isNaN(occurredAt.getTime())) throw new Error("SENDGRID_EVENT_TIMESTAMP_INVALID");
-    unique.set(envelope.sg_event_id, {
+    const event = {
       emailJobId: envelope.email_job_id,
+      deliveryAttemptId: envelope.delivery_attempt_id,
       providerEventId: envelope.sg_event_id,
-      providerMessageId: envelope.sg_message_id ?? null,
+      providerMessageId: envelope.sg_message_id,
       eventType,
       occurredAt: occurredAt.toISOString(),
-    });
+    };
+    const identity = JSON.stringify([
+      event.providerEventId,
+      event.emailJobId,
+      event.deliveryAttemptId,
+      event.providerMessageId,
+      event.eventType,
+      event.occurredAt,
+    ]);
+    if (unique.has(identity)) continue;
+    unique.add(identity);
+    events.push(event);
   }
-  return [...unique.values()];
+  return events;
 }

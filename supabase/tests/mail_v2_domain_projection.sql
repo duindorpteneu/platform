@@ -341,7 +341,7 @@ select app.finalize_mail_v2_domain_projection_v1(
 ) result
 from first_render_input input;
 create temporary table first_job_claim as
-select app.claim_email_jobs_v3(
+select app.claim_email_jobs_v4(
   'd7150000-0000-4000-8000-000000000002',
   25
 ) result;
@@ -367,9 +367,13 @@ where id = 'd7130000-0000-4000-8000-000000000002';
 
 set local role service_role;
 create temporary table first_authorization as
-select app.authorize_claimed_email_job_v3(
+select app.authorize_claimed_email_job_v4(
   (select (result#>>'{jobs,0,id}')::uuid from first_job_claim),
-  'd7150000-0000-4000-8000-000000000002'
+  'd7150000-0000-4000-8000-000000000002',
+  (
+    select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+    from first_job_claim
+  )
 ) allowed;
 reset role;
 
@@ -463,7 +467,7 @@ select app.finalize_mail_v2_domain_projection_v1(
 ) result
 from subset_render_input input;
 create temporary table subset_job_claim as
-select app.claim_email_jobs_v3(
+select app.claim_email_jobs_v4(
   'd7150000-0000-4000-8000-000000000004',
   25
 ) result;
@@ -475,9 +479,13 @@ where key = 'mail_templates_v2';
 
 set local role service_role;
 create temporary table paused_authorization as
-select app.authorize_claimed_email_job_v3(
+select app.authorize_claimed_email_job_v4(
   (select (result#>>'{jobs,0,id}')::uuid from subset_job_claim),
-  'd7150000-0000-4000-8000-000000000004'
+  'd7150000-0000-4000-8000-000000000004',
+  (
+    select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+    from subset_job_claim
+  )
 ) allowed;
 reset role;
 
@@ -553,14 +561,18 @@ set enabled = true
 where key = 'mail_templates_v2';
 set local role service_role;
 create temporary table resumed_job_claim as
-select app.claim_email_jobs_v3(
+select app.claim_email_jobs_v4(
   'd7150000-0000-4000-8000-000000000005',
   25
 ) result;
 create temporary table resumed_authorization as
-select app.authorize_claimed_email_job_v3(
+select app.authorize_claimed_email_job_v4(
   (select (result#>>'{jobs,0,id}')::uuid from resumed_job_claim),
-  'd7150000-0000-4000-8000-000000000005'
+  'd7150000-0000-4000-8000-000000000005',
+  (
+    select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+    from resumed_job_claim
+  )
 ) allowed;
 reset role;
 select is(

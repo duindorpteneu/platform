@@ -31,7 +31,10 @@ function signedRequest(rawBody: Uint8Array, timestamp = String(Math.floor(Date.n
 describe("POST /api/webhooks/sendgrid", () => {
   beforeEach(() => {
     process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY = publicKeyDer;
-    mocks.rpc.mockReset().mockResolvedValue({ data: { recorded: 1, ignored: 0 }, error: null });
+    mocks.rpc.mockReset().mockResolvedValue({
+      data: { recorded: 1, ignored: 0, quarantined: 0 },
+      error: null,
+    });
     mocks.admin.mockReset().mockReturnValue({ schema: () => ({ rpc: mocks.rpc }) });
   });
 
@@ -39,6 +42,7 @@ describe("POST /api/webhooks/sendgrid", () => {
     const rawBody = new TextEncoder().encode(JSON.stringify([{
       event: "delivered",
       email_job_id: "11111111-1111-4111-8111-111111111111",
+      delivery_attempt_id: "22222222-2222-4222-8222-222222222222",
       sg_event_id: "event-1",
       sg_message_id: "bericht-ü",
       timestamp: 1_785_680_000,
@@ -47,9 +51,14 @@ describe("POST /api/webhooks/sendgrid", () => {
     const response = await POST(signedRequest(rawBody));
 
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({ recorded: 1, ignored: 0 });
-    expect(mocks.rpc).toHaveBeenCalledWith("record_sendgrid_events", {
+    expect(await response.json()).toEqual({
+      recorded: 1,
+      ignored: 0,
+      quarantined: 0,
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith("record_sendgrid_events_v2", {
       p_events: [expect.objectContaining({
+        delivery_attempt_id: "22222222-2222-4222-8222-222222222222",
         event_id: "event-1",
         provider_message_id: "bericht-ü",
       })],

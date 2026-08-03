@@ -8,6 +8,7 @@ const sender = {
   fromEmail: "tenue@duindorpsv.nl",
   replyToEmail: "kledingcommissie@duindorpsv.nl",
 };
+const deliveryAttemptId = "11111111-1111-4111-8111-111111111112";
 
 beforeEach(() => {
   process.env.EMAIL_ENABLED = "true";
@@ -64,6 +65,7 @@ describe("SendGrid delivery boundary", () => {
     const result = await sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Betaling ontvangen",
       text: "Uw betaling is ontvangen.",
@@ -71,7 +73,10 @@ describe("SendGrid delivery boundary", () => {
     });
     expect(result).toEqual({ delivered: true, providerMessageId: "sg-message-1" });
     const body = JSON.parse(request.mock.calls[0][1].body as string);
-    expect(body.personalizations[0].custom_args).toEqual({ email_job_id: "11111111-1111-4111-8111-111111111111" });
+    expect(body.personalizations[0].custom_args).toEqual({
+      email_job_id: "11111111-1111-4111-8111-111111111111",
+      delivery_attempt_id: deliveryAttemptId,
+    });
     expect(JSON.stringify(body.personalizations[0].custom_args)).not.toContain("ouder@example.nl");
     expect(body.tracking_settings).toMatchObject({ click_tracking: { enable: false }, open_tracking: { enable: false } });
     expect(body.from).toEqual({
@@ -87,6 +92,7 @@ describe("SendGrid delivery boundary", () => {
       ...sender,
       fromEmail: "ander@duindorpsv.nl",
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -106,6 +112,7 @@ describe("SendGrid delivery boundary", () => {
       ...sender,
       fromName: "Andere commissie",
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -125,6 +132,7 @@ describe("SendGrid delivery boundary", () => {
     await sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -140,6 +148,7 @@ describe("SendGrid delivery boundary", () => {
     await expect(sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -154,6 +163,7 @@ describe("SendGrid delivery boundary", () => {
     await expect(sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -171,6 +181,7 @@ describe("SendGrid delivery boundary", () => {
     await expect(sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -183,6 +194,7 @@ describe("SendGrid delivery boundary", () => {
     await expect(sendEmailJob({
       ...sender,
       jobId: "11111111-1111-4111-8111-111111111111",
+      deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
       subject: "Onderwerp",
       text: "Bericht",
@@ -193,7 +205,7 @@ describe("SendGrid delivery boundary", () => {
   it("renders the immutable subject and body snapshots from a claimed job", () => {
     const orderId = "11111111-1111-4111-8111-111111111111";
     const rendered = renderClaimedEmailJob({
-      id: "22222222-2222-4222-8222-222222222222", kind: "transactional", recipientEmail: "ouder@example.nl",
+      id: "22222222-2222-4222-8222-222222222222", deliveryAttemptId, kind: "transactional", recipientEmail: "ouder@example.nl",
       contextKind: "order",
       templateKey: "payment_received", templateVersion: 4, subjectSource: "Snapshot voor {{volledige_naam}}",
       bodySource: "Versie vier: {{bedrag}} is ontvangen.", allowedShortcodes: ["{{volledige_naam}}", "{{bedrag}}"],
@@ -208,6 +220,7 @@ describe("SendGrid delivery boundary", () => {
     const parentAccountId = "33333333-3333-4333-8333-333333333333";
     const rendered = renderClaimedEmailJob({
       id: "22222222-2222-4222-8222-222222222222",
+      deliveryAttemptId,
       kind: "transactional",
       contextKind: "portal_access",
       recipientEmail: "ouder@example.nl",

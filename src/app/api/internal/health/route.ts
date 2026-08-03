@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const qrKeys = qrAcceptedKeyMetadata();
     const { data, error } = await admin
       .schema("app")
-      .rpc("get_operational_health_v6", {
+      .rpc("get_operational_health_v7", {
         p_current_key_version: qrKeys.current.version,
         p_current_pepper_fingerprint: qrKeys.current.fingerprint,
         p_previous_key_version: qrKeys.previous?.version ?? null,

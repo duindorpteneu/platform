@@ -111,6 +111,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De fulfilmentmailprojectie hercontroleert grants vóór enqueue én vóór SendGrid, bewaart mislukking en herstel niet-destructief, vereist AAL2 voor herstel en houdt vrije redenen als digest plus lengte uit brede auditmetadata. Poison groups worden geïsoleerd, HTML/UTF-8-/headergrenzen falen gesloten en een echte twee-sessierace bewijst één lease en één gezinsbatch.
 - Mail-v2 kan niet worden geactiveerd op alleen gepubliceerde inhoud: de cutover telt ook forward-only geregistreerde procesproducenten. Automatische domeinproducenten en de nieuwe handmatige campagnepreflight brengen de bewezen stand op `13 / 19`; de gate blijft bewust dicht tot de vijf reminderprocessen en `LOGIN_OTP` volledig operationeel zijn.
 - Handmatige mail-v2-campagnes hebben een AAL2-, rol-, seizoen- en tienminutenpreflight met expliciete aantallen geschikt, overgeslagen en geblokkeerd. Bevestiging herberekent toegang, betaling, maten en voorraad, consolideert gedeelde ouderaccounts, bindt de projectiebatch aan exact de bekeken template- en brandingrevisie en is ook bij twee verschillende gelijktijdige confirm-IDs éénmalig. De kledingcommissie kan operationele gepubliceerde campagnes starten, maar nooit portaaltoegangsmail.
+- Iedere durable SendGrid-send heeft nu een eigen immutable delivery-attempt-ID. Mail Send, signed webhookevents, operatorherstel en interne foutepisodes zijn attempt-gebonden; afwijkende event-ID's of providerberichtidentiteiten worden PII-vrij gequarantaineerd en degraderen zowel interne health als release-readiness. Late events van een vorige poging blijven bewaard maar kunnen de actuele poging niet projecteren. De slice is lokaal groen met 439 mail/provider-pgTAP-asserties, 61 gerichte Vitest-tests, een echte parallelle replay/conflictrace, clean migration replay, lint, typecheck en productiebuild.
 
 ## In progress
 - Phase B slices door pakketkeuze en pakketbrede maatbevestiging zijn lokaal afgerond: reproduceerbare baseline, canonaddendum, security-/releasefundering, expandmigratie, upgrade-reconciliatie, pakketrevisies, beheerdergestuurde lid-seizoengrants, dynamische import en het pakket-first ouder-/beheerproces.
@@ -124,7 +125,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Production is niet gewijzigd en blijft bewust achter de handmatige approvalgate.
 
 ## Next
-- Bouw nu de fulfilment-notificatieconsumer, versieerbare TipTap-templates, branding/reminders en daarna de supplier-aggregaatgrens.
+- Bouw nu de vijf reminderprocessen en `LOGIN_OTP`-producent af, en daarna de supplier-aggregaatgrens.
 - Voer de geautoriseerde staging-opschoning pas uit na de nieuwe migrations, targetassertie, back-up en tellingendry-run; behoud alle staff- en Auth-accounts.
 - Leg bij een latere Mollie-overgang naar `processing` of `refunded` aanvullend live webhook-/QR-intrekkingsbewijs vast; de huidige testmode-refund bleef conform providercontract `pending` en lokaal ongewijzigd.
 - Configureer een unieke `OPERATIONS_HEARTBEAT_URL` per omgeving en bewijs gemiste ping plus herstel; corrigeer daarnaast de SendGrid-key/scope totdat Mail Send 202 en inbox-/eventbewijs groen zijn.

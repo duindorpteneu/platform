@@ -591,7 +591,7 @@ select is(
 
 set local role service_role;
 create temporary table v3_claim as
-select app.claim_email_jobs_v3(
+select app.claim_email_jobs_v4(
   'e6980000-0000-4000-8000-000000000002',
   25
 ) result;
@@ -599,17 +599,17 @@ reset role;
 select is(
   jsonb_array_length((select result->'jobs' from v3_claim)),
   1,
-  'v3-worker claimt de geconsolideerde rendersnapshot'
+  'v4-worker claimt de geconsolideerde rendersnapshot'
 );
 select is(
   (select result#>>'{jobs,0,contextKind}' from v3_claim),
   'fulfilment',
-  'v3-claim is expliciet gediscrimineerd als fulfilment'
+  'v4-claim is expliciet gediscrimineerd als fulfilment'
 );
 select is(
   (select result#>>'{jobs,0,eventCount}' from v3_claim),
   '2',
-  'v3-claim behoudt het geconsolideerde eventaantal'
+  'v4-claim behoudt het geconsolideerde eventaantal'
 );
 select ok(
   (
@@ -625,9 +625,13 @@ select ok(
 
 set local role service_role;
 select is(
-  app.authorize_claimed_email_job_v2(
+  app.authorize_claimed_email_job_v4(
     (select (result#>>'{jobs,0,id}')::uuid from v3_claim),
-    'e6980000-0000-4000-8000-000000000002'
+    'e6980000-0000-4000-8000-000000000002',
+    (
+      select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+      from v3_claim
+    )
   ),
   true,
   'actieve grants autoriseren de geconsolideerde sendclaim'
@@ -643,9 +647,13 @@ where id = 'e6940000-0000-4000-8000-000000000002';
 
 set local role service_role;
 select is(
-  app.authorize_claimed_email_job_v2(
+  app.authorize_claimed_email_job_v4(
     (select (result#>>'{jobs,0,id}')::uuid from v3_claim),
-    'e6980000-0000-4000-8000-000000000002'
+    'e6980000-0000-4000-8000-000000000002',
+    (
+      select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+      from v3_claim
+    )
   ),
   false,
   'ingetrokken toegang onderdrukt de volledige immutable gezinsmail'
@@ -786,14 +794,18 @@ select is(
 
 set local role service_role;
 create temporary table subset_send_claim as
-select app.claim_email_jobs_v3(
+select app.claim_email_jobs_v4(
   'e6980000-0000-4000-8000-000000000003',
   25
 ) result;
 select is(
-  app.authorize_claimed_email_job_v2(
+  app.authorize_claimed_email_job_v4(
     (select (result#>>'{jobs,0,id}')::uuid from subset_send_claim),
-    'e6980000-0000-4000-8000-000000000003'
+    'e6980000-0000-4000-8000-000000000003',
+    (
+      select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+      from subset_send_claim
+    )
   ),
   true,
   'de herberekende subset slaagt de laatste send-autorisatie'
@@ -809,9 +821,13 @@ where id = 'e6940000-0000-4000-8000-000000000001';
 
 set local role service_role;
 select is(
-  app.authorize_claimed_email_job_v2(
+  app.authorize_claimed_email_job_v4(
     (select (result#>>'{jobs,0,id}')::uuid from subset_send_claim),
-    'e6980000-0000-4000-8000-000000000003'
+    'e6980000-0000-4000-8000-000000000003',
+    (
+      select (result#>>'{jobs,0,deliveryAttemptId}')::uuid
+      from subset_send_claim
+    )
   ),
   false,
   'zonder enige geldige grant wordt de job definitief onderdrukt'

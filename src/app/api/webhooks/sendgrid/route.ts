@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const responseSchema = z.object({
   recorded: z.number().int().nonnegative(),
   ignored: z.number().int().nonnegative(),
+  quarantined: z.number().int().nonnegative(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -42,13 +43,19 @@ export async function POST(request: Request) {
   let events;
   try { events = parseSendGridOperationalEvents(rawBody); }
   catch { return NextResponse.json({ error: "Ongeldige webhookpayload." }, { status: 400 }); }
-  if (events.length === 0) return NextResponse.json({ recorded: 0, ignored: 0 }, { status: 202 });
+  if (events.length === 0) {
+    return NextResponse.json(
+      { recorded: 0, ignored: 0, quarantined: 0 },
+      { status: 202 },
+    );
+  }
 
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "Webhookverwerking tijdelijk niet beschikbaar." }, { status: 503 });
-  const { data, error } = await admin.schema("app").rpc("record_sendgrid_events", {
+  const { data, error } = await admin.schema("app").rpc("record_sendgrid_events_v2", {
     p_events: events.map((event) => ({
       email_job_id: event.emailJobId,
+      delivery_attempt_id: event.deliveryAttemptId,
       event_id: event.providerEventId,
       provider_message_id: event.providerMessageId,
       event_type: event.eventType,

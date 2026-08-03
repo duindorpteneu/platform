@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     );
   }
   const claimToken = randomUUID();
-  const { data, error } = await admin.schema("app").rpc("claim_email_jobs_v3", { p_claim_token: claimToken, p_limit: 25 });
+  const { data, error } = await admin.schema("app").rpc("claim_email_jobs_v4", { p_claim_token: claimToken, p_limit: 25 });
   if (error) {
     await finishOperationRun(admin, "email_worker", runId, "failed", 0, "claim_failed");
     return NextResponse.json({ error: "E-mailjobs konden niet worden geclaimd." }, { status: 503 });
@@ -168,10 +168,11 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
   let providerMessageId: string | null = null;
   let errorCode: string | null = "render_invalid";
   const authorization = await admin.schema("app").rpc(
-    "authorize_claimed_email_job_v3",
+    "authorize_claimed_email_job_v4",
     {
       p_job_id: job.id,
       p_claim_token: claimToken,
+      p_delivery_attempt_id: job.deliveryAttemptId,
     },
   );
   if (authorization.error || typeof authorization.data !== "boolean") {
@@ -200,6 +201,7 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
       };
     const delivery = await sendEmailJob({
       jobId: job.id,
+      deliveryAttemptId: job.deliveryAttemptId,
       recipientEmail: job.recipientEmail,
       ...rendered,
       ...sender,
@@ -216,9 +218,10 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
     outcome = "failed";
     errorCode = "render_invalid";
   }
-  const { data, error } = await admin.schema("app").rpc("complete_email_job", {
+  const { data, error } = await admin.schema("app").rpc("complete_email_job_v2", {
     p_job_id: job.id,
     p_claim_token: claimToken,
+    p_delivery_attempt_id: job.deliveryAttemptId,
     p_outcome: outcome,
     p_provider_message_id: providerMessageId,
     p_error: errorCode,

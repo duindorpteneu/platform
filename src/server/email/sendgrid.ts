@@ -3,6 +3,7 @@ import { z } from "zod";
 const recipientSchema = z.string().trim().email().max(320);
 const renderedMessageSchema = z.object({
   jobId: z.string().uuid(),
+  deliveryAttemptId: z.string().uuid(),
   recipientEmail: recipientSchema,
   subject: z.string().trim().min(1).max(200),
   text: z.string().trim().min(1).max(20_000),
@@ -115,7 +116,10 @@ export async function sendEmailJob(message: z.input<typeof renderedMessageSchema
     const response = await mailSend(configuration.apiKey, {
       personalizations: [{
         to: [{ email: parsed.data.recipientEmail }],
-        custom_args: { email_job_id: parsed.data.jobId },
+        custom_args: {
+          email_job_id: parsed.data.jobId,
+          delivery_attempt_id: parsed.data.deliveryAttemptId,
+        },
       }],
       from: {
         email: parsed.data.fromEmail,

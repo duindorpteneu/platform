@@ -199,6 +199,7 @@ const claimedEmailLineSchema = z.object({
 
 const claimedEmailJobBase = {
   id: uuid,
+  deliveryAttemptId: uuid,
   kind: z.enum(["transactional", "bulk"]),
   recipientEmail: z.string().min(1).max(320),
   templateVersion: z.number().int().positive(),
@@ -249,6 +250,7 @@ const claimedPortalAccessEmailJobSchema = z.object({
 
 const claimedFulfilmentEmailJobSchema = z.object({
   id: uuid,
+  deliveryAttemptId: uuid,
   kind: z.literal("transactional"),
   contextKind: z.literal("fulfilment"),
   recipientEmail: z.string().trim().email().max(320),
@@ -280,6 +282,7 @@ const claimedFulfilmentEmailJobSchema = z.object({
 
 const claimedMailV2DomainEmailJobSchema = z.object({
   id: uuid,
+  deliveryAttemptId: uuid,
   kind: z.enum(["transactional", "bulk"]),
   contextKind: z.literal("mail_v2"),
   recipientEmail: z.string().trim().email().max(320),

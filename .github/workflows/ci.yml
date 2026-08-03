@@ -136,6 +136,8 @@ jobs:
 
       - name: Run mail campaign concurrency test
         run: pnpm test:db:mail-campaign-concurrency
+      - name: Run e-mail delivery-attempt concurrency test
+        run: pnpm test:db:email-attempt-concurrency
 
       - name: Build browser-test application
         run: pnpm build

@@ -6,7 +6,7 @@ export async function recoverEmailJob(jobId: string, input: RecoverEmailJobReque
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("EMAIL_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("recover_stale_email_job", {
+  const { data, error } = await supabase.schema("app").rpc("recover_stale_email_job_v2", {
     p_job_id: jobId,
     p_expected_updated_at: input.expectedUpdatedAt,
     p_resolution: input.resolution,

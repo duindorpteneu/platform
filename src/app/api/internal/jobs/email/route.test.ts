@@ -27,6 +27,7 @@ import { POST } from "./route";
 
 const job = {
   id: "71000000-0000-4000-8000-000000000001",
+  deliveryAttemptId: "71100000-0000-4000-8000-000000000001",
   kind: "transactional",
   contextKind: "order",
   recipientEmail: "ouder@example.invalid",
@@ -49,6 +50,7 @@ const job = {
 
 const portalJob = {
   id: "71000000-0000-4000-8000-000000000002",
+  deliveryAttemptId: "71100000-0000-4000-8000-000000000002",
   kind: "transactional",
   contextKind: "portal_access",
   recipientEmail: "ouder@example.invalid",
@@ -69,6 +71,7 @@ const portalJob = {
 
 const fulfilmentJob = {
   id: "71000000-0000-4000-8000-000000000003",
+  deliveryAttemptId: "71100000-0000-4000-8000-000000000003",
   kind: "transactional",
   contextKind: "fulfilment",
   recipientEmail: "ouder@example.invalid",
@@ -92,6 +95,7 @@ const fulfilmentJob = {
 const domainJob = {
   ...fulfilmentJob,
   id: "71000000-0000-4000-8000-000000000004",
+  deliveryAttemptId: "71100000-0000-4000-8000-000000000004",
   kind: "bulk",
   contextKind: "mail_v2",
   templateKey: "payment_reminder",
@@ -131,9 +135,9 @@ describe("POST /api/internal/jobs/email", () => {
     mocks.send.mockReset().mockResolvedValue({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
     mocks.rpc.mockReset().mockImplementation((name: string, args: Record<string, unknown>) => {
       if (name === "get_email_worker_preflight_v1") return Promise.resolve({ data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 }, error: null });
-      if (name === "claim_email_jobs_v3") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
-      if (name === "authorize_claimed_email_job_v3") return Promise.resolve({ data: true, error: null });
-      if (name === "complete_email_job") return Promise.resolve({ data: { jobId: args.p_job_id, status: args.p_outcome, attempts: 1, availableAt: "2026-07-21T10:00:00.000Z" }, error: null });
+      if (name === "claim_email_jobs_v4") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
+      if (name === "authorize_claimed_email_job_v4") return Promise.resolve({ data: true, error: null });
+      if (name === "complete_email_job_v2") return Promise.resolve({ data: { jobId: args.p_job_id, status: args.p_outcome, attempts: 1, availableAt: "2026-07-21T10:00:00.000Z" }, error: null });
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
     mocks.admin.mockReset().mockReturnValue({ schema: () => ({ rpc: mocks.rpc }) });
@@ -142,7 +146,11 @@ describe("POST /api/internal/jobs/email", () => {
   it("parks an uncertain provider result and never turns it into retry", async () => {
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/email", { method: "POST" }));
     expect(response.status).toBe(200);
-    expect(mocks.rpc).toHaveBeenCalledWith("complete_email_job", expect.objectContaining({ p_outcome: "delivery_uncertain", p_error: "delivery_uncertain" }));
+    expect(mocks.rpc).toHaveBeenCalledWith("complete_email_job_v2", expect.objectContaining({
+      p_delivery_attempt_id: job.deliveryAttemptId,
+      p_outcome: "delivery_uncertain",
+      p_error: "delivery_uncertain",
+    }));
     expect(await response.json()).toMatchObject({ status: "processed", claimed: 1, retry: 0, deliveryUncertain: 1 });
     expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "email_worker", expect.any(String), "succeeded", 1, null);
   });
@@ -197,7 +205,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(response.status).toBe(503);
     expect(mocks.project).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "claim_email_jobs_v3",
+      "claim_email_jobs_v4",
       expect.anything(),
     );
     expect(mocks.finishRun).toHaveBeenCalledWith(
@@ -218,16 +226,16 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v3") {
+      if (name === "claim_email_jobs_v4") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [portalJob] },
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v3") {
+      if (name === "authorize_claimed_email_job_v4") {
         return Promise.resolve({ data: true, error: null });
       }
-      if (name === "complete_email_job") {
+      if (name === "complete_email_job_v2") {
         return Promise.resolve({
           data: {
             jobId: args.p_job_id,
@@ -258,21 +266,24 @@ describe("POST /api/internal/jobs/email", () => {
     );
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       jobId: portalJob.id,
+      deliveryAttemptId: portalJob.deliveryAttemptId,
       recipientEmail: portalJob.recipientEmail,
       replyToEmail: "kleding@duindorpsv.nl",
       fromName: "Kledingcommissie Duindorp SV",
       fromEmail: "kleding@duindorpsv.nl",
     }));
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "authorize_claimed_email_job_v3",
+      "authorize_claimed_email_job_v4",
       expect.objectContaining({
         p_job_id: portalJob.id,
+        p_delivery_attempt_id: portalJob.deliveryAttemptId,
       }),
     );
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "complete_email_job",
+      "complete_email_job_v2",
       expect.objectContaining({
         p_job_id: portalJob.id,
+        p_delivery_attempt_id: portalJob.deliveryAttemptId,
         p_outcome: "sent",
         p_provider_message_id: "sg-portal-access",
       }),
@@ -287,13 +298,13 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v3") {
+      if (name === "claim_email_jobs_v4") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [portalJob] },
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v3") {
+      if (name === "authorize_claimed_email_job_v4") {
         return Promise.resolve({ data: false, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
@@ -316,7 +327,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(mocks.render).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "complete_email_job",
+      "complete_email_job_v2",
       expect.anything(),
     );
   });
@@ -329,16 +340,16 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v3") {
+      if (name === "claim_email_jobs_v4") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [fulfilmentJob] },
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v3") {
+      if (name === "authorize_claimed_email_job_v4") {
         return Promise.resolve({ data: true, error: null });
       }
-      if (name === "complete_email_job") {
+      if (name === "complete_email_job_v2") {
         return Promise.resolve({
           data: {
             jobId: args.p_job_id,
@@ -365,6 +376,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(mocks.render).not.toHaveBeenCalled();
     expect(mocks.send).toHaveBeenCalledWith({
       jobId: fulfilmentJob.id,
+      deliveryAttemptId: fulfilmentJob.deliveryAttemptId,
       recipientEmail: fulfilmentJob.recipientEmail,
       subject: fulfilmentJob.subject,
       html: fulfilmentJob.html,
@@ -383,16 +395,16 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v3") {
+      if (name === "claim_email_jobs_v4") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [domainJob] },
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v3") {
+      if (name === "authorize_claimed_email_job_v4") {
         return Promise.resolve({ data: true, error: null });
       }
-      if (name === "complete_email_job") {
+      if (name === "complete_email_job_v2") {
         return Promise.resolve({
           data: {
             jobId: args.p_job_id,
@@ -419,6 +431,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(mocks.render).not.toHaveBeenCalled();
     expect(mocks.send).toHaveBeenCalledWith({
       jobId: domainJob.id,
+      deliveryAttemptId: domainJob.deliveryAttemptId,
       recipientEmail: domainJob.recipientEmail,
       subject: domainJob.subject,
       html: domainJob.html,
@@ -437,13 +450,13 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v3") {
+      if (name === "claim_email_jobs_v4") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [domainJob] },
           error: null,
         });
       }
-      if (name === "authorize_claimed_email_job_v3") {
+      if (name === "authorize_claimed_email_job_v4") {
         return Promise.resolve({ data: false, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
@@ -463,7 +476,7 @@ describe("POST /api/internal/jobs/email", () => {
     });
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "complete_email_job",
+      "complete_email_job_v2",
       expect.anything(),
     );
   });
@@ -472,7 +485,7 @@ describe("POST /api/internal/jobs/email", () => {
     mocks.startRun.mockResolvedValueOnce(false);
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/email", { method: "POST" }));
     expect(response.status).toBe(503);
-    expect(mocks.rpc).not.toHaveBeenCalledWith("claim_email_jobs_v3", expect.anything());
+    expect(mocks.rpc).not.toHaveBeenCalledWith("claim_email_jobs_v4", expect.anything());
     expect(mocks.project).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
   });
