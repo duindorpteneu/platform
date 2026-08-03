@@ -40,9 +40,12 @@ describe("GET /api/health", () => {
       emailJobs: { queued: 0, retry: 0, processingStale: 0, deliveryUncertain: 0, failed: 0, oldestPendingAt: null },
       operations: {
         emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+        importWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:30.000Z", lastSucceededAt: null, stale: false, runningStale: false },
         retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-19T11:00:00.000Z", lastSucceededAt: "2026-07-19T11:00:01.000Z", stale: false, runningStale: false },
       },
+      importControl: { processingEnabled: false, cutoverActive: false },
       importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
+      importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
       recentDeliveryFailures: 0,
       reconciliationIssues: 0,
       recentWebhookFailures: 0,
@@ -61,11 +64,69 @@ describe("GET /api/health", () => {
     expect(JSON.stringify(await response.json())).not.toMatch(/supabase|postgres|secret/i);
   });
 
+  it("houdt publieke liveness beschikbaar bij een zachte operationele storing", async () => {
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            emailJobs: { queued: 0, retry: 0, processingStale: 0, deliveryUncertain: 0, failed: 0, oldestPendingAt: null },
+            operations: {
+              emailWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
+              importWorker: { required: false, lastStatus: "failed", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: null, stale: true, runningStale: false },
+              retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
+            },
+            importControl: { processingEnabled: false, cutoverActive: true },
+            importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
+            importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 1, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
+            recentDeliveryFailures: 0,
+            reconciliationIssues: 0,
+            recentWebhookFailures: 0,
+            dbTime: "2026-08-03T08:00:00.000Z",
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+
   it("vereist een canonieke importkey zodra runtime-import actief is", async () => {
     process.env.DYNAMIC_IMPORT_ENABLED = "true";
     const response = await GET();
     expect(response.status).toBe(503);
     expect(mocks.admin).not.toHaveBeenCalled();
+  });
+
+  it("weigert readiness wanneer runtime en database-importpoort verschillen", async () => {
+    process.env.DYNAMIC_IMPORT_ENABLED = "true";
+    process.env.IMPORT_STAGING_ENCRYPTION_KEY = Buffer.alloc(32, 1).toString("base64url");
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            emailJobs: { queued: 0, retry: 0, processingStale: 0, deliveryUncertain: 0, failed: 0, oldestPendingAt: null },
+            operations: {
+              emailWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
+              importWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
+              retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
+            },
+            importControl: { processingEnabled: false, cutoverActive: true },
+            importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
+            importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
+            recentDeliveryFailures: 0,
+            reconciliationIssues: 0,
+            recentWebhookFailures: 0,
+            dbTime: "2026-08-03T08:00:00.000Z",
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ status: "degraded" });
   });
 
   it("returns a redacted 503 when readiness throws", async () => {

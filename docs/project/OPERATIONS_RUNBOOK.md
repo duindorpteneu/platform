@@ -75,7 +75,7 @@ De retentiejob:
 
 Roteer `IMPORT_STAGING_ENCRYPTION_KEY` alleen wanneer geen actieve raw uploads bestaan. De deploy voert na migraties en vóór appactivatie de service-only `assert_dynamic_import_staging_key`-gate uit met uitsluitend een SHA-256-fingerprint; een andere of ontbrekende key blokkeert zolang een niet-verlopen upload nog decryptie vereist. Veilige rotatie:
 
-1. zet eerst de databaseflag `dynamic_import_v2=false` en daarna `DYNAMIC_IMPORT_ENABLED=false`, zodat geen nieuwe upload wordt aangenomen;
+1. zet eerst de databaseflag `dynamic_import_v2=false` en daarna `DYNAMIC_IMPORT_ENABLED=false`, zodat geen nieuwe upload wordt aangenomen; de duurzame cutovermarker blijft daarbij staan en het legacy-importpad blijft dus gesloten;
 2. laat bestaande uploads verwerken of wacht tot de vijfminutenretentie alle expiraties heeft verwijderd; voer geen ongeautoriseerde purge uit;
 3. bevestig via geaggregeerde interne health dat `importStaging.pending=0` en `expired=0`;
 4. wijzig de omgevingsunieke key uitsluitend in de beschermde secretstore;

@@ -10,6 +10,7 @@ export function validateSchedulerConfig(environment = process.env) {
   const internalBaseUrl = environment.OPERATIONS_INTERNAL_BASE_URL?.trim() || STAGING_BASE;
   const heartbeatUrl = environment.OPERATIONS_HEARTBEAT_URL?.trim() ?? "";
   const emailEnabled = environment.EMAIL_ENABLED === "true";
+  const dynamicImportEnabled = environment.DYNAMIC_IMPORT_ENABLED === "true";
 
   if (!ALLOWED_ENVIRONMENTS.has(appEnvironment)) throw new Error("SCHEDULER_ENVIRONMENT_INVALID");
   if (cronSecret.length < 16 || /[\r\n\0]/.test(cronSecret)) throw new Error("SCHEDULER_SECRET_INVALID");
@@ -20,7 +21,14 @@ export function validateSchedulerConfig(environment = process.env) {
     if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("SCHEDULER_HEARTBEAT_INVALID");
   }
 
-  return { appEnvironment, cronSecret, internalBaseUrl, heartbeatUrl, emailEnabled };
+  return {
+    appEnvironment,
+    cronSecret,
+    internalBaseUrl,
+    heartbeatUrl,
+    emailEnabled,
+    dynamicImportEnabled,
+  };
 }
 
 export function shouldRunRetention(now, lastRetentionAt) {
@@ -47,6 +55,13 @@ export async function invokeInternal(config, path, method, fetcher = fetchJson) 
   if (path.endsWith("/email")) {
     if (!new Set(["processed", "paused"]).has(body.status)) throw new Error("EMAIL_RESPONSE_INVALID");
     if (config.emailEnabled && body.status === "paused") throw new Error("EMAIL_UNEXPECTEDLY_PAUSED");
+  } else if (path.endsWith("/imports")) {
+    if (!new Set(["idle", "processing", "previewed", "committed", "paused"]).has(body.status)) {
+      throw new Error("IMPORT_RESPONSE_INVALID");
+    }
+    if (config.dynamicImportEnabled && body.status === "paused") {
+      throw new Error("IMPORT_UNEXPECTEDLY_PAUSED");
+    }
   } else if (path.endsWith("/retention")) {
     if (body.status !== "completed") throw new Error("RETENTION_RESPONSE_INVALID");
   } else if (path.endsWith("/health")) {
@@ -65,26 +80,40 @@ async function pingHeartbeat(config) {
   if (!response.ok) throw new Error(`HEARTBEAT_HTTP_${response.status}`);
 }
 
-export async function runSchedulerCycle(config, state, now = new Date()) {
+export async function runSchedulerCycle(
+  config,
+  state,
+  now = new Date(),
+  dependencies = {},
+) {
+  const invoke = dependencies.invoke ?? invokeInternal;
+  const heartbeat = dependencies.heartbeat ?? pingHeartbeat;
+  const healthWriter = dependencies.healthWriter
+    ?? ((timestamp) => writeFile("/tmp/scheduler-health", timestamp, { mode: 0o600 }));
   let firstFailure;
   try {
-    await invokeInternal(config, "/api/internal/jobs/email", "POST");
+    await invoke(config, "/api/internal/jobs/email", "POST");
   } catch (error) {
     firstFailure = error;
+  }
+  try {
+    await invoke(config, "/api/internal/jobs/imports", "POST");
+  } catch (error) {
+    firstFailure ??= error;
   }
   const retention = shouldRunRetention(now, state.lastRetentionAt);
   if (retention.due) {
     try {
-      await invokeInternal(config, "/api/internal/jobs/retention", "POST");
+      await invoke(config, "/api/internal/jobs/retention", "POST");
       state.lastRetentionAt = retention.timestamp;
     } catch (error) {
       firstFailure ??= error;
     }
   }
   if (firstFailure) throw firstFailure;
-  await writeFile("/tmp/scheduler-health", now.toISOString(), { mode: 0o600 });
-  await invokeInternal(config, "/api/internal/health", "GET");
-  await pingHeartbeat(config);
+  await invoke(config, "/api/internal/health", "GET");
+  await heartbeat(config);
+  await healthWriter(now.toISOString());
   return state;
 }
 

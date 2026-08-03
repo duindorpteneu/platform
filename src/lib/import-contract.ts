@@ -34,6 +34,17 @@ export const dynamicImportWorkspaceSchema = z.object({
     createdAt: z.string().datetime({ offset: true }),
     expiresAt: z.string().datetime({ offset: true }),
     committedAt: z.string().datetime({ offset: true }).nullable(),
+    runId: uuid.nullable(),
+    runStatus: z.enum([
+      "queued_preview",
+      "staging",
+      "previewed",
+      "commit_queued",
+      "committing",
+      "committed",
+      "failed",
+      "expired",
+    ]).nullable(),
   }).strict()).max(10),
 }).strict();
 
@@ -266,6 +277,196 @@ export const dynamicImportMappingResponseSchema = z.object({
   }).strict()).max(64),
 }).strict();
 
+export const storedImportMappingEntrySchema = z.object({
+  columnIndex: z.number().int().min(0).max(63),
+  sourceHeaderHash: z.string().regex(/^[0-9a-f]{64}$/),
+  target: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("member_field"),
+      field: importStandardFieldSchema,
+    }).strict(),
+    z.object({
+      kind: z.literal("product_size"),
+      articleId: uuid,
+    }).strict(),
+  ]),
+}).strict();
+
+export const dynamicImportRunStatusSchema = z.enum([
+  "queued_preview",
+  "staging",
+  "previewed",
+  "commit_queued",
+  "committing",
+  "committed",
+  "failed",
+  "expired",
+]);
+
+export const dynamicImportRowOutcomeSchema = z.enum([
+  "create",
+  "update",
+  "skip",
+  "protected",
+  "conflict",
+  "error",
+]);
+
+export const dynamicImportOutcomeCountsSchema = z.object({
+  create: nonNegativeInteger,
+  update: nonNegativeInteger,
+  skip: nonNegativeInteger,
+  protected: nonNegativeInteger,
+  conflict: nonNegativeInteger,
+  error: nonNegativeInteger,
+}).strict();
+
+export const dynamicImportDryRunMutationSchema = z.object({
+  batchId: uuid,
+  mappingRevision: z.number().int().positive(),
+  clientRequestId: uuid,
+}).strict();
+
+export const dynamicImportDryRunStartResponseSchema = z.object({
+  runId: uuid,
+  batchId: uuid,
+  status: dynamicImportRunStatusSchema,
+  reused: z.boolean(),
+}).strict();
+
+export const dynamicImportDryRunSchema = z.object({
+  runId: uuid,
+  batchId: uuid,
+  seasonId: uuid,
+  status: dynamicImportRunStatusSchema,
+  sourceRowCount: z.number().int().min(1).max(10_000),
+  processedRowCount: z.number().int().min(0).max(10_000),
+  committedRowCount: z.number().int().min(0).max(10_000),
+  outcomeCounts: dynamicImportOutcomeCountsSchema,
+  hasBlockers: z.boolean(),
+  planHash: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  expiresAt: z.string().datetime({ offset: true }),
+  previewedAt: z.string().datetime({ offset: true }).nullable(),
+  committedAt: z.string().datetime({ offset: true }).nullable(),
+  failureCode: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).nullable(),
+  offset: nonNegativeInteger,
+  limit: z.number().int().min(1).max(100),
+  filteredTotal: nonNegativeInteger,
+  rows: z.array(z.object({
+    sourceRow: z.number().int().min(2).max(10_001),
+    outcome: dynamicImportRowOutcomeSchema,
+    blocking: z.boolean(),
+    reasonCodes: z.array(z.string().regex(/^[a-z][a-z0-9._-]{2,63}$/)).max(32),
+    changeCount: z.number().int().min(0).max(100),
+    conflictCount: z.number().int().min(0).max(64),
+    protectedCount: z.number().int().min(0).max(64),
+  }).strict()).max(100),
+}).strict();
+
+export const dynamicImportBlockedRowSchema = z.object({
+  runId: uuid,
+  batchId: uuid,
+  sourceRow: z.number().int().min(2).max(10_001),
+  reasonCodes: z.array(
+    z.string().regex(/^[a-z][a-z0-9._-]{2,63}$/),
+  ).max(32),
+  fields: z.record(
+    importStandardFieldSchema,
+    z.union([z.string().min(1).max(320), z.boolean()]),
+  ),
+  sizes: z.array(z.object({
+    articleId: uuid,
+    articleName: z.string().trim().min(1).max(120),
+    sourceValue: z.string().min(1).max(160),
+  }).strict()).max(64),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict();
+
+export const selectedImportRowSchema = z.object({
+  sourceRow: z.number().int().min(2).max(10_001),
+  fields: z.record(
+    z.string(),
+    z.union([z.string().min(1).max(320), z.boolean()]),
+  ),
+  sizes: z.record(uuid, z.string().min(1).max(160)),
+  errors: z.array(z.string().regex(/^[a-z][a-z0-9._-]{2,63}$/)).max(32),
+}).strict();
+
+export const dynamicImportWorkerClaimSchema = z.object({
+  job: z.object({
+    runId: uuid,
+    batchId: uuid,
+    actorId: uuid,
+    seasonId: uuid,
+    mappingRevisionId: uuid,
+    mappingRevision: z.number().int().positive(),
+    mapping: z.array(storedImportMappingEntrySchema).min(1).max(64),
+    mappingHash: z.string().regex(/^[0-9a-f]{64}$/),
+    headerHash: z.string().regex(/^[0-9a-f]{64}$/),
+    catalogHash: z.string().regex(/^[0-9a-f]{64}$/),
+    catalogCurrent: z.boolean(),
+    policy: importPolicySchema,
+    phase: z.enum(["preview", "commit"]),
+    generation: z.number().int().positive(),
+    nextSourceRow: z.number().int().min(2).max(10_002),
+    nextAnalysisSourceRow: z.number().int().min(2).max(10_002),
+    sourceRowCount: z.number().int().min(1).max(10_000),
+    expiresAt: z.string().datetime({ offset: true }),
+  }).strict().nullable(),
+}).strict();
+
+export const dynamicImportStageResponseSchema = z.object({
+  runId: uuid,
+  accepted: z.number().int().min(1).max(250),
+  nextSourceRow: z.number().int().min(2).max(10_002),
+  complete: z.boolean(),
+  reused: z.boolean(),
+}).strict();
+
+export const dynamicImportAnalysisResponseSchema = z.object({
+  runId: uuid,
+  processed: z.number().int().min(0).max(250),
+  nextSourceRow: z.number().int().min(2).max(10_002),
+  complete: z.boolean(),
+}).strict();
+
+export const dynamicImportFinalizeResponseSchema = z.object({
+  runId: uuid,
+  status: z.literal("previewed"),
+  outcomeCounts: dynamicImportOutcomeCountsSchema,
+  hasBlockers: z.boolean(),
+  planHash: z.string().regex(/^[0-9a-f]{64}$/),
+}).strict();
+
+export const dynamicImportCommitMutationSchema = z.object({
+  runId: uuid,
+  planHash: z.string().regex(/^[0-9a-f]{64}$/),
+  clientRequestId: uuid,
+  confirmed: z.literal(true),
+}).strict();
+
+export const dynamicImportCommitStartResponseSchema = z.object({
+  runId: uuid,
+  batchId: uuid,
+  status: z.enum(["commit_queued", "committing", "committed"]),
+  reused: z.boolean(),
+}).strict();
+
+export const dynamicImportCommitChunkResponseSchema = z.object({
+  runId: uuid,
+  processed: z.number().int().min(0).max(250),
+  nextSourceRow: z.number().int().min(2).max(10_002),
+  complete: z.boolean(),
+}).strict();
+
+export const dynamicImportCommitFinalizeResponseSchema = z.object({
+  runId: uuid,
+  batchId: uuid,
+  status: z.literal("committed"),
+  committedAt: z.string().datetime({ offset: true }),
+  outcomeCounts: dynamicImportOutcomeCountsSchema,
+}).strict();
+
 export const mappingPresetMutationSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("save"),
@@ -299,3 +500,9 @@ export type ImportMappingTarget = z.infer<typeof importMappingTargetSchema>;
 export type DynamicImportMappingWorkspace = z.infer<typeof dynamicImportMappingWorkspaceSchema>;
 export type DynamicImportMappingResponse = z.infer<typeof dynamicImportMappingResponseSchema>;
 export type MappingPreset = z.infer<typeof mappingPresetSchema>;
+export type StoredImportMappingEntry = z.infer<typeof storedImportMappingEntrySchema>;
+export type DynamicImportDryRun = z.infer<typeof dynamicImportDryRunSchema>;
+export type DynamicImportBlockedRow = z.infer<typeof dynamicImportBlockedRowSchema>;
+export type DynamicImportWorkerClaim = z.infer<typeof dynamicImportWorkerClaimSchema>;
+export type SelectedImportRowData = z.infer<typeof selectedImportRowSchema>;
+export type DynamicImportRunStatus = z.infer<typeof dynamicImportRunStatusSchema>;

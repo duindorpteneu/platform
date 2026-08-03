@@ -11,14 +11,16 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   dynamicImportUploadResponseSchema,
   type DynamicImportMappingResponse,
+  type DynamicImportRunStatus,
   type DynamicImportUploadResponse,
   type DynamicImportWorkspaceData,
 } from "@/lib/import-contract";
 import { ColumnMappingStep } from "@/components/imports/column-mapping-step";
+import { DryRunStep } from "@/components/imports/dry-run-step";
 
 const steps = ["Bestand", "Kolommen", "Dry-run", "Verwerken"];
 
@@ -31,12 +33,30 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [upload, setUpload] = useState<DynamicImportUploadResponse | null>(null);
   const [mappingValidation, setMappingValidation] = useState<DynamicImportMappingResponse | null>(null);
+  const [resumeRunId, setResumeRunId] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<DynamicImportRunStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const enabled = workspace.featureEnabled && Boolean(workspace.activeSeason);
 
+  useEffect(() => {
+    const requestedRunId = new URLSearchParams(window.location.search).get("runId");
+    if (requestedRunId && /^[0-9a-f-]{36}$/i.test(requestedRunId)) {
+      setResumeRunId(requestedRunId);
+    }
+  }, []);
+
+  function leaveResumeMode() {
+    setResumeRunId(null);
+    setRunStatus(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("runId");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
   async function stageUpload() {
     if (!file || !workspace.activeSeason) return;
+    leaveResumeMode();
     setBusy(true);
     setError(null);
     try {
@@ -86,7 +106,12 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
         {steps.map((step, index) => {
           const reached = index === 0
             || (index === 1 && upload)
-            || (index === 2 && mappingValidation);
+            || (index === 2 && (mappingValidation || resumeRunId))
+            || (
+              index === 3
+              && runStatus
+              && ["commit_queued", "committing", "committed"].includes(runStatus)
+            );
           return (
             <li key={step} className="flex min-w-0 items-center gap-2">
               <span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${reached ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-400"}`}>{index + 1}</span>
@@ -111,6 +136,15 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
 
       <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded-xl border border-line bg-white p-5 shadow-card md:p-6">
+          {resumeRunId && (
+            <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-500">Import hervatten</p>
+              <DryRunStep
+                initialRunId={resumeRunId}
+                onStatus={setRunStatus}
+              />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-4">
             <div><p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-500">Stap 1</p><h2 className="mt-1 text-lg font-bold text-brand-900">Bestand en diagnose</h2><p className="mt-1 text-xs leading-5 text-slate-500">Alleen strikt UTF-8 CSV; komma en puntkomma worden ondersteund.</p></div>
             <FileSpreadsheet className="size-5 text-brand-500" />
@@ -126,6 +160,7 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
               disabled={!enabled}
               className="sr-only"
               onChange={(event) => {
+                leaveResumeMode();
                 setFile(event.target.files?.[0] ?? null);
                 setRequestId(crypto.randomUUID());
                 setUpload(null);
@@ -181,9 +216,11 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
                 onValidated={setMappingValidation}
               />
               {mappingValidation && (
-                <button type="button" disabled className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-slate-200 px-4 text-xs font-semibold text-slate-500">
-                  Dry-run wordt in de volgende beveiligde verwerkingsstap beschikbaar
-                </button>
+                <DryRunStep
+                  batchId={upload.batchId}
+                  mapping={mappingValidation}
+                  onStatus={setRunStatus}
+                />
               )}
             </div>
           )}
@@ -205,6 +242,29 @@ export function DynamicImportWorkspace({ workspace }: { workspace: DynamicImport
             <p className="mt-2 text-xs text-slate-500">{workspace.activeSeason?.name ?? "Niet ingesteld"}</p>
             <p className="mt-4 text-[11px] leading-5 text-slate-400">Ruwe stagingretentie: maximaal {workspace.limits.retentionHoursDefault} uur. Genegeerde kolommen worden niet duurzaam overgenomen.</p>
           </section>
+          {workspace.recentBatches.length > 0 && (
+            <section className="rounded-xl border border-line bg-white p-5 shadow-card">
+              <h2 className="text-sm font-bold text-brand-900">Recente imports</h2>
+              <div className="mt-3 space-y-3">
+                {workspace.recentBatches.map((batch) => (
+                  <article key={batch.id} className="rounded-lg border border-line p-3">
+                    <p className="truncate text-xs font-semibold text-ink">{batch.fileName}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {batch.rowCount} rijen · {batch.runStatus ?? batch.status}
+                    </p>
+                    {batch.runId && (
+                      <a
+                        href={`?runId=${encodeURIComponent(batch.runId)}`}
+                        className="mt-2 inline-flex text-[10px] font-semibold text-brand-700 hover:text-brand-900"
+                      >
+                        Status en resultaat hervatten
+                      </a>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </div>
     </main>

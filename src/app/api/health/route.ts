@@ -35,17 +35,29 @@ function releaseIdentity() {
     || !importKeyValid
     || (importEnabled === "true" && importKey === "")
   ) return null;
-  return { service: "duindorpteneu", environment, revision };
+  return {
+    identity: { service: "duindorpteneu", environment, revision },
+    importEnabled: importEnabled === "true",
+  };
 }
 
 export async function GET() {
-  const release = releaseIdentity();
-  if (!release) return NextResponse.json({ status: "degraded", service: "duindorpteneu" }, { status: 503, headers });
+  const releaseConfig = releaseIdentity();
+  if (!releaseConfig) return NextResponse.json({ status: "degraded", service: "duindorpteneu" }, { status: 503, headers });
+  const release = releaseConfig.identity;
   try {
     const admin = getSupabaseAdminClient();
     if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
-    const { data, error } = await admin.schema("app").rpc("get_operational_health_v3");
-    const valid = !error && operationalHealthSchema.safeParse(data).success;
+    const { data, error } = await admin.schema("app").rpc("get_operational_health_v4");
+    const parsed = operationalHealthSchema.safeParse(data);
+    const valid = !error
+      && parsed.success
+      && (
+        !parsed.data.importControl.processingEnabled
+        || parsed.data.importControl.cutoverActive
+      )
+      && releaseConfig.importEnabled
+        === parsed.data.importControl.processingEnabled;
     return NextResponse.json({ status: valid ? "ok" : "degraded", ...release }, { status: valid ? 200 : 503, headers });
   } catch {
     return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });

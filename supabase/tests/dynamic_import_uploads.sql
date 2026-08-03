@@ -294,6 +294,7 @@ select throws_ok(
 reset role;
 
 set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is(
   app.assert_dynamic_import_staging_key(repeat('f', 64))->>'pending',
   '1',
@@ -361,20 +362,41 @@ select is(
 );
 reset role;
 
-select throws_ok(
+select lives_ok(
   $$update app.release_feature_flags
     set enabled = false
     where key = 'dynamic_import_v2'$$,
-  '55000',
-  'DYNAMIC_IMPORT_CUTOVER_IRREVERSIBLE',
-  'een geactiveerde databasecutover kan legacy-import niet heropenen'
+  'de v2-verwerking kan operationeel via de database worden gepauzeerd'
 );
+select ok(
+  private.dynamic_import_cutover_active(),
+  'de eenmalige cutovermarker blijft tijdens een operationele pauze staan'
+);
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"b0000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+select throws_ok(
+  $$select app.get_sportlink_import_summary(
+    '[{"relation_number":"DSV-LEGACY","first_name":"Noa","insertion":null,"last_name":"Jansen","email":"ouder@example.invalid","team":"JO13-1","active_for_season":true}]'::jsonb
+  )$$,
+  '55000',
+  'LEGACY_IMPORT_DISABLED',
+  'een v2-pauze heropent de legacy-preview niet'
+);
+reset role;
+update app.release_feature_flags
+set enabled = true
+where key = 'dynamic_import_v2';
 
 update private.import_staging_payloads
 set created_at = timezone('utc', now()) - interval '2 hours',
     expires_at = timezone('utc', now()) - interval '1 second'
 where batch_id = 'b2000000-0000-4000-8000-000000000001';
 set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is(
   app.get_operational_health_v3() #>> '{importStaging,expired}',
   '1',

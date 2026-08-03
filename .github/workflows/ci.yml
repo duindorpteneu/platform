@@ -117,6 +117,9 @@ jobs:
       - name: Run action-item concurrency test
         run: pnpm test:db:action-concurrency
 
+      - name: Run dynamic-import concurrency test
+        run: pnpm test:db:import-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 

@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(26);
 
 insert into app.seasons(id, name, default_amount_cents, status) values
   ('e1000000-0000-4000-8000-000000000001', 'Maatseizoen', 9900, 'open'),
@@ -25,6 +25,23 @@ insert into app.article_seasons(article_id, season_id) values
 select has_table('app', 'member_article_sizes', 'maatprofieltabel bestaat');
 select ok(not has_table_privilege('authenticated', 'app.member_article_sizes', 'INSERT'), 'authenticated heeft geen directe schrijfrechten');
 select ok(not has_function_privilege('anon', 'app.set_member_article_sizes(uuid,uuid,jsonb,text,uuid)', 'EXECUTE'), 'anon kan de mutatie-RPC niet uitvoeren');
+select ok(
+  exists(
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'app.member_article_sizes'::regclass
+      and trigger_row.tgname = 'member_article_sizes_00_lock_member'
+      and not trigger_row.tgisinternal
+  )
+  and not exists(
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'app.member_article_sizes'::regclass
+      and trigger_row.tgname < 'member_article_sizes_00_lock_member'
+      and not trigger_row.tgisinternal
+  ),
+  'de member-advisorylocktrigger is aantoonbaar de eerste gebruikstrigger'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
@@ -35,6 +52,10 @@ select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-0000000
 select lives_ok($$select app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001')$$, 'kledingcommissie kan maatprofiel openen');
 select is(jsonb_array_length(app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #> '{sizeProfile,articles}'), 2, 'profiel toont gekoppelde seizoensartikelen');
 select ok((app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #>> '{sizeProfile,revision}') ~ '^[0-9a-f]{64}$', 'profiel bevat concurrencyrevisie');
+select throws_ok($$select app.set_member_article_sizes(
+  'e2000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001',
+  null::jsonb, repeat('a', 64), null
+)$$, '22023', 'MEMBER_SIZES_INVALID', 'SQL NULL is geen geldige matenlijst');
 
 create temporary table first_profile as
 select app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #> '{sizeProfile}' profile;
@@ -97,5 +118,6 @@ select throws_ok($$insert into app.member_article_sizes(member_id, season_id, ar
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 select is((select count(*)::integer from app.member_article_sizes), 0, 'uitgifte ziet geen maatprofielen via RLS');
 
+reset role;
 select * from finish();
 rollback;

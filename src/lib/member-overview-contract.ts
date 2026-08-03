@@ -151,6 +151,8 @@ export const memberStatusRequestSchema = z.object({
 
 export const memberStatusResponseSchema = z.object({
   memberId: z.string().uuid(),
+  memberSeasonId: z.string().uuid(),
+  seasonId: z.string().uuid(),
   activeForSeason: z.boolean(),
 }).strict();
 
