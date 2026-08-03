@@ -40,6 +40,8 @@ function runtimeEnvironment(environment: "staging" | "production") {
     SUPABASE_DB_URL: `postgresql://postgres:password@db.${ref}.supabase.co:5432/postgres?sslmode=require`,
     NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PARENT_TOKEN_PEPPER: "p".repeat(32),
+    QR_TOKEN_PEPPER: Buffer.alloc(32, 8).toString("base64url"),
+    QR_TOKEN_PEPPER_VERSION: "1",
     CRON_SECRET: "c".repeat(32),
     DYNAMIC_IMPORT_ENABLED: "false",
     IMPORT_RAW_RETENTION_HOURS: "24",
@@ -138,6 +140,13 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain("/rest/v1/rpc/create_staff_app_session_for_user");
     expect(contractScript).toContain("/rest/v1/rpc/get_staff_app_session");
     expect(contractScript).toContain("/rest/v1/rpc/revoke_staff_app_session");
+    expect(contractScript).toContain('"list_order_qr_identity_candidates"');
+    expect(contractScript).toContain('"get_parent_package_workspace_v4"');
+    expect(contractScript).toContain('"get_operational_health_v6"');
+    expect(contractScript).toContain('"register_order_qr_locator"');
+    expect(contractScript).toContain('"exchange_order_qr_locator_v2"');
+    expect(contractScript).toContain('"commit_fulfilment_v3"');
+    expect(contractScript).toContain('"expire_qr_scan_grants"');
     expect(contractScript).toContain('"prepare_mollie_acceptance_fixture"');
     expect(contractScript).toContain('"get_mollie_acceptance_payment_state"');
     expect(contractScript).toContain('"cleanup_mollie_acceptance_fixture"');
@@ -147,6 +156,10 @@ describe("deployment environment isolation", () => {
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER_VERSION");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+    expect(deployScript).toContain("Actieve runtime bevat onverwacht een vorige QR-sleutel");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte importstaging-sleutel");
     const postgrestGate = deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs");
     const importKeyGate = deployScript.indexOf("node scripts/deploy/check-import-staging-key.mjs");
@@ -263,6 +276,45 @@ describe("deployment environment isolation", () => {
     });
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain("IMPORT_STAGING_ENCRYPTION_KEY");
+  });
+
+  it("requires a canonical QR keyring and paired previous key", () => {
+    const current = runtimeEnvironment("staging");
+    const invalidCurrent = spawnSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      {
+        env: { ...current, QR_TOKEN_PEPPER: "q".repeat(43) },
+        encoding: "utf8",
+      },
+    );
+    expect(invalidCurrent.status).toBe(1);
+    expect(invalidCurrent.stderr).toContain("QR_TOKEN_PEPPER");
+
+    const rotating = {
+      ...current,
+      QR_TOKEN_PEPPER: Buffer.alloc(32, 10).toString("base64url"),
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER:
+        Buffer.alloc(32, 8).toString("base64url"),
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "1",
+    };
+    expect(() => execFileSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      { env: rotating, stdio: "pipe" },
+    )).not.toThrow();
+
+    const unpaired = spawnSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      {
+        env: { ...rotating, QR_TOKEN_PREVIOUS_PEPPER_VERSION: "" },
+        encoding: "utf8",
+      },
+    );
+    expect(unpaired.status).toBe(1);
+    expect(unpaired.stderr).toContain("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
   });
 
   it("accepts only a P-256 SendGrid webhook verification key", () => {

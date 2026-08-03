@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ bearer: vi.fn(), admin: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/server/operations/internal-auth", () => ({ hasInternalBearer: mocks.bearer }));
@@ -11,8 +11,10 @@ const healthy = {
   operations: {
     emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-21T10:00:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
     importWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-21T10:00:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+    inventoryAllocator: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-21T09:59:00.000Z", lastSucceededAt: "2026-07-21T09:59:01.000Z", stale: false, runningStale: false },
     retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-21T09:00:00.000Z", lastSucceededAt: "2026-07-21T09:00:01.000Z", stale: false, runningStale: false },
   },
+  qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
   importControl: { processingEnabled: false, cutoverActive: false },
   importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
   importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
@@ -25,9 +27,22 @@ const healthy = {
 describe("GET /api/internal/health", () => {
   beforeEach(() => {
     process.env.DYNAMIC_IMPORT_ENABLED = "false";
+    process.env.QR_TOKEN_PEPPER =
+      Buffer.alloc(32, 7).toString("base64url");
+    process.env.QR_TOKEN_PEPPER_VERSION = "1";
+    process.env.IMPORT_STAGING_ENCRYPTION_KEY =
+      Buffer.alloc(32, 8).toString("base64url");
     mocks.bearer.mockReset().mockReturnValue(true);
     mocks.rpc.mockReset().mockResolvedValue({ data: healthy, error: null });
     mocks.admin.mockReset().mockReturnValue({ schema: () => ({ rpc: mocks.rpc }) });
+  });
+
+  afterEach(() => {
+    delete process.env.QR_TOKEN_PEPPER;
+    delete process.env.QR_TOKEN_PEPPER_VERSION;
+    delete process.env.QR_TOKEN_PREVIOUS_PEPPER;
+    delete process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION;
+    delete process.env.IMPORT_STAGING_ENCRYPTION_KEY;
   });
 
   it.each([
@@ -67,8 +82,39 @@ describe("GET /api/internal/health", () => {
   it("returns HTTP 200 only for an operationally healthy state", async () => {
     const response = await GET(new Request("https://tenue.example/api/internal/health"));
     expect(response.status).toBe(200);
-    expect(mocks.rpc).toHaveBeenCalledWith("get_operational_health_v4");
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "get_operational_health_v6",
+      {
+        p_current_key_version: 1,
+        p_current_pepper_fingerprint:
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        p_previous_key_version: null,
+        p_previous_pepper_fingerprint: null,
+      },
+    );
     expect(await response.json()).toMatchObject({ status: "healthy" });
+  });
+
+  it("geeft de gecontroleerde vorige QR-sleutel aan health door", async () => {
+    process.env.QR_TOKEN_PREVIOUS_PEPPER =
+      Buffer.alloc(32, 6).toString("base64url");
+    process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION = "2";
+    process.env.QR_TOKEN_PEPPER_VERSION = "3";
+    const response = await GET(
+      new Request("https://tenue.example/api/internal/health"),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "get_operational_health_v6",
+      {
+        p_current_key_version: 3,
+        p_current_pepper_fingerprint:
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        p_previous_key_version: 2,
+        p_previous_pepper_fingerprint:
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    );
   });
 
   it.each([

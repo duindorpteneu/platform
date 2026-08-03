@@ -123,6 +123,12 @@ jobs:
       - name: Run package concurrency test
         run: pnpm test:db:package-concurrency
 
+      - name: Run payment concurrency test
+        run: pnpm test:db:payment-concurrency
+
+      - name: Run inventory concurrency test
+        run: pnpm test:db:inventory-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 

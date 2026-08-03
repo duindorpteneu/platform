@@ -194,6 +194,26 @@ deploy_environment() {
   expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER."
+  expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER."
+  docker exec "$app_container" node -e \
+    'process.exit(process.env.QR_TOKEN_PEPPER_VERSION === process.argv[1] ? 0 : 1)' \
+    "$QR_TOKEN_PEPPER_VERSION" \
+    || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER_VERSION."
+  if [[ -n "${QR_TOKEN_PREVIOUS_PEPPER:-}" ]]; then
+    expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PREVIOUS_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PREVIOUS_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER."
+    docker exec "$app_container" node -e \
+      'process.exit(process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION === process.argv[1] ? 0 : 1)' \
+      "$QR_TOKEN_PREVIOUS_PEPPER_VERSION" \
+      || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER_VERSION."
+  else
+    docker exec "$app_container" node -e \
+      'process.exit(!process.env.QR_TOKEN_PREVIOUS_PEPPER && !process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION ? 0 : 1)' \
+      || die "Actieve runtime bevat onverwacht een vorige QR-sleutel."
+  fi
   if [[ "${DYNAMIC_IMPORT_ENABLED}" == true ]]; then
     expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
     actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"

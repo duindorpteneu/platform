@@ -202,7 +202,12 @@ Algemene volgorde: nieuwe key maken met minimale rechten, applicatie/scheduler a
 - `CRON_SECRET`: maak nieuw secret, wijzig app en scheduler in hetzelfde changevenster, bewijs eerst `401` met oude en daarna succes met nieuwe waarde.
 - Mollie: providerflag uit, nieuwe omgevingsjuiste key plaatsen, testmode-smoke/reconciliatie, oude key intrekken, pas daarna flag aan.
 - SendGrid: e-mailflag uit, nieuwe minimaal bevoegde key plaatsen, één fictieve testjob, oude key intrekken, queue monitoren.
-- `PARENT_TOKEN_PEPPER`: een directe vervanging maakt bestaande sessie-/QR-hashes onbruikbaar. Roteer alleen met een expliciet plan voor sessie-intrekking en QR-heruitgifte of geteste dual-peppermigratie. Een ongecoördineerde wijziging is verboden.
+- `PARENT_TOKEN_PEPPER`: een directe vervanging maakt bestaande OTP-/oudersessiehashes onbruikbaar. Pauzeer ouderlogin, trek bestaande oudersessies gecontroleerd in, wijzig de unieke omgevingskey en bewijs opnieuw OTP plus sessie-intrekking.
+- QR-keyring:
+  1. plaats de bestaande current key/version tijdelijk als `QR_TOKEN_PREVIOUS_PEPPER` en `QR_TOKEN_PREVIOUS_PEPPER_VERSION`;
+  2. plaats een nieuwe unieke `QR_TOKEN_PEPPER` met de volgende `QR_TOKEN_PEPPER_VERSION`, deploy hetzelfde artifact en controleer dat current/previous verschillend en geldig zijn;
+  3. roteer alle actieve locators gecontroleerd; oude locators en open grants worden daarbij ingetrokken en ouders krijgen alleen de nieuwe QR;
+  4. verwijder de previous key pas wanneer interne health zowel `previousKeyActiveLocators=0` als `previousKeyOpenGrants=0` meldt. Een key mismatch, verwijdering vóór nul of hergebruik tussen omgevingen blokkeert release.
 - Webhookverificatiesleutels: accepteer overlap alleen wanneer de implementatie dat expliciet ondersteunt; bewijs oude/nieuwe handtekening en verwijder de oude na het changevenster.
 
 ## 8. Forward-fix en herstel van releases

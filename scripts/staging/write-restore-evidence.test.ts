@@ -5,9 +5,14 @@ import { buildRestoreEvidence } from "./write-restore-evidence.mjs";
 const migrations = ["20260718000100", "20260718000200"];
 const entityCounts = Object.fromEntries([
   "app.seasons", "app.staff_profiles", "app.import_batches", "app.members", "app.articles",
-  "app.article_variants", "app.member_orders", "app.order_lines", "app.payments", "app.delivery_receipts",
-  "app.inventory_reservations", "app.fulfilments", "app.audit_logs", "private.parent_accounts",
-  "private.parent_sessions", "private.email_jobs", "private.payment_events", "private.qr_tokens",
+  "app.member_seasons", "app.article_variants", "app.member_orders", "app.order_lines",
+  "app.order_package_snapshots", "app.order_package_snapshot_items", "app.payments",
+  "app.delivery_receipts", "app.inventory_reservations", "app.inventory_allocations",
+  "app.inventory_allocation_events", "app.inventory_movements", "app.fulfilments",
+  "app.fulfilment_lines", "app.audit_logs", "private.parent_accounts", "private.parent_sessions",
+  "private.email_jobs", "private.payment_events", "private.qr_tokens",
+  "private.qr_order_identities", "private.qr_order_locators", "private.qr_scan_grants",
+  "private.fulfilment_notification_events",
 ].map((key, index) => [key, index]));
 
 const raw = {

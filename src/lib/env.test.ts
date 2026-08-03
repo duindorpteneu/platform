@@ -52,6 +52,36 @@ describe("server provider configuration", () => {
     expect(() => parseServerEnv({ IMPORT_RAW_RETENTION_HOURS: "73" })).toThrow();
   });
 
+  it("valideert een huidige en optionele vorige QR-sleutel als één keyring", () => {
+    const current = Buffer.alloc(32, 4).toString("base64url");
+    const previous = Buffer.alloc(32, 3).toString("base64url");
+    expect(parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "1",
+    })).toMatchObject({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: 2,
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: 1,
+    });
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+    })).toThrow();
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "2",
+    })).toThrow();
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: "x".repeat(43),
+    })).toThrow();
+  });
+
   it("rejects a live Mollie key outside production", () => {
     expect(() => parseServerEnv({
       NODE_ENV: "development",

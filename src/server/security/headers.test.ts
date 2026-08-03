@@ -7,12 +7,14 @@ describe("production security headers", () => {
     expect(headers).toMatchObject({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Resource-Policy": "same-origin",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Referrer-Policy": "no-referrer",
       "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     });
-    expect(headers["Permissions-Policy"]).toContain("camera=(self)");
+    expect(headers["Permissions-Policy"]).toContain("camera=()");
+    const scanner = Object.fromEntries(buildSecurityHeaders(true, undefined, true).map(({ key, value }) => [key, value]));
+    expect(scanner["Permissions-Policy"]).toContain("camera=(self)");
   });
 
   it("pins CSP to self and the configured Supabase HTTPS/WSS origins", () => {

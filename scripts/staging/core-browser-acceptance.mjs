@@ -315,7 +315,17 @@ async function verifyMobileMenu(page, role) {
   } catch {
     throw new Error("MOBILE_MENU_OPEN_FAILED");
   }
-  await dialog.getByRole("link", { name: "Uitgifte", exact: true }).waitFor();
+  const issuanceLink = dialog.getByRole("link", {
+    name: "Uitgifte",
+    exact: true,
+  });
+  if (role === "kledingcommissie") {
+    if (await issuanceLink.count()) {
+      throw new Error("COMMITTEE_ISSUANCE_EXPOSED");
+    }
+  } else {
+    await issuanceLink.waitFor();
+  }
   if (role === "uitgifte") {
     if (await dialog.getByRole("link", { name: "Dashboard", exact: true }).count()) throw new Error("ISSUANCE_MENU_OVEREXPOSED");
   } else {
@@ -418,6 +428,12 @@ async function verifyRole(page, target, role, anonKey, accessToken) {
     }
     if (role === "kledingcommissie" && await page.getByRole("link", { name: "Instellingen", exact: true }).count()) {
       throw new Error("COMMITTEE_SETTINGS_EXPOSED");
+    }
+    if (role === "kledingcommissie") {
+      await page.goto(`${target.baseUrl}/uitgifte`);
+      await page.waitForURL(`${target.baseUrl}/backoffice`, {
+        timeout: 15_000,
+      });
     }
   }
   await verifyMobileMenu(page, role);

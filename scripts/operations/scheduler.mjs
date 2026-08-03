@@ -62,6 +62,10 @@ export async function invokeInternal(config, path, method, fetcher = fetchJson) 
     if (config.dynamicImportEnabled && body.status === "paused") {
       throw new Error("IMPORT_UNEXPECTEDLY_PAUSED");
     }
+  } else if (path.endsWith("/inventory")) {
+    if (!new Set(["succeeded", "paused"]).has(body.status)) {
+      throw new Error("INVENTORY_RESPONSE_INVALID");
+    }
   } else if (path.endsWith("/retention")) {
     if (body.status !== "completed") throw new Error("RETENTION_RESPONSE_INVALID");
   } else if (path.endsWith("/health")) {
@@ -98,6 +102,11 @@ export async function runSchedulerCycle(
   }
   try {
     await invoke(config, "/api/internal/jobs/imports", "POST");
+  } catch (error) {
+    firstFailure ??= error;
+  }
+  try {
+    await invoke(config, "/api/internal/jobs/inventory", "POST");
   } catch (error) {
     firstFailure ??= error;
   }

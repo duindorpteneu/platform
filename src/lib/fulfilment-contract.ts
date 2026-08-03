@@ -4,32 +4,50 @@ const fulfilmentLineSchema = z.object({
   id: z.string().uuid(),
   article: z.string().min(1).max(240),
   size: z.string().min(1).max(120),
-  status: z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]),
+  quantity: z.number().int().min(1).max(25),
+  status: z.enum([
+    "backorder",
+    "ready_for_pickup",
+    "picked_up",
+  ]),
 }).strict();
 
 const fulfilmentFoundSchema = z.object({
   status: z.literal("found"),
-  orderId: z.string().uuid(),
-  paid: z.boolean(),
+  grantExpiresAt: z.string().datetime({ offset: true }),
   member: z.object({
-    name: z.string().min(1).max(320),
-    team: z.string().min(1).max(160),
-    relationNumberSuffix: z.string().min(1).max(4).nullable(),
+    firstName: z.string().min(1).max(160),
+    gender: z.enum(["male", "female", "other", "unknown"]),
   }).strict(),
   lines: z.array(fulfilmentLineSchema).max(100),
+  scanGrant: z.string().regex(/^sg2\.k[1-9]\d{0,3}\.[A-Za-z0-9_-]{43}$/),
 }).strict();
 
-export const fulfilmentLookupResponseSchema = z.discriminatedUnion("status", [
+export const fulfilmentExchangeResponseSchema = z.discriminatedUnion("status", [
   fulfilmentFoundSchema,
   z.object({ status: z.literal("invalid") }).strict(),
 ]);
 
-export type FulfilmentLookupFound = z.infer<typeof fulfilmentFoundSchema>;
+export const fulfilmentCommitResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    issuedLines: z.number().int().min(1).max(25),
+    completedAt: z.string().datetime({ offset: true }),
+    outcome: z.enum(["partial_pickup", "package_complete"]),
+    reused: z.boolean(),
+  }).strict(),
+  z.object({ status: z.enum(["stale", "blocked"]) }).strict(),
+]);
 
-export function formatLegacyIssuanceMemberMeta(
-  member: FulfilmentLookupFound["member"],
+export type FulfilmentExchangeFound = z.infer<typeof fulfilmentFoundSchema>;
+
+export function formatIssuanceGender(
+  gender: FulfilmentExchangeFound["member"]["gender"],
 ) {
-  return member.relationNumberSuffix
-    ? `${member.team} · relatienummer eindigt op ${member.relationNumberSuffix}`
-    : `${member.team} · geen relatienummer`;
+  return {
+    male: "Jongen/man",
+    female: "Meisje/vrouw",
+    other: "Anders",
+    unknown: "Niet geregistreerd",
+  }[gender];
 }

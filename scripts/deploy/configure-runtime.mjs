@@ -57,6 +57,15 @@ function postgresUrl(name, projectRef) {
     ) invalid(name);
   } catch { invalid(name); }
 }
+function canonicalBase64UrlSecret(name, value) {
+  try {
+    if (
+      !/^[A-Za-z0-9_-]{43}$/.test(value)
+      || Buffer.from(value, "base64url").length !== 32
+      || Buffer.from(value, "base64url").toString("base64url") !== value
+    ) invalid(name);
+  } catch { invalid(name); }
+}
 
 if (!(environment in rules)) invalid("DEPLOY_ENVIRONMENT");
 const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "", supabaseRef: "" };
@@ -90,6 +99,31 @@ jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon", projectRef);
 jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
 postgresUrl("SUPABASE_DB_URL", projectRef);
 required("PARENT_TOKEN_PEPPER", 32);
+const qrTokenPepper = required("QR_TOKEN_PEPPER", 43);
+const qrTokenPepperVersion = required("QR_TOKEN_PEPPER_VERSION");
+const previousQrTokenPepper = optional("QR_TOKEN_PREVIOUS_PEPPER");
+const previousQrTokenPepperVersion = optional("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+canonicalBase64UrlSecret("QR_TOKEN_PEPPER", qrTokenPepper);
+if (!/^[1-9][0-9]{0,3}$/.test(qrTokenPepperVersion)) {
+  invalid("QR_TOKEN_PEPPER_VERSION");
+}
+if (Boolean(previousQrTokenPepper) !== Boolean(previousQrTokenPepperVersion)) {
+  invalid("QR_TOKEN_PREVIOUS_PEPPER");
+  invalid("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+}
+if (previousQrTokenPepper) {
+  canonicalBase64UrlSecret(
+    "QR_TOKEN_PREVIOUS_PEPPER",
+    previousQrTokenPepper,
+  );
+}
+if (
+  previousQrTokenPepperVersion
+  && (
+    !/^[1-9][0-9]{0,3}$/.test(previousQrTokenPepperVersion)
+    || previousQrTokenPepperVersion === qrTokenPepperVersion
+  )
+) invalid("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
 required("CRON_SECRET", 16);
 const dynamicImportEnabled = required("DYNAMIC_IMPORT_ENABLED");
 const importStagingKey = optional("IMPORT_STAGING_ENCRYPTION_KEY");
@@ -186,6 +220,8 @@ const runtime = {
   SUPABASE_JWKS: supabaseJwks,
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
+  QR_TOKEN_PEPPER: qrTokenPepper,
+  QR_TOKEN_PEPPER_VERSION: qrTokenPepperVersion,
   CRON_SECRET: process.env.CRON_SECRET,
   DYNAMIC_IMPORT_ENABLED: dynamicImportEnabled,
   IMPORT_RAW_RETENTION_HOURS: importRetentionHours,
@@ -201,6 +237,8 @@ const runtime = {
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
     ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
     ["IMPORT_STAGING_ENCRYPTION_KEY", importStagingKey],
+    ["QR_TOKEN_PREVIOUS_PEPPER", previousQrTokenPepper],
+    ["QR_TOKEN_PREVIOUS_PEPPER_VERSION", previousQrTokenPepperVersion],
   ].filter(([, value]) => value)),
 };
 await mkdir(expected.root, { recursive: true, mode: 0o700 });

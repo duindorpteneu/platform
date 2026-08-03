@@ -1,9 +1,11 @@
 import { ShieldCheck } from "lucide-react";
 import Image from "next/image";
+import { QrFragmentScrubber } from "@/components/fulfilment/qr-fragment-scrubber";
 
 export default function QrLandingPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10">
+      <QrFragmentScrubber />
       <section className="w-full max-w-[520px] rounded-2xl border border-line bg-white p-8 text-center shadow-card md:p-12">
         <div className="mx-auto flex size-16 items-center justify-center rounded-2xl border border-line bg-white p-2 shadow-sm">
           <Image src="/duindorp-sv-logo.png" alt="Duindorp SV" width={52} height={52} className="size-full object-contain" priority />

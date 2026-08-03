@@ -17,6 +17,13 @@ const serverEnvSchema = z.object({
   SUPABASE_SECRET_KEY: optionalText(),
   SUPABASE_JWKS: optionalText(),
   PARENT_TOKEN_PEPPER: optionalText(32),
+  QR_TOKEN_PEPPER: optionalText(43),
+  QR_TOKEN_PEPPER_VERSION: z.string().regex(/^[1-9][0-9]{0,3}$/).default("1").transform(Number),
+  QR_TOKEN_PREVIOUS_PEPPER: optionalText(43),
+  QR_TOKEN_PREVIOUS_PEPPER_VERSION: z.preprocess(
+    emptyStringToUndefined,
+    z.string().regex(/^[1-9][0-9]{0,3}$/).transform(Number).optional(),
+  ),
   CRON_SECRET: optionalText(16),
   DYNAMIC_IMPORT_ENABLED: z.enum(["true", "false"]).default("false"),
   IMPORT_STAGING_ENCRYPTION_KEY: optionalText(43),
@@ -31,6 +38,49 @@ const serverEnvSchema = z.object({
   SENDGRID_REPLY_TO_EMAIL: optionalEmail,
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: optionalText(),
 }).superRefine((env, context) => {
+  const canonicalSecret = (value: string | undefined) => {
+    if (!value || !/^[A-Za-z0-9_-]{43}$/u.test(value)) return false;
+    const decoded = Buffer.from(value, "base64url");
+    return decoded.byteLength === 32
+      && decoded.toString("base64url") === value;
+  };
+  if (env.QR_TOKEN_PEPPER && !canonicalSecret(env.QR_TOKEN_PEPPER)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["QR_TOKEN_PEPPER"],
+      message: "QR-tokenpepper vereist een canonieke 32-byte base64url-sleutel.",
+    });
+  }
+  if (
+    Boolean(env.QR_TOKEN_PREVIOUS_PEPPER)
+      !== Boolean(env.QR_TOKEN_PREVIOUS_PEPPER_VERSION)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["QR_TOKEN_PREVIOUS_PEPPER"],
+      message: "Een vorige QR-sleutel vereist zowel pepper als versie.",
+    });
+  }
+  if (
+    env.QR_TOKEN_PREVIOUS_PEPPER
+    && !canonicalSecret(env.QR_TOKEN_PREVIOUS_PEPPER)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["QR_TOKEN_PREVIOUS_PEPPER"],
+      message: "Vorige QR-tokenpepper vereist een canonieke 32-byte base64url-sleutel.",
+    });
+  }
+  if (
+    env.QR_TOKEN_PREVIOUS_PEPPER_VERSION
+    && env.QR_TOKEN_PREVIOUS_PEPPER_VERSION === env.QR_TOKEN_PEPPER_VERSION
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["QR_TOKEN_PREVIOUS_PEPPER_VERSION"],
+      message: "Huidige en vorige QR-sleutelversie moeten verschillen.",
+    });
+  }
   if (env.IMPORT_STAGING_ENCRYPTION_KEY) {
     const key = env.IMPORT_STAGING_ENCRYPTION_KEY;
     const decoded = Buffer.from(key, "base64url");
@@ -52,7 +102,7 @@ const serverEnvSchema = z.object({
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["MOLLIE_API_KEY"], message: "Een live Mollie-key is buiten productie niet toegestaan." });
     }
     if (!env.PARENT_TOKEN_PEPPER) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["PARENT_TOKEN_PEPPER"], message: "QR-tokenpepper is verplicht wanneer Mollie actief is." });
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["PARENT_TOKEN_PEPPER"], message: "Ouderportaal-tokenpepper is verplicht wanneer Mollie actief is." });
     }
   }
   if (env.EMAIL_ENABLED === "true") {
@@ -78,6 +128,10 @@ export function getServerEnv() {
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     SUPABASE_JWKS: process.env.SUPABASE_JWKS,
     PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
+    QR_TOKEN_PEPPER: process.env.QR_TOKEN_PEPPER,
+    QR_TOKEN_PEPPER_VERSION: process.env.QR_TOKEN_PEPPER_VERSION,
+    QR_TOKEN_PREVIOUS_PEPPER: process.env.QR_TOKEN_PREVIOUS_PEPPER,
+    QR_TOKEN_PREVIOUS_PEPPER_VERSION: process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION,
     CRON_SECRET: process.env.CRON_SECRET,
     DYNAMIC_IMPORT_ENABLED: process.env.DYNAMIC_IMPORT_ENABLED,
     IMPORT_STAGING_ENCRYPTION_KEY: process.env.IMPORT_STAGING_ENCRYPTION_KEY,

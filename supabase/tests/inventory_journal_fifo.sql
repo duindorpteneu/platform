@@ -349,6 +349,9 @@ select throws_ok(
 );
 
 reset role;
+insert into private.release_cutovers(key)
+values ('allocation_qr_v2')
+on conflict (key) do nothing;
 update app.release_feature_flags
 set enabled = true
 where key = 'allocation_qr_v2';

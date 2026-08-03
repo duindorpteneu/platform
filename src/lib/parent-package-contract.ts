@@ -91,6 +91,8 @@ export const parentPackageOrderDatabaseSchema = z.object({
   paymentStatus: paymentStatusSchema.nullable(),
   orderStatus: z.string().min(1).max(120),
   qrVersion: z.number().int().positive().nullable(),
+  qrKeyVersion: z.number().int().positive().max(9999).nullable(),
+  qrNonce: z.string().regex(/^[A-Za-z0-9_-]{43}$/).nullable(),
   packageRevisionId: uuid.nullable(),
   packageName: z.string().min(1).max(120).nullable(),
   packageDescription: z.string().max(1_000).nullable(),
@@ -127,9 +129,12 @@ export const parentPackageWorkspaceDatabaseSchema = z.object({
   members: z.array(parentPackageMemberDatabaseSchema).max(100),
 }).strict();
 
-const parentPackageOrderResponseSchema = parentPackageOrderDatabaseSchema.extend({
-  qrDataUrl: z.string().startsWith("data:image/png;base64,").max(500_000).nullable(),
-}).strict();
+const parentPackageOrderResponseSchema = parentPackageOrderDatabaseSchema
+  .omit({ qrKeyVersion: true, qrNonce: true })
+  .extend({
+    qrDataUrl: z.string().startsWith("data:image/png;base64,").max(500_000).nullable(),
+  })
+  .strict();
 
 export const parentPackageWorkspaceResponseSchema = z.object({
   enabled: z.boolean(),

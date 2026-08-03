@@ -4,6 +4,24 @@ const mocks = vi.hoisted(() => ({ admin: vi.fn() }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 import { GET } from "./route";
 
+const healthyOperationalState = {
+  emailJobs: { queued: 0, retry: 0, processingStale: 0, deliveryUncertain: 0, failed: 0, oldestPendingAt: null },
+  operations: {
+    emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+    importWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+    inventoryAllocator: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
+    retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
+  },
+  qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
+  importControl: { processingEnabled: false, cutoverActive: false },
+  importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
+  importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
+  recentDeliveryFailures: 0,
+  reconciliationIssues: 0,
+  recentWebhookFailures: 0,
+  dbTime: "2026-08-03T08:00:00.000Z",
+};
+
 describe("GET /api/health", () => {
   beforeEach(() => {
     process.env.APP_ENVIRONMENT = "staging";
@@ -14,6 +32,9 @@ describe("GET /api/health", () => {
     process.env.SUPABASE_SECRET_KEY = "service-key".repeat(8);
     process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = "e".repeat(44);
     process.env.PARENT_TOKEN_PEPPER = "p".repeat(32);
+    process.env.QR_TOKEN_PEPPER =
+      Buffer.alloc(32, 7).toString("base64url");
+    process.env.QR_TOKEN_PEPPER_VERSION = "1";
     process.env.CRON_SECRET = "c".repeat(16);
     process.env.DYNAMIC_IMPORT_ENABLED = "false";
     process.env.IMPORT_RAW_RETENTION_HOURS = "24";
@@ -29,6 +50,10 @@ describe("GET /api/health", () => {
     delete process.env.SUPABASE_SECRET_KEY;
     delete process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
     delete process.env.PARENT_TOKEN_PEPPER;
+    delete process.env.QR_TOKEN_PEPPER;
+    delete process.env.QR_TOKEN_PEPPER_VERSION;
+    delete process.env.QR_TOKEN_PREVIOUS_PEPPER;
+    delete process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION;
     delete process.env.CRON_SECRET;
     delete process.env.DYNAMIC_IMPORT_ENABLED;
     delete process.env.IMPORT_RAW_RETENTION_HOURS;
@@ -41,8 +66,10 @@ describe("GET /api/health", () => {
       operations: {
         emailWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:00.000Z", lastSucceededAt: null, stale: false, runningStale: false },
         importWorker: { required: false, lastStatus: "paused", lastStartedAt: "2026-07-19T11:59:30.000Z", lastSucceededAt: null, stale: false, runningStale: false },
+        inventoryAllocator: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-19T11:59:30.000Z", lastSucceededAt: "2026-07-19T11:59:31.000Z", stale: false, runningStale: false },
         retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-07-19T11:00:00.000Z", lastSucceededAt: "2026-07-19T11:00:01.000Z", stale: false, runningStale: false },
       },
+      qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
       importControl: { processingEnabled: false, cutoverActive: false },
       importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
       importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
@@ -64,6 +91,40 @@ describe("GET /api/health", () => {
     expect(JSON.stringify(await response.json())).not.toMatch(/supabase|postgres|secret/i);
   });
 
+  it("weigert een half geconfigureerde vorige QR-sleutel", async () => {
+    process.env.QR_TOKEN_PREVIOUS_PEPPER =
+      Buffer.alloc(32, 6).toString("base64url");
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(mocks.admin).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["locator", { keyMismatchActiveLocators: 1 }],
+    ["open grant", { keyMismatchOpenGrants: 1 }],
+  ])("blokkeert deploy-readiness bij een QR-keymismatch voor %s", async (
+    _label,
+    qrPatch,
+  ) => {
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            ...healthyOperationalState,
+            qrControl: {
+              ...healthyOperationalState.qrControl,
+              ...qrPatch,
+            },
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ status: "degraded" });
+  });
+
   it("houdt publieke liveness beschikbaar bij een zachte operationele storing", async () => {
     mocks.admin.mockReturnValue({
       schema: () => ({
@@ -73,8 +134,10 @@ describe("GET /api/health", () => {
             operations: {
               emailWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
               importWorker: { required: false, lastStatus: "failed", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: null, stale: true, runningStale: false },
+              inventoryAllocator: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
               retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
             },
+            qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
             importControl: { processingEnabled: false, cutoverActive: true },
             importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
             importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 1, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
@@ -110,8 +173,10 @@ describe("GET /api/health", () => {
             operations: {
               emailWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
               importWorker: { required: false, lastStatus: "paused", lastStartedAt: null, lastSucceededAt: null, stale: false, runningStale: false },
+              inventoryAllocator: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
               retention: { required: true, lastStatus: "succeeded", lastStartedAt: "2026-08-03T08:00:00.000Z", lastSucceededAt: "2026-08-03T08:00:01.000Z", stale: false, runningStale: false },
             },
+            qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
             importControl: { processingEnabled: false, cutoverActive: true },
             importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
             importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },

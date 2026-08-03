@@ -88,6 +88,12 @@ describe("operations scheduler", () => {
           headers: { "content-type": "application/json" },
         });
       }
+      if (String(url).endsWith("/inventory")) {
+        return new Response(JSON.stringify({ status: "paused" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       if (String(url).endsWith("/retention")) {
         return new Response(JSON.stringify({ status: "completed" }), {
           status: 200,
@@ -105,6 +111,7 @@ describe("operations scheduler", () => {
       expect(calls).toEqual([
         "http://app:3000/api/internal/jobs/email",
         "http://app:3000/api/internal/jobs/imports",
+        "http://app:3000/api/internal/jobs/inventory",
         "http://app:3000/api/internal/jobs/retention",
       ]);
       expect(state.lastRetentionAt).toBe("2026-08-02T20:00:00.000Z");
@@ -122,7 +129,11 @@ describe("operations scheduler", () => {
         if (failurePoint === "health" && path.endsWith("/health")) {
           throw new Error("OPERATIONS_DEGRADED");
         }
-        if (path.endsWith("/email") || path.endsWith("/imports")) {
+        if (
+          path.endsWith("/email")
+          || path.endsWith("/imports")
+          || path.endsWith("/inventory")
+        ) {
           return { status: "paused" };
         }
         if (path.endsWith("/retention")) return { status: "completed" };

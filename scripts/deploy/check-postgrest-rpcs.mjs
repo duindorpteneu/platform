@@ -138,6 +138,149 @@ async function verifyAcceptanceFixtureContractAbsent(url, serviceRoleKey) {
   }
 }
 
+async function callRpc(
+  url,
+  serviceRoleKey,
+  rpcName,
+  payload,
+  profile = "app",
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(
+      new URL(`/rest/v1/rpc/${rpcName}`, url),
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Profile": profile,
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Profile": profile,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      },
+    );
+    return {
+      body: await response.json().catch(() => null),
+      status: response.status,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
+  const candidates = await callRpc(
+    url,
+    serviceRoleKey,
+    "list_order_qr_identity_candidates",
+    { p_limit: 1 },
+  );
+  if (
+    candidates.status !== 200
+    || !Array.isArray(candidates.body?.candidates)
+  ) {
+    throw new Error("QR_CANDIDATES_CONTRACT_INVALID");
+  }
+
+  const parentWorkspace = await callRpc(
+    url,
+    serviceRoleKey,
+    "get_parent_package_workspace_v4",
+    { p_token_hash: "0".repeat(64) },
+    "public",
+  );
+  if (
+    parentWorkspace.status !== 403
+    || safeRemoteCode(parentWorkspace.body?.code) !== "42501"
+  ) {
+    throw new Error("PARENT_WORKSPACE_V4_CONTRACT_INVALID");
+  }
+
+  const health = await callRpc(
+    url,
+    serviceRoleKey,
+    "get_operational_health_v6",
+    {
+      p_current_key_version: 1,
+      p_current_pepper_fingerprint: "0".repeat(64),
+      p_previous_key_version: null,
+      p_previous_pepper_fingerprint: null,
+    },
+  );
+  if (
+    health.status !== 200
+    || !health.body?.qrControl
+    || typeof health.body.qrControl.keyMismatchActiveLocators !== "number"
+    || typeof health.body.qrControl.keyMismatchOpenGrants !== "number"
+  ) {
+    throw new Error("HEALTH_V6_CONTRACT_INVALID");
+  }
+
+  const rejectedContracts = [
+    [
+      "register_order_qr_locator",
+      {
+        p_derivation_nonce: null,
+        p_generation: null,
+        p_key_version: null,
+        p_locator_hash: null,
+        p_order_id: null,
+        p_pepper_fingerprint: null,
+        p_request_id: null,
+      },
+      "22023",
+    ],
+    [
+      "exchange_order_qr_locator_v2",
+      {
+        p_actor_id: null,
+        p_grant_hash: "0".repeat(64),
+        p_grant_key_version: 1,
+        p_locator_hash: "0".repeat(64),
+        p_request_id: null,
+        p_staff_session_hash: "0".repeat(64),
+      },
+      "42501",
+    ],
+    [
+      "commit_fulfilment_v3",
+      {
+        p_actor_id: null,
+        p_correlation_id: null,
+        p_grant_hash: "0".repeat(64),
+        p_order_line_ids: [],
+        p_request_id: null,
+        p_staff_session_hash: "0".repeat(64),
+      },
+      "42501",
+    ],
+    [
+      "expire_qr_scan_grants",
+      { p_limit: 0 },
+      "22023",
+    ],
+  ];
+  for (const [rpcName, payload, expectedCode] of rejectedContracts) {
+    const result = await callRpc(
+      url,
+      serviceRoleKey,
+      rpcName,
+      payload,
+    );
+    if (
+      ![400, 403].includes(result.status)
+      || safeRemoteCode(result.body?.code) !== expectedCode
+    ) {
+      throw new Error(`QR_RPC_CONTRACT_INVALID_${rpcName.toUpperCase()}`);
+    }
+  }
+}
+
 async function main() {
   const url = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
@@ -148,9 +291,10 @@ async function main() {
       const contract = await loadContractVersion(url, serviceRoleKey);
       if (contract.version === expectedVersion && contract.ready === true) {
         await verifyStaffSessionContract(url, serviceRoleKey);
+        await verifySecureQrRuntimeContracts(url, serviceRoleKey);
         await verifyAcceptanceFixtureContractAbsent(url, serviceRoleKey);
         process.stdout.write(
-          "PostgREST-contract geslaagd: runtime-RPC's zijn actueel en staging-fixture-RPC's ontbreken.\n",
+          "PostgREST-contract geslaagd: sessie-, QR-, health- en ouder-RPC's zijn actueel en staging-fixture-RPC's ontbreken.\n",
         );
         return;
       }

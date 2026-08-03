@@ -5,6 +5,7 @@ database_url="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54339/pos
 psql_cmd=(psql "$database_url" -X -q -A -t -v ON_ERROR_STOP=1)
 test_tmp_dir="$(mktemp -d -t duindorp-inventory-concurrency.XXXXXX)"
 previous_flag="$("${psql_cmd[@]}" -c "select enabled::text from app.release_feature_flags where key='allocation_qr_v2'")"
+previous_cutover="$("${psql_cmd[@]}" -c "select count(*)::text from private.release_cutovers where key='allocation_qr_v2'")"
 previous_active_season="$("${psql_cmd[@]}" -c "select active_season_id::text from app.app_settings where id=true")"
 
 cleanup_data() {
@@ -94,6 +95,9 @@ where id = 'f2100000-0000-4000-8000-000000000001';
 update app.release_feature_flags
 set enabled = ${previous_flag}
 where key = 'allocation_qr_v2';
+delete from private.release_cutovers
+where key = 'allocation_qr_v2'
+  and ${previous_cutover} = 0;
 commit;
 SQL
 }
@@ -107,8 +111,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cleanup_data
-"${psql_cmd[@]}" <<'SQL'
+cleanup_data >/dev/null
+"${psql_cmd[@]}" >/dev/null <<'SQL'
 insert into app.seasons(id, name, default_amount_cents, status)
 values ('f2100000-0000-4000-8000-000000000001', 'Voorraadconcurrency', 12500, 'open');
 update app.app_settings
@@ -162,6 +166,9 @@ insert into app.inventory_movements(
   'inventory.concurrency_opening',
   repeat('f', 64)
 );
+insert into private.release_cutovers(key)
+values ('allocation_qr_v2')
+on conflict (key) do nothing;
 update app.release_feature_flags
 set enabled = true
 where key = 'allocation_qr_v2';

@@ -288,6 +288,14 @@ select is(
   2,
   'pakketkeuze toont vooraf de commerciële pakketinhoud'
 );
+select is(
+  jsonb_array_length(
+    public.get_parent_package_workspace_v4(repeat('a', 64))
+      #> '{members,0,availablePackages,0,items}'
+  ),
+  2,
+  'ouderworkspace v4 behoudt pakketinhoud en voegt alleen veilige QR-identiteit toe'
+);
 select matches(
   public.get_parent_package_workspace_v2(repeat('a', 64))
     #>> '{members,0,revision}',
@@ -2350,6 +2358,24 @@ select ok(
     'execute'
   ),
   'anon kan de beheerworkspace niet uitvoeren'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.get_parent_package_workspace_v4(text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.get_parent_package_workspace_v4(text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.get_parent_package_workspace_v4(text)',
+    'execute'
+  ),
+  'ouderworkspace v4 is uitsluitend via de serveradapter bereikbaar'
 );
 select set_config(
   'request.jwt.claims',

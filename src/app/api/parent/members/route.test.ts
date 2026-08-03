@@ -13,7 +13,8 @@ vi.mock("@/server/supabase/admin", () => ({
   getSupabaseAdminClient: mocks.getAdmin,
 }));
 vi.mock("@/server/qr/tokens", () => ({
-  deriveQrBearerToken: mocks.deriveQr,
+  buildQrFragmentUrl: vi.fn(),
+  deriveQrLocator: mocks.deriveQr,
 }));
 
 import { GET } from "./route";
@@ -46,6 +47,8 @@ function workspace() {
         paymentStatus: "paid",
         orderStatus: "Nalevering",
         qrVersion: 1,
+        qrKeyVersion: 1,
+        qrNonce: "n".repeat(43),
         packageRevisionId: null,
         packageName: null,
         packageDescription: null,
@@ -88,7 +91,7 @@ describe("GET /api/parent/members", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_parent_package_workspace_v3",
+      "get_parent_package_workspace_v4",
       { p_token_hash: "b".repeat(64) },
     );
     expect(await response.json()).toMatchObject({
@@ -105,6 +108,43 @@ describe("GET /api/parent/members", () => {
     const response = await GET();
     expect(response.status).toBe(200);
     expect(mocks.deriveQr).not.toHaveBeenCalled();
+  });
+
+  it("bouwt een afhaalcode uit de opgeslagen versie en random nonce zonder die velden te lekken", async () => {
+    const input = workspace();
+    input.members[0].order!.articleLines[0].status = "ready_for_pickup";
+    mocks.rpc.mockResolvedValueOnce({ data: input, error: null });
+    mocks.deriveQr.mockReturnValueOnce(
+      `q2.k1.${"a".repeat(43)}`,
+    );
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(mocks.deriveQr).toHaveBeenCalledWith({
+      generation: 1,
+      keyVersion: 1,
+      nonce: "n".repeat(43),
+      orderId,
+    });
+    const body = await response.json();
+    expect(body.members[0].order.qrDataUrl).toMatch(
+      /^data:image\/png;base64,/,
+    );
+    expect(body.members[0].order).not.toHaveProperty("qrNonce");
+    expect(body.members[0].order).not.toHaveProperty("qrKeyVersion");
+  });
+
+  it("faalt gesloten wanneer een actieve QR-sleutelversie niet beschikbaar is", async () => {
+    const input = workspace();
+    input.members[0].order!.articleLines[0].status = "ready_for_pickup";
+    mocks.rpc.mockResolvedValueOnce({ data: input, error: null });
+    mocks.deriveQr.mockImplementationOnce(() => {
+      throw new Error("QR_TOKEN_KEY_VERSION_UNAVAILABLE");
+    });
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain(
+      "QR_TOKEN",
+    );
   });
 
   it("weigert een uitgebreid databaseantwoord zodat extra PII niet stil uitlekt", async () => {

@@ -26,6 +26,14 @@ export const operationalHealthSchema = z.object({
       stale: z.boolean(),
       runningStale: z.boolean(),
     }).strict(),
+    inventoryAllocator: z.object({
+      required: z.literal(true),
+      lastStatus: z.enum(["running", "succeeded", "failed", "paused"]).nullable(),
+      lastStartedAt: z.string().datetime({ offset: true }).nullable(),
+      lastSucceededAt: z.string().datetime({ offset: true }).nullable(),
+      stale: z.boolean(),
+      runningStale: z.boolean(),
+    }).strict(),
     retention: z.object({
       required: z.literal(true),
       lastStatus: z.enum(["running", "succeeded", "failed", "paused"]).nullable(),
@@ -34,6 +42,18 @@ export const operationalHealthSchema = z.object({
       stale: z.boolean(),
       runningStale: z.boolean(),
     }).strict(),
+  }).strict(),
+  qrControl: z.object({
+    cutoverActive: z.boolean(),
+    scannerActive: z.boolean(),
+    candidateOrders: z.number().int().nonnegative(),
+    activeLegacyQr: z.number().int().nonnegative(),
+    openGrants: z.number().int().nonnegative(),
+    expiredOpenGrants: z.number().int().nonnegative(),
+    keyMismatchActiveLocators: z.number().int().nonnegative(),
+    keyMismatchOpenGrants: z.number().int().nonnegative(),
+    previousKeyActiveLocators: z.number().int().nonnegative(),
+    previousKeyOpenGrants: z.number().int().nonnegative(),
   }).strict(),
   importControl: z.object({
     processingEnabled: z.boolean(),
@@ -75,6 +95,9 @@ export function operationalHealthIsDegraded(
     || data.operations.importWorker.stale
     || data.operations.importWorker.runningStale
     || data.operations.importWorker.lastStatus === "failed"
+    || data.operations.inventoryAllocator.stale
+    || data.operations.inventoryAllocator.runningStale
+    || data.operations.inventoryAllocator.lastStatus === "failed"
     || data.operations.retention.stale
     || data.operations.retention.runningStale
     || data.operations.retention.lastStatus === "failed"
@@ -87,7 +110,18 @@ export function operationalHealthIsDegraded(
     || data.importRuns.failed > 0
     || data.importRuns.reconciliationRequired > 0
     || data.importRuns.expiredSelectedRows > 0
-    || data.importRuns.backlogStale;
+    || data.importRuns.backlogStale
+    || data.qrControl.expiredOpenGrants > 0
+    || data.qrControl.keyMismatchActiveLocators > 0
+    || data.qrControl.keyMismatchOpenGrants > 0
+    || (
+      data.qrControl.cutoverActive
+      && (
+        !data.qrControl.scannerActive
+        || data.qrControl.candidateOrders > 0
+        || data.qrControl.activeLegacyQr > 0
+      )
+    );
 }
 
 export const operationStartResponseSchema = z.object({

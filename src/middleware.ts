@@ -27,6 +27,16 @@ export async function middleware(request: NextRequest) {
   const correlationId = resolveCorrelationId(request.headers.get(CORRELATION_ID_HEADER));
   const requestHeaders = withCorrelationId(request.headers, correlationId);
   const nextResponse = () => NextResponse.next({ request: { headers: requestHeaders } });
+  const publicScannerAsset = new Set([
+    "/uitgifte/apple-touch-icon.png",
+    "/uitgifte/icon-192.png",
+    "/uitgifte/icon-512.png",
+    "/uitgifte/manifest.webmanifest",
+    "/uitgifte/scanner-sw.js",
+  ]).has(request.nextUrl.pathname);
+  if (publicScannerAsset) {
+    return correlatedResponse(nextResponse(), correlationId);
+  }
   const staffSurface = request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice") || request.nextUrl.pathname.startsWith("/uitgifte");
   if (!staffSurface) return correlatedResponse(nextResponse(), correlationId);
 
@@ -46,6 +56,12 @@ export async function middleware(request: NextRequest) {
 
   if (staff.role === "uitgifte" && (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice"))) {
     return redirectWithCookies(request, "/uitgifte", correlationId, response);
+  }
+  if (
+    staff.role === "kledingcommissie"
+    && request.nextUrl.pathname.startsWith("/uitgifte")
+  ) {
+    return redirectWithCookies(request, "/backoffice", correlationId, response);
   }
   return privateResponse(response, correlationId);
 }

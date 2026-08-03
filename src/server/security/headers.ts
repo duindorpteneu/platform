@@ -1,8 +1,7 @@
 const BASE_HEADERS = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
-  { key: "Permissions-Policy", value: "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Referrer-Policy", value: "no-referrer" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
 ] as const;
@@ -41,9 +40,17 @@ export function buildContentSecurityPolicy(production: boolean, supabaseUrl?: st
   return directives.join("; ");
 }
 
-export function buildSecurityHeaders(production: boolean, supabaseUrl?: string) {
+export function buildSecurityHeaders(
+  production: boolean,
+  supabaseUrl?: string,
+  cameraAllowed = false,
+) {
   const headers: Array<{ key: string; value: string }> = [
     { key: "Content-Security-Policy", value: buildContentSecurityPolicy(production, supabaseUrl) },
+    {
+      key: "Permissions-Policy",
+      value: `camera=${cameraAllowed ? "(self)" : "()"}, geolocation=(), microphone=(), payment=(), usb=()`,
+    },
     ...BASE_HEADERS,
   ];
   if (production) headers.push({ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" });

@@ -33,7 +33,11 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publiek maar omgevingsgebonden | Lokale key | Publishable key van uitsluitend het eigen project |
 | `SUPABASE_SECRET_KEY` | Hoog geheim, server-only | Lokale secret key | Unieke secret/service-role key in secretstore |
 | `SUPABASE_JWKS` | Publiek maar omgevingsgebonden | Optioneel; lokale JWKS of tijdelijke lokale endpointfallback | Verplicht; gevalideerde ES256/P-256 keyset van exact het eigen project, zonder runtime-netwerkafhankelijkheid |
-| `PARENT_TOKEN_PEPPER` | Hoog geheim, server-only | Uniek, minimaal 32 tekens | Uniek per omgeving; rotatie vereist sessie-/QR-plan |
+| `PARENT_TOKEN_PEPPER` | Hoog geheim, server-only | Uniek, minimaal 32 tekens | Uniek per omgeving; rotatie trekt bestaande oudersessies gecontroleerd in |
+| `QR_TOKEN_PEPPER` | Hoog geheim, server-only | Canonieke 32-byte base64url-key | Uniek per omgeving; current key is verplicht |
+| `QR_TOKEN_PEPPER_VERSION` | Niet geheim | Geheel getal 1–9999 | Oplopende current keyversie |
+| `QR_TOKEN_PREVIOUS_PEPPER` | Hoog geheim, server-only | Leeg buiten rotatie | Alleen tijdelijk en gepaard met previous versie |
+| `QR_TOKEN_PREVIOUS_PEPPER_VERSION` | Niet geheim | Leeg buiten rotatie | Anders dan current; pas verwijderen wanneer health beide previous-tellingen nul meldt |
 | `CRON_SECRET` | Hoog geheim, server-only | Uniek, minimaal 16 tekens | Uniek per omgeving en uitsluitend scheduler-to-app |
 | `DYNAMIC_IMPORT_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na versleutelings-, retentie- en DB-featuregate |
 | `IMPORT_STAGING_ENCRYPTION_KEY` | Hoog geheim, server-only | Leeg zolang import uit staat; anders uniek | Uniek per omgeving; exact 32 random bytes als 43 tekens base64url zonder padding; deploy blokkeert rotatie/verwijdering met actieve uploads |

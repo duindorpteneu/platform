@@ -151,6 +151,30 @@ begin
   then
     raise exception 'UPGRADE_FULFILMENT_OR_QR_RECONCILIATION_MISMATCH';
   end if;
+  if exists(
+    select 1
+    from app.fulfilments fulfilment
+    join app.member_orders orders on orders.id = fulfilment.order_id
+    where fulfilment.id::text like 'eb83%'
+      and (
+        fulfilment.member_season_id <> orders.member_season_id
+        or fulfilment.season_id <> orders.season_id
+      )
+  )
+    or exists(
+      select 1
+      from app.fulfilment_lines fulfilment_line
+      where fulfilment_line.id::text like 'eb84%'
+        and fulfilment_line.inventory_allocation_id is null
+    )
+    or exists(
+      select 1
+      from private.qr_order_identities identity
+      where identity.order_id::text like 'eb5%'
+    )
+  then
+    raise exception 'UPGRADE_SECURE_QR_SCOPE_RECONCILIATION_MISMATCH';
+  end if;
   if (select count(*) from app.inventory_allocations
       where legacy_reservation_id::text like 'eb82%') <> 3
     or (select count(*) from app.inventory_allocations
@@ -216,7 +240,14 @@ begin
       'inventory_allocation_events',
       'inventory_movements',
       'inventory_legacy_reconciliation',
-      'inventory_legacy_assignments'
+      'inventory_legacy_assignments',
+      'qr_order_identities',
+      'qr_order_locators',
+      'qr_scan_grants',
+      'qr_identity_commands',
+      'fulfilment_command_requests',
+      'fulfilment_correction_requests',
+      'fulfilment_notification_events'
     )
     and not constraint_row.convalidated;
   if invalid_constraints <> 0 then
@@ -241,6 +272,13 @@ begin
     ('app', 'inventory_movements'),
     ('private', 'inventory_legacy_reconciliation'),
     ('private', 'inventory_legacy_assignments'),
+    ('private', 'qr_order_identities'),
+    ('private', 'qr_order_locators'),
+    ('private', 'qr_scan_grants'),
+    ('private', 'qr_identity_commands'),
+    ('private', 'fulfilment_command_requests'),
+    ('private', 'fulfilment_correction_requests'),
+    ('private', 'fulfilment_notification_events'),
     ('private', 'migration_reconciliations')
   ) expected(schema_name, table_name)
   left join pg_namespace namespace_row on namespace_row.nspname = expected.schema_name
@@ -254,7 +292,12 @@ begin
   end if;
 
   if (select count(*) from supabase_migrations.schema_migrations
-      where version in ('20260802180000', '20260802263000', '20260802264000')) <> 3 then
+      where version in (
+        '20260802180000',
+        '20260802263000',
+        '20260802264000',
+        '20260802265000'
+      )) <> 4 then
     raise exception 'UPGRADE_MIGRATION_LEDGER_MISMATCH';
   end if;
 end;

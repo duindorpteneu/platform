@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { operationalHealthSchema } from "@/lib/operations-contract";
+import { qrAcceptedKeyMetadata } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -15,10 +16,23 @@ function releaseIdentity() {
   const importEnabled = value("DYNAMIC_IMPORT_ENABLED");
   const importRetention = value("IMPORT_RAW_RETENTION_HOURS");
   const importKey = value("IMPORT_STAGING_ENCRYPTION_KEY");
-  const importKeyValid = importKey === "" || (
-    /^[A-Za-z0-9_-]{43}$/.test(importKey)
-    && Buffer.from(importKey, "base64url").byteLength === 32
-    && Buffer.from(importKey, "base64url").toString("base64url") === importKey
+  const canonicalSecret = (secret: string) => (
+    /^[A-Za-z0-9_-]{43}$/.test(secret)
+    && Buffer.from(secret, "base64url").byteLength === 32
+    && Buffer.from(secret, "base64url").toString("base64url") === secret
+  );
+  const importKeyValid = importKey === "" || canonicalSecret(importKey);
+  const qrPepper = value("QR_TOKEN_PEPPER");
+  const qrVersion = value("QR_TOKEN_PEPPER_VERSION");
+  const previousQrPepper = value("QR_TOKEN_PREVIOUS_PEPPER");
+  const previousQrVersion = value("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+  const previousQrPairValid = (
+    previousQrPepper === ""
+    && previousQrVersion === ""
+  ) || (
+    canonicalSecret(previousQrPepper)
+    && /^[1-9][0-9]{0,3}$/.test(previousQrVersion)
+    && previousQrVersion !== qrVersion
   );
   if (
     !["staging", "production"].includes(environment ?? "")
@@ -29,6 +43,9 @@ function releaseIdentity() {
     || value("SUPABASE_SECRET_KEY").length < 20
     || value("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY").length < 40
     || value("PARENT_TOKEN_PEPPER").length < 32
+    || !canonicalSecret(qrPepper)
+    || !/^[1-9][0-9]{0,3}$/.test(qrVersion)
+    || !previousQrPairValid
     || value("CRON_SECRET").length < 16
     || !["true", "false"].includes(importEnabled)
     || !/^(?:[1-9]|[1-6][0-9]|7[0-2])$/.test(importRetention)
@@ -48,7 +65,17 @@ export async function GET() {
   try {
     const admin = getSupabaseAdminClient();
     if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
-    const { data, error } = await admin.schema("app").rpc("get_operational_health_v4");
+    const qrKeys = qrAcceptedKeyMetadata();
+    const { data, error } = await admin.schema("app").rpc(
+      "get_operational_health_v6",
+      {
+        p_current_key_version: qrKeys.current.version,
+        p_current_pepper_fingerprint: qrKeys.current.fingerprint,
+        p_previous_key_version: qrKeys.previous?.version ?? null,
+        p_previous_pepper_fingerprint:
+          qrKeys.previous?.fingerprint ?? null,
+      },
+    );
     const parsed = operationalHealthSchema.safeParse(data);
     const valid = !error
       && parsed.success
@@ -56,6 +83,8 @@ export async function GET() {
         !parsed.data.importControl.processingEnabled
         || parsed.data.importControl.cutoverActive
       )
+      && parsed.data.qrControl.keyMismatchActiveLocators === 0
+      && parsed.data.qrControl.keyMismatchOpenGrants === 0
       && releaseConfig.importEnabled
         === parsed.data.importControl.processingEnabled;
     return NextResponse.json({ status: valid ? "ok" : "degraded", ...release }, { status: valid ? 200 : 503, headers });

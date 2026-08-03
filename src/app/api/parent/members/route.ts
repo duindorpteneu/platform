@@ -6,9 +6,8 @@ import {
   type ParentPackageWorkspace,
   type ParentPackageWorkspaceDatabase,
 } from "@/lib/parent-package-contract";
-import { getServerEnv } from "@/lib/env";
 import { getParentSession } from "@/server/auth/parent-session";
-import { deriveQrBearerToken } from "@/server/qr/tokens";
+import { deriveQrLocator } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -30,28 +29,38 @@ function response(
 async function qrDataUrl(
   order: ParentPackageWorkspaceDatabase["members"][number]["order"],
 ) {
+  const qrIdentityParts = order
+    ? [order.qrVersion, order.qrKeyVersion, order.qrNonce]
+    : [];
+  if (
+    qrIdentityParts.some((part) => part !== null)
+    && qrIdentityParts.some((part) => part === null)
+  ) {
+    throw new Error("QR_IDENTITY_INCOMPLETE");
+  }
   if (
     !order
     || !["paid", "duplicate_paid"].includes(order.paymentStatus ?? "")
     || !order.qrVersion
+    || !order.qrKeyVersion
+    || !order.qrNonce
     || !order.articleLines.some((line) => line.status === "ready_for_pickup")
   ) {
     return null;
   }
 
-  try {
-    const token = deriveQrBearerToken(order.id, order.qrVersion);
-    const payload = new URL("/qr", getServerEnv().APP_BASE_URL);
-    payload.searchParams.set("token", token);
-    return await QRCode.toDataURL(payload.toString(), {
-      width: 256,
-      margin: 2,
-      errorCorrectionLevel: "M",
-      color: { dark: "#0b2e63", light: "#ffffff" },
-    });
-  } catch {
-    return null;
-  }
+  const locator = deriveQrLocator({
+    generation: order.qrVersion,
+    keyVersion: order.qrKeyVersion,
+    nonce: order.qrNonce,
+    orderId: order.id,
+  });
+  return QRCode.toDataURL(locator, {
+    width: 256,
+    margin: 2,
+    errorCorrectionLevel: "M",
+    color: { dark: "#0b2e63", light: "#ffffff" },
+  });
 }
 
 export async function GET() {
@@ -61,7 +70,7 @@ export async function GET() {
     return response({ error: "Oudersessie vereist." }, 401);
   }
 
-  const { data, error } = await admin.rpc("get_parent_package_workspace_v3", {
+  const { data, error } = await admin.rpc("get_parent_package_workspace_v4", {
     p_token_hash: session.tokenHash,
   });
   if (error) {
@@ -73,12 +82,32 @@ export async function GET() {
     return response({ error: "Ongeldig antwoord van de database." }, 502);
   }
 
-  const members = await Promise.all(parsed.data.members.map(async (member) => ({
-    ...member,
-    order: member.order
-      ? { ...member.order, qrDataUrl: await qrDataUrl(member.order) }
-      : null,
-  })));
+  let members: ParentPackageWorkspace["members"];
+  try {
+    members = await Promise.all(parsed.data.members.map(async (member) => {
+      if (!member.order) return { ...member, order: null };
+      const {
+        qrKeyVersion,
+        qrNonce,
+        ...publicOrder
+      } = member.order;
+      if ((qrKeyVersion === null) !== (qrNonce === null)) {
+        throw new Error("QR_IDENTITY_INCOMPLETE");
+      }
+      return {
+        ...member,
+        order: {
+          ...publicOrder,
+          qrDataUrl: await qrDataUrl(member.order),
+        },
+      };
+    }));
+  } catch {
+    return response(
+      { error: "De afhaalcode kon niet veilig worden opgebouwd." },
+      503,
+    );
+  }
   const workspace: ParentPackageWorkspace = {
     enabled: parsed.data.enabled,
     members,

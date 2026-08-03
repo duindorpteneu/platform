@@ -4,6 +4,7 @@ import {
   operationalHealthSchema,
 } from "@/lib/operations-contract";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
+import { qrAcceptedKeyMetadata } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -14,7 +15,16 @@ export async function GET(request: Request) {
   try {
     const admin = getSupabaseAdminClient();
     if (!admin) return NextResponse.json({ status: "degraded", error: "database_unavailable" }, { status: 503 });
-    const { data, error } = await admin.schema("app").rpc("get_operational_health_v4");
+    const qrKeys = qrAcceptedKeyMetadata();
+    const { data, error } = await admin
+      .schema("app")
+      .rpc("get_operational_health_v6", {
+        p_current_key_version: qrKeys.current.version,
+        p_current_pepper_fingerprint: qrKeys.current.fingerprint,
+        p_previous_key_version: qrKeys.previous?.version ?? null,
+        p_previous_pepper_fingerprint:
+          qrKeys.previous?.fingerprint ?? null,
+      });
     if (error) return NextResponse.json({ status: "degraded", error: "health_query_failed" }, { status: 503 });
     const parsed = operationalHealthSchema.safeParse(data);
     if (!parsed.success) return NextResponse.json({ status: "degraded", error: "health_response_invalid" }, { status: 502 });

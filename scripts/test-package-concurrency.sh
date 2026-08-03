@@ -964,10 +964,6 @@ set status = 'ready_for_pickup'
 from app.inventory_reservations reservation
 where reservation.id = 'cc720000-0000-4000-8000-000000000001'
   and line.id = reservation.order_line_id;
-insert into private.qr_tokens(order_id, token_hash, version)
-select orders.id, repeat('d', 64), 1
-from app.member_orders orders
-where orders.member_season_id = 'cc510000-0000-4000-8000-000000000003';
 select public.confirm_parent_package_sizes_v5(
   repeat('3', 64),
   'cc510000-0000-4000-8000-000000000003',
@@ -980,8 +976,6 @@ SQL
 
 resolve_request_id="$("${psql_cmd[@]}" -Atc "select id from app.package_size_change_requests where member_season_id = 'cc510000-0000-4000-8000-000000000003' and status = 'requested'")"
 resolve_revision="$("${psql_cmd[@]}" -Atc "select private.package_workspace_revision('cc510000-0000-4000-8000-000000000003')")"
-resolve_order_id="$("${psql_cmd[@]}" -Atc "select id from app.member_orders where member_season_id = 'cc510000-0000-4000-8000-000000000003'")"
-resolve_line_id="$("${psql_cmd[@]}" -Atc "select order_line_id from app.package_size_change_requests where id = '$resolve_request_id'")"
 resolve_first_log="$test_tmp_dir/resolve-first.log"
 resolve_second_log="$test_tmp_dir/resolve-second.log"
 (
@@ -1019,14 +1013,16 @@ set local lock_timeout = '10s';
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
-  '{"sub":"cc000000-0000-4000-8000-000000000002","aal":"aal2"}',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
   true
 );
-select app.commit_fulfilment_v2(
-  '$resolve_order_id',
-  array['$resolve_line_id'::uuid],
-  'Package race balie',
-  repeat('d', 64)
+select app.resolve_package_size_change_v3(
+  '$resolve_request_id',
+  'reject',
+  null,
+  'Gelijktijdige afwijzing door tweede beheeractie',
+  '$resolve_revision',
+  null
 );
 commit;
 SQL
@@ -1041,7 +1037,7 @@ if [[ "$resolve_first_status" -ne 0 ]]; then
   tail -n 40 "$resolve_first_log"
   exit 1
 fi
-if [[ "$resolve_second_status" -eq 0 ]] || ! grep -Eq "ORDER_LINE_NOT_READY|RESERVATION_NOT_ACTIVE" "$resolve_second_log"; then
+if [[ "$resolve_second_status" -eq 0 ]] || ! grep -Eq "PACKAGE_SIZE_CHANGE_ALREADY_RESOLVED|PACKAGE_SIZE_CHANGE_CONFLICT" "$resolve_second_log"; then
   tail -n 40 "$resolve_second_log"
   exit 1
 fi
@@ -1060,4 +1056,4 @@ if [[ "$resolve_state" != "approved:released:0" ]]; then
   exit 1
 fi
 
-echo "Package-concurrencytests geslaagd: idempotency, catalogus, default en uitgifte serialiseren zonder partial writes."
+echo "Package-concurrencytests geslaagd: idempotency, catalogus, default en conflicterende maatresoluties serialiseren zonder partial writes."

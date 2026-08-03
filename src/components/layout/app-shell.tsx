@@ -142,7 +142,11 @@ export function AppShell({ children, staff }: { children: React.ReactNode; staff
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationRef = useRef<HTMLElement>(null);
   const isIssuance = pathname.startsWith("/uitgifte");
-  const navigation = staff.role === "uitgifte" ? primaryNavigation.filter((item) => item.href === "/uitgifte") : primaryNavigation;
+  const navigation = staff.role === "uitgifte"
+    ? primaryNavigation.filter((item) => item.href === "/uitgifte")
+    : staff.role === "kledingcommissie"
+      ? primaryNavigation.filter((item) => item.href !== "/uitgifte")
+      : primaryNavigation;
   const initials = staff.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "DS";
 
   useEffect(() => {
