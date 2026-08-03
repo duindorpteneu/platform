@@ -83,7 +83,7 @@ describe("GET /api/internal/health", () => {
     const response = await GET(new Request("https://tenue.example/api/internal/health"));
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_operational_health_v9",
+      "get_operational_health_v10",
       {
         p_current_key_version: 1,
         p_current_pepper_fingerprint:
@@ -105,7 +105,7 @@ describe("GET /api/internal/health", () => {
     );
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_operational_health_v9",
+      "get_operational_health_v10",
       {
         p_current_key_version: 3,
         p_current_pepper_fingerprint:

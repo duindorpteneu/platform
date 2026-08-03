@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { fetchStaffContext, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
+import {
+  fetchSupplierContext,
+  SUPPLIER_SESSION_COOKIE,
+} from "@/server/auth/supplier-context";
 import { CORRELATION_ID_HEADER, resolveCorrelationId, withCorrelationId } from "@/server/security/correlation";
 
 function correlatedResponse(response: NextResponse, correlationId: string) {
@@ -38,6 +42,33 @@ export async function middleware(request: NextRequest) {
     return correlatedResponse(nextResponse(), correlationId);
   }
   const staffSurface = request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/backoffice") || request.nextUrl.pathname.startsWith("/uitgifte");
+  const supplierSurface = request.nextUrl.pathname === "/leverancier";
+  if (supplierSurface) {
+    const env = getServerEnv();
+    if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
+      return redirectWithCookies(
+        request,
+        "/leverancier/login",
+        correlationId,
+      );
+    }
+    const response = nextResponse();
+    const sessionToken = request.cookies.get(
+      SUPPLIER_SESSION_COOKIE,
+    )?.value;
+    const supplier = sessionToken
+      ? await fetchSupplierContext(sessionToken)
+      : null;
+    if (!supplier) {
+      return redirectWithCookies(
+        request,
+        "/leverancier/login",
+        correlationId,
+        response,
+      );
+    }
+    return privateResponse(response, correlationId);
+  }
   if (!staffSurface) return correlatedResponse(nextResponse(), correlationId);
 
   const env = getServerEnv();

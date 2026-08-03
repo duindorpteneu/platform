@@ -44,6 +44,25 @@ export const operationalHealthSchema = z.object({
     quarantinedEvents: 0,
     providerFailuresRecent: 0,
   }),
+  supplierPlanning: z.object({
+    activePrincipals: z.number().int().nonnegative(),
+    activePrincipalsWithoutOpenSeason: z.number().int().nonnegative(),
+    activeSessions: z.number().int().nonnegative(),
+    unauthorizedActiveSessions: z.number().int().nonnegative(),
+    expiredUnrevokedSessions: z.number().int().nonnegative(),
+    recentLoginFailures: z.number().int().nonnegative(),
+    staleCredentials: z.number().int().nonnegative(),
+    lastSuccessfulPlanningAt: z.string().datetime({ offset: true }).nullable(),
+  }).strict().default({
+    activePrincipals: 0,
+    activePrincipalsWithoutOpenSeason: 0,
+    activeSessions: 0,
+    unauthorizedActiveSessions: 0,
+    expiredUnrevokedSessions: 0,
+    recentLoginFailures: 0,
+    staleCredentials: 0,
+    lastSuccessfulPlanningAt: null,
+  }),
   operations: z.object({
     emailWorker: z.object({
       required: z.boolean(),
@@ -138,6 +157,11 @@ export function operationalHealthIsDegraded(
     || data.parentOtpDelivery.sendFailuresRecent > 0
     || data.parentOtpDelivery.quarantinedEvents > 0
     || data.parentOtpDelivery.providerFailuresRecent > 0
+    || data.supplierPlanning.activePrincipalsWithoutOpenSeason > 0
+    || data.supplierPlanning.unauthorizedActiveSessions > 0
+    || data.supplierPlanning.expiredUnrevokedSessions > 0
+    || data.supplierPlanning.recentLoginFailures >= 50
+    || data.supplierPlanning.staleCredentials > 0
     || data.recentDeliveryFailures > 0
     || data.reconciliationIssues > 0
     || data.recentWebhookFailures > 0
@@ -201,4 +225,5 @@ export const retentionResultSchema = z.object({
   importPlansPurged: z.number().int().nonnegative(),
   campaignPreflights: z.number().int().nonnegative(),
   otpDeliveryHistory: z.number().int().nonnegative(),
+  supplierPlanningHistory: z.number().int().nonnegative(),
 }).strict();

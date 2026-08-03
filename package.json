@@ -31,6 +31,7 @@
     "test:db:mail-campaign-concurrency": "bash scripts/test-mail-campaign-concurrency.sh",
     "test:db:email-attempt-concurrency": "bash scripts/test-email-delivery-attempt-concurrency.sh",
     "test:db:parent-otp-concurrency": "bash scripts/test-parent-otp-concurrency.sh",
+    "test:db:supplier-concurrency": "bash scripts/test-supplier-planning-concurrency.sh",
     "test:portal-access-browser": "node scripts/test-parent-access-browser.mjs",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
     "test:dashboard-browser": "node scripts/test-platform-browser.mjs",

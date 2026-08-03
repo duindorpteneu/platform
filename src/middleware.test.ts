@@ -4,12 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   env: vi.fn(),
   fetchContext: vi.fn(),
+  fetchSupplierContext: vi.fn(),
 }));
 
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.env }));
 vi.mock("@/server/auth/staff-context", () => ({
   fetchStaffContext: mocks.fetchContext,
   STAFF_SESSION_COOKIE: "duindorp_staff_session",
+}));
+vi.mock("@/server/auth/supplier-context", () => ({
+  fetchSupplierContext: mocks.fetchSupplierContext,
+  SUPPLIER_SESSION_COOKIE: "duindorp_supplier_session",
 }));
 
 import { middleware } from "./middleware";
@@ -32,6 +37,12 @@ describe("scanner middleware", () => {
     mocks.fetchContext.mockReset().mockResolvedValue({
       userId: "10000000-0000-4000-8000-000000000001",
       role: "uitgifte",
+    });
+    mocks.fetchSupplierContext.mockReset().mockResolvedValue({
+      principalId: "20000000-0000-4000-8000-000000000001",
+      displayName: "Free-Kick",
+      activeSeason: null,
+      seasons: [],
     });
   });
 
@@ -69,5 +80,24 @@ describe("scanner middleware", () => {
     expect(response.headers.get("location")).toBe(
       "https://tenue.example/backoffice",
     );
+  });
+
+  it("beschermt de gewone supplierbrowser met een aparte sessie", async () => {
+    const rejected = await middleware(request("/leverancier"));
+    expect(rejected.status).toBe(307);
+    expect(rejected.headers.get("location")).toBe(
+      "https://tenue.example/leverancier/login",
+    );
+    expect(mocks.fetchContext).not.toHaveBeenCalled();
+
+    const accepted = await middleware(new NextRequest(
+      "https://tenue.example/leverancier",
+      { headers: { cookie: "duindorp_supplier_session=opaque-supplier" } },
+    ));
+    expect(accepted.status).toBe(200);
+    expect(mocks.fetchSupplierContext).toHaveBeenCalledWith(
+      "opaque-supplier",
+    );
+    expect(accepted.headers.get("cache-control")).toContain("no-store");
   });
 });

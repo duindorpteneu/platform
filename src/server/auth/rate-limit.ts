@@ -14,7 +14,7 @@ export function valueRateKey(discriminator: string, value: string) {
   return hashParentSecret(`rate:${discriminator}:${value}`);
 }
 
-export async function consumeRateLimit(client: RateLimitClient, input: { scope: "otp_request" | "otp_verify" | "mollie_create" | "export" | "search"; keyHash: string; limit: number; windowSeconds: number }) {
+export async function consumeRateLimit(client: RateLimitClient, input: { scope: "otp_request" | "otp_verify" | "mollie_create" | "export" | "search" | "supplier_login"; keyHash: string; limit: number; windowSeconds: number }) {
   const { data, error } = await client.schema("app").rpc("consume_rate_limit", {
     p_scope: input.scope,
     p_key_hash: input.keyHash,
@@ -23,4 +23,3 @@ export async function consumeRateLimit(client: RateLimitClient, input: { scope: 
   });
   return !error && data === true;
 }
-

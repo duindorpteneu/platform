@@ -17,6 +17,8 @@ describe("POST /api/internal/jobs/retention", () => {
         ? { data: 10, error: null }
         : name === "purge_parent_otp_delivery_history_v1"
           ? { data: 11, error: null }
+          : name === "purge_supplier_planner_history_v1"
+            ? { data: 12, error: null }
         : {
           data: {
             otpChallenges: 1,
@@ -38,7 +40,7 @@ describe("POST /api/internal/jobs/retention", () => {
   it("records the monitored run and only aggregate deletion counts", async () => {
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
     expect(response.status).toBe(200);
-    expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "succeeded", 66);
+    expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "succeeded", 78);
     expect(mocks.rpc).toHaveBeenCalledWith("cleanup_expired_security_data_v3", { p_now: expect.any(String) });
     expect(mocks.rpc).toHaveBeenCalledWith(
       "purge_mail_v2_campaign_preflights_v1",
@@ -56,6 +58,15 @@ describe("POST /api/internal/jobs/retention", () => {
         p_limit: 500,
       },
     );
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "purge_supplier_planner_history_v1",
+      {
+        p_event_retention_days: 365,
+        p_limit: 500,
+        p_now: expect.any(String),
+        p_session_retention_days: 30,
+      },
+    );
     expect(await response.json()).toEqual({
       status: "completed",
       deleted: {
@@ -70,6 +81,7 @@ describe("POST /api/internal/jobs/retention", () => {
         importPlansPurged: 9,
         campaignPreflights: 10,
         otpDeliveryHistory: 11,
+        supplierPlanningHistory: 12,
       },
     });
   });
@@ -147,6 +159,47 @@ describe("POST /api/internal/jobs/retention", () => {
       "failed",
       0,
       "otp_delivery_cleanup_failed",
+    );
+  });
+
+  it("faalt gemonitord als supplierretentie niet kan draaien", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "purge_mail_v2_campaign_preflights_v1") {
+        return { data: 10, error: null };
+      }
+      if (name === "purge_parent_otp_delivery_history_v1") {
+        return { data: 11, error: null };
+      }
+      if (name === "purge_supplier_planner_history_v1") {
+        return { data: null, error: { code: "XX000" } };
+      }
+      return {
+        data: {
+          otpChallenges: 1,
+          rateLimitEvents: 2,
+          parentSessions: 3,
+          emailEvents: 4,
+          importStaging: 5,
+          importSelectedRows: 6,
+          importRunsExpired: 7,
+          importPartialFailures: 8,
+          importPlansPurged: 9,
+        },
+        error: null,
+      };
+    });
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/retention",
+      { method: "POST" },
+    ));
+    expect(response.status).toBe(503);
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "retention",
+      expect.any(String),
+      "failed",
+      0,
+      "supplier_cleanup_failed",
     );
   });
 

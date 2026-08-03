@@ -139,6 +139,12 @@ jobs:
       - name: Run e-mail delivery-attempt concurrency test
         run: pnpm test:db:email-attempt-concurrency
 
+      - name: Run parent OTP concurrency test
+        run: pnpm test:db:parent-otp-concurrency
+
+      - name: Run supplier planning concurrency test
+        run: pnpm test:db:supplier-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 
