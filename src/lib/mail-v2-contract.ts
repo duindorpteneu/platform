@@ -533,6 +533,180 @@ export const retryMailV2ProjectionResponseSchema = z.object({
   retryCount: z.number().int().min(1).max(10),
 }).strict();
 
+export const mailV2CampaignTemplateKeySchema = mailTemplateKeySchema.extract([
+  "portal_access_reminder",
+  "size_fill_request",
+  "size_fill_reminder",
+  "size_review_request",
+  "size_review_reminder",
+  "payment_request",
+  "payment_reminder",
+  "available_payment_required",
+  "pickup_reminder",
+  "out_of_stock",
+]);
+export type MailV2CampaignTemplateKey = z.infer<
+  typeof mailV2CampaignTemplateKeySchema
+>;
+
+const uniqueCampaignTargetIds = z.array(uuid)
+  .min(1)
+  .max(2_000)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "Bestellingen moeten uniek zijn.",
+  );
+
+export const mailV2CampaignRequestSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("preview"),
+    templateKey: mailV2CampaignTemplateKeySchema,
+    targetIds: uniqueCampaignTargetIds,
+    requestId: uuid,
+  }).strict(),
+  z.object({
+    action: z.literal("confirm"),
+    preflightId: uuid,
+    expectedRevision: contentHash,
+    requestId: uuid,
+  }).strict(),
+]);
+
+const mailV2CampaignPreviewBaseSchema = z.object({
+  preflightId: uuid,
+  templateKey: mailV2CampaignTemplateKeySchema,
+  seasonId: uuid,
+  eligibilityRevision: contentHash,
+  selectedTargetCount: z.number().int().min(1).max(2_000),
+  eligibleTargetCount: z.number().int().min(0).max(2_000),
+  eligibleEventCount: z.number().int().min(0).max(200_000),
+  skippedTargetCount: z.number().int().min(0).max(2_000),
+  blockedTargetCount: z.number().int().min(0).max(2_000),
+  parentGroupCount: z.number().int().min(0).max(2_000),
+  expiresAt: timestamp,
+  reused: z.boolean(),
+}).strict();
+
+function validateCampaignPreviewCounts(
+  value: z.infer<typeof mailV2CampaignPreviewBaseSchema>,
+  context: z.RefinementCtx,
+) {
+  if (
+    value.eligibleTargetCount + value.skippedTargetCount
+      + value.blockedTargetCount !== value.selectedTargetCount
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["selectedTargetCount"],
+      message: "Niet iedere selectie heeft een expliciete preflightuitkomst.",
+    });
+  }
+}
+
+export const mailV2CampaignPreflightRpcSchema =
+  mailV2CampaignPreviewBaseSchema.extend({
+    previewGroup: z.lazy(
+      () => mailV2DomainProjectionGroupSchema,
+    ).nullable(),
+  }).strict().superRefine((value, context) => {
+    validateCampaignPreviewCounts(value, context);
+    if ((value.eligibleEventCount > 0) !== Boolean(value.previewGroup)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["previewGroup"],
+        message: "Een geschikte doelgroep vereist exact één representatieve groep.",
+      });
+    }
+    if (value.previewGroup) {
+      if (
+        value.previewGroup.groupId !== value.preflightId
+        || value.previewGroup.templateKey !== value.templateKey
+        || value.previewGroup.eligibilityRevision !== value.eligibilityRevision
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["previewGroup"],
+          message: "De voorbeeldgroep hoort niet exact bij deze preflight.",
+        });
+      }
+      if (value.previewGroup.events.some(
+        (event) => !("memberSeasonId" in event.payload),
+      )) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["previewGroup", "events"],
+          message: "Een campagnevoorbeeld mag alleen lid-seizoenevents bevatten.",
+        });
+      }
+    }
+  });
+
+export const mailV2CampaignPreviewSchema =
+  mailV2CampaignPreviewBaseSchema.extend({
+  preview: z.object({
+    subject: z.string().trim().min(1).max(200),
+    preheader: z.string().trim().min(1).max(240),
+    html: z.string().min(1).max(50_000),
+    text: z.string().trim().min(1).max(20_000),
+  }).strict().nullable(),
+}).strict().superRefine((value, context) => {
+    validateCampaignPreviewCounts(value, context);
+    if ((value.eligibleEventCount > 0) !== Boolean(value.preview)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["preview"],
+        message: "Een geschikte doelgroep vereist een exacte renderpreview.",
+      });
+    }
+  });
+export type MailV2CampaignPreview = z.infer<
+  typeof mailV2CampaignPreviewSchema
+>;
+
+export const mailV2CampaignConfirmSchema = z.object({
+  runId: uuid,
+  templateKey: mailV2CampaignTemplateKeySchema,
+  eventCount: z.number().int().min(1).max(200_000),
+  parentGroupCount: z.number().int().min(1).max(2_000),
+  reused: z.boolean(),
+}).strict();
+export type MailV2CampaignConfirm = z.infer<
+  typeof mailV2CampaignConfirmSchema
+>;
+
+export const mailV2CampaignWorkspaceSchema = z.object({
+  cutoverStarted: z.boolean(),
+  featureEnabled: z.boolean(),
+  allowedTemplates: z.array(mailV2CampaignTemplateKeySchema).max(10),
+  orderTargets: z.array(z.object({
+    orderId: uuid,
+    memberSeasonId: uuid,
+    seasonId: uuid,
+    memberName: z.string().trim().min(1).max(320),
+    relationNumber: z.string().trim().min(1).max(120).nullable(),
+    team: z.string().trim().min(1).max(160),
+    season: z.string().trim().min(1).max(120),
+    amountDueCents: z.number().int().min(0).max(10_000_000),
+  }).strict()).max(20_000),
+  portalTargets: z.array(z.object({
+    memberSeasonId: uuid,
+    memberName: z.string().trim().min(1).max(320),
+    team: z.string().trim().min(1).max(160),
+    season: z.string().trim().min(1).max(120),
+    reminderEligible: z.boolean(),
+  }).strict()).max(20_000),
+  recentRuns: z.array(z.object({
+    runId: uuid,
+    templateKey: mailV2CampaignTemplateKeySchema,
+    eventCount: z.number().int().min(1).max(200_000),
+    parentGroupCount: z.number().int().min(1).max(2_000),
+    createdAt: timestamp,
+  }).strict()).max(25),
+}).strict();
+export type MailV2CampaignWorkspace = z.infer<
+  typeof mailV2CampaignWorkspaceSchema
+>;
+
 const mailV2CutoverReasonSchema = z.string()
   .trim()
   .min(4)

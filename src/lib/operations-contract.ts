@@ -147,4 +147,5 @@ export const retentionResultSchema = z.object({
   importRunsExpired: z.number().int().nonnegative(),
   importPartialFailures: z.number().int().nonnegative(),
   importPlansPurged: z.number().int().nonnegative(),
+  campaignPreflights: z.number().int().nonnegative(),
 }).strict();

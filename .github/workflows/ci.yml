@@ -129,6 +129,12 @@ jobs:
       - name: Run inventory concurrency test
         run: pnpm test:db:inventory-concurrency
 
+      - name: Run mail projection concurrency test
+        run: pnpm test:db:mail-projection-concurrency
+
+      - name: Run mail campaign concurrency test
+        run: pnpm test:db:mail-campaign-concurrency
+
       - name: Build browser-test application
         run: pnpm build
 

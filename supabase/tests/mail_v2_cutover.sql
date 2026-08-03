@@ -71,8 +71,8 @@ select is(
 );
 select is(
   (select result->>'producerCount' from initial_mail_cutover),
-  '2',
-  'alleen de twee werkelijk geïmplementeerde fulfilmentproducenten zijn geregistreerd'
+  '13',
+  'alleen volledig bewezen automatische, fulfilment- en campagneproducenten zijn geregistreerd'
 );
 select is(
   (select result->>'legacyPendingCount' from initial_mail_cutover),
@@ -162,7 +162,7 @@ select is(
 );
 select is(
   (select result->>'producerCount' from ready_mail_cutover),
-  '2',
+  '13',
   'publiceren registreert niet stil ontbrekende producenten'
 );
 select is(

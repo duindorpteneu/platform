@@ -35,12 +35,34 @@ export async function POST(request: Request) {
     if (!started) {
       return NextResponse.json({ error: "Retentiejob kon niet worden gemonitord." }, { status: 503 });
     }
-    const { data, error } = await admin.schema("app").rpc("cleanup_expired_security_data_v3", { p_now: new Date().toISOString() });
+    const now = new Date().toISOString();
+    const { data, error } = await admin.schema("app").rpc(
+      "cleanup_expired_security_data_v3",
+      { p_now: now },
+    );
     if (error) {
       await closeFailedRun(admin, runId, "cleanup_failed");
       return NextResponse.json({ error: "Retentiejob kon niet veilig worden uitgevoerd." }, { status: 503 });
     }
-    const parsed = retentionResultSchema.safeParse(data);
+    const {
+      data: campaignPreflights,
+      error: campaignRetentionError,
+    } = await admin.schema("app").rpc(
+      "purge_mail_v2_campaign_preflights_v1",
+      {
+        p_now: now,
+        p_retention_hours: 24,
+        p_limit: 500,
+      },
+    );
+    if (campaignRetentionError) {
+      await closeFailedRun(admin, runId, "campaign_cleanup_failed");
+      return NextResponse.json({ error: "Retentiejob kon niet veilig worden uitgevoerd." }, { status: 503 });
+    }
+    const parsed = retentionResultSchema.safeParse({
+      ...(data && typeof data === "object" ? data : {}),
+      campaignPreflights,
+    });
     if (!parsed.success) {
       await closeFailedRun(admin, runId, "cleanup_response_invalid");
       return NextResponse.json({ error: "Ongeldig retentieresultaat." }, { status: 502 });
