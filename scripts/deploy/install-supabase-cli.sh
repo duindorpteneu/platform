@@ -37,9 +37,15 @@ curl --fail --silent --show-error --location \
 printf '%s  %s\n' "${archive_sha256}" "${archive_path}" \
   | sha256sum --check --status
 tar --extract --gzip --file "${archive_path}" \
-  --directory "${install_directory}" supabase
+  --directory "${install_directory}" supabase supabase-go
 rm -f -- "${archive_path}"
-chmod 0755 "${install_directory}/supabase"
+for binary in supabase supabase-go; do
+  [[ -f "${install_directory}/${binary}" && ! -L "${install_directory}/${binary}" ]] || {
+    echo "De verwachte Supabase CLI-binary ontbreekt: ${binary}" >&2
+    exit 1
+  }
+  chmod 0755 "${install_directory}/${binary}"
+done
 [[ "$("${install_directory}/supabase" --version)" == "${version}" ]] || {
   echo "De Supabase CLI-versie wijkt af." >&2
   exit 1

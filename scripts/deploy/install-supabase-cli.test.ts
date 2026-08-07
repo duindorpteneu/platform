@@ -20,6 +20,8 @@ describe("pinned Supabase CLI installer", () => {
     expect(extract).toBeGreaterThan(verify);
     expect(installer).not.toContain("curl |");
     expect(installer).not.toContain("sudo");
+    expect(installer).toContain("supabase supabase-go");
+    expect(installer).toContain("for binary in supabase supabase-go");
     expect(installer).toContain(
       "SUPABASE_CLI_BINARY_OVERRIDE=%s",
     );
