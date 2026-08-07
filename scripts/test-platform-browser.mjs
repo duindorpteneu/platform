@@ -160,7 +160,7 @@ generatedSource = generatedSource.replace(legacyEmailEditorCheck, mailV2EditorCh
 generatedSource = generatedSource.replace(
   '  process.stdout.write("Dashboard-browsertest: tijdelijke fixture aanmaken…\\n");',
   `  let authReady = false;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     const probe = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
     if (!probe.error) {
       authReady = true;
