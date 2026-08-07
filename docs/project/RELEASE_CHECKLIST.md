@@ -3,7 +3,7 @@
 Status: gateformulier; geen deploymentautorisatie
 Release: `________________`
 Commit-SHA: `________________`
-Canon: MVP v1.0
+Canon: MVP v1.0 plus goedgekeurd addendum v1.1
 Releasebeheerder: `________________`
 Datum/tijd (UTC): `________________`
 
@@ -17,6 +17,7 @@ Een vakje wordt alleen afgevinkt met een bewijslink of een opgeslagen commandore
 - [ ] `node scripts/check-secrets.mjs` slaagt.
 - [ ] `node scripts/check-migrations.mjs` slaagt.
 - [ ] `pnpm audit --prod --audit-level high` heeft geen onbesproken high/critical bevinding.
+- [ ] Alle GitHub Actions zijn op volledige commit-SHA gepind en actionlint is groen.
 - [ ] `pnpm lint` slaagt.
 - [ ] `pnpm typecheck` slaagt.
 - [ ] `pnpm test` slaagt.
@@ -24,9 +25,11 @@ Een vakje wordt alleen afgevinkt met een bewijslink of een opgeslagen commandore
 - [ ] Een geïsoleerde lokale Supabase-stack start zonder andere projecten/processen te wijzigen.
 - [ ] `pnpm db:reset` past alle migraties en seed vanaf nul toe.
 - [ ] `pnpm test:db` slaagt, inclusief negatieve RLS- en autorisatietests.
+- [ ] `pnpm test:db:upgrade:phase-b` bewaart alle legacyhashes en reconciliaties.
 - [ ] `pnpm test:db:concurrency` bewijst dat dubbele uitgifte niet mogelijk is.
 - [ ] `pnpm test:staff-mfa` bewijst AAL2-toegang en AAL1-weigering.
 - [ ] `pnpm test:dashboard-browser` slaagt en ruimt fixtures/processen op.
+- [ ] `pnpm test:portal-access-browser` en `pnpm test:a11y` slagen.
 - [ ] `pnpm test:e2e` slaagt voor alle lokaal automatiseerbare canonieke scenario’s.
 - [ ] Securityacceptatie in [SECURITY_ACCEPTANCE.md](SECURITY_ACCEPTANCE.md) heeft geen lokale blocker.
 - [ ] Responsiviteit, loading/empty/error/success en WCAG-kernflows zijn gecontroleerd.
@@ -38,6 +41,7 @@ Bewijs lokale gate: `___________________________________________________________
 ## B. Stagingvoorbereiding
 
 - [ ] CI op exact deze commit-SHA is volledig groen.
+- [ ] De stagingdeploy heeft de canonieke CI-workflow-ID, push/main/SHA en beide verplichte jobs machine-verifieerbaar gecontroleerd.
 - [ ] App-runtime en Supabase staan in een EU- of gelijkwaardig privacygeschikte regio.
 - [ ] Staging en production hebben verschillende apphosts, Supabase-projecten, Auth-tenants en secrets.
 - [ ] Staging bevat uitsluitend fictieve `example.invalid`-gegevens of aantoonbaar geanonimiseerde data.
@@ -51,6 +55,7 @@ Bewijs lokale gate: `___________________________________________________________
 - [ ] Back-upmogelijkheid en geïsoleerde restorebestemming zijn bevestigd.
 - [ ] Fictieve testaccounts voor beheerder, kledingcommissie, uitgifte en ouderflows zijn ingericht met TOTP waar vereist.
 - [ ] Releaseversie, commit-SHA en canonversie zijn zichtbaar/vastgelegd.
+- [ ] Releaseimage, SPDX-SBOM en manifest hebben een groene high/critical containerscan, `SHA256SUMS` en een geverifieerde keyless Sigstore/Cosign-bundel via GitHub OIDC.
 
 Bewijs stagingconfiguratie: `_____________________________________________________`
 
@@ -64,11 +69,11 @@ Bewijs stagingconfiguratie: `___________________________________________________
 - [ ] Desktop-, tablet- en mobiele browsermatrix is uitgevoerd.
 - [ ] Toetsenbord, labels, focus, contrast, foutmeldingen en reduced motion zijn beoordeeld.
 - [ ] Mollie testmode: exact paid, mismatch, replay, delayed en refund/reconciliatie zijn uitgevoerd via publiek HTTPS-webhook.
-- [ ] SendGrid: SPF/DKIM/afzender, template, sandbox/delivery, signed webhook, retry en deduplicatie zijn uitgevoerd.
+- [ ] SendGrid: SPF/DKIM/afzender, template, Mail Send, echte TLS-IMAP-inbox, tweemaal signed webhook, retry en deduplicatie zijn uitgevoerd.
 - [ ] E-mail- en Mollie-safety switches zijn tijdens een gecontroleerde test uit- en ingeschakeld.
 - [ ] Health, queue, webhookfouten en betaalverschillen zijn tijdens acceptatie zichtbaar.
 - [ ] Retentiejob is tweemaal uitgevoerd en idempotentie/cutoffs zijn bewezen.
-- [ ] Geïsoleerde restore-drill voldoet aan RPO 24 uur en RTO 4 uur.
+- [ ] Geïsoleerde restore-drill gebruikt een snapshot jonger dan 24 uur en voltooit binnen vier uur; managed production-RPO heeft afzonderlijk providerbewijs.
 - [ ] Incidenttabletops voor staffaccount, gelekte QR, verdachte betaling en datalek zijn afgerond.
 - [ ] Er zijn geen blocker/critical/high securitybevindingen zonder expliciet stopbesluit.
 
@@ -80,11 +85,15 @@ Bewijs en ondertekening: `______________________________________________________
 Deze sectie geeft geen toestemming om productie te wijzigen. Uitvoering vereist een afzonderlijk changebesluit.
 
 - [ ] Staging is groen op exact de te releasen commit-SHA en migratieset.
+- [ ] Deploy-, core-, Phase-B-, Mollie-, SendGrid-, restore-, rollback- en operationsattestaties verwijzen naar exact dezelfde SHA en artifactdigest.
+- [ ] Alle acht workflow-run-ID's zijn uniek, maximaal 48 uur oud en de acceptatieruns zijn pas na de deploy gestart.
+- [ ] De applicatierollbackdrill bewijst exact huidige kandidaat → actuele productionrelease → kandidaat. Tijdens de eerste overgang is daarnaast de signed legacy-adoptierun gebonden.
 - [ ] Productieback-up/herstelpunt is succesvol en maximaal 24 uur oud.
+- [ ] Het encrypted pre-migration-herstelpunt is vóór mutatie geüpload, uit Actions teruggedownload en checksumgelijk bewezen.
 - [ ] Forward-fixplan, approllbackcompatibiliteit en eigenaar zijn bevestigd.
 - [ ] Productionsecrets zijn onafhankelijk van staging en rotatiedata zijn bekend.
 - [ ] Migraties worden vóór appdeploy uitgevoerd.
-- [ ] Productiedeploy vereist expliciete vier-ogen-goedkeuring en release-tag.
+- [ ] Productiedeploy vereist een via API bewezen onafhankelijke required reviewer met `prevent_self_review=true`.
 - [ ] Smokeplan bevat stafflogin/MFA, ouder-OTP, orderdashboard, handmatige testbetaling, QR-lookup en mailjob.
 - [ ] `EMAIL_ENABLED` blijft uit tot de productiemail-smoke is goedgekeurd.
 - [ ] `MOLLIE_ENABLED` blijft uit tot live webhooktest en reconciliatiecontrole zijn goedgekeurd.
@@ -93,7 +102,7 @@ Deze sectie geeft geen toestemming om productie te wijzigen. Uitvoering vereist 
 
 Productiebesluit: `GO / NO-GO`
 Goedkeurders: `________________ / ________________`
-Release-tag: `________________`
+Immutable artifactdigest: `________________`
 
 ## E. Directe stopcriteria
 

@@ -21,14 +21,27 @@ Bewijs vóór productie:
 
 ## Releasepromotie
 
-`Deploy staging` bouwt en bewaart het immutable image-artefact plus het geverifieerde stagingmanifest. Production wordt uitsluitend handmatig gestart via `Promote production` met:
+`Deploy staging` bouwt en bewaart het immutable image-artifact plus manifest,
+SBOM, signed checksums en deployattestation. `Promote production` vereist de
+exacte 40-teken SHA, menselijke bevestiging en acht afzonderlijke run-ID's:
+deploy, core, volledige Phase B, Mollie, SendGrid, restore, applicatierollback
+en operations. Iedere run moet op dezelfde SHA/digest groen, uniek, niet
+verlopen en maximaal 48 uur oud zijn; acceptatieruns moeten ná de stagingdeploy
+zijn gestart.
 
-- het succesvolle staging-run-ID;
-- de exacte 40-teken release-SHA;
-- bevestiging `PROMOTE-PRODUCTION`;
-- daarna de bestaande GitHub production-environmentapproval.
+Na de technisch afgedwongen onafhankelijke environmentapproval verifieert de
+productionrunner alles opnieuw. Vóór migratie wordt een encrypted logical
+recovery point gemaakt, netwerkloos hersteld, geüpload, weer uit Actions
+teruggedownload en bytegelijk aan het evidence-checksum bewezen. Een nieuwere
+`main`-SHA of ontbrekend required-reviewerbeleid blokkeert.
 
-De promotieworkflow verifieert runconclusie, workflowpad, SHA en main-afstamming, downloadt beide artefacten uit die stagingrun en laat `deploy-vps.sh` de drie digests opnieuw vergelijken. Een nieuwere main-SHA maakt een oude gewone promotie ongeldig.
+Alleen bij de eerste overgang wordt bovendien het run-ID van de signed
+legacy-adoptie opgegeven. Daarna moet dit inputveld leeg blijven.
+Tijdens die exacte legacyrollback draait bewust alleen de historische app:
+die image bevatte nog geen schedulerbestand. Providerflags staan uit en de
+scheduler is aantoonbaar gestopt. Terugkeer naar de kandidaat start en bewijst
+de huidige scheduler opnieuw; dit tijdelijke app-only-contract is geen
+uitzondering voor latere releases.
 
 ## VPS-boundary
 
@@ -39,3 +52,9 @@ Composeprojectnamen en poorten voorkomen operationele conflicten, maar vervangen
 - Castivo onder een andere user/socket/runtimeboom;
 - geen gedeelde secrets, volumes of Caddy-snippets;
 - restore-drills op een tijdelijke GitHub-hosted runner, niet in een siblingproject op de VPS.
+
+Canonieke identities zijn `duindorp-staging-01` onder
+`duindorp-staging` en `duindorp-production-01` onder
+`duindorp-production`, met private homes, verschillende UID/GID's,
+Rootless-sockets en Docker data-roots. De oude gedeelde `deploy`-principal is
+niet meer toegestaan. Iedere Rootless-Docker-socket heeft mode `0600`.

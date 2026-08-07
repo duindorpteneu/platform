@@ -147,13 +147,18 @@ Inschakelen:
 Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit. Start hiervoor handmatig de GitHub-workflow `Staging backup and isolated restore drill` met de volledige SHA die aantoonbaar op staging staat en bevestiging `STAGING-RESTORE`. De workflow draait op een tijdelijke GitHub-hosted runner, zodat de gedeelde applicatie-VPS en Castivo niet worden benaderd.
 
 1. De workflow valideert het vaste stagingdomein, de stagingprojectref, databasehost, bevestiging en volledige release-SHA. De publieke healthcheck moet exact dezelfde SHA rapporteren.
-2. De RTO-klok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
+2. De technische drillklok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
 3. De back-up wordt hersteld naar een run-unieke PostgreSQL 17-container zonder hostpoort, Caddy-route, extern netwerk, permanente volumes of providerconfiguratie.
 4. De verificatie bewijst uitsluitend PostgreSQL-majorversie, migratieversies, constrainttotalen, RLS-telling en geaggregeerde aantallen per hoofdentiteit. Rijdata en persoonsgegevens komen niet in logs of artifacts.
 5. De workflow faalt wanneer de verse snapshot bij afronding ouder dan 24 uur is, de totale oefening langer dan vier uur duurt, constraints ongeldig zijn of het herstel onvolledig is.
 6. Een `always()`-stap verwijdert de run-specifieke containers, anonieme volumes, dump en ruwe verificatie. Alleen het geredigeerde JSON-bewijs blijft veertien dagen beschikbaar.
 
-Deze logische oefening bewijst het technische dump-/herstelpad en de gemeten RPO/RTO voor de verse staging-snapshot. Zij vervangt niet de afzonderlijke controle dat de dagelijkse beheerde productionback-up maximaal 24 uur oud is. Een productieherstel blijft een expliciet changeproces met een geïsoleerde restorebestemming.
+Deze logische oefening bewijst de leeftijd van de gebruikte verse snapshot en
+de gemeten technische restoreduur. Zij bewijst uitdrukkelijk geen managed
+backup-RPO. Controleer afzonderlijk dat de dagelijkse beheerde
+productionback-up maximaal 24 uur oud is en leg providerbewijs vast. Een
+productieherstel blijft een expliciet changeproces met een geïsoleerde
+restorebestemming.
 
 Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan vier uur duurt, providerverkeer mogelijk is, integriteitscontroles falen of credentials/data buiten de geïsoleerde omgeving terechtkomen.
 
@@ -162,14 +167,15 @@ Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan 
 Gebruik uitsluitend de handmatige workflow `Staging domain cleanup`. Deze procedure mag nooit tegen production worden gebruikt en vervangt geen migratie, seed of algemene databasereset.
 
 1. Deploy eerst exact de beoogde `main`-SHA naar staging. Zet de runtime- én databaseswitches voor Mollie, e-mail en dynamische import uit.
-2. Start modus `dry-run` met de live SHA en bevestiging `STAGING-CLEANUP-DRY-RUN`. Controleer het PII-vrije artifact met tellingen voor exact 90 wistabellen, 27 behouden tabellen en alle veiligheidsblockers.
+2. Start modus `dry-run` met de live SHA en bevestiging `STAGING-CLEANUP-DRY-RUN`. Controleer het PII-vrije artifact met tellingen voor exact 100 wistabellen, 28 behouden tabellen en alle veiligheidsblockers.
 3. Modus `apply` vereist bevestiging `STAGING-CLEANUP-APPLY`, exact origin `https://staging-duindorp.dgwebservices.nl`, exact Supabase-project `dxbdjtbyghsovlrdcwcr` en secret `STAGING_CLEANUP_BACKUP_PASSPHRASE`. De bekende production-ref en iedere andere project-ref worden geweigerd.
 4. De stagingrunner controleert Rootless Docker, runtimepad, Composeproject, actieve image en live SHA en stopt uitsluitend `app` en `scheduler` van `duindorpteneu-staging`. De deploylock en workflowconcurrency voorkomen overlap met deployment en Mollieacceptatie.
 5. PostgreSQL 17 maakt een verse dump van `app`, `private`, `public`, `auth` en `supabase_migrations`. De dump wordt lokaal AES-256 versleuteld, weer gedecrypteerd en in een container met `--network none` volledig hersteld en geverifieerd vóór de eerste datamutatie.
-6. Na backup wordt de operationele SHA-256-statedigest opnieuw berekend. De transactie neemt `ACCESS EXCLUSIVE`-locks op de vaste 90-tabellenallowlist, vergelijkt onder lock dezelfde digest en gebruikt één `TRUNCATE ... RESTART IDENTITY` zonder `CASCADE`.
-7. `auth.*`, `app.staff_profiles`, seizoenen, instellingen, templates, branding, reminderregels/-runs, audit, featureflags, migratie-/operationele ledgers, staffsessies en supplierconfiguratie blijven behouden. De audit groeit met exact één PII-vrije `staging.domain_cleanup.completed`-regel.
-8. Iedere doelrij moet na commit nul zijn. Staff-/Auth-ID's, beheerderstatus, configuratiedigest, constraints en migratieledger moeten exact gelijk blijven. Daarna worden exact dezelfde appimage en scheduler herstart en opnieuw gezond verklaard.
-9. Bewaar het encrypted back-upartifact en geredigeerde bewijs dertig dagen. De decryptiesleutel blijft uitsluitend in het afgeschermde stagingenvironment. Een mislukking vóór commit rolt atomair terug; na commit is herstel alleen vanuit dit artifact toegestaan.
+6. De encrypted dump plus een PII-vrije prepared-state worden eerst als immutable artifact geüpload. Alleen een succesvolle upload levert het artifact-ID waarmee de applyfase verder mag. Apply stopt staging opnieuw en weigert wanneer de actuele operationele SHA-256-statedigest afwijkt van de geüploade back-up.
+7. De transactie neemt `ACCESS EXCLUSIVE`-locks op de vaste 100-tabellenallowlist, vergelijkt onder lock opnieuw dezelfde digest en gebruikt één `TRUNCATE ... RESTART IDENTITY` zonder `CASCADE`.
+8. `auth.*`, `app.staff_profiles`, seizoenen, instellingen, templates, branding, reminderregels/-runs, audit, featureflags, migratie-/operationele ledgers, staffsessies en supplierconfiguratie blijven behouden. De audit groeit met exact één PII-vrije `staging.domain_cleanup.completed`-regel.
+9. Iedere doelrij moet na commit nul zijn. Staff-/Auth-ID's, beheerderstatus, configuratiedigest, constraints en migratieledger moeten exact gelijk blijven. Daarna worden exact dezelfde appimage en scheduler herstart en opnieuw gezond verklaard.
+10. Bewaar het encrypted back-upartifact en geredigeerde bewijs dertig dagen. De decryptiesleutel blijft uitsluitend in het afgeschermde stagingenvironment. Een mislukking vóór commit rolt atomair terug; na commit is herstel alleen vanuit dit artifact toegestaan.
 
 Verwijder of wijzig nooit de allowlist om een driftfout te omzeilen. Een nieuwe `app`- of `private`-tabel vereist eerst een bewuste preserve/wipebeslissing, testaanpassing en review.
 

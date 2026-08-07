@@ -9,7 +9,9 @@ De applicatie draait per environment als één Rootless-Docker-Composeproject me
 | Hostbinding | `127.0.0.1:14000` | `127.0.0.1:24000` |
 | Composeproject | `duindorpteneu-staging` | `duindorpteneu-production` |
 | Runtimepad | `/srv/apps/duindorpteneu/staging` | `/srv/apps/duindorpteneu/production` |
-| Runnerlabels | `self-hosted, linux, x64, duindorpteneu, staging` | `self-hosted, linux, x64, duindorpteneu, production` |
+| Runnerlabels | `self-hosted, linux, x64, duindorpteneu, staging, deploy` | `self-hosted, linux, x64, duindorpteneu, production, deploy` |
+| Runner / Unix-user | `duindorp-staging-01` / `duindorp-staging` | `duindorp-production-01` / `duindorp-production` |
+| Private home | `/home/duindorp-staging` | `/home/duindorp-production` |
 
 `deploy/compose.vps.yml` bevat precies één appservice en één scheduler, geen Caddy, geen aparte admin-/uitgifteservice, geen volumes en geen `build:`. Beide draaien zonder Linux-capabilities en met een read-only rootfilesystem. Alleen de app publiceert containerpoort 3000 op de vaste loopbackpoort; de scheduler gebruikt uitsluitend het Compose-interne netwerk.
 
@@ -17,8 +19,8 @@ De applicatie draait per environment als één Rootless-Docker-Composeproject me
 
 | Controle | Staging | Production | Acceptatie |
 | --- | --- | --- | --- |
-| Lokale health | `http://127.0.0.1:14000/api/health` | `http://127.0.0.1:24000/api/health` | 200 JSON; exact environment en SHA |
-| Publieke health | `https://staging-duindorp.dgwebservices.nl/api/health` | `https://duindorp.dgwebservices.nl/api/health` | Zelfde identiteit; geen secrets/DB-metadata |
+| Lokale health | `http://127.0.0.1:14000/api/health` | `http://127.0.0.1:24000/api/health` | 200 JSON; exact environment, SHA en artifactdigest |
+| Publieke health | `https://staging-duindorp.dgwebservices.nl/api/health` | `https://duindorp.dgwebservices.nl/api/health` | Dezelfde drieledige identiteit; geen secrets/DB-metadata |
 | Ouderportaal | `/` | `/` | 200 login of geldige sessie naar `/mijn-tenue` |
 | Backoffice | `/admin` | `/admin` | Zelfde-origin login/MFAredirect of 200 na autorisatie; nooit 404/loop |
 | Uitgifte | `/uitgifte` | `/uitgifte` | Zelfde-origin login/MFAredirect of 200 na autorisatie; nooit 404/loop |
@@ -27,9 +29,28 @@ De checks proberen maximaal twintig keer met drie seconden interval en korte tim
 
 ## Releaseflow
 
-Een push naar `main` start `.github/workflows/deploy.yml`: preflight/gates → imagebouw → stagingdeploy en route-/schedulerchecks. Production start nooit automatisch. De handmatige `.github/workflows/promote-production.yml` vereist het succesvolle staging-run-ID, de exacte SHA, tekstbevestiging en daarna de GitHub production-environmentapproval. `duindorpteneu-app:<SHA>` wordt één keer gebouwd; production downloadt dezelfde stagingartefacten en vergelijkt build-, staging- en lokaal geladen digest.
+Een push naar `main` start `.github/workflows/deploy.yml`, maar deployment
+wacht eerst op de canonieke groene `push`-CI-run met beide benoemde jobs op
+exact dezelfde SHA. Daarna wordt `duindorpteneu-app:<SHA>` één keer gebouwd,
+op high/critical runtimekwetsbaarheden gescand, als SPDX-SBOM beschreven en
+met een keyless Sigstore/Cosign-bundel via GitHub OIDC ondertekend. De
+ondertekende `SHA256SUMS` bindt image, releasemanifest en SPDX-SBOM. Staging
+verifieert ondertekenaar, OIDC-issuer en alle checksums vóór migratie en
+appactivatie.
 
-De expliciete `workflow_dispatch`-modus `redeploy` accepteert alleen een volledige SHA die voorouder van `origin/main` is. In normale modus moet de release-SHA exact de actuele `origin/main` zijn; een verouderde wachtende run stopt veilig.
+Production start nooit automatisch. De handmatige
+`.github/workflows/promote-production.yml` vereist run-ID's en
+artifactgebonden attestaties voor stagingdeploy, core, Phase B, Mollie,
+SendGrid, restore, applicatierollback en operations, plus
+`HUMAN-UAT-PASSED` en
+`PROMOTE-PRODUCTION`. Alle remote run-/job-/artifactmetadata, checksums,
+provenance, actuele `main` en live staging-SHA worden vóór én na de
+production-environmentapproval gecontroleerd. Production downloadt exact het
+stagingartifact en bouwt niets opnieuw.
+
+De release-SHA moet altijd exact de actuele `origin/main` zijn; een verouderde
+wachtende run stopt veilig. Terugkeer naar oudere logica gebeurt via een nieuwe
+revert-/forward-fixcommit, niet via een oudere-SHA-redeploy.
 
 ## Eerste stagingdeploy
 
@@ -37,9 +58,43 @@ De expliciete `workflow_dispatch`-modus `redeploy` accepteert alleen een volledi
 2. Houd `MOLLIE_ENABLED=false` en `EMAIL_ENABLED=false`.
 3. Controleer dat beide runners Rootless Docker en Compose v2 zien en eigenaar zijn van hun eigen runtimepad.
 4. Merge de branch pas na review naar `main`; de push start uitsluitend de stagingflow.
-5. Controleer staginghealth, scheduler, `/`, `/admin`, `/uitgifte`, core/Mollie/restore-evidence en start productionpromotie pas daarna afzonderlijk.
+5. Controleer staginghealth, scheduler, `/`, `/admin`, `/uitgifte` en de
+   artifactgebonden core/Mollie/SendGrid/restore/operationsbewijzen. Menselijke
+   UAT volgt daarna; productionpromotie is een afzonderlijk changebesluit.
 
 Het deployscript wijzigt Caddy, UFW, SSH, systemd of Docker-globalconfiguratie niet en gebruikt geen `sudo`.
+
+De runnerboundary is fail-closed: `/srv/apps/duindorpteneu` is root-owned en
+niet schrijfbaar, iedere environmentruntime is vooraf aangelegd met mode 0700,
+de peerhome en -runtime zijn ontoegankelijk, de Rootless-socket en Docker
+data-root horen bij de eigen principal en een root-owned provisioningmarker
+bindt runnernaam, user, home en runtime. De repository maakt deze hostobjecten
+niet zelf aan. De socket is uitsluitend voor de canonical principal lees- en
+schrijfbaar (mode `0600`).
+
+## Eenmalige legacy-overgang
+
+De huidige productie-SHA `a79c8d8…` publiceert nog geen `artifactDigest`; de
+historische Actions-artifacts zijn verlopen. Vóór de eerste gewone promotie
+moet daarom exact eenmaal `Adopt exact legacy production rollback target`
+draaien, na de kandidaatdeploy en vóór de rollbackdrill. Die workflow:
+
+1. verifieert historische run `29754524344`, live productionmanifest, image,
+   container en legacyhealth vóór en na een read-only `docker save`;
+2. ondertekent manifest, capturebewijs en recovered archive via Cosign/OIDC;
+3. normaliseert het historische gequote runtimecontract zonder `eval`, forceert
+   e-mail, Mollie en dynamische import uit en bewijst op staging kandidaat →
+   exact live legacy-app → kandidaat;
+4. installeert het geverifieerde legacydoel als vorige stagingrelease;
+5. levert een signed adoption-run-ID/hash die de rollbackdrill en eerste
+   promotie verplicht valideren.
+
+De workflow is automatisch onbruikbaar zodra production niet meer exact op
+`a79c8d8…` draait of zodra een eerdere adoptierun succesvol was. De legacyimage
+bevat geen schedulerbestand; tijdens de legacycheck wordt de scheduler daarom
+aantoonbaar gestopt en alleen de app gestart. Na herstel moeten kandidaat-app
+en -scheduler beide gezond zijn. Normale releases blijven altijd het huidige
+artifactdigestcontract gebruiken.
 
 ## Runtime en troubleshooting
 

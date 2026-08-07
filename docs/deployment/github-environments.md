@@ -1,6 +1,12 @@
 # GitHub environments
 
-Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te lezen. Environment branch policies laten uitsluitend `main` toe. Production vereist goedkeuring door `TIXOCEO`; self-review blijft voorlopig toegestaan omdat slechts één revieweraccount beschikbaar is.
+Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te
+lezen. Beide environments hebben een custom branch policy voor uitsluitend
+`main`. De organisatie gebruikt GitHub Free met een private repository:
+`production` heeft daardoor geen `required_reviewers`-protection rule. De
+promotieworkflow weigert production fail-closed totdat een planupgrade, minstens
+één reviewer en `prevent_self_review=true` daadwerkelijk via de API zichtbaar
+zijn.
 
 ## Variables
 
@@ -12,19 +18,23 @@ Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te leze
 | `SUPABASE_PROJECT_REF` | ja | ja | 20 lowercase tekens; verschillend | DB-/URL-koppeling | correct en verschillend |
 | `NEXT_PUBLIC_SUPABASE_URL` | ja | ja | Exact `https://<ref>.supabase.co` | app/runtime | correct |
 | `SUPABASE_JWKS` | ja | ja | Compacte publieke ES256/P-256 JWKS van exact het eigen project | lokale staff-JWT-verificatie | bij signing-keyrotatie vóór activatie actualiseren |
-| `MOLLIE_ENABLED` | `true` | nee | `false` of `true` | providergate | alleen staging testmode; production default `false` |
-| `MOLLIE_PROFILE_ID` | nee | nee | exact verwacht `pfl_…` testprofiel | muterende stagingacceptatie | vóór de Mollie-run als stagingvariable toevoegen; geen productionwaarde nodig zolang production uit staat |
-| `EMAIL_ENABLED` | nee | nee | `false` of `true` | providergate | optioneel; default `false` in workflow |
-| `DYNAMIC_IMPORT_ENABLED` | nee | nee | `false` of `true` | dynamische-importgate | workflowdefault `false`; pas na sleutel- en retentiecontrole activeren |
-| `IMPORT_RAW_RETENTION_HOURS` | nee | nee | geheel getal 1–72 | raw-importretentie | workflowdefault `24` |
-| `QR_TOKEN_PEPPER_VERSION` | nee | nee | geheel getal 1–9999 | actuele QR-keyversie | verplicht vóór stagingdeploy; huidige ontbrekende naam blokkeert |
+| `MOLLIE_ENABLED` | ja (`false`) | nee | `false` of `true` | providergate | staging veilig uit; production workflowdefault `false` |
+| `MOLLIE_PROFILE_ID` | als secret | als secret | exact verwacht `pfl_…` profiel | muterende Mollieacceptatie | actueel protected secret; workflow accepteert desgewenst ook een protected variable |
+| `EMAIL_ENABLED` | ja (`false`) | nee | `false` of `true` | providergate | staging veilig uit |
+| `DYNAMIC_IMPORT_ENABLED` | ja (`false`) | nee | `false` of `true` | dynamische-importgate | staging veilig uit |
+| `IMPORT_RAW_RETENTION_HOURS` | ja (`24`) | nee | geheel getal 1–72 | raw-importretentie | staging correct; production ontbreekt |
+| `QR_TOKEN_PEPPER_VERSION` | ja (`1`) | nee | geheel getal 1–9999 | actuele QR-keyversie | staging correct; production ontbreekt |
 | `QR_TOKEN_PREVIOUS_PEPPER_VERSION` | nee | nee | geheel getal 1–9999, anders dan current | tijdelijk rotatievenster | alleen samen met previous pepper |
-| `SENDGRID_FROM_NAME` | nee | nee | exact `Kledingcommissie Duindorp SV` | SendGrid | vereist vóór mailacceptatie |
-| `SENDGRID_FROM_EMAIL` | oude waarde | oude waarde | exact `kleding@duindorpsv.nl`, geverifieerd | SendGrid | door eigenaar gewijzigd; environment bijwerken vóór mailacceptatie |
+| `SENDGRID_FROM_NAME` | ja | nee | exact `Kledingcommissie Duindorp SV` | SendGrid | staging correct; production ontbreekt |
+| `SENDGRID_FROM_EMAIL` | ja | aanwezig, niet herbevestigd | exact `kleding@duindorpsv.nl`, geverifieerd | SendGrid | staging correct; production blijft geblokkeerd |
 | `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
-| `SENDGRID_REPLY_TO_EMAIL` | oude waarde | oude waarde | exact `kleding@duindorpsv.nl` | SendGrid | door eigenaar gewijzigd; environment bijwerken vóór mailacceptatie |
+| `SENDGRID_REPLY_TO_EMAIL` | ja | aanwezig, niet herbevestigd | exact `kleding@duindorpsv.nl` | SendGrid | staging correct; production blijft geblokkeerd |
 | `SENDGRID_WEBHOOK_ID` | `fd290462-…` | `84500cb8-…` | UUID, omgevingsuniek | provider-smoke | production blijft ongevalideerd en uit |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | ja | nee | geldige P-256 public key | webhookvalidatie | staging via de exacte signed-webhookconfiguratie opgehaald; production blijft uit |
+| `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` | nee | nee | 64 lowercase hex; vooraf gecontroleerde SHA-256 van `username:user_id` | provider-smoke | verplicht vóór staging-webhookmutatie of Mail Send |
+| `E2E_MAILBOX_IMAP_HOST` | nee | nee | geldige TLS-IMAP-host | inboxacceptatie | staging ontbreekt |
+| `E2E_MAILBOX_IMAP_PORT` | nee | nee | exact `993` | inboxacceptatie | staging ontbreekt |
+| `E2E_MAILBOX_IMAP_MAILBOX` | nee | nee | veilige mailboxnaam, standaard `INBOX` | inboxacceptatie | staging ontbreekt |
 
 ## Secrets
 
@@ -35,21 +45,26 @@ Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te leze
 | `SUPABASE_DB_URL` | ja | ja | Exact eigen directe Supabase-host of pooler-user; TLS niet uitgeschakeld | migrations | aanwezig |
 | `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | ja | ja | base64, exact 32 bytes | Next Server Actions | aanwezig |
 | `PARENT_TOKEN_PEPPER` | ja | ja | uniek, minimaal 32 tekens | OTP en oudersessies | aanwezig |
-| `QR_TOKEN_PEPPER` | nee | nee | 32 random bytes, canoniek 43 tekens base64url | huidige QR-locator/grantkey | verplicht vóór stagingdeploy; ontbreekt |
+| `QR_TOKEN_PEPPER` | ja | nee | 32 random bytes, canoniek 43 tekens base64url | huidige QR-locator/grantkey | staging aanwezig; production ontbreekt |
 | `QR_TOKEN_PREVIOUS_PEPPER` | nee | nee | andere canonieke 32-byte base64url-key | tijdelijk rotatievenster | optioneel en alleen samen met previous versie |
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
-| `IMPORT_STAGING_ENCRYPTION_KEY` | nee | nee | 32 random bytes, canoniek 43 tekens base64url zonder padding | AES-256-GCM raw-importstaging | vóór importactivering uniek per omgeving toevoegen; niet hergebruiken |
+| `IMPORT_STAGING_ENCRYPTION_KEY` | ja | nee | 32 random bytes, canoniek 43 tekens base64url zonder padding | AES-256-GCM raw-importstaging | staging aanwezig; production ontbreekt |
 | `OPERATIONS_HEARTBEAT_URL` | nee | nee | geheime `https://` dead-man-switch-URL zonder URL-userinfo | onafhankelijke schedulerbewaking | verplicht voor productiondeploy; staging optioneel maar aanbevolen |
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
-| `SENDGRID_SMOKE_RECIPIENT` | ja | nee | `info@dgwebservices.nl`, beheerde test-inbox | provider-smoke | uitsluitend gebruikt door de handmatige staging-smoke |
-| `STAGING_CLEANUP_BACKUP_PASSPHRASE` | nog te verifiëren | niet van toepassing | unieke, hoog-entropische passphrase van minimaal 32 tekens | uitsluitend client-side encryptie/decryptie van de tijdelijke pre-wipeback-up | verplicht vóór `Staging domain cleanup` in modus `apply`; nooit als productionsecret gebruiken |
+| `SENDGRID_ADMIN_API_KEY` | nee | niet van toepassing | dedicated stagingkey met uitsluitend user/webhook read-write | provider-smoke | verplicht vóór webhookconfiguratie |
+| `SENDGRID_SMOKE_RECIPIENT` | ja | nee | dedicated beheerde testinbox | provider-smoke | waarde niet uitgelezen; uitsluitend handmatige staging-smoke |
+| `E2E_MAILBOX_IMAP_USER` | nee | niet van toepassing | dedicated testinboxgebruiker | inboxacceptatie | staging ontbreekt |
+| `E2E_MAILBOX_IMAP_PASSWORD` | nee | niet van toepassing | unieke app-password/credential | inboxacceptatie | staging ontbreekt |
+| `STAGING_CLEANUP_BACKUP_PASSPHRASE` | ja | niet van toepassing | unieke, hoog-entropische passphrase van minimaal 32 tekens | uitsluitend client-side encryptie/decryptie van de tijdelijke pre-wipeback-up | staging aanwezig; nooit als productionsecret gebruiken |
+| `PRODUCTION_BACKUP_PASSPHRASE` | niet van toepassing | nee | unieke hoog-entropische passphrase van minimaal 32 tekens | encrypted herstelpunt vóór productiemigratie | ontbreekt; harde promotieblocker |
 
 Bij toekomstige rotatie of provideractivering worden secrets uitsluitend interactief gezet (gebruik geen `--body`):
 
 ```bash
 gh secret set MOLLIE_API_KEY --repo duindorpteneu/platform --env staging
 gh secret set SENDGRID_API_KEY --repo duindorpteneu/platform --env staging
+gh secret set SENDGRID_ADMIN_API_KEY --repo duindorpteneu/platform --env staging
 gh secret set MOLLIE_API_KEY --repo duindorpteneu/platform --env production
 gh secret set SENDGRID_API_KEY --repo duindorpteneu/platform --env production
 gh secret set OPERATIONS_HEARTBEAT_URL --repo duindorpteneu/platform --env staging
@@ -59,12 +74,14 @@ gh secret set IMPORT_STAGING_ENCRYPTION_KEY --repo duindorpteneu/platform --env 
 gh secret set QR_TOKEN_PEPPER --repo duindorpteneu/platform --env staging
 gh secret set QR_TOKEN_PEPPER --repo duindorpteneu/platform --env production
 gh secret set STAGING_CLEANUP_BACKUP_PASSPHRASE --repo duindorpteneu/platform --env staging
+gh secret set PRODUCTION_BACKUP_PASSPHRASE --repo duindorpteneu/platform --env production
+gh secret set MOLLIE_PROFILE_ID --repo duindorpteneu/platform --env staging
+gh secret set MOLLIE_PROFILE_ID --repo duindorpteneu/platform --env production
 ```
 
-De niet-geheime Mollie-profielbinding wordt na controle van het bedoelde testprofiel gezet met:
+Niet-geheime configuratie wordt pas na controle gezet met:
 
 ```bash
-gh variable set MOLLIE_PROFILE_ID --repo duindorpteneu/platform --env staging
 gh variable set IMPORT_RAW_RETENTION_HOURS --repo duindorpteneu/platform --env staging
 gh variable set IMPORT_RAW_RETENTION_HOURS --repo duindorpteneu/platform --env production
 gh variable set QR_TOKEN_PEPPER_VERSION --repo duindorpteneu/platform --env staging
@@ -72,7 +89,13 @@ gh variable set QR_TOKEN_PEPPER_VERSION --repo duindorpteneu/platform --env prod
 gh variable set SENDGRID_FROM_NAME --body 'Kledingcommissie Duindorp SV' --repo duindorpteneu/platform --env staging
 gh variable set SENDGRID_FROM_EMAIL --body 'kleding@duindorpsv.nl' --repo duindorpteneu/platform --env staging
 gh variable set SENDGRID_REPLY_TO_EMAIL --body 'kleding@duindorpsv.nl' --repo duindorpteneu/platform --env staging
+gh variable set SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT --repo duindorpteneu/platform --env staging
 ```
+
+SSH-host/user/port/key, `known_hosts`, een externe registry en Tailscale zijn
+voor deze releaseketen niet van toepassing. De gesigneerde artifactdownload
+vindt op de environment-eigen self-hosted runner plaats; de code verwacht geen
+van deze namen.
 
 Laat `DYNAMIC_IMPORT_ENABLED` in beide omgevingen weg of expliciet `false` totdat de unieke key is gezet, cleanup/health groen zijn en de databaseflag `dynamic_import_v2` gecontroleerd kan worden geactiveerd. Iedere deploy vergelijkt vóór appactivatie een niet-geheime keyfingerprint met actieve uploadstaging. Sleutelrotatie of keyverwijdering wordt technisch geblokkeerd totdat `pending=0`; volg de pauze-/retentieprocedure in het operationsrunbook.
 
