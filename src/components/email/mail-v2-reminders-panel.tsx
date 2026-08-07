@@ -14,6 +14,8 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  DEFAULT_MAIL_QUIET_END,
+  DEFAULT_MAIL_QUIET_START,
   type MailReminderRule,
   type MailReminderTemplateKey,
   type MailReminderWorkspace,
@@ -28,7 +30,7 @@ const templateLabels: Record<MailReminderTemplateKey, string> = {
   payment_reminder: "Betalingsherinnering",
   pickup_reminder: "Afhaalherinnering",
 };
-const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
+const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", {
   dateStyle: "short",
   timeStyle: "short",
@@ -94,8 +96,8 @@ function formForRule(
     maximumDispatches: 4,
     cooldownHours: 24,
     endAt: "",
-    quietStart: "21:00",
-    quietEnd: "08:00",
+    quietStart: DEFAULT_MAIL_QUIET_START,
+    quietEnd: DEFAULT_MAIL_QUIET_END,
   };
 }
 
@@ -246,7 +248,7 @@ export function MailV2RemindersPanel({
         <div className="border-b border-line p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-brand-500">
                 Planner
               </p>
               <h2 className="mt-1 text-base font-bold text-brand-900">
@@ -262,7 +264,7 @@ export function MailV2RemindersPanel({
               <Plus className="size-4" />
             </button>
           </div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+          <p className="mt-2 text-xs leading-5 text-slate-500">
             Nieuwe en gewijzigde regels zijn altijd inactief. Verzending stopt
             automatisch zodra de actuele procesvoorwaarde niet meer geldt.
           </p>
@@ -286,7 +288,7 @@ export function MailV2RemindersPanel({
                 <p className="truncate text-xs font-bold text-brand-900">
                   {rule.internalName}
                 </p>
-                <span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase ${
+                <span className={`rounded-full px-2 py-1 text-xs font-bold uppercase ${
                   rule.active
                     ? "bg-emerald-100 text-success"
                     : "bg-slate-100 text-slate-500"
@@ -294,14 +296,14 @@ export function MailV2RemindersPanel({
                   {rule.active ? "Actief" : "Inactief"}
                 </span>
               </div>
-              <p className="mt-1 text-[10px] text-slate-500">
+              <p className="mt-1 text-xs text-slate-500">
                 {templateLabels[rule.templateKey]}
               </p>
-              <div className="mt-3 flex items-center justify-between text-[10px]">
+              <div className="mt-3 flex items-center justify-between text-xs">
                 <span className="font-semibold text-brand-700">
                   Nu geschikt: {rule.dueNow}
                 </span>
-                <span className="text-slate-400">v{rule.revision}</span>
+                <span className="text-slate-500">v{rule.revision}</span>
               </div>
             </button>
           ))}
@@ -312,7 +314,7 @@ export function MailV2RemindersPanel({
         <StatusNotice notice={notice} />
         <div className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-brand-500">
               Europe/Amsterdam
             </p>
             <h2 className="mt-1 text-lg font-bold text-brand-900">
@@ -324,7 +326,7 @@ export function MailV2RemindersPanel({
             </p>
           </div>
           {selected && (
-            <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
               <div className="rounded-lg bg-brand-50 px-3 py-2">
                 <p className="font-bold text-brand-900">{selected.dueNow}</p>
                 <p className="text-brand-600">nu geschikt</p>
@@ -404,7 +406,7 @@ export function MailV2RemindersPanel({
             </label>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-            <p className="max-w-xl text-[11px] leading-5 text-slate-500">
+            <p className="max-w-xl text-xs leading-5 text-slate-500">
               Opslaan maakt de regel inactief. De teller ‘nu geschikt’ is een
               actuele doelgroepvoorvertoning zonder providerverkeer.
             </p>
@@ -433,7 +435,7 @@ export function MailV2RemindersPanel({
                 <h3 className="text-sm font-bold text-brand-900">
                   {selected.active ? "Regel pauzeren" : "Regel activeren"}
                 </h3>
-                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                <p className="mt-1 text-xs leading-5 text-slate-500">
                   Vereist beheerders-MFA en een reden. Activeren vereist een
                   open seizoen, gepubliceerde template en bewezen producent.
                 </p>
@@ -442,7 +444,7 @@ export function MailV2RemindersPanel({
                   <input value={reason} onChange={(event) => setReason(event.target.value)} className={fieldClass} minLength={3} maxLength={240} />
                 </label>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p className="inline-flex items-center gap-2 text-[10px] text-slate-500">
+                  <p className="inline-flex items-center gap-2 text-xs text-slate-500">
                     <Clock3 className="size-3.5" />
                     Laatste run: {selected.lastRunAt
                       ? `${dateFormatter.format(new Date(selected.lastRunAt))} · ${selected.lastRunStatus}`

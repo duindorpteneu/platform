@@ -4,6 +4,10 @@ import { execFileSync, spawn } from "node:child_process";
 import net from "node:net";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertKeyboardFocusVisible,
+  assertNoAutomatedA11yViolations,
+} from "./browser-a11y.mjs";
 
 const host = "localhost";
 const port = 3101;
@@ -147,8 +151,16 @@ function cleanupSql() {
     where id in (${memberSeasonList});
     delete from app.members
     where id in (${memberList});
+    delete from app.inventory_settings
+    where season_id = '${seasonId}'::uuid;
     delete from app.seasons
     where id = '${seasonId}'::uuid;
+    delete from private.staff_sessions
+    where auth_user_id in (
+      select profile.auth_user_id
+      from app.staff_profiles profile
+      where profile.display_name = '${staffDisplayName}'
+    );
     delete from app.staff_profiles
     where display_name = '${staffDisplayName}';
   `;
@@ -412,9 +424,10 @@ try {
   await waitForApp(appProcess);
 
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({
+  const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
   });
+  const page = await context.newPage();
   await page.goto(`${baseUrl}/backoffice/portaaltoegang`);
   await page.waitForURL(`${baseUrl}/staff/login`);
   await page.getByLabel("E-mailadres").fill(staffEmail);
@@ -470,6 +483,8 @@ try {
     true,
   );
   await page.getByText("Gedeeld door 2 leden", { exact: true }).first().waitFor();
+  await assertNoAutomatedA11yViolations(page, "parent_access_selection");
+  await assertKeyboardFocusVisible(page, "parent_access_selection");
 
   await page.getByLabel("Selecteer Ada Toegang").check();
   await page.getByLabel("Selecteer Ben Toegang").check();
@@ -591,12 +606,13 @@ try {
   assert.match(adaRow, /Ingetrokken/);
   assert.match(benRow, /Actief/);
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 360, height: 800 });
   const dimensions = await page.evaluate(() => ({
     clientWidth: document.body.clientWidth,
     scrollWidth: document.body.scrollWidth,
   }));
   assert.ok(dimensions.scrollWidth <= dimensions.clientWidth);
+  await assertNoAutomatedA11yViolations(page, "parent_access_mobile");
 
   const databaseState = queryScalar(
     local.DB_URL,

@@ -33,10 +33,15 @@ const serverEnvSchema = z.object({
   MOLLIE_API_KEY: optionalText(),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
   SENDGRID_API_KEY: optionalText(),
+  SENDGRID_API_KEY_FINGERPRINT: z.preprocess(
+    emptyStringToUndefined,
+    z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  ),
   SENDGRID_API_BASE_URL: z.enum(["https://api.sendgrid.com", "https://api.eu.sendgrid.com"]).default("https://api.sendgrid.com"),
   SENDGRID_FROM_NAME: optionalText(3),
   SENDGRID_FROM_EMAIL: optionalEmail,
   SENDGRID_REPLY_TO_EMAIL: optionalEmail,
+  SENDGRID_SMOKE_RECIPIENT: optionalEmail,
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: optionalText(),
 }).superRefine((env, context) => {
   const canonicalSecret = (value: string | undefined) => {
@@ -110,7 +115,7 @@ const serverEnvSchema = z.object({
     if (!env.APP_BASE_URL.startsWith("https://")) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["APP_BASE_URL"], message: "E-mailverzending vereist een publieke HTTPS-basis-URL." });
     }
-    const required = ["SENDGRID_API_KEY", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
+    const required = ["SENDGRID_API_KEY", "SENDGRID_API_KEY_FINGERPRINT", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
     for (const key of required) {
       if (!env[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is verplicht wanneer e-mail actief is.` });
     }
@@ -142,10 +147,13 @@ export function getServerEnv() {
     MOLLIE_API_KEY: process.env.MOLLIE_API_KEY,
     EMAIL_ENABLED: process.env.EMAIL_ENABLED,
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
+    SENDGRID_API_KEY_FINGERPRINT:
+      process.env.SENDGRID_API_KEY_FINGERPRINT,
     SENDGRID_API_BASE_URL: process.env.SENDGRID_API_BASE_URL,
     SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME,
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL,
     SENDGRID_REPLY_TO_EMAIL: process.env.SENDGRID_REPLY_TO_EMAIL,
+    SENDGRID_SMOKE_RECIPIENT: process.env.SENDGRID_SMOKE_RECIPIENT,
     SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY,
   });
 }

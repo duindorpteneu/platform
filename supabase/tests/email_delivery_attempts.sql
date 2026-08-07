@@ -97,6 +97,21 @@ select ok(
   )
   and has_function_privilege(
     'service_role',
+    'app.record_sendgrid_events_v4(jsonb)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'app.assert_sendgrid_events_ready_v1(jsonb)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'app.record_sendgrid_events_v3(jsonb)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
     'app.record_sendgrid_events_v2(jsonb)',
     'EXECUTE'
   )
@@ -111,6 +126,22 @@ select ok(
     'EXECUTE'
   ),
   'alleen attempt-gebonden worker- en webhook-RPCs zijn extern bereikbaar'
+);
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'email_job',
+        'email_job_id',
+        '277a3000-0000-4000-8000-000000000099',
+        'delivery_attempt_id',
+        '277a5000-0000-4000-8000-000000000099'
+      )
+    )
+  )->>'ready',
+  '1',
+  'onbekende queue-identiteiten zijn permanent ongeldig en niet retrybaar'
 );
 
 create temporary table first_claim as
@@ -156,6 +187,47 @@ select ok(
   ),
   'send-time autorisatie is ook aan de poging gebonden'
 );
+select throws_ok(
+  format(
+    $sql$select app.assert_sendgrid_events_ready_v1(
+      jsonb_build_array(
+        jsonb_build_object(
+          'target', 'email_job',
+          'email_job_id',
+            '277a3000-0000-4000-8000-000000000001',
+          'delivery_attempt_id', %L
+        )
+      )
+    )$sql$,
+    (select result #>> '{jobs,0,deliveryAttemptId}' from first_claim)
+  ),
+  '40001',
+  'SENDGRID_EVENT_ACCEPTANCE_PENDING',
+  'queuecallback vóór HTTP-acceptatie wordt retrybaar geweigerd'
+);
+select is(
+  app.record_sendgrid_events_v4(jsonb_build_array(
+    jsonb_build_object(
+      'email_job_id',
+      '277a3000-0000-4000-8000-000000000001',
+      'delivery_attempt_id',
+      (
+        select result #>> '{jobs,0,deliveryAttemptId}'
+        from first_claim
+      ),
+      'event_id',
+      'provider-event-before-http-acceptance',
+      'provider_message_id',
+      'http-message-attempt-1.filter0001.41.0',
+      'event_type',
+      'delivered',
+      'occurred_at',
+      statement_timestamp()
+    )
+  ))->>'quarantined',
+  '1',
+  'provider-event vóór immutable HTTP-acceptatie projecteert nooit'
+);
 select is(
   app.complete_email_job_v2(
     '277a3000-0000-4000-8000-000000000001',
@@ -171,9 +243,26 @@ select is(
   'sent',
   'HTTP-acceptatie voltooit exact de geclaimde poging'
 );
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'email_job',
+        'email_job_id',
+        '277a3000-0000-4000-8000-000000000001',
+        'delivery_attempt_id',
+        (select result #>> '{jobs,0,deliveryAttemptId}'
+         from first_claim)
+      )
+    )
+  )->>'ready',
+  '1',
+  'queuecallback is gereed na immutable HTTP-acceptatie'
+);
 
 create temporary table first_event_result as
-select app.record_sendgrid_events_v2(jsonb_build_array(
+select app.record_sendgrid_events_v4(jsonb_build_array(
   jsonb_build_object(
     'email_job_id',
     '277a3000-0000-4000-8000-000000000001',
@@ -185,7 +274,7 @@ select app.record_sendgrid_events_v2(jsonb_build_array(
     'event_id',
     'provider-event-delivered-1',
     'provider_message_id',
-    'event-message-attempt-1',
+    'http-message-attempt-1.filter0001.42.0',
     'event_type',
     'delivered',
     'occurred_at',
@@ -202,7 +291,7 @@ select app.record_sendgrid_events_v2(jsonb_build_array(
 select is(
   (select result->>'recorded' from first_event_result),
   '1',
-  'signed event accepteert een eigen event-message-ID naast het HTTP-ID'
+  'signed event is aantoonbaar afgeleid van exact het HTTP-ID'
 );
 select is(
   (
@@ -214,7 +303,35 @@ select is(
   'provider-event overschrijft de HTTP-provideridentiteit niet'
 );
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
+    jsonb_build_object(
+      'email_job_id',
+      '277a3000-0000-4000-8000-000000000001',
+      'delivery_attempt_id',
+      (
+        select result #>> '{jobs,0,deliveryAttemptId}'
+        from first_claim
+      ),
+      'event_id',
+      'provider-event-bounce-without-message-id',
+      'event_type',
+      'bounced',
+      'occurred_at',
+      (
+        select attempt.claimed_at + interval '500 milliseconds'
+        from private.email_delivery_attempts attempt
+        where attempt.id = (
+          select (result #>> '{jobs,0,deliveryAttemptId}')::uuid
+          from first_claim
+        )
+      )
+    )
+  ))->>'recorded',
+  '1',
+  'bounce zonder message-ID gebruikt alleen de immutable attemptbinding'
+);
+select is(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -226,7 +343,7 @@ select is(
       'event_id',
       'provider-event-delivered-1',
       'provider_message_id',
-      'event-message-attempt-1',
+      'http-message-attempt-1.filter0001.42.0',
       'event_type',
       'delivered',
       'occurred_at',
@@ -244,7 +361,7 @@ select is(
   'exact dezelfde providerreplay is idempotent'
 );
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -256,7 +373,7 @@ select is(
       'event_id',
       'provider-event-delivered-1',
       'provider_message_id',
-      'event-message-attempt-1',
+      'http-message-attempt-1.filter0001.42.0',
       'event_type',
       'bounced',
       'occurred_at',
@@ -267,7 +384,7 @@ select is(
   'provider-event-ID-collisie wordt zichtbaar in quarantaine gezet'
 );
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -291,7 +408,7 @@ select is(
 );
 
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -303,7 +420,7 @@ select is(
       'event_id',
       'provider-event-older-bounce',
       'provider_message_id',
-      'event-message-attempt-1',
+      'http-message-attempt-1.filter0001.42.0',
       'event_type',
       'bounced',
       'occurred_at',
@@ -324,7 +441,7 @@ select is(
 );
 
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -336,7 +453,7 @@ select is(
       'event_id',
       'provider-event-newer-bounce',
       'provider_message_id',
-      'event-message-attempt-1',
+      'http-message-attempt-1.filter0001.42.0',
       'event_type',
       'bounced',
       'occurred_at',
@@ -368,7 +485,7 @@ select is(
 );
 
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000001',
@@ -380,7 +497,7 @@ select is(
       'event_id',
       'provider-event-newer-delivered',
       'provider_message_id',
-      'event-message-attempt-1',
+      'http-message-attempt-1.filter0001.42.0',
       'event_type',
       'delivered',
       'occurred_at',
@@ -511,7 +628,24 @@ select is(
   'bewezen retry krijgt een nieuwe pogingidentiteit'
 );
 select is(
-  app.record_sendgrid_events_v2(jsonb_build_array(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'email_job',
+        'email_job_id',
+        '277a3000-0000-4000-8000-000000000002',
+        'delivery_attempt_id',
+        (select result #>> '{jobs,0,deliveryAttemptId}'
+         from second_claim)
+      )
+    )
+  )->>'ready',
+  '1',
+  'een definitief retry-outcome stroomt door naar quarantainecontrole'
+);
+select is(
+  app.record_sendgrid_events_v4(jsonb_build_array(
     jsonb_build_object(
       'email_job_id',
       '277a3000-0000-4000-8000-000000000002',
@@ -529,9 +663,9 @@ select is(
       'occurred_at',
       statement_timestamp() + interval '1 second'
     )
-  ))->>'recorded',
+  ))->>'quarantined',
   '1',
-  'laat event van een eerdere poging blijft bewaard'
+  'event van een niet-geaccepteerde poging blijft uitsluitend in quarantaine'
 );
 select is(
   (
@@ -568,7 +702,7 @@ select is(
     null,
     null
   ) #>> '{emailDeliveryAttempts,quarantinedEvents}',
-  '2',
+  '4',
   'operationele health maakt alle gequarantaineerde provider-events zichtbaar'
 );
 select is(

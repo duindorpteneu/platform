@@ -55,7 +55,7 @@ export async function getMailV2CutoverSnapshot(): Promise<MailV2CutoverSnapshot>
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("MAIL_V2_DATABASE_UNAVAILABLE");
   const { data, error } = await supabase.schema("app").rpc(
-    "get_mail_v2_cutover_snapshot",
+    "get_mail_v2_cutover_snapshot_v2",
   );
   if (error) {
     logWorkspaceFailure(error.code || "cutover_query_failed");
@@ -145,6 +145,35 @@ function sourceForTemplate(
   } as const;
 }
 
+function brandingValues(
+  revision: MailV2Workspace["branding"]["published"],
+): MailBranding {
+  const {
+    id: _id,
+    revision: _revision,
+    status: _status,
+    contentHash: _contentHash,
+    creationSource: _creationSource,
+    publishedBy: _publishedBy,
+    publishedAt: _publishedAt,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...branding
+  } = revision;
+  void [
+    _id,
+    _revision,
+    _status,
+    _contentHash,
+    _creationSource,
+    _publishedBy,
+    _publishedAt,
+    _createdAt,
+    _updatedAt,
+  ];
+  return branding;
+}
+
 export async function previewMailV2Template(input: {
   templateKey: MailV2Workspace["templates"][number]["key"];
   subjectSource: string;
@@ -158,7 +187,7 @@ export async function previewMailV2Template(input: {
   const preview = mailV2PreviewData();
   return renderMailV2({
     source,
-    branding: workspace.branding.published,
+    branding: brandingValues(workspace.branding.published),
     shortcodes: preview.shortcodes,
     protectedValues: preview.protectedValues,
     appBaseUrl,
@@ -179,7 +208,7 @@ export async function saveMailV2TemplateDraft(input: {
   const preview = mailV2PreviewData();
   const renderedBody = renderMailV2Body({
     source: sourceForTemplate(template, input),
-    branding: workspace.branding.published,
+    branding: brandingValues(workspace.branding.published),
     shortcodes: preview.shortcodes,
     protectedValues: preview.protectedValues,
   });
@@ -288,7 +317,7 @@ export async function publishMailV2Branding(
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("MAIL_V2_DATABASE_UNAVAILABLE");
   const { data, error } = await supabase.schema("app").rpc(
-    "publish_mail_branding_revision_v1",
+    "publish_mail_branding_revision_v2",
     {
       p_revision_id: input.revisionId,
       p_expected_hash: input.expectedHash,

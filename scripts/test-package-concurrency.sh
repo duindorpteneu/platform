@@ -39,6 +39,8 @@ where member_season_id in (
   'cc510000-0000-4000-8000-000000000003',
   'cc510000-0000-4000-8000-000000000004'
 );
+delete from app.package_change_requests
+where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from private.parent_package_selection_requests
 where member_season_id in (
   'cc510000-0000-4000-8000-000000000001',
@@ -186,6 +188,8 @@ where id in (
   'cc200000-0000-4000-8000-000000000002',
   'cc200000-0000-4000-8000-000000000003'
 );
+delete from app.inventory_settings
+where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from app.seasons
 where id = 'cc100000-0000-4000-8000-000000000001';
 delete from app.staff_profiles
@@ -1056,4 +1060,106 @@ if [[ "$resolve_state" != "approved:released:0" ]]; then
   exit 1
 fi
 
-echo "Package-concurrencytests geslaagd: idempotency, catalogus, default en conflicterende maatresoluties serialiseren zonder partial writes."
+change_order_id="$("${psql_cmd[@]}" -Atc "
+  select id
+  from app.member_orders
+  where member_season_id = 'cc510000-0000-4000-8000-000000000004'
+")"
+change_revision="$("${psql_cmd[@]}" -At <<SQL
+begin;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+)
+\gset
+select app.preflight_package_change_v1(
+  '$change_order_id',
+  'cc410000-0000-4000-8000-000000000002',
+  'Concurrencytest revisie-archivering',
+  'cc830000-0000-4000-8000-000000000001',
+  null
+)->>'revision';
+commit;
+SQL
+)"
+archive_hash="$("${psql_cmd[@]}" -Atc "
+  select private.package_revision_content_hash(
+    'cc410000-0000-4000-8000-000000000002'
+  )
+")"
+archive_log="$test_tmp_dir/package-change-archive.log"
+apply_log="$test_tmp_dir/package-change-apply.log"
+(
+  "${psql_cmd[@]}" >"$archive_log" 2>&1 <<SQL
+begin;
+set local statement_timeout = '15s';
+set local lock_timeout = '10s';
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+select app.archive_package_revision(
+  'cc410000-0000-4000-8000-000000000002',
+  'Concurrencytest doelrevisie archiveren',
+  '$archive_hash',
+  null
+);
+\echo PACKAGE_CHANGE_ARCHIVE_HOLDING
+select pg_sleep(1.5);
+commit;
+SQL
+) &
+archive_pid=$!
+wait_for_marker "$archive_log" "PACKAGE_CHANGE_ARCHIVE_HOLDING"
+set +e
+(
+  "${psql_cmd[@]}" >"$apply_log" 2>&1 <<SQL
+begin;
+set local statement_timeout = '15s';
+set local lock_timeout = '10s';
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+select app.apply_package_change_v1(
+  'cc830000-0000-4000-8000-000000000001',
+  '$change_revision',
+  'SWITCH_PACKAGE',
+  null
+);
+commit;
+SQL
+) &
+apply_pid=$!
+wait "$archive_pid"
+archive_status=$?
+wait "$apply_pid"
+apply_status=$?
+set -e
+if [[ "$archive_status" -ne 0 ]]; then
+  tail -n 40 "$archive_log"
+  exit 1
+fi
+if [[ "$apply_status" -eq 0 ]] || ! grep -q "PACKAGE_CHANGE_STALE" "$apply_log"; then
+  tail -n 40 "$apply_log"
+  exit 1
+fi
+change_state="$("${psql_cmd[@]}" -Atc "
+  select orders.package_revision_id::text || ':' || revision.status
+  from app.member_orders orders
+  join app.package_template_revisions revision
+    on revision.id = 'cc410000-0000-4000-8000-000000000002'
+  where orders.id = '$change_order_id'
+")"
+if [[ "$change_state" != "cc410000-0000-4000-8000-000000000001:archived" ]]; then
+  echo "Pakketwissel gebruikte een gelijktijdig gearchiveerde revisie: $change_state"
+  exit 1
+fi
+
+echo "Package-concurrencytests geslaagd: idempotency, catalogus, default, pakketwissel en conflicterende maatresoluties serialiseren zonder partial writes."

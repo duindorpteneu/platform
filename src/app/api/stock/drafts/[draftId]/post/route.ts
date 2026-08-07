@@ -10,6 +10,13 @@ export const dynamic = "force-dynamic";
 
 const paramsSchema = z.object({ draftId: z.string().uuid() }).strict();
 
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "private, no-store, max-age=0" },
+  });
+}
+
 export async function POST(request: Request, context: { params: Promise<{ draftId: string }> }) {
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard });
   if (guarded) return guarded;
@@ -21,10 +28,10 @@ export async function POST(request: Request, context: { params: Promise<{ draftI
     if (!body.ok) return body.response;
     const parsed = inventoryDraftPostSchema.safeParse(body.data);
     if (!params.success || !parsed.success) {
-      return NextResponse.json({ error: "Ongeldige definitieve levering." }, { status: 400 });
+      return json({ error: "Ongeldige definitieve levering." }, 400);
     }
     const supabase = await getSupabaseServerClient();
-    if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
+    if (!supabase) return json({ error: "Databaseverbinding ontbreekt." }, 503);
     const { data, error } = await supabase.schema("app").rpc("post_inventory_delivery_draft", {
       p_draft_id: params.data.draftId,
       p_expected_revision: parsed.data.expectedRevision,
@@ -32,16 +39,16 @@ export async function POST(request: Request, context: { params: Promise<{ draftI
       p_correlation_id: parsed.data.correlationId ?? null,
     });
     if (error) {
-      if (error.code === "42501") return NextResponse.json({ error: "AAL2 en voorraadbevoegdheid zijn vereist." }, { status: 403 });
-      if (error.code === "55000") return NextResponse.json({ error: "De nieuwe voorraadketen is nog niet gecontroleerd geactiveerd." }, { status: 409 });
-      if (error.code === "P0002") return NextResponse.json({ error: "Leveringconcept niet gevonden." }, { status: 404 });
-      return NextResponse.json({ error: "Alle maatregels moeten afzonderlijk bevestigd zijn; vernieuw bij gelijktijdige wijzigingen." }, { status: 409 });
+      if (error.code === "42501") return json({ error: "AAL2 en voorraadbevoegdheid zijn vereist." }, 403);
+      if (error.code === "55000") return json({ error: "De nieuwe voorraadketen is nog niet gecontroleerd geactiveerd." }, 409);
+      if (error.code === "P0002") return json({ error: "Leveringconcept niet gevonden." }, 404);
+      return json({ error: "Alle maatregels moeten afzonderlijk bevestigd zijn; vernieuw bij gelijktijdige wijzigingen." }, 409);
     }
-    return NextResponse.json(data, { status: 201 });
+    return json(data, 201);
   } catch (error) {
     if (error instanceof Error && error.message === "STAFF_AUTHORIZATION_REQUIRED") {
-      return NextResponse.json({ error: "Geen toegang tot definitieve leveringen." }, { status: 403 });
+      return json({ error: "Geen toegang tot definitieve leveringen." }, 403);
     }
-    return NextResponse.json({ error: "De levering kon niet worden verwerkt." }, { status: 500 });
+    return json({ error: "De levering kon niet worden verwerkt." }, 500);
   }
 }

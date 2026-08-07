@@ -10,6 +10,7 @@ import {
   History,
   KeyRound,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   Mail,
   Menu,
@@ -30,6 +31,7 @@ import type { StaffRole } from "@/server/auth/staff";
 
 const primaryNavigation = [
   { label: "Dashboard", href: "/backoffice", icon: LayoutDashboard },
+  { label: "Actiepunten", href: "/backoffice/actiepunten", icon: ListTodo },
   { label: "Leden", href: "/backoffice/leden", icon: Users },
   { label: "Artikelen", href: "/backoffice/artikelen", icon: Shirt },
   { label: "Bestellingen", href: "/backoffice/bestellingen", icon: ClipboardList },
@@ -122,7 +124,7 @@ function NavigationPanel({
       </div>
       <div className="border-t border-white/10 p-4">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-          <div className="flex size-8 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white">{initials}</div>
+          <div className="flex size-8 items-center justify-center rounded-full bg-brand-700 text-[11px] font-bold text-white">{initials}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold">{staff.displayName}</p>
             <p className="truncate text-[10px] text-blue-200/70">{roleLabels[staff.role]}</p>

@@ -7,6 +7,8 @@ import { EXPORT_TYPES, type ExportType, type ExportWorkspace as Workspace } from
 const meta: Record<ExportType, { label: string; description: string; icon: typeof Users }> = {
   members: { label: "Leden", description: "Relatienummer, team, e-mail, activatie en ouderkoppeling.", icon: Users },
   orders: { label: "Bestellingen", description: "Bedragen, betaalstatus, orderstatus en artikeltellingen.", icon: ClipboardList },
+  package_orders: { label: "Pakketorders", description: "Historische pakketnaam, revisie, prijs, betaling en voortgang per lid-seizoen.", icon: PackageCheck },
+  package_items: { label: "Pakketonderdelen", description: "Historische pakketinhoud, gekozen maat, regelstatus en werkelijk uitgegeven maten.", icon: Shirt },
   payments: { label: "Betalingen", description: "Methode, status, referentie, datum en verantwoordelijke.", icon: ReceiptText },
   deliveries: { label: "Leveringen", description: "Ontvangen, gereserveerde en beschikbare voorraad per variant.", icon: PackageCheck },
   fulfilments: { label: "Uitgiftes", description: "Uitgegeven artikelregels, datum, medewerker en correctiestatus.", icon: Shirt },
@@ -14,14 +16,16 @@ const meta: Record<ExportType, { label: string; description: string; icon: typeo
 };
 
 export function ExportWorkspace({ workspace }: { workspace: Workspace }) {
-  const initialSeason = workspace.seasons.find((season) => season.active)?.id ?? "";
+  const initialSeason = workspace.seasons.find((season) => season.active)?.id
+    ?? workspace.seasons[0]?.id
+    ?? "";
   const [type, setType] = useState<ExportType>("members");
   const [seasonId, setSeasonId] = useState(initialSeason);
   const [filter, setFilter] = useState("");
   const filterOptions = workspace.filters[type];
   const links = useMemo(() => {
     const query = new URLSearchParams();
-    if (seasonId) query.set("seasonId", seasonId);
+    query.set("seasonId", seasonId);
     if (filter) query.set("filter", filter);
     return (format: "csv" | "xlsx") => {
       const params = new URLSearchParams(query);
@@ -51,14 +55,13 @@ export function ExportWorkspace({ workspace }: { workspace: Workspace }) {
     <section className="mt-6 rounded-xl border border-line bg-white shadow-card">
       <div className="border-b border-line px-6 py-5"><h2 className="text-base font-bold text-brand-900">Selectie voor {meta[type].label.toLocaleLowerCase("nl-NL")}</h2><p className="mt-1 text-xs text-slate-500">Kies een seizoen en, waar beschikbaar, een aanvullende statusfilter.</p></div>
       <div className="grid gap-5 p-6 md:grid-cols-2">
-        <label className="block"><span className="mb-2 block text-xs font-bold text-brand-900">Seizoen</span><select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} className="h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">Alle seizoenen</option>{workspace.seasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.active ? " — actief" : ""}</option>)}</select></label>
+        <label className="block"><span className="mb-2 block text-xs font-bold text-brand-900">Seizoen</span><select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} disabled={workspace.seasons.length === 0} required className="h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none disabled:bg-slate-50 disabled:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="" disabled>Kies een seizoen</option>{workspace.seasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.active ? " — actief" : ""}</option>)}</select></label>
         <label className="block"><span className="mb-2 block text-xs font-bold text-brand-900">Statusfilter</span><select value={filter} onChange={(event) => setFilter(event.target.value)} disabled={filterOptions.length === 0} className="h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none disabled:bg-slate-50 disabled:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">{filterOptions.length === 0 ? "Geen aanvullende filter" : "Alle statussen"}</option>{filterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
       </div>
       <div className="flex flex-col gap-3 border-t border-line bg-slate-50/60 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-2xl text-[11px] leading-5 text-slate-500">CSV gebruikt UTF-8 met BOM en is geschikt voor Nederlandse Excel-instellingen. Formulegevoelige waarden worden in CSV én XLSX onschadelijk gemaakt.</p>
-        <div className="flex gap-2"><a href={links("csv")} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-bold text-brand-700 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><Download className="size-4" aria-hidden="true" /> CSV</a><a href={links("xlsx")} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-bold text-white hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"><FileSpreadsheet className="size-4" aria-hidden="true" /> Excel</a></div>
+        {seasonId ? <div className="flex gap-2"><a href={links("csv")} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-bold text-brand-700 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><Download className="size-4" aria-hidden="true" /> CSV</a><a href={links("xlsx")} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-bold text-white hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"><FileSpreadsheet className="size-4" aria-hidden="true" /> Excel</a></div> : <p className="text-xs font-semibold text-amber-700">Maak eerst een seizoen aan voordat je exporteert.</p>}
       </div>
     </section>
   </div>;
 }
-

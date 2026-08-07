@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const DEFAULT_MAIL_QUIET_START = "20:00";
+export const DEFAULT_MAIL_QUIET_END = "08:00";
+
 export const MAIL_TEMPLATE_KEYS = [
   "portal_access_invite",
   "portal_access_reminder",
@@ -222,10 +225,33 @@ function documentComplexity(document: MailTipTapDocument) {
   return { count, maximumDepth };
 }
 
-export const mailTipTapDocumentSchema: z.ZodType<MailTipTapDocument> = z.object({
+function normalizeEmptyTipTapParagraphs(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeEmptyTipTapParagraphs);
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    Object.entries(record).map(([key, entry]) => [
+      key,
+      key === "content" ? normalizeEmptyTipTapParagraphs(entry) : entry,
+    ]),
+  );
+  // ProseMirror omits `content` for an empty paragraph (for example the
+  // trailing cursor position after an atomic protected block).
+  if (record.type === "paragraph" && !("content" in record)) {
+    normalized.content = [];
+  }
+  return normalized;
+}
+
+const mailTipTapDocumentBaseSchema: z.ZodType<MailTipTapDocument> = z.object({
   type: z.literal("doc"),
   content: z.array(mailBlockNodeSchema).min(1).max(100),
-}).strict().superRefine((document, context) => {
+}).strict();
+
+export const mailTipTapDocumentSchema = z.preprocess(
+  normalizeEmptyTipTapParagraphs,
+  mailTipTapDocumentBaseSchema,
+).superRefine((document, context) => {
   const serializedBytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
   const complexity = documentComplexity(document);
   if (serializedBytes > 65_536) {
@@ -485,6 +511,66 @@ export const previewMailTemplateRequestSchema = templateDraftInput.pick({
   bodyTipTap: true,
 }).strict();
 
+export const sendMailV2TestRequestSchema = z.object({
+  templateKey: mailTemplateKeySchema,
+  expectedContentHash: contentHash,
+  requestId: uuid,
+}).strict();
+
+const mailV2TestStatusSchema = z.enum([
+  "prepared",
+  "accepted",
+  "provider_rejected",
+  "delivery_uncertain",
+  "configuration_error",
+  "disabled",
+  "render_failed",
+]);
+
+const mailV2TestPreparationBaseSchema = z.object({
+  deliveryId: uuid,
+  status: mailV2TestStatusSchema,
+  reused: z.boolean(),
+}).strict();
+
+export const mailV2TestPreparationSchema = z.union([
+  mailV2TestPreparationBaseSchema.extend({
+    status: z.literal("prepared"),
+    reused: z.literal(false),
+    template: z.object({
+      id: uuid,
+      contentHash,
+      source: mailTemplateSourceSchema,
+    }).strict(),
+    branding: z.object({
+      id: uuid,
+      contentHash,
+      values: mailBrandingSchema,
+    }).strict(),
+  }).strict(),
+  mailV2TestPreparationBaseSchema.extend({
+    reused: z.literal(true),
+  }).strict(),
+]);
+export type MailV2TestPreparation = z.infer<
+  typeof mailV2TestPreparationSchema
+>;
+
+export const mailV2TestCompletionSchema =
+  mailV2TestPreparationBaseSchema.extend({
+    status: mailV2TestStatusSchema.exclude(["prepared"]),
+  }).strict();
+export type MailV2TestCompletion = z.infer<
+  typeof mailV2TestCompletionSchema
+>;
+
+export const mailV2TestResponseSchema = z.object({
+  deliveryId: uuid,
+  status: mailV2TestStatusSchema,
+  reused: z.boolean(),
+}).strict();
+export type MailV2TestResponse = z.infer<typeof mailV2TestResponseSchema>;
+
 export const manageMailBrandingRequestSchema = z.discriminatedUnion("action", [
   mailBrandingSchema.omit({ contrastValidated: true }).extend({
     action: z.literal("save"),
@@ -517,6 +603,7 @@ export const mailV2CutoverSnapshotSchema = z.object({
   legacyPendingCount: z.number().int().nonnegative(),
   projectionFailureCount: z.number().int().nonnegative(),
   unresolvedConfirmationCount: z.number().int().nonnegative(),
+  brandingProjectionBlockers: z.number().int().nonnegative().default(0),
   projectionFailures: z.array(z.object({
     groupId: uuid,
     templateKey: mailTemplateKeySchema,
@@ -542,6 +629,7 @@ export const mailV2CutoverSnapshotSchema = z.object({
     || snapshot.legacyPendingCount !== 0
     || snapshot.projectionFailureCount !== 0
     || snapshot.unresolvedConfirmationCount !== 0
+    || snapshot.brandingProjectionBlockers !== 0
   )) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

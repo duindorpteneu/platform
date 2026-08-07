@@ -23,7 +23,7 @@ export async function getSettingsWorkspace(): Promise<SettingsWorkspace> {
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("get_settings_workspace_v2");
+  const { data, error } = await supabase.schema("app").rpc("get_settings_workspace_v3");
   if (error) {
     logWorkspaceFailure(error.code || "query_failed");
     if (error.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
@@ -42,16 +42,7 @@ export async function updateSettings(input: UpdateSettingsRequest, correlationId
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("update_settings_v2", {
-    p_contact_email: input.contactEmail,
-    p_club_address_line: input.clubAddressLine,
-    p_club_postal_code: input.clubPostalCode,
-    p_club_city: input.clubCity,
-    p_pickup_address_differs: input.pickupAddressDiffers,
-    p_pickup_name: input.pickupName,
-    p_pickup_address_line: input.pickupAddressLine,
-    p_pickup_postal_code: input.pickupPostalCode,
-    p_pickup_city: input.pickupCity,
+  const { data, error } = await supabase.schema("app").rpc("update_settings_v3", {
     p_active_season_id: input.activeSeasonId,
     p_season_amounts: input.seasonAmounts,
     p_mollie_enabled: input.mollieEnabled,
@@ -68,7 +59,7 @@ export async function createSeason(input: CreateSeasonRequest, correlationId: st
   await requireStaffRole(["beheerder"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("SETTINGS_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("create_season_v2", {
+  const { data, error } = await supabase.schema("app").rpc("create_season_v3", {
     p_name: input.name,
     p_starts_on: input.startsOn,
     p_ends_on: input.endsOn,

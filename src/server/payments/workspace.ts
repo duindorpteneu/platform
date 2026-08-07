@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export async function getPaymentWorkspace() {
   noStore();
-  await requireStaffRole(["beheerder", "kledingcommissie"]);
+  const staff = await requireStaffRole(["beheerder", "kledingcommissie"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("PAYMENT_DATABASE_UNAVAILABLE");
   const { data, error } = await supabase.schema("app").rpc("get_payment_workspace");
@@ -15,5 +15,8 @@ export async function getPaymentWorkspace() {
   }
   const parsed = paymentWorkspaceSchema.safeParse(data);
   if (!parsed.success) throw new Error("PAYMENT_WORKSPACE_RESPONSE_INVALID");
-  return parsed.data;
+  return {
+    ...parsed.data,
+    canRecordRefund: staff.role === "beheerder",
+  };
 }

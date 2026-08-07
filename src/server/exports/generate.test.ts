@@ -21,5 +21,10 @@ describe("export generation", () => {
     expect(xlsx.subarray(0, 2).toString()).toBe("PK");
     expect(createExportFilename(payload, "xlsx")).toBe("duindorp-sv-leden-2026-2027-2026-07-18.xlsx");
   });
+  it("uses stable package-report filename slugs", () => {
+    expect(createExportFilename({ ...payload, type: "package_orders" }, "csv"))
+      .toBe("duindorp-sv-pakketorders-2026-2027-2026-07-18.csv");
+    expect(createExportFilename({ ...payload, type: "package_items" }, "xlsx"))
+      .toBe("duindorp-sv-pakketonderdelen-2026-2027-2026-07-18.xlsx");
+  });
 });
-

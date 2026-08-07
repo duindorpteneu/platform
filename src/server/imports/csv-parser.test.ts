@@ -45,6 +45,39 @@ describe("dynamische CSV-parser", () => {
     })).toThrow("CSV_PARSE_TIMEOUT");
   });
 
+  it("accepteert exact de rij- en kolomgrens en weigert de eerstvolgende", () => {
+    const row = "waarde,team";
+    const maximumRows = `Naam,Team\n${Array.from(
+      { length: DYNAMIC_IMPORT_LIMITS.maxRows },
+      () => row,
+    ).join("\n")}`;
+    expect(parseCsvBytes(bytes(maximumRows)).records).toHaveLength(
+      DYNAMIC_IMPORT_LIMITS.maxRows,
+    );
+    expect(() => parseCsvBytes(bytes(`${maximumRows}\n${row}`))).toThrow(
+      "CSV_TOO_MANY_ROWS",
+    );
+
+    const headers = (count: number) => Array.from(
+      { length: count },
+      (_, index) => `Kolom ${index + 1}`,
+    ).join(",");
+    const values = (count: number) => Array.from(
+      { length: count },
+      () => "x",
+    ).join(",");
+    expect(parseCsvBytes(bytes(
+      `${headers(DYNAMIC_IMPORT_LIMITS.maxColumns)}\n${
+        values(DYNAMIC_IMPORT_LIMITS.maxColumns)
+      }`,
+    )).headers).toHaveLength(DYNAMIC_IMPORT_LIMITS.maxColumns);
+    expect(() => parseCsvBytes(bytes(
+      `${headers(DYNAMIC_IMPORT_LIMITS.maxColumns + 1)}\n${
+        values(DYNAMIC_IMPORT_LIMITS.maxColumns + 1)
+      }`,
+    ))).toThrow("CSV_TOO_MANY_COLUMNS");
+  });
+
   it("meldt afwijkende rijbreedte zonder bronwaarden duurzaam te hoeven bewaren", () => {
     const parsed = parseCsvBytes(bytes("A,B,C\n1,2,3\n4,5"));
     expect(parsed.rowShapeIssues).toEqual([{ row: 3, actualColumns: 2 }]);

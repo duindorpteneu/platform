@@ -5,5 +5,5 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function MembersPage({ searchParams }: { searchParams: SearchParams }) {
   const overview = await getMemberOverview(await searchParams);
-  return <MemberOverview list={overview.list} detail={overview.detail} query={overview.query} staffRole={overview.staff.role} />;
+  return <MemberOverview list={overview.list} detail={overview.detail} query={overview.query} savedViews={overview.savedViews} staffRole={overview.staff.role} />;
 }

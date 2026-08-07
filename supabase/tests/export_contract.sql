@@ -37,6 +37,27 @@ union all
 select 'e4000000-0000-4000-8000-000000000002'::uuid, 'e1000000-0000-4000-8000-000000000002'::uuid,
   active_season_id, 12500, 'Nog niet betaald' from app.app_settings where id = true;
 
+insert into app.seasons(
+  id, name, starts_on, ends_on, default_amount_cents, status, opened_at
+) values (
+  'e0500000-0000-4000-8000-000000000001',
+  'Export ander seizoen',
+  '2027-07-01',
+  '2028-06-30',
+  13000,
+  'open',
+  timezone('utc', now())
+);
+insert into app.member_orders(
+  id, member_id, season_id, amount_due_cents, order_status
+) values (
+  'e4000000-0000-4000-8000-000000000003',
+  'e1000000-0000-4000-8000-000000000002',
+  'e0500000-0000-4000-8000-000000000001',
+  13000,
+  'Nog niet betaald'
+);
+
 insert into app.order_lines(id, order_id, article_variant_id, quantity, status) values
   ('e5000000-0000-4000-8000-000000000001', 'e4000000-0000-4000-8000-000000000001', 'e3000000-0000-4000-8000-000000000001', 1, 'backorder'),
   ('e5000000-0000-4000-8000-000000000002', 'e4000000-0000-4000-8000-000000000001', 'e3000000-0000-4000-8000-000000000002', 1, 'ready_for_pickup'),
@@ -154,8 +175,8 @@ grant select, insert on export_results to authenticated;
 
 select is(
   (select result->'types' from export_workspace_result),
-  '["members","orders","payments","deliveries","fulfilments","outstanding"]'::jsonb,
-  'workspace bevat exact de zes typekeys in applicatievolgorde'
+  '["members","orders","package_orders","package_items","payments","deliveries","fulfilments","outstanding"]'::jsonb,
+  'workspace bevat exact de zes legacy- en twee pakkettypekeys in applicatievolgorde'
 );
 select is(
   (select array_agg(key order by key) from export_workspace_result,
@@ -166,8 +187,8 @@ select is(
 select is(
   (select array_agg(key order by key) from export_workspace_result,
     lateral jsonb_object_keys(result->'filters') key),
-  array['deliveries','fulfilments','members','orders','outstanding','payments']::text[],
-  'workspacefiltermap heeft exact de zes typekeys'
+  array['deliveries','fulfilments','members','orders','outstanding','package_items','package_orders','payments']::text[],
+  'workspacefiltermap heeft exact de acht typekeys'
 );
 select ok(
   not exists(
@@ -203,6 +224,10 @@ select 'members', app.create_export('members', (select active_season_id from app
 union all
 select 'orders', app.create_export('orders', (select active_season_id from app.app_settings where id = true), '')
 union all
+select 'package_orders', app.create_export('package_orders', (select active_season_id from app.app_settings where id = true), 'all')
+union all
+select 'package_items', app.create_export('package_items', (select active_season_id from app.app_settings where id = true), 'all')
+union all
 select 'payments', app.create_export('payments', (select active_season_id from app.app_settings where id = true), 'all')
 union all
 select 'deliveries', app.create_export('deliveries', (select active_season_id from app.app_settings where id = true), 'all')
@@ -211,8 +236,8 @@ select 'fulfilments', app.create_export('fulfilments', (select active_season_id 
 union all
 select 'outstanding', app.create_export('outstanding', (select active_season_id from app.app_settings where id = true), 'all');
 
-select is((select count(*) from export_results), 6::bigint,
-  'alle zes exporttypes leveren een payload');
+select is((select count(*) from export_results), 8::bigint,
+  'alle zes legacy- en twee pakketexporttypes leveren een payload');
 select ok(not exists(
   select 1 from export_results
   where (select array_agg(key order by key) from jsonb_object_keys(result) key)
@@ -238,7 +263,7 @@ select ok(not exists(
 ), 'generatedAt is voor alle exports een ISO UTC-string');
 select ok(not exists(
   select 1 from export_results where jsonb_array_length(result->'rows') = 0
-), 'de fixture vult alle zes exporttypes');
+), 'de fixture vult alle acht exporttypes');
 
 select is(
   (select array_agg(column_definition->>'key' order by ordinal)
@@ -255,6 +280,36 @@ select is(
    where type = 'orders'),
   array['member','season','amountCents','paymentStatus','orderStatus','backorderQuantity','readyForPickupQuantity','pickedUpQuantity','cancelledQuantity']::text[],
   'bestellingenexport heeft betaal-, order- en artikelstatuskolommen'
+);
+select is(
+  (select array_agg(column_definition->>'key' order by ordinal)
+   from export_results,
+     lateral jsonb_array_elements(result->'columns') with ordinality columns(column_definition, ordinal)
+   where type = 'package_orders'),
+  array[
+    'relationNumber','member','team','season','order','packageName',
+    'packageRevision','packagePriceCents','currency','snapshotOrigin',
+    'paymentStatus','orderStatus','componentCount','sizeMissingCount',
+    'backorderQuantity','readyForPickupQuantity','pickedUpQuantity'
+  ]::text[],
+  'pakketorderexport bevat immutable commerciële snapshot en operationele tellingen'
+);
+select is(
+  (select array_agg(column_definition->>'key' order by ordinal)
+   from export_results,
+     lateral jsonb_array_elements(result->'columns') with ordinality columns(column_definition, ordinal)
+   where type = 'package_items'),
+  array[
+    'relationNumber','member','team','season','order','packageName',
+    'packageRevision','productName','productCode','quantity','selectedSize',
+    'lineStatus','issuedQuantity','issuedSizes','paymentStatus'
+  ]::text[],
+  'pakketonderdelenexport bevat product-, maat-, status- en uitgiftesnapshots'
+);
+select ok(
+  (select result->'rows' from export_results where type = 'package_orders')
+    @> '[{"packageName":"Legacy tenue","packageRevision":"legacy-v1","packagePriceCents":12500,"currency":"EUR","snapshotOrigin":"legacy"}]'::jsonb,
+  'pakketorderexport leest naam, revisie, prijs en valuta uit de commerciële snapshot'
 );
 select is(
   (select array_agg(column_definition->>'key' order by ordinal)
@@ -301,22 +356,64 @@ select ok((select string_agg(result::text, '') from export_results) not like '%'
 select ok((select string_agg(result::text, '') from export_results) !~ '(code_hash|token_hash|idempotency_key|payload)',
   'exportcontract bevat geen secret- of providerpayloadvelden');
 
-select is(jsonb_array_length(app.create_export('members', null, 'active')->'rows'), 1,
+select is(jsonb_array_length(app.create_export('members', (select active_season_id from app.app_settings where id = true), 'active')->'rows'), 1,
   'ledenfilter active wordt server-side toegepast');
-select is(jsonb_array_length(app.create_export('orders', null, 'paid')->'rows'), 1,
+select is(jsonb_array_length(app.create_export('orders', (select active_season_id from app.app_settings where id = true), 'paid')->'rows'), 1,
   'bestellingenfilter paid wordt server-side toegepast');
-select is(jsonb_array_length(app.create_export('payments', null, 'cash')->'rows'), 1,
+select is(jsonb_array_length(app.create_export('package_orders', (select active_season_id from app.app_settings where id = true), 'paid')->'rows'), 1,
+  'pakketorderfilter paid gebruikt uitsluitend betaling op de actieve pakketsnapshot');
+select is(jsonb_array_length(app.create_export('package_orders', (select active_season_id from app.app_settings where id = true), 'legacy')->'rows'), 2,
+  'pakketorderfilter legacy wordt server-side toegepast');
+select is(jsonb_array_length(app.create_export('package_items', (select active_season_id from app.app_settings where id = true), 'issued')->'rows'), 1,
+  'pakketonderdelenfilter issued gebruikt actieve immutable uitgifteregels');
+select is(jsonb_array_length(app.create_export('payments', (select active_season_id from app.app_settings where id = true), 'cash')->'rows'), 1,
   'betalingenfilter cash wordt server-side toegepast');
-select is(jsonb_array_length(app.create_export('deliveries', null, 'fully_allocated')->'rows'), 1,
+select is(jsonb_array_length(app.create_export('deliveries', (select active_season_id from app.app_settings where id = true), 'fully_allocated')->'rows'), 1,
   'leveringenfilter fully_allocated gebruikt actuele reserveringen');
-select is(jsonb_array_length(app.create_export('fulfilments', null, 'active')->'rows'), 1,
+select is(jsonb_array_length(app.create_export('fulfilments', (select active_season_id from app.app_settings where id = true), 'active')->'rows'), 1,
   'uitgiftefilter active gebruikt actuele correctiestatus');
-select is(jsonb_array_length(app.create_export('outstanding', null, 'backorder')->'rows'), 2,
+select is(jsonb_array_length(app.create_export('outstanding', (select active_season_id from app.app_settings where id = true), 'backorder')->'rows'), 2,
   'openstaandfilter backorder levert uitsluitend naleveringsregels');
 select throws_ok($$select app.create_export('members', null, 'email like %')$$,
   '22023', 'INVALID_EXPORT_FILTER', 'willekeurige browserfilterexpressie wordt geweigerd');
 select throws_ok($$select app.create_export('unknown', null, 'all')$$,
   '22023', 'INVALID_EXPORT_TYPE', 'niet-canoniek exporttype wordt geweigerd');
+select throws_ok($$select app.create_export('package_items', null, 'product like %')$$,
+  '22023', 'INVALID_EXPORT_FILTER',
+  'pakketexport weigert willekeurige browserfilterexpressies');
+
+select is(
+  jsonb_array_length(app.create_export(
+    'package_orders',
+    (select active_season_id from app.app_settings where id = true),
+    'all'
+  )->'rows'),
+  2,
+  'pakketorderexport is strikt aan het gekozen seizoen gebonden'
+);
+select throws_ok(
+  $$select app.create_export('package_orders', null, 'all')$$,
+  '22023',
+  'EXPORT_SEASON_REQUIRED',
+  'een export zonder expliciet seizoen wordt geweigerd'
+);
+
+reset role;
+update app.articles
+set name = 'Hernoemd live catalogusproduct'
+where id = 'e2000000-0000-4000-8000-000000000003';
+set local role authenticated;
+
+select ok(
+  app.create_export('package_items', (select active_season_id from app.app_settings where id = true), 'issued')->'rows'
+    @> '[{"productName":"Export sokken","selectedSize":"39-42","issuedSizes":"39-42"}]'::jsonb,
+  'pakketonderdelen blijven na cataloguswijziging op product- en uitgiftesnapshots'
+);
+select ok(
+  app.create_export('fulfilments', (select active_season_id from app.app_settings where id = true), 'active')->'rows'
+    @> '[{"article":"Export sokken","size":"39-42"}]'::jsonb,
+  'uitgifte-export gebruikt fulfilment-snapshots en niet de live catalogus'
+);
 
 reset role;
 select ok(not exists(
@@ -339,10 +436,16 @@ insert into app.members(relation_number, first_name, last_name, email, team, act
 select 'EXP-CAP-' || lpad(value::text, 5, '0'), 'Capaciteit', value::text,
   'export-cap-' || value || '@example.invalid', 'CAP', false
 from generate_series(1, 10001) value;
+insert into app.member_orders(member_id, season_id, amount_due_cents, order_status)
+select member.id, settings.active_season_id, 0, 'Nog niet betaald'
+from app.members member
+cross join app.app_settings settings
+where member.relation_number like 'EXP-CAP-%'
+  and settings.id = true;
 
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
 set local role authenticated;
-select throws_ok($$select app.create_export('members', null, 'inactive')$$,
+select throws_ok($$select app.create_export('members', (select active_season_id from app.app_settings where id = true), 'inactive')$$,
   '54000', 'EXPORT_CAPACITY_EXCEEDED', 'export stopt fail-closed boven 10.000 rijen');
 
 reset role;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getServerEnv } from "@/lib/env";
 import { previewMailTemplateRequestSchema } from "@/lib/mail-v2-contract";
 import { previewMailV2Template } from "@/server/email/mail-v2-workspace";
@@ -7,6 +8,7 @@ import {
   guardBrowserMutation,
   readJsonRequest,
 } from "@/server/security/route-guard";
+import { operationalLogger } from "@/server/security/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +58,16 @@ export async function POST(request: Request) {
         { status: 400, headers: noStore },
       );
     }
+    const structuralCode = error instanceof z.ZodError
+      ? `zod.${error.issues[0]?.path.map(String).join(".") || "root"}`
+      : error instanceof Error
+        ? error.name.toLowerCase()
+        : "unknown";
+    operationalLogger.error("mail_v2.preview_failed", {
+      code: structuralCode.replace(/[^a-z0-9._-]/gu, "_").slice(0, 64),
+      route: "/api/email/v2/templates/preview",
+      status: 503,
+    });
     return NextResponse.json(
       { error: "De preview is tijdelijk niet beschikbaar." },
       { status: 503, headers: noStore },

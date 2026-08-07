@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   sendEmailJob,
+  sendMailV2TestEmail,
   sendParentOtpEmail,
   sendParentOtpV2Email,
+  sendGridRuntimeHealth,
 } from "@/server/email/sendgrid";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 
@@ -17,10 +20,15 @@ const deliveryAttemptId = "11111111-1111-4111-8111-111111111112";
 beforeEach(() => {
   process.env.EMAIL_ENABLED = "true";
   process.env.SENDGRID_API_KEY = "test-key";
+  process.env.SENDGRID_API_KEY_FINGERPRINT =
+    createHash("sha256")
+      .update(process.env.SENDGRID_API_KEY)
+      .digest("hex");
   process.env.SENDGRID_API_BASE_URL = "https://api.sendgrid.com";
   process.env.SENDGRID_FROM_NAME = sender.fromName;
   process.env.SENDGRID_FROM_EMAIL = "tenue@duindorpsv.nl";
   process.env.SENDGRID_REPLY_TO_EMAIL = "kledingcommissie@duindorpsv.nl";
+  process.env.SENDGRID_SMOKE_RECIPIENT = "testinbox@example.invalid";
 });
 
 afterEach(() => {
@@ -29,6 +37,54 @@ afterEach(() => {
 });
 
 describe("SendGrid delivery boundary", () => {
+  it("attesteert runtimeconfiguratie zonder key of fingerprint prijs te geven", () => {
+    process.env.SENDGRID_API_KEY = "SG.runtime-key";
+    process.env.SENDGRID_API_KEY_FINGERPRINT = createHash("sha256")
+      .update(process.env.SENDGRID_API_KEY)
+      .digest("hex");
+    process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY =
+      "public-key";
+    process.env.CRON_SECRET = "c".repeat(16);
+    const health = sendGridRuntimeHealth();
+    expect(health).toEqual({
+      runtimeValueValid: true,
+      runtimeEnabled: true,
+      providerConfigured: true,
+      keyFingerprintMatches: true,
+    });
+    expect(JSON.stringify(health)).not.toContain("SG.");
+  });
+
+  it("markeert een verwisselde runtimekey zonder fingerprintdetails", () => {
+    process.env.SENDGRID_API_KEY = "SG.runtime-key";
+    process.env.SENDGRID_API_KEY_FINGERPRINT =
+      "0".repeat(64);
+    process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY =
+      "public-key";
+    process.env.CRON_SECRET = "c".repeat(16);
+    expect(sendGridRuntimeHealth()).toMatchObject({
+      runtimeValueValid: true,
+      runtimeEnabled: true,
+      providerConfigured: true,
+      keyFingerprintMatches: false,
+    });
+  });
+
+  it("weigert verzending wanneer runtimekey en fingerprint verschillen", async () => {
+    process.env.SENDGRID_API_KEY_FINGERPRINT = "0".repeat(64);
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    await expect(sendParentOtpEmail("ouder@example.nl", {
+      subject: "Uw verificatiecode",
+      text: "Uw verificatiecode is 123456.",
+      html: "<p>Uw verificatiecode is <strong>123456</strong>.</p>",
+    })).resolves.toEqual({
+      delivered: false,
+      reason: "configuration_error",
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("keeps OTP direct and disables tracking", async () => {
     const request = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", request);
@@ -96,6 +152,24 @@ describe("SendGrid delivery boundary", () => {
     });
   });
 
+  it("weigert een testontvanger uit applicatie-input aan de providergrens", async () => {
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    await expect(sendMailV2TestEmail({
+      ...sender,
+      testDeliveryId: "11111111-1111-4111-8111-111111111113",
+      recipientEmail: "willekeurig@example.nl",
+      subject: "Fictieve templatecontrole",
+      text: "Fictieve inhoud",
+      html: "<p>Fictieve inhoud</p>",
+    } as never)).resolves.toEqual({
+      delivered: false,
+      reason: "configuration_error",
+      outcome: "failed",
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("herhaalt een onzekere v2-OTP-aflevering niet automatisch", async () => {
     vi.stubGlobal(
       "fetch",
@@ -139,6 +213,67 @@ describe("SendGrid delivery boundary", () => {
       email: sender.fromEmail,
       name: sender.fromName,
     });
+  });
+
+  it("verstuurt een testmail met alleen een PII-vrije testdelivery-identiteit en tracking uit", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 202,
+        headers: { "x-message-id": "sg-test-message-1" },
+      }),
+    );
+    vi.stubGlobal("fetch", request);
+
+    await expect(sendMailV2TestEmail({
+      ...sender,
+      testDeliveryId: "11111111-1111-4111-8111-111111111113",
+      subject: "Fictieve templatecontrole",
+      text: "Dit bericht bevat uitsluitend fictieve voorbeeldgegevens.",
+      html: "<p>Dit bericht bevat uitsluitend fictieve voorbeeldgegevens.</p>",
+    })).resolves.toEqual({
+      delivered: true,
+      providerMessageId: "sg-test-message-1",
+    });
+
+    const body = JSON.parse(request.mock.calls[0][1].body as string);
+    expect(body.personalizations[0].to).toEqual([
+      { email: "testinbox@example.invalid" },
+    ]);
+    expect(body.personalizations[0].custom_args).toEqual({
+      delivery_kind: "admin_test",
+      test_delivery_id: "11111111-1111-4111-8111-111111111113",
+    });
+    expect(body.headers).toEqual({
+      "X-Duindorp-Acceptance":
+        "11111111-1111-4111-8111-111111111113",
+    });
+    expect(JSON.stringify(body.personalizations[0].custom_args))
+      .not.toContain(process.env.SENDGRID_SMOKE_RECIPIENT);
+    expect(body.tracking_settings).toEqual({
+      click_tracking: { enable: false, enable_text: false },
+      open_tracking: { enable: false },
+      subscription_tracking: { enable: false },
+    });
+  });
+
+  it.each([
+    ["time-out", vi.fn().mockResolvedValue(new Response(null, { status: 503 }))],
+    ["acceptatie zonder bericht-ID", vi.fn().mockResolvedValue(new Response(null, { status: 202 }))],
+    ["netwerkfout", vi.fn().mockRejectedValue(new TypeError("network failed"))],
+  ])("markeert een testmail-%s als onzeker zonder interne retry", async (_label, request) => {
+    vi.stubGlobal("fetch", request);
+    await expect(sendMailV2TestEmail({
+      ...sender,
+      testDeliveryId: "11111111-1111-4111-8111-111111111113",
+      subject: "Fictieve templatecontrole",
+      text: "Fictieve inhoud",
+      html: "<p>Fictieve inhoud</p>",
+    })).resolves.toEqual({
+      delivered: false,
+      reason: "delivery_uncertain",
+      outcome: "delivery_uncertain",
+    });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("weigert een job-snapshot die van de omgevingsafzender afwijkt", async () => {

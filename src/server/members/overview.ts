@@ -6,6 +6,7 @@ import {
   type MemberListQuery,
 } from "@/lib/member-overview-contract";
 import { requireStaffRole } from "@/server/auth/staff";
+import { getMemberSavedViews } from "@/server/members/saved-views";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export const MEMBER_LIST_PAGE_SIZE = 50;
@@ -60,6 +61,17 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
   }
   const list = memberListResponseSchema.safeParse(listData);
   if (!list.success) throw new Error("MEMBER_LIST_RESPONSE_INVALID");
+  let savedViews = null;
+  if (list.data.activeSeason) {
+    const savedViewResult = await getMemberSavedViews(list.data.activeSeason.id);
+    if (savedViewResult.error) {
+      if (savedViewResult.error.code === "42501") {
+        throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+      }
+      throw new Error("MEMBER_SAVED_VIEWS_QUERY_FAILED");
+    }
+    savedViews = savedViewResult.data;
+  }
 
   let detail = null;
   if (query.member) {
@@ -76,5 +88,5 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
     }
   }
 
-  return { list: list.data, detail, query, staff };
+  return { list: list.data, detail, query, savedViews, staff };
 }

@@ -140,6 +140,8 @@ where id = 'dd110000-0000-4000-8000-000000000001';
 update app.app_settings
 set active_season_id = nullif(:'active_season_before', '')::uuid
 where id = true;
+delete from app.inventory_settings
+where season_id = 'dd100000-0000-4000-8000-000000000001';
 delete from app.seasons
 where id = 'dd100000-0000-4000-8000-000000000001';
 delete from app.staff_profiles
@@ -889,8 +891,20 @@ if ! kill -0 "$member_mutation_pid" 2>/dev/null; then
   echo "Maatmutatie passeerde de actieve importlock." >&2
   exit 1
 fi
+set +e
 wait "$member_import_pid"
+member_import_status=$?
 wait "$member_mutation_pid"
+member_mutation_status=$?
+set -e
+if [[ "$member_import_status" -ne 0 ]] \
+  || [[ "$member_mutation_status" -eq 0 ]] \
+  || ! rg -q "MEMBER_SIZES_CONFLICT" "$member_mutation_log"; then
+  tail -n 40 "$member_import_log"
+  tail -n 40 "$member_mutation_log"
+  echo "De geserialiseerde leden-/maatmutatie gaf geen exacte stale-writeblokkade." >&2
+  exit 1
+fi
 
 member_lock_result="$("${psql_cmd[@]}" -Atc "
   select
@@ -903,12 +917,11 @@ member_lock_result="$("${psql_cmd[@]}" -Atc "
     and size.article_id = 'dd110000-0000-4000-8000-000000000001'
   where member.id = 'dd130000-0000-4000-8000-000000000004'
 ")"
-if [[ "$member_lock_result" != \
-  "LOCK-D1:dd120000-0000-4000-8000-000000000001" ]]; then
+if [[ "$member_lock_result" != "LOCK-D1:" ]]; then
   tail -n 40 "$member_import_log"
   tail -n 40 "$member_mutation_log"
   echo "Onverwacht geserialiseerd leden-/maatresultaat: $member_lock_result" >&2
   exit 1
 fi
 
-echo "Dynamic-importlockcontracten geslaagd: reverse-order, catalogus en maatmutatie."
+echo "Dynamic-importlockcontracten geslaagd: reverse-order, catalogus en stale maatmutatie."

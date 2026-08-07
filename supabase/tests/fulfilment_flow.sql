@@ -26,6 +26,11 @@ insert into private.staff_sessions(
     encode(extensions.digest(repeat('c', 64), 'sha256'), 'hex'),
     '73000000-0000-4000-8000-000000000002',
     timezone('utc', now()) + interval '8 hours'
+  ),
+  (
+    encode(extensions.digest(repeat('j', 64), 'sha256'), 'hex'),
+    '73000000-0000-4000-8000-000000000003',
+    timezone('utc', now()) + interval '8 hours'
   );
 
 insert into app.seasons(id, name, default_amount_cents, status)
@@ -305,7 +310,7 @@ select is(
     '73000000-0000-4000-8000-000000000003',
     encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
     repeat('0', 64),
-    repeat('e', 64),
+    repeat('2', 64),
     1,
     '73800000-0000-4000-8000-000000000002'
   )->>'status',
@@ -329,7 +334,7 @@ select throws_ok(
 create temporary table first_exchange as
 select app.exchange_order_qr_locator_v2(
   '73000000-0000-4000-8000-000000000003',
-  encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
+  encode(extensions.digest(repeat('j', 64), 'sha256'), 'hex'),
   repeat('d', 64),
   repeat('e', 64),
   1,
@@ -369,13 +374,108 @@ select cmp_ok(
   'de scanbevoegdheid is hoogstens twee minuten geldig'
 );
 
+update private.staff_sessions
+set revoked_at = timezone('utc', now())
+where token_hash = encode(extensions.digest(repeat('j', 64), 'sha256'), 'hex');
+select throws_ok(
+  $$select app.commit_fulfilment_v3(
+    '73000000-0000-4000-8000-000000000003',
+    encode(extensions.digest(repeat('j', 64), 'sha256'), 'hex'),
+    repeat('e', 64),
+    array['73600000-0000-4000-8000-000000000001'::uuid],
+    '73800000-0000-4000-8000-000000000101',
+    null
+  )$$,
+  '42501',
+  'STAFF_AUTHORIZATION_REQUIRED',
+  'een ingetrokken medewerkerssessie blokkeert commit na een geldige scan'
+);
+select is(
+  (select count(*) from app.fulfilment_lines),
+  0::bigint,
+  'een stale scan door sessie-intrekking geeft niets uit'
+);
+select ok(
+  private.staff_app_session_authorized(
+    '73000000-0000-4000-8000-000000000003',
+    encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
+    array['beheerder', 'uitgifte']::app.staff_role[]
+  ),
+  'intrekking van één sessie laat een andere actieve scannersessie intact'
+);
+select ok(
+  private.order_qr_usable('73500000-0000-4000-8000-000000000001'),
+  'intrekking van een scannersessie wijzigt de zakelijke QR-geldigheid niet'
+);
+select is(
+  app.exchange_order_qr_locator_v2(
+    '73000000-0000-4000-8000-000000000003',
+    encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
+    repeat('d', 64),
+    repeat('1', 64),
+    1,
+    '73800000-0000-4000-8000-000000000102'
+  )->>'status',
+  'found',
+  'na sessieherstel ontstaat alleen via een nieuwe scan een verse grant'
+);
+select set_config('app.inventory_internal', 'on', true);
+update app.inventory_allocations
+set status = 'released',
+    released_at = timezone('utc', now()),
+    release_reason = 'Race-regressietest'
+where order_line_id = '73600000-0000-4000-8000-000000000001';
+select set_config('app.inventory_internal', 'off', true);
+update app.order_lines
+set status = 'backorder'
+where id = '73600000-0000-4000-8000-000000000001';
+select is(
+  app.commit_fulfilment_v3(
+    '73000000-0000-4000-8000-000000000003',
+    encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
+    repeat('1', 64),
+    array['73600000-0000-4000-8000-000000000001'::uuid],
+    '73800000-0000-4000-8000-000000000103',
+    null
+  )->>'status',
+  'stale',
+  'een vrijgegeven reservering blokkeert commit na een geldige scan'
+);
+select is(
+  (select count(*) from app.fulfilment_lines),
+  0::bigint,
+  'een stale scan door reserveringsvrijgave geeft niets uit'
+);
+select set_config('app.inventory_internal', 'on', true);
+update app.inventory_allocations
+set status = 'reserved',
+    released_at = null,
+    release_reason = null
+where order_line_id = '73600000-0000-4000-8000-000000000001';
+select set_config('app.inventory_internal', 'off', true);
+update app.order_lines
+set status = 'ready_for_pickup'
+where id = '73600000-0000-4000-8000-000000000001';
+select is(
+  app.exchange_order_qr_locator_v2(
+    '73000000-0000-4000-8000-000000000003',
+    encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
+    repeat('d', 64),
+    repeat('2', 64),
+    1,
+    '73800000-0000-4000-8000-000000000104'
+  )->>'status',
+  'found',
+  'na reserveringsherstel is opnieuw een verse scan vereist'
+);
+
 create temporary table first_commit as
 select app.commit_fulfilment_v3(
   '73000000-0000-4000-8000-000000000003',
   encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
-  repeat('e', 64),
+  repeat('2', 64),
   array['73600000-0000-4000-8000-000000000001'::uuid],
-  '73800000-0000-4000-8000-000000000005',
+  '73800000-0000-4000-8000-000000000105',
   null
 ) result;
 select is(
@@ -416,9 +516,9 @@ select is(
   app.commit_fulfilment_v3(
     '73000000-0000-4000-8000-000000000003',
     encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
-    repeat('e', 64),
+    repeat('2', 64),
     array['73600000-0000-4000-8000-000000000001'::uuid],
-    '73800000-0000-4000-8000-000000000005',
+    '73800000-0000-4000-8000-000000000105',
     null
   )->>'reused',
   'true',
@@ -430,7 +530,7 @@ select throws_ok(
     encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
     repeat('e', 64),
     array['73600000-0000-4000-8000-000000000002'::uuid],
-    '73800000-0000-4000-8000-000000000005',
+    '73800000-0000-4000-8000-000000000105',
     null
   )$$,
   '23505',
@@ -441,9 +541,9 @@ select is(
   app.commit_fulfilment_v3(
     '73000000-0000-4000-8000-000000000003',
     encode(extensions.digest(repeat('b', 64), 'sha256'), 'hex'),
-    repeat('e', 64),
+    repeat('2', 64),
     array['73600000-0000-4000-8000-000000000001'::uuid],
-    '73800000-0000-4000-8000-000000000006',
+    '73800000-0000-4000-8000-000000000106',
     null
   )->>'status',
   'stale',
@@ -782,6 +882,9 @@ select ok(
     where metadata::text like '%' || repeat('d', 64) || '%'
       or metadata::text like '%' || repeat('e', 64) || '%'
       or metadata::text like '%' || repeat('f', 64) || '%'
+      or metadata::text like '%' || repeat('1', 64) || '%'
+      or metadata::text like '%' || repeat('2', 64) || '%'
+      or metadata::text like '%' || repeat('j', 64) || '%'
   ),
   'auditlogs bevatten geen locator- of granthashes'
 );

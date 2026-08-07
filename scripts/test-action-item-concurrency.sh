@@ -11,6 +11,8 @@ cleanup_data() {
   "${psql_cmd[@]}" <<'SQL'
 delete from app.action_items
 where season_id = 'ad100000-0000-4000-8000-000000000001';
+delete from app.inventory_settings
+where season_id = 'ad100000-0000-4000-8000-000000000001';
 delete from app.seasons
 where id = 'ad100000-0000-4000-8000-000000000001';
 SQL

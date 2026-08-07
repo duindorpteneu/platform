@@ -18,6 +18,9 @@ replay_first_log="$test_tmp_dir/replay-first.log"
 replay_second_log="$test_tmp_dir/replay-second.log"
 binding_first_log="$test_tmp_dir/binding-first.log"
 binding_second_log="$test_tmp_dir/binding-second.log"
+identity_marker="$test_tmp_dir/identity-holding"
+identity_first_log="$test_tmp_dir/identity-first.log"
+identity_second_log="$test_tmp_dir/identity-second.log"
 
 cleanup_data() {
   "${psql_cmd[@]}" >/dev/null <<'SQL'
@@ -175,6 +178,38 @@ if [[ -z "$first_attempt" || -z "$second_attempt" ]]; then
   echo "De attempt-racefixture kon niet worden geclaimd." >&2
   exit 1
 fi
+first_claim_token="$("${psql_cmd[@]}" -c "
+  select claim_token
+  from private.email_jobs
+  where id = 'e2773000-0000-4000-8000-000000000001'
+")"
+second_claim_token="$("${psql_cmd[@]}" -c "
+  select claim_token
+  from private.email_jobs
+  where id = 'e2773000-0000-4000-8000-000000000002'
+")"
+if [[ -z "$first_claim_token" || -z "$second_claim_token" ]]; then
+  echo "De attempt-racefixture mist een claimtoken." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" >/dev/null <<SQL
+select app.complete_email_job_v2(
+  'e2773000-0000-4000-8000-000000000001',
+  '$first_claim_token',
+  '$first_attempt',
+  'sent',
+  'attempt-http-message-1',
+  null
+);
+select app.complete_email_job_v2(
+  'e2773000-0000-4000-8000-000000000002',
+  '$second_claim_token',
+  '$second_attempt',
+  'sent',
+  'attempt-http-message-2',
+  null
+);
+SQL
 event_time="$("${psql_cmd[@]}" -c \
   "select to_char(clock_timestamp(), 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')")"
 
@@ -184,7 +219,7 @@ record_event() {
   local event_id="$3"
   local message_id="$4"
   "${psql_cmd[@]}" -c "
-    select app.record_sendgrid_events_v2(jsonb_build_array(
+    select app.record_sendgrid_events_v4(jsonb_build_array(
       jsonb_build_object(
         'email_job_id', '$job_id',
         'delivery_attempt_id', '$attempt_id',
@@ -200,12 +235,12 @@ record_event() {
 replay_first() {
   "${psql_cmd[@]}" <<SQL
 begin;
-select app.record_sendgrid_events_v2(jsonb_build_array(
+select app.record_sendgrid_events_v4(jsonb_build_array(
   jsonb_build_object(
     'email_job_id', 'e2773000-0000-4000-8000-000000000001',
     'delivery_attempt_id', '$first_attempt',
     'event_id', 'attempt-concurrent-replay',
-    'provider_message_id', 'attempt-concurrent-message-1',
+    'provider_message_id', 'attempt-http-message-1.filter0001.42.0',
     'event_type', 'delivered',
     'occurred_at', '$event_time'
   )
@@ -231,7 +266,7 @@ record_event \
   "$first_attempt" \
   "e2773000-0000-4000-8000-000000000001" \
   "attempt-concurrent-replay" \
-  "attempt-concurrent-message-1" \
+  "attempt-http-message-1.filter0001.42.0" \
   >"$replay_second_log" 2>&1 &
 replay_second_pid=$!
 wait "$replay_first_pid"
@@ -240,12 +275,12 @@ wait "$replay_second_pid"
 binding_first() {
   "${psql_cmd[@]}" <<SQL
 begin;
-select app.record_sendgrid_events_v2(jsonb_build_array(
+select app.record_sendgrid_events_v4(jsonb_build_array(
   jsonb_build_object(
     'email_job_id', 'e2773000-0000-4000-8000-000000000002',
     'delivery_attempt_id', '$second_attempt',
     'event_id', 'attempt-concurrent-binding-1',
-    'provider_message_id', 'attempt-concurrent-message-a',
+    'provider_message_id', 'attempt-http-message-2.filter0001.42.0',
     'event_type', 'delivered',
     'occurred_at', '$event_time'
   )
@@ -271,7 +306,7 @@ record_event \
   "$second_attempt" \
   "e2773000-0000-4000-8000-000000000002" \
   "attempt-concurrent-binding-2" \
-  "attempt-concurrent-message-b" \
+  "attempt-http-message-2.filter0002.43.0" \
   >"$binding_second_log" 2>&1 &
 binding_second_pid=$!
 wait "$binding_first_pid"
@@ -288,6 +323,61 @@ if ! rg -q '"recorded": 1' "$binding_first_log" \
   exit 1
 fi
 
+second_bound_message="$("${psql_cmd[@]}" -c "
+  select provider_message_id
+  from private.email_delivery_attempt_provider_messages
+  where delivery_attempt_id = '$second_attempt';
+")"
+if [[ -z "$second_bound_message" ]]; then
+  echo "De tweede attempt mist een immutable providerbinding." >&2
+  exit 1
+fi
+
+identity_first() {
+  "${psql_cmd[@]}" <<SQL
+begin;
+select app.record_sendgrid_events_v4(jsonb_build_array(
+  jsonb_build_object(
+    'email_job_id', 'e2773000-0000-4000-8000-000000000001',
+    'delivery_attempt_id', '$first_attempt',
+    'event_id', 'attempt-global-event-collision',
+    'provider_message_id', 'attempt-http-message-1.filter0001.42.0',
+    'event_type', 'delivered',
+    'occurred_at', '$event_time'
+  )
+));
+\\! touch "$identity_marker"
+select pg_sleep(2);
+commit;
+SQL
+}
+
+identity_first >"$identity_first_log" 2>&1 &
+identity_first_pid=$!
+for _ in $(seq 1 100); do
+  [[ -f "$identity_marker" ]] && break
+  kill -0 "$identity_first_pid" 2>/dev/null || break
+  sleep 0.05
+done
+if [[ ! -f "$identity_marker" ]]; then
+  echo "De globale event-ID-barrière werd niet bereikt." >&2
+  exit 1
+fi
+record_event \
+  "$second_attempt" \
+  "e2773000-0000-4000-8000-000000000002" \
+  "attempt-global-event-collision" \
+  "$second_bound_message" \
+  >"$identity_second_log" 2>&1 &
+identity_second_pid=$!
+wait "$identity_first_pid"
+wait "$identity_second_pid"
+if ! rg -q '"recorded": 1' "$identity_first_log" \
+  || ! rg -q '"quarantined": 1' "$identity_second_log"; then
+  echo "Globale provider-event-ID-collision werd niet atomisch gequarantaineerd." >&2
+  exit 1
+fi
+
 final_state="$("${psql_cmd[@]}" -F ':' -c "
 select
   (select count(*) from app.email_events
@@ -297,11 +387,17 @@ select
   (select count(*) from private.email_provider_event_quarantine
     where email_job_id='e2773000-0000-4000-8000-000000000002'),
   (select count(*) from private.email_delivery_attempt_provider_messages
-    where delivery_attempt_id='$second_attempt');
+    where delivery_attempt_id='$second_attempt'),
+  (select count(*) from private.email_provider_event_quarantine
+    where email_job_id='e2773000-0000-4000-8000-000000000002'
+      and reason='event_message_mismatch'),
+  (select count(*) from private.email_provider_event_quarantine
+    where email_job_id='e2773000-0000-4000-8000-000000000002'
+      and reason='event_identity_collision');
 ")"
-if [[ "$final_state" != "1:1:1:1" ]]; then
+if [[ "$final_state" != "2:1:2:1:1:1" ]]; then
   echo "Onveilige finale attempt-racestatus: $final_state" >&2
   exit 1
 fi
 
-echo "E-mailattempt-concurrencytest geslaagd: exacte replay is idempotent en een conflicterende provideridentiteit wordt atomair gequarantaineerd."
+echo "E-mailattempt-concurrencytest geslaagd: replay, providerbinding en globale event-ID zijn atomair verwerkt."

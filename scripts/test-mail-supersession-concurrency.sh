@@ -97,6 +97,8 @@ where id in (
   'f8500000-0000-4000-8000-000000000001',
   'f8500000-0000-4000-8000-000000000002'
 );
+delete from app.inventory_settings
+where season_id = 'f8100000-0000-4000-8000-000000000001';
 delete from app.seasons
 where id = 'f8100000-0000-4000-8000-000000000001';
 delete from app.audit_logs

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -113,7 +114,12 @@ describe("POST /api/internal/jobs/email", () => {
     process.env.SENDGRID_FROM_NAME = "Kledingcommissie Duindorp SV";
     process.env.SENDGRID_FROM_EMAIL = "kleding@duindorpsv.nl";
     process.env.SENDGRID_REPLY_TO_EMAIL = "kleding@duindorpsv.nl";
+    process.env.SENDGRID_SMOKE_RECIPIENT = "testinbox@example.invalid";
     process.env.SENDGRID_API_KEY = "SG.test-key";
+    process.env.SENDGRID_API_KEY_FINGERPRINT =
+      createHash("sha256")
+        .update(process.env.SENDGRID_API_KEY)
+        .digest("hex");
     process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY = "test-public-key";
     process.env.CRON_SECRET = "test-cron-secret-1234";
     process.env.APP_BASE_URL = "https://tenue.example";
@@ -145,7 +151,7 @@ describe("POST /api/internal/jobs/email", () => {
     mocks.render.mockReset().mockReturnValue({ subject: "Onderwerp", text: "Bericht", html: "<p>Bericht</p>" });
     mocks.send.mockReset().mockResolvedValue({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
     mocks.rpc.mockReset().mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") return Promise.resolve({ data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 }, error: null });
+      if (name === "get_email_worker_preflight_v2") return Promise.resolve({ data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0, brandingProjectionBlockers: 0 }, error: null });
       if (name === "claim_email_jobs_v4") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
       if (name === "authorize_claimed_email_job_v4") return Promise.resolve({ data: true, error: null });
       if (name === "complete_email_job_v2") return Promise.resolve({ data: { jobId: args.p_job_id, status: args.p_outcome, attempts: 1, availableAt: "2026-07-21T10:00:00.000Z" }, error: null });
@@ -231,7 +237,7 @@ describe("POST /api/internal/jobs/email", () => {
 
   it("renders, sends and completes a portal invitation through the v2 worker contract", async () => {
     mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") {
+      if (name === "get_email_worker_preflight_v2") {
         return Promise.resolve({
           data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
           error: null,
@@ -303,7 +309,7 @@ describe("POST /api/internal/jobs/email", () => {
 
   it("suppresses a claimed portal invitation when access was revoked before send", async () => {
     mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") {
+      if (name === "get_email_worker_preflight_v2") {
         return Promise.resolve({
           data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
           error: null,
@@ -345,7 +351,7 @@ describe("POST /api/internal/jobs/email", () => {
 
   it("verstuurd een fulfilmentjob uitsluitend uit de immutable render- en sender-snapshot", async () => {
     mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") {
+      if (name === "get_email_worker_preflight_v2") {
         return Promise.resolve({
           data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
           error: null,
@@ -400,7 +406,7 @@ describe("POST /api/internal/jobs/email", () => {
 
   it("verstuurt een generieke v2-job uitsluitend uit de immutable snapshots", async () => {
     mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") {
+      if (name === "get_email_worker_preflight_v2") {
         return Promise.resolve({
           data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
           error: null,
@@ -455,7 +461,7 @@ describe("POST /api/internal/jobs/email", () => {
 
   it("verzendt en completeert niets wanneer een domeinjob send-time afvalt", async () => {
     mocks.rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
-      if (name === "get_email_worker_preflight_v1") {
+      if (name === "get_email_worker_preflight_v2") {
         return Promise.resolve({
           data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0 },
           error: null,

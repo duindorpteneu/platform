@@ -96,6 +96,11 @@ where id in (
   'b2000000-0000-4000-8000-000000000004',
   'b2000000-0000-4000-8000-000000000005'
 );
+delete from app.inventory_settings
+where season_id in (
+  'b1000000-0000-4000-8000-000000000001',
+  'b1000000-0000-4000-8000-000000000002'
+);
 delete from app.seasons
 where id in (
   'b1000000-0000-4000-8000-000000000001',
@@ -113,7 +118,15 @@ delete from app.staff_profiles
 where auth_user_id = 'b0000000-0000-4000-8000-000000000001';
 SQL
   if [[ "$previous_active_season" =~ ^[0-9a-f-]{36}$ ]]; then
-    "${psql_cmd[@]}" -c "update app.app_settings set active_season_id = '$previous_active_season'::uuid where id = true" >/dev/null
+    "${psql_cmd[@]}" -c "
+      update app.app_settings
+      set active_season_id = (
+        select id
+        from app.seasons
+        where id = '$previous_active_season'::uuid
+      )
+      where id = true
+    " >/dev/null
   else
     "${psql_cmd[@]}" -c "update app.app_settings set active_season_id = null where id = true" >/dev/null
   fi

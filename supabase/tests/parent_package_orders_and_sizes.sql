@@ -296,6 +296,12 @@ select is(
   2,
   'ouderworkspace v4 behoudt pakketinhoud en voegt alleen veilige QR-identiteit toe'
 );
+select is(
+  public.get_parent_package_workspace_v5(repeat('a', 64))
+    #>> '{members,0,availablePackages,0,items,0,iconType}',
+  'shirt',
+  'ouderworkspace toont het beheerbare canonieke artikelicoon'
+);
 select matches(
   public.get_parent_package_workspace_v2(repeat('a', 64))
     #>> '{members,0,revision}',
@@ -2230,6 +2236,173 @@ select is(
   'audit bewaart de verplichte beheerreden'
 );
 
+insert into app.payments(
+  order_id,
+  method,
+  status,
+  amount_cents,
+  idempotency_key,
+  paid_at
+)
+select
+  orders.id,
+  'cash',
+  'paid',
+  orders.amount_due_cents,
+  'package-change-paid-001',
+  timezone('utc', now())
+from app.member_orders orders
+where orders.member_season_id =
+  current_setting('test.package.staff_member_season')::uuid;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select throws_ok(
+  $$
+    select app.preflight_package_change_v1(
+      (
+        select orders.id
+        from app.member_orders orders
+        where orders.member_season_id =
+          current_setting('test.package.staff_member_season')::uuid
+      ),
+      'ea410000-0000-4000-8000-000000000002',
+      repeat('x', 481),
+      'eaf40000-0000-4000-8000-000000000099',
+      null
+    )
+  $$,
+  '22023',
+  'PACKAGE_CHANGE_INPUT_INVALID',
+  'pakketwisselreden blijft inclusief voorraadprefix binnen de journaalgrens'
+);
+select is(
+  (
+    app.preflight_package_change_v1(
+      (
+        select orders.id
+        from app.member_orders orders
+        where orders.member_season_id =
+          current_setting('test.package.staff_member_season')::uuid
+      ),
+      'ea410000-0000-4000-8000-000000000002',
+      'Keeperpakket na betaalcorrectie',
+      'eaf40000-0000-4000-8000-000000000001',
+      null
+    )->>'requiresExternalRefund'
+  ),
+  'true',
+  'betaald pakket vereist aantoonbare externe betaaloplossing'
+);
+reset role;
+select is(
+  (
+    select status::text
+    from app.package_change_requests
+    where id = 'eaf40000-0000-4000-8000-000000000001'
+  ),
+  'blocked',
+  'betaalde pakketwijziging blijft duurzaam geblokkeerd'
+);
+
+update app.payments
+set status = 'refunded',
+    refunded_at = timezone('utc', now())
+where idempotency_key = 'package-change-paid-001'
+  and order_id = (
+    select orders.id
+    from app.member_orders orders
+    where orders.member_season_id =
+      current_setting('test.package.staff_member_season')::uuid
+  );
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select set_config(
+  'test.package.change_ready',
+  app.preflight_package_change_v1(
+    (
+      select orders.id
+      from app.member_orders orders
+      where orders.member_season_id =
+        current_setting('test.package.staff_member_season')::uuid
+    ),
+    'ea410000-0000-4000-8000-000000000002',
+    'Keeperpakket na betaalcorrectie',
+    'eaf40000-0000-4000-8000-000000000002',
+    null
+  )::text,
+  true
+);
+select is(
+  current_setting('test.package.change_ready')::jsonb->>'canApply',
+  'true',
+  'gereconcilieerde refund maakt pakketwissel uitvoerbaar'
+);
+select is(
+  (
+    app.apply_package_change_v1(
+      'eaf40000-0000-4000-8000-000000000002',
+      current_setting('test.package.change_ready')::jsonb->>'revision',
+      'SWITCH_PACKAGE',
+      null
+    ) #>> '{result,refundCreated}'
+  ),
+  'false',
+  'pakketworkflow maakt nooit zelfstandig een refund'
+);
+select is(
+  (
+    app.apply_package_change_v1(
+      'eaf40000-0000-4000-8000-000000000002',
+      current_setting('test.package.change_ready')::jsonb->>'revision',
+      'SWITCH_PACKAGE',
+      null
+    )->>'reused'
+  ),
+  'true',
+  'pakketwissel is veilig idempotent bij een retry'
+);
+reset role;
+select is(
+  (
+    select orders.package_revision_id
+    from app.member_orders orders
+    where orders.member_season_id =
+      current_setting('test.package.staff_member_season')::uuid
+  ),
+  'ea410000-0000-4000-8000-000000000002'::uuid,
+  'order gebruikt na workflow de gekozen keeperrevisie'
+);
+select ok(
+  (
+    select payment.package_snapshot_id
+      <> orders.active_package_snapshot_id
+    from app.payments payment
+    join app.member_orders orders on orders.id = payment.order_id
+    where payment.idempotency_key = 'package-change-paid-001'
+  ),
+  'oude betaling blijft aan de historische pakketsnapshot gebonden'
+);
+select is(
+  (
+    select audit.metadata->>'refundCreated'
+    from app.audit_logs audit
+    where audit.action = 'package_change.applied'
+      and audit.entity_id = 'eaf40000-0000-4000-8000-000000000002'
+  ),
+  'false',
+  'audit maakt expliciet dat geen automatische refund is aangemaakt'
+);
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"ea000000-0000-4000-8000-000000000002","aal":"aal2"}',
@@ -2270,6 +2443,45 @@ select ok(
     'execute'
   ),
   'alleen het finale idempotente medewerkercontract is gepubliceerd'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'app.preflight_package_change_v1(uuid,uuid,text,uuid,uuid)',
+    'execute'
+  )
+  and has_function_privilege(
+    'authenticated',
+    'app.apply_package_change_v1(uuid,text,text,uuid)',
+    'execute'
+  ),
+  'beheerflow is uitsluitend via MFA-gecontroleerde RPCs gepubliceerd'
+);
+select ok(
+  not has_function_privilege(
+    'service_role',
+    'app.preflight_package_change_v1(uuid,uuid,text,uuid,uuid)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'app.apply_package_change_v1(uuid,text,text,uuid)',
+    'execute'
+  ),
+  'service-role kan de beheer-MFA pakketcorrectie niet nabootsen'
+);
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'app.package_change_requests',
+    'select'
+  )
+  and not has_table_privilege(
+    'authenticated',
+    'app.package_change_requests',
+    'update'
+  ),
+  'pakketcorrectieledger is niet rechtstreeks leesbaar of wijzigbaar'
 );
 select ok(
   not has_function_privilege(
@@ -2362,20 +2574,25 @@ select ok(
 select ok(
   has_function_privilege(
     'service_role',
-    'public.get_parent_package_workspace_v4(text)',
+    'public.get_parent_package_workspace_v5(text)',
     'execute'
   )
   and not has_function_privilege(
     'anon',
-    'public.get_parent_package_workspace_v4(text)',
+    'public.get_parent_package_workspace_v5(text)',
     'execute'
   )
   and not has_function_privilege(
     'authenticated',
+    'public.get_parent_package_workspace_v5(text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
     'public.get_parent_package_workspace_v4(text)',
     'execute'
   ),
-  'ouderworkspace v4 is uitsluitend via de serveradapter bereikbaar'
+  'alleen ouderworkspace v5 is uitsluitend via de serveradapter bereikbaar'
 );
 select set_config(
   'request.jwt.claims',

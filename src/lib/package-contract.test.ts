@@ -3,6 +3,7 @@ import {
   formatPackagePrice,
   packageArchiveRequestSchema,
   packageDraftRequestSchema,
+  packageSeasonRequiresExplicitDefault,
   packageWorkspaceSchema,
   parsePackagePriceToCents,
 } from "@/lib/package-contract";
@@ -89,5 +90,19 @@ describe("pakketbeheercontract", () => {
     };
     expect(packageWorkspaceSchema.safeParse(workspace).success).toBe(true);
     expect(packageWorkspaceSchema.safeParse({ ...workspace, parentEmail: "niet-toegestaan@example.test" }).success).toBe(false);
+    const parsed = packageWorkspaceSchema.parse(workspace);
+    expect(packageSeasonRequiresExplicitDefault(parsed, seasonId)).toBe(true);
+    expect(packageSeasonRequiresExplicitDefault({
+      ...parsed,
+      templates: [{
+        ...parsed.templates[0],
+        revisions: [{
+          ...parsed.templates[0].revisions[0],
+          status: "published",
+          active: true,
+          default: true,
+        }],
+      }],
+    }, seasonId)).toBe(false);
   });
 });

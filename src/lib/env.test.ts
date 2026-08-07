@@ -17,16 +17,20 @@ describe("server provider configuration", () => {
       MOLLIE_API_KEY: "",
       EMAIL_ENABLED: "false",
       SENDGRID_API_KEY: "",
+      SENDGRID_API_KEY_FINGERPRINT: "",
       SENDGRID_FROM_NAME: "",
       SENDGRID_FROM_EMAIL: "",
       SENDGRID_REPLY_TO_EMAIL: "   ",
+      SENDGRID_SMOKE_RECIPIENT: "",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "",
     });
     expect(env.MOLLIE_API_KEY).toBeUndefined();
     expect(env.SENDGRID_API_KEY).toBeUndefined();
+    expect(env.SENDGRID_API_KEY_FINGERPRINT).toBeUndefined();
     expect(env.SENDGRID_FROM_NAME).toBeUndefined();
     expect(env.SENDGRID_FROM_EMAIL).toBeUndefined();
     expect(env.SENDGRID_REPLY_TO_EMAIL).toBeUndefined();
+    expect(env.SENDGRID_SMOKE_RECIPIENT).toBeUndefined();
     expect(env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY).toBeUndefined();
   });
 
@@ -98,6 +102,22 @@ describe("server provider configuration", () => {
     expect(() => parseServerEnv({ EMAIL_ENABLED: "true" })).toThrow();
   });
 
+  it("vereist bij actieve e-mail een keyfingerprint maar geen productie-smokeontvanger", () => {
+    const env = parseServerEnv({
+      EMAIL_ENABLED: "true",
+      APP_BASE_URL: "https://duindorp.dgwebservices.nl",
+      SENDGRID_API_KEY: "SG.test",
+      SENDGRID_API_KEY_FINGERPRINT: "a".repeat(64),
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
+      SENDGRID_FROM_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_REPLY_TO_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
+      CRON_SECRET: "x".repeat(16),
+    });
+    expect(env.EMAIL_ENABLED).toBe("true");
+    expect(env.SENDGRID_SMOKE_RECIPIENT).toBeUndefined();
+  });
+
   it("requires HTTPS for links in enabled e-mail", () => {
     expect(() => parseServerEnv({
       EMAIL_ENABLED: "true",
@@ -106,6 +126,7 @@ describe("server provider configuration", () => {
       SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
       SENDGRID_FROM_EMAIL: "tenue@duindorp.example",
       SENDGRID_REPLY_TO_EMAIL: "commissie@duindorp.example",
+      SENDGRID_SMOKE_RECIPIENT: "testinbox@duindorp.example",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
       CRON_SECRET: "x".repeat(16),
     })).toThrow();

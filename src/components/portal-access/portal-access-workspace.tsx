@@ -14,7 +14,11 @@ import {
   UserPlus,
   UsersRound,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  MEMBER_BULK_CONTEXT_STORAGE_KEY,
+  parseFreshMemberBulkContext,
+} from "@/lib/member-bulk-contract";
 import {
   portalAccessCommitResponseSchema,
   portalAccessPreviewResponseSchema,
@@ -61,7 +65,9 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
   const [workspace, setWorkspace] = useState(initial);
   const [mode, setMode] = useState<AccessMode>("activate");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Map<string, MemberRow>>(new Map());
+  const [selected, setSelected] = useState<Map<string, MemberRow | null>>(
+    new Map(),
+  );
   const [preview, setPreview] = useState<PortalAccessPreviewResponse | null>(null);
   const [batchKey, setBatchKey] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -69,7 +75,12 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<PortalAccessCommitResponse | null>(null);
 
-  const selectedRows = useMemo(() => [...selected.values()], [selected]);
+  const selectedRows = useMemo(
+    () => [...selected.values()].filter(
+      (member): member is MemberRow => member !== null,
+    ),
+    [selected],
+  );
   const visibleSelectable = workspace.members.filter((member) => (
     mode === "activate"
       ? true
@@ -79,6 +90,30 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
     && visibleSelectable.every((member) => selected.has(member.memberSeasonId));
   const firstResult = workspace.total === 0 ? 0 : workspace.offset + 1;
   const lastResult = Math.min(workspace.offset + workspace.limit, workspace.total);
+
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem(
+      MEMBER_BULK_CONTEXT_STORAGE_KEY,
+    );
+    const context = parseFreshMemberBulkContext(raw, "portal_access");
+    if (!context) {
+      if (raw) {
+        window.sessionStorage.removeItem(MEMBER_BULK_CONTEXT_STORAGE_KEY);
+      }
+      return;
+    }
+    window.sessionStorage.removeItem(MEMBER_BULK_CONTEXT_STORAGE_KEY);
+    if (context.seasonId !== workspace.selectedSeason.id) {
+      setError(
+        "De ledenselectie hoort bij een ander seizoen. Selecteer de leden opnieuw.",
+      );
+      return;
+    }
+    setMode("activate");
+    setSelected(new Map(
+      context.entries.map((entry) => [entry.memberSeasonId, null]),
+    ));
+  }, [workspace.selectedSeason.id]);
 
   function clearPreparedState() {
     setPreview(null);
@@ -160,7 +195,7 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
   }
 
   async function prepare() {
-    if (selectedRows.length === 0) {
+    if (selected.size === 0) {
       setError("Selecteer minimaal één lid.");
       return;
     }
@@ -181,7 +216,7 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
         body: JSON.stringify(mode === "activate" ? {
           operation: "activate",
           seasonId: workspace.selectedSeason.id,
-          memberSeasonIds: selectedRows.map((member) => member.memberSeasonId),
+          memberSeasonIds: [...selected.keys()],
         } : {
           operation: "revoke",
           seasonId: workspace.selectedSeason.id,
@@ -220,7 +255,7 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
         headers: requestHeaders(),
         body: JSON.stringify(mode === "activate" ? {
           seasonId: workspace.selectedSeason.id,
-          memberSeasonIds: selectedRows.map((member) => member.memberSeasonId),
+          memberSeasonIds: [...selected.keys()],
           previewToken: preview.previewToken,
           batchKey,
         } : {
@@ -259,7 +294,7 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-500">Beheer en privacy</p>
           <h1 className="mt-2 text-[30px] font-bold tracking-[-0.04em] text-brand-900 md:text-[34px]">Portaaltoegang</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             Activeer of trek toegang expliciet per lid en seizoen in. Een import maakt nooit automatisch een ouderaccount of uitnodiging.
           </p>
         </div>
@@ -298,7 +333,7 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
             <button disabled={busy !== null} className="mt-auto inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:opacity-60">{busy === "query" && <Loader2 className="size-4 animate-spin" />} Zoeken</button>
           </form>
         </div>
-        <p className="mt-3 text-[11px] text-slate-400">Zoekgegevens worden via een begrensd POST-verzoek verwerkt en komen niet in de browser-URL.</p>
+        <p className="mt-3 text-[11px] text-slate-600">Zoekgegevens worden via een begrensd POST-verzoek verwerkt en komen niet in de browser-URL.</p>
       </section>
 
       {(error || success) && <div role={error ? "alert" : "status"} className={cn("mt-5 rounded-xl border px-4 py-3 text-sm", error ? "border-red-200 bg-red-50 text-danger" : "border-emerald-200 bg-emerald-50 text-success")}>{error ?? `${success?.changedCount ?? 0} toegang(en) bijgewerkt${success?.inviteJobCount ? ` · ${success.inviteJobCount} uitnodiging(en) klaargezet` : ""}.`}</div>}
@@ -311,22 +346,22 @@ export function PortalAccessWorkspace({ initial }: { initial: PortalAccessWorksp
           </div>
           {workspace.members.length === 0 ? <div className="px-6 py-20 text-center"><UsersRound className="mx-auto size-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600">Geen leden gevonden</p></div> : <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left">
-              <thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="w-12 px-4 py-3"><span className="sr-only">Selectie</span></th><th className="px-3 py-3">Lid</th><th className="px-3 py-3">Team</th><th className="px-3 py-3">E-mail</th><th className="px-3 py-3">Toegang</th></tr></thead>
+              <thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-600"><th className="w-12 px-4 py-3"><span className="sr-only">Selectie</span></th><th className="px-3 py-3">Lid</th><th className="px-3 py-3">Team</th><th className="px-3 py-3">E-mail</th><th className="px-3 py-3">Toegang</th></tr></thead>
               <tbody className="divide-y divide-line">{workspace.members.map((member) => {
                 const selectable = mode === "activate" || Boolean(member.grant && member.grant.status !== "revoked");
                 const checked = selected.has(member.memberSeasonId);
-                return <tr key={member.memberSeasonId} className={cn("hover:bg-brand-50/30", checked && "bg-brand-50/60", !selectable && "opacity-55")}>
+                return <tr key={member.memberSeasonId} className={cn("hover:bg-brand-50/30", checked && "bg-brand-50/60", !selectable && "bg-slate-50")}>
                   <td className="px-4 py-3"><input type="checkbox" aria-label={`Selecteer ${fullName(member)}`} checked={checked} disabled={!selectable || (selected.size >= 500 && !checked)} onChange={() => toggleMember(member)} className="size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500" /></td>
-                  <td className="px-3 py-3"><p className="text-xs font-semibold text-ink">{fullName(member)}</p><p className="mt-1 text-[10px] text-slate-400">{member.relationNumber ?? "Geen relatienummer"}</p></td>
+                  <td className="px-3 py-3"><p className="text-xs font-semibold text-ink">{fullName(member)}</p><p className="mt-1 text-[10px] text-slate-600">{member.relationNumber ?? "Geen relatienummer"}</p></td>
                   <td className="px-3 py-3 text-xs text-slate-600">{member.team ?? "Niet ingevuld"}</td>
                   <td className="px-3 py-3"><p className={cn("text-xs font-medium", member.emailState === "valid" ? "text-slate-600" : "text-danger")}>{member.emailMasked ?? (member.emailState === "missing" ? "Ontbreekt" : "Ongeldig")}</p>{member.sharedEmailMemberCount > 1 && <p className="mt-1 text-[10px] text-brand-600">Gedeeld door {member.sharedEmailMemberCount} leden</p>}</td>
-                  <td className="px-3 py-3">{member.grant ? <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold", member.grant.status === "active" ? "bg-emerald-50 text-success" : member.grant.status === "revoked" ? "bg-slate-100 text-slate-500" : "bg-amber-50 text-warning")}>{grantLabels[member.grant.status]}</span> : <span className="text-[11px] text-slate-400">Niet geactiveerd</span>}</td>
+                  <td className="px-3 py-3">{member.grant ? <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold", member.grant.status === "active" ? "bg-emerald-50 text-success" : member.grant.status === "revoked" ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-warning")}>{grantLabels[member.grant.status]}</span> : <span className="text-[11px] text-slate-600">Niet geactiveerd</span>}</td>
                 </tr>;
               })}</tbody>
             </table>
           </div>}
           <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-4">
-            <p className="text-[11px] text-slate-400">{firstResult}–{lastResult} van {workspace.total.toLocaleString("nl-NL")}</p>
+            <p className="text-[11px] text-slate-600">{firstResult}–{lastResult} van {workspace.total.toLocaleString("nl-NL")}</p>
             <div className="flex gap-2">
               <button type="button" disabled={workspace.offset === 0 || busy !== null} onClick={() => void query(Math.max(0, workspace.offset - workspace.limit))} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line px-3 text-xs font-semibold text-slate-600 disabled:text-slate-300"><ArrowLeft className="size-4" /> Vorige</button>
               <button type="button" disabled={workspace.offset + workspace.limit >= workspace.total || busy !== null} onClick={() => void query(workspace.offset + workspace.limit)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line px-3 text-xs font-semibold text-slate-600 disabled:text-slate-300">Volgende <ArrowRight className="size-4" /></button>

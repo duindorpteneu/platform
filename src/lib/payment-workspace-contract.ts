@@ -3,6 +3,7 @@ import { z } from "zod";
 const countSchema = z.number().int().nonnegative();
 
 export const paymentWorkspaceSchema = z.object({
+  canRecordRefund: z.boolean().default(false),
   summary: z.object({
     open: countSchema,
     pending: countSchema,

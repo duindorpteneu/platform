@@ -44,7 +44,8 @@ if [[ "$identity" != "postgres|postgres|5432" ]]; then
 fi
 
 cd "$repository_root"
-pnpm exec supabase db reset --local --version 20260802170000 --no-seed
+node scripts/run-supabase.mjs db reset --local \
+  --version 20260802170000 --no-seed
 
 if [[ "$("${psql_cmd[@]}" -c "
   select count(*) from supabase_migrations.schema_migrations
@@ -68,7 +69,7 @@ if [[ ! "$before_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
   exit 1
 fi
 
-pnpm exec supabase migration up --local
+node scripts/run-supabase.mjs migration up --local
 
 after_fingerprint="$("${psql_cmd[@]}" < "$fingerprint_sql")"
 if [[ "$before_fingerprint" != "$after_fingerprint" ]]; then

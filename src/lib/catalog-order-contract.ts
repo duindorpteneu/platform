@@ -5,6 +5,7 @@ const nonNegativeInteger = z.number().int().nonnegative();
 const revisionHash = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const catalogIconTypeSchema = z.enum(["shirt", "package", "circle-dot"]);
+export type CatalogIconType = z.infer<typeof catalogIconTypeSchema>;
 export const catalogOrderLineStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]);
 
 const catalogVariantSchema = z.object({

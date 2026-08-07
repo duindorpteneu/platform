@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { manualPaymentRequestSchema } from "@/server/payments/manual";
+import {
+  manualPaymentRefundRequestSchema,
+  manualPaymentRequestSchema,
+} from "@/server/payments/manual";
 
 describe("manual payment boundary", () => {
   const valid = {
@@ -20,5 +23,21 @@ describe("manual payment boundary", () => {
     expect(manualPaymentRequestSchema.safeParse({ ...valid, reason: "x" }).success).toBe(false);
     expect(manualPaymentRequestSchema.safeParse({ ...valid, amountCents: 0 }).success).toBe(false);
     expect(manualPaymentRequestSchema.safeParse({ ...valid, extra: true }).success).toBe(false);
+  });
+
+  it("vereist een expliciete externe bewijsreferentie voor refunds", () => {
+    const refund = {
+      orderId: valid.orderId,
+      paymentId: "00000000-0000-4000-8000-000000000003",
+      amountCents: valid.amountCents,
+      reason: "Contante betaling teruggegeven",
+      evidenceReference: "Kasbon 2026-081",
+      requestId: "00000000-0000-4000-8000-000000000004",
+    };
+    expect(manualPaymentRefundRequestSchema.safeParse(refund).success).toBe(true);
+    expect(manualPaymentRefundRequestSchema.safeParse({
+      ...refund,
+      evidenceReference: "",
+    }).success).toBe(false);
   });
 });

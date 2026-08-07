@@ -10,6 +10,7 @@ commit_run_id="f8000000-0000-4000-8000-000000000005"
 second_commit_run_id="f8000000-0000-4000-8000-000000000006"
 release_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 backup_checksum="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+backup_artifact_id="123456"
 
 cleanup() {
   set +e
@@ -95,6 +96,7 @@ if psql "${db_url}" --no-psqlrc --quiet --tuples-only --no-align --set=ON_ERROR_
   --set=release_sha="${release_sha}" \
   --set=cleanup_run_id="${rollback_run_id}" \
   --set=backup_checksum="${backup_checksum}" \
+  --set=backup_artifact_id="${backup_artifact_id}" \
   --set=cleanup_commit=true \
   --file=scripts/staging/sql/operational-cleanup-apply.sql >/dev/null 2>&1; then
   echo "Cleanup accepteerde ten onrechte een verouderde statedigest." >&2
@@ -112,6 +114,7 @@ rollback_result="$(
     --set=release_sha="${release_sha}" \
     --set=cleanup_run_id="${rollback_run_id}" \
     --set=backup_checksum="${backup_checksum}" \
+    --set=backup_artifact_id="${backup_artifact_id}" \
     --set=cleanup_commit=false \
     --file=scripts/staging/sql/operational-cleanup-apply.sql
 )"
@@ -138,6 +141,7 @@ commit_result="$(
     --set=release_sha="${release_sha}" \
     --set=cleanup_run_id="${commit_run_id}" \
     --set=backup_checksum="${backup_checksum}" \
+    --set=backup_artifact_id="${backup_artifact_id}" \
     --set=cleanup_commit=true \
     --file=scripts/staging/sql/operational-cleanup-apply.sql
 )"
@@ -181,6 +185,7 @@ second_result="$(
     --set=release_sha="${release_sha}" \
     --set=cleanup_run_id="${second_commit_run_id}" \
     --set=backup_checksum="${backup_checksum}" \
+    --set=backup_artifact_id="${backup_artifact_id}" \
     --set=cleanup_commit=true \
     --file=scripts/staging/sql/operational-cleanup-apply.sql
 )"
@@ -189,4 +194,4 @@ SECOND_RESULT="${second_result}" node -e '
   if (value.result !== "committed" || value.removed_rows !== 0 || value.remaining_operational_rows !== 0) process.exit(1);
 '
 
-echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 90 tabellen en behield staff/Auth/config."
+echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 100 tabellen en behield staff/Auth/config."

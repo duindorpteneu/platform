@@ -22,7 +22,9 @@ describe("settings and audit contracts", () => {
         clubName: "Andere club", contactEmail: null,
         clubAddressLine: null, clubPostalCode: null, clubCity: null,
         pickupAddressDiffers: false, pickupName: null, pickupAddressLine: null, pickupPostalCode: null, pickupCity: null,
-        pickupLocation: null, activeSeasonId: null, mollieEnabled: false, emailEnabled: false,
+        pickupLocation: null, brandingRevisionId: id, brandingRevision: 1,
+        brandingContentHash: "a".repeat(64), activeSeasonId: null,
+        mollieEnabled: false, emailEnabled: false,
       },
       seasons: [], staff: [], roles: ["beheerder", "kledingcommissie", "uitgifte"],
     };
@@ -32,24 +34,21 @@ describe("settings and audit contracts", () => {
 
   it("rejects duplicate season amounts and unknown fields", () => {
     const input = {
-      contactEmail: "kleding@duindorpsv.nl", clubAddressLine: "Duinlaan 1", clubPostalCode: "2584 AB", clubCity: "Den Haag",
-      pickupAddressDiffers: false, pickupName: "", pickupAddressLine: "", pickupPostalCode: "", pickupCity: "",
       activeSeasonId: id, seasonAmounts: [{ seasonId: id, amountCents: 12500 }, { seasonId: id, amountCents: 13000 }], mollieEnabled: false, emailEnabled: false,
     };
     expect(updateSettingsRequestSchema.safeParse(input).success).toBe(false);
     expect(updateSettingsRequestSchema.safeParse({ ...input, seasonAmounts: input.seasonAmounts.slice(0, 1), clubName: "Duindorp SV" }).success).toBe(false);
   });
 
-  it("allows association settings before the first season and validates a different pickup address", () => {
+  it("staat operationele instellingen vóór het eerste seizoen toe en weigert brandingvelden", () => {
     const base = {
-      contactEmail: "kleding@duindorpsv.nl", clubAddressLine: "Duinlaan 1", clubPostalCode: "2584 AB", clubCity: "Den Haag",
-      pickupAddressDiffers: false, pickupName: "", pickupAddressLine: "", pickupPostalCode: "", pickupCity: "",
       activeSeasonId: null, seasonAmounts: [], mollieEnabled: false, emailEnabled: false,
     };
     expect(updateSettingsRequestSchema.safeParse(base).success).toBe(true);
-    expect(updateSettingsRequestSchema.safeParse({ ...base, clubCity: "" }).success).toBe(false);
-    expect(updateSettingsRequestSchema.safeParse({ ...base, pickupAddressDiffers: true, pickupName: "Sportshop" }).success).toBe(false);
-    expect(updateSettingsRequestSchema.safeParse({ ...base, pickupAddressDiffers: true, pickupName: "Sportshop", pickupAddressLine: "Markt 2", pickupPostalCode: "2511 AA", pickupCity: "Den Haag" }).success).toBe(true);
+    expect(updateSettingsRequestSchema.safeParse({
+      ...base,
+      contactEmail: "ander@example.invalid",
+    }).success).toBe(false);
   });
 
   it("validates a new season and chronological dates", () => {

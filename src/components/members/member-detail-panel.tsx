@@ -91,7 +91,7 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
         {detail.order && <OrderAdminActions
           orderId={detail.order.id}
           amountDueCents={detail.order.amountDueCents}
-          paid={detail.order.paymentStatus === "Betaald"}
+          paymentStatus={detail.order.paymentStatus}
           qrStatus={detail.order.qrStatus}
           pickedLines={detail.order.lines.filter((line) => line.status === "picked_up").map((line) => ({ id: line.id, article: line.article, size: line.size }))}
           canRecordCash={staffRole === "beheerder"}
@@ -104,7 +104,7 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
           {!detail.order ? <div className="mt-4 rounded-lg bg-slate-50 p-4 text-xs leading-5 text-slate-500">Dit lid heeft geen bestelling in het actieve seizoen.</div> : <div className="mt-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-slate-400">Exact bedrag</p><p className="mt-1 text-sm font-bold text-brand-900">{euro(detail.order.amountDueCents)}</p></div>
-              <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-slate-400">Betaling</p><p className={cn("mt-1 text-xs font-bold", detail.order.paymentStatus === "Betaald" ? "text-success" : "text-warning")}>{detail.order.paymentStatus}</p></div>
+              <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-slate-400">Betaling</p><p className={cn("mt-1 text-xs font-bold", detail.order.paymentStatus === "Betaald" ? "text-success" : detail.order.paymentStatus === "Controle vereist" ? "text-danger" : "text-warning")}>{detail.order.paymentStatus}</p></div>
             </div>
             <dl className="mt-4 space-y-2 text-xs">
               <div className="flex justify-between gap-3"><dt className="text-slate-400">Bestelstatus</dt><dd className="text-right font-semibold text-ink">{detail.order.orderStatus}</dd></div>

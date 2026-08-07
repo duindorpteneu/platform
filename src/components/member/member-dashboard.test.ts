@@ -13,6 +13,7 @@ const item = {
   articleId,
   name: "Shirt",
   code: "SHIRT",
+  iconType: "shirt" as const,
   quantity: 1,
   selectedVariantId: variantId,
   selectionStatus: "imported_unconfirmed" as const,

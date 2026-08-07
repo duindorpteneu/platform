@@ -14,6 +14,10 @@ const healthyOperationalState = {
   },
   qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
   importControl: { processingEnabled: false, cutoverActive: false },
+  emailControl: {
+    processingEnabled: false,
+    testEventQuarantined: 0,
+  },
   importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
   importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
   recentDeliveryFailures: 0,
@@ -26,6 +30,7 @@ describe("GET /api/health", () => {
   beforeEach(() => {
     process.env.APP_ENVIRONMENT = "staging";
     process.env.RELEASE_SHA = "a".repeat(40);
+    process.env.RELEASE_ARTIFACT_DIGEST = `sha256:${"b".repeat(64)}`;
     process.env.APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abcdefghijklmnopqrst.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "anon-key".repeat(8);
@@ -37,6 +42,7 @@ describe("GET /api/health", () => {
     process.env.QR_TOKEN_PEPPER_VERSION = "1";
     process.env.CRON_SECRET = "c".repeat(16);
     process.env.DYNAMIC_IMPORT_ENABLED = "false";
+    process.env.EMAIL_ENABLED = "false";
     process.env.IMPORT_RAW_RETENTION_HOURS = "24";
     delete process.env.IMPORT_STAGING_ENCRYPTION_KEY;
     mocks.admin.mockReset();
@@ -44,6 +50,7 @@ describe("GET /api/health", () => {
   afterEach(() => {
     delete process.env.APP_ENVIRONMENT;
     delete process.env.RELEASE_SHA;
+    delete process.env.RELEASE_ARTIFACT_DIGEST;
     delete process.env.APP_BASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -58,6 +65,13 @@ describe("GET /api/health", () => {
     delete process.env.DYNAMIC_IMPORT_ENABLED;
     delete process.env.IMPORT_RAW_RETENTION_HOURS;
     delete process.env.IMPORT_STAGING_ENCRYPTION_KEY;
+    delete process.env.EMAIL_ENABLED;
+    delete process.env.SENDGRID_API_KEY;
+    delete process.env.SENDGRID_API_KEY_FINGERPRINT;
+    delete process.env.SENDGRID_FROM_NAME;
+    delete process.env.SENDGRID_FROM_EMAIL;
+    delete process.env.SENDGRID_REPLY_TO_EMAIL;
+    delete process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY;
   });
 
   it("returns a minimal release-aware JSON readiness response", async () => {
@@ -71,6 +85,10 @@ describe("GET /api/health", () => {
       },
       qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
       importControl: { processingEnabled: false, cutoverActive: false },
+      emailControl: {
+        processingEnabled: false,
+        testEventQuarantined: 0,
+      },
       importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
       importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
       recentDeliveryFailures: 0,
@@ -81,7 +99,13 @@ describe("GET /api/health", () => {
     const response = await GET();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual({ status: "ok", service: "duindorpteneu", environment: "staging", revision: "a".repeat(40) });
+    expect(await response.json()).toEqual({
+      status: "ok",
+      service: "duindorpteneu",
+      environment: "staging",
+      revision: "a".repeat(40),
+      artifactDigest: `sha256:${"b".repeat(64)}`,
+    });
   });
 
   it("returns 503 without valid critical release configuration", async () => {
@@ -89,6 +113,13 @@ describe("GET /api/health", () => {
     const response = await GET();
     expect(response.status).toBe(503);
     expect(JSON.stringify(await response.json())).not.toMatch(/supabase|postgres|secret/i);
+  });
+
+  it("returns 503 without an exact runtime artifact digest", async () => {
+    process.env.RELEASE_ARTIFACT_DIGEST = "sha256:short";
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(mocks.admin).not.toHaveBeenCalled();
   });
 
   it("weigert een half geconfigureerde vorige QR-sleutel", async () => {
@@ -206,6 +237,10 @@ describe("GET /api/health", () => {
             },
             qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
             importControl: { processingEnabled: false, cutoverActive: true },
+            emailControl: {
+              processingEnabled: false,
+              testEventQuarantined: 0,
+            },
             importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
             importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 1, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
             recentDeliveryFailures: 0,
@@ -245,6 +280,10 @@ describe("GET /api/health", () => {
             },
             qrControl: { cutoverActive: false, scannerActive: false, candidateOrders: 0, activeLegacyQr: 0, openGrants: 0, expiredOpenGrants: 0, keyMismatchActiveLocators: 0, keyMismatchOpenGrants: 0, previousKeyActiveLocators: 0, previousKeyOpenGrants: 0 },
             importControl: { processingEnabled: false, cutoverActive: true },
+            emailControl: {
+              processingEnabled: false,
+              testEventQuarantined: 0,
+            },
             importStaging: { pending: 0, expired: 0, oldestExpiresAt: null },
             importRuns: { queued: 0, processing: 0, processingStale: 0, failed: 0, reconciliationRequired: 0, expiredSelectedRows: 0, backlogStale: false, oldestPendingAt: null },
             recentDeliveryFailures: 0,
@@ -259,6 +298,26 @@ describe("GET /api/health", () => {
     const response = await GET();
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ status: "degraded" });
+  });
+
+  it("blijft gezond wanneer de databasecutover vóór de runtimepoort wordt voorbereid", async () => {
+    mocks.admin.mockReturnValue({
+      schema: () => ({
+        rpc: vi.fn().mockResolvedValue({
+          data: {
+            ...healthyOperationalState,
+            importControl: {
+              processingEnabled: true,
+              cutoverActive: true,
+            },
+          },
+          error: null,
+        }),
+      }),
+    });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "ok" });
   });
 
   it("returns a redacted 503 when readiness throws", async () => {

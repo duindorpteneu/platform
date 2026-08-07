@@ -7,7 +7,7 @@ export type SendGridEventType = z.infer<typeof sendGridEventTypeSchema>;
 type SendGridEventIdentity = {
   deliveryAttemptId: string;
   providerEventId: string;
-  providerMessageId: string;
+  providerMessageId: string | null;
   eventType: SendGridEventType;
   occurredAt: string;
 };
@@ -19,6 +19,10 @@ export type SendGridOperationalEvent =
     }
   | SendGridEventIdentity & {
       target: "parent_otp";
+    }
+  | SendGridEventIdentity & {
+      target: "mail_test";
+      testDeliveryId: string;
     };
 
 const eventEnvelopeSchema = z.object({
@@ -27,6 +31,7 @@ const eventEnvelopeSchema = z.object({
   email_job_id: z.string().uuid().optional(),
   delivery_attempt_id: z.string().uuid().optional(),
   otp_delivery_attempt_id: z.string().uuid().optional(),
+  test_delivery_id: z.string().uuid().optional(),
   sg_event_id: z.string().min(1).max(240).optional(),
   sg_message_id: z.string().min(1).max(240).optional(),
   timestamp: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]).optional(),
@@ -77,13 +82,21 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
       envelope.email_job_id || envelope.delivery_attempt_id,
     );
     const hasOtpIdentity = Boolean(envelope.otp_delivery_attempt_id);
-    if (!hasQueuedIdentity && !hasOtpIdentity) {
-      if (envelope.delivery_kind === "parent_otp") {
+    const hasTestIdentity = Boolean(envelope.test_delivery_id);
+    if (!hasQueuedIdentity && !hasOtpIdentity && !hasTestIdentity) {
+      if (
+        envelope.delivery_kind === "parent_otp"
+        || envelope.delivery_kind === "admin_test"
+      ) {
         throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
       }
       continue;
     }
-    if (hasQueuedIdentity && hasOtpIdentity) {
+    if (
+      Number(hasQueuedIdentity)
+        + Number(hasOtpIdentity)
+        + Number(hasTestIdentity) > 1
+    ) {
       throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
     }
     if (
@@ -93,8 +106,12 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
         || envelope.delivery_kind === "parent_otp"
       ))
       || (hasOtpIdentity && envelope.delivery_kind !== "parent_otp")
+      || (
+        hasTestIdentity
+        && envelope.delivery_kind !== "admin_test"
+      )
       || !envelope.sg_event_id
-      || !envelope.sg_message_id
+      || (!envelope.sg_message_id && eventType !== "bounced")
       || envelope.timestamp === undefined
     ) {
       throw new Error("SENDGRID_EVENT_IDENTITY_INVALID");
@@ -105,14 +122,22 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
     const identity = {
       deliveryAttemptId: hasOtpIdentity
         ? envelope.otp_delivery_attempt_id!
-        : envelope.delivery_attempt_id!,
+        : hasTestIdentity
+          ? envelope.test_delivery_id!
+          : envelope.delivery_attempt_id!,
       providerEventId: envelope.sg_event_id,
-      providerMessageId: envelope.sg_message_id,
+      providerMessageId: envelope.sg_message_id ?? null,
       eventType,
       occurredAt: occurredAt.toISOString(),
     };
     const event: SendGridOperationalEvent = hasOtpIdentity
       ? { target: "parent_otp", ...identity }
+      : hasTestIdentity
+        ? {
+            target: "mail_test",
+            testDeliveryId: envelope.test_delivery_id!,
+            ...identity,
+          }
       : {
           target: "email_job",
           emailJobId: envelope.email_job_id!,
@@ -122,6 +147,7 @@ export function parseSendGridOperationalEvents(rawBody: string): SendGridOperati
       event.target,
       event.providerEventId,
       event.target === "email_job" ? event.emailJobId : null,
+      event.target === "mail_test" ? event.testDeliveryId : null,
       event.deliveryAttemptId,
       event.providerMessageId,
       event.eventType,

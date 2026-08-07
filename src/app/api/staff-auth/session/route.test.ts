@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   context: vi.fn(),
@@ -43,6 +43,10 @@ function synchronizationRequest(body: unknown) {
 }
 
 describe("GET /api/staff-auth/session", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     mocks.context.mockReset();
     mocks.createSession.mockReset();
@@ -81,6 +85,7 @@ describe("GET /api/staff-auth/session", () => {
   });
 
   it("valideert een verhoogde sessie server-side en schrijft de rolbestemming terug", async () => {
+    vi.stubEnv("NODE_ENV", "production");
     mocks.verifyToken.mockResolvedValue({ userId: "00000000-0000-4000-8000-000000000001" });
     mocks.createSession.mockResolvedValue({
       sessionToken: "b".repeat(64),
@@ -100,8 +105,13 @@ describe("GET /api/staff-auth/session", () => {
     expect(await response.json()).toEqual({ landingPath: "/uitgifte" });
     expect(mocks.verifyToken).toHaveBeenCalledWith("header.payload.signature");
     expect(mocks.createSession).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001");
-    expect(response.headers.get("set-cookie")).toContain("duindorp_staff_session=");
-    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    const cookie = response.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain("duindorp_staff_session=");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    expect(cookie.toLowerCase()).toContain("samesite=lax");
+    expect(cookie).toContain("Path=/");
+    expect(cookie).toContain("Max-Age=28800");
   });
 
   it("weigert een token dat PostgREST niet als actieve AAL2-medewerker valideert", async () => {

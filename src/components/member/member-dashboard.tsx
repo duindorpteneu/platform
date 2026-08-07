@@ -11,12 +11,12 @@ import {
   LogOut,
   PackageCheck,
   RefreshCw,
-  Shirt,
   UserRound,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ArticleIcon } from "@/components/catalog/article-icon";
 import type {
   ParentPackageMember,
   ParentPackageSizeSelection,
@@ -332,7 +332,7 @@ function SizeItem({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-bold text-brand-900">
-            <Shirt className="size-4 text-brand-500" aria-hidden="true" />
+            <ArticleIcon type={item.iconType} className="size-4 text-brand-500" />
             {item.name}
             {item.quantity > 1 && <span className="text-xs text-slate-400">× {item.quantity}</span>}
           </p>

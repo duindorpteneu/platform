@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -29,14 +30,12 @@ import {
   type FulfilmentExchangeFound,
 } from "@/lib/fulfilment-contract";
 import { extractQrLocator } from "@/lib/qr-payload";
+import {
+  supportsNativeQrDetection,
+  type BarcodeDetectorConstructor,
+} from "@/lib/scanner-camera";
 
 type FulfilmentLine = FulfilmentExchangeFound["lines"][number];
-type BarcodeDetectorLike = {
-  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>>;
-};
-type BarcodeDetectorConstructor = new (
-  options: { formats: string[] },
-) => BarcodeDetectorLike;
 type InstallPromptEvent = Event & {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -76,9 +75,7 @@ export function IssuanceWorkspace() {
   const commitAbortRef = useRef<AbortController | null>(null);
   const commitGenerationRef = useRef(0);
 
-  function stopCamera() {
-    cameraGenerationRef.current += 1;
-    cameraAcceptingRef.current = false;
+  const releaseCameraResources = useCallback(() => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
     fallbackControlsRef.current?.stop();
@@ -86,10 +83,16 @@ export function IssuanceWorkspace() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    setCameraActive(false);
-  }
+  }, []);
 
-  function clearScan() {
+  const stopCamera = useCallback(() => {
+    cameraGenerationRef.current += 1;
+    cameraAcceptingRef.current = false;
+    releaseCameraResources();
+    setCameraActive(false);
+  }, [releaseCameraResources]);
+
+  const clearScan = useCallback(() => {
     exchangeGenerationRef.current += 1;
     exchangeAbortRef.current?.abort();
     exchangeAbortRef.current = null;
@@ -101,7 +104,7 @@ export function IssuanceWorkspace() {
     setSelected([]);
     setCommitRequestId(null);
     setBusy(false);
-  }
+  }, []);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -143,7 +146,7 @@ export function IssuanceWorkspace() {
       window.removeEventListener("beforeinstallprompt", promptHandler);
       document.removeEventListener("visibilitychange", visibilityHandler);
     };
-  }, []);
+  }, [clearScan, stopCamera]);
 
   useEffect(() => {
     if (!result) return;
@@ -158,7 +161,7 @@ export function IssuanceWorkspace() {
       setMessage("De scan is verlopen. Scan de QR-code opnieuw.");
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [result]);
+  }, [clearScan, result]);
 
   async function exchangeLocator(locator: string) {
     if (!online) {
@@ -297,8 +300,16 @@ export function IssuanceWorkspace() {
         const codes = await detector.detect(videoRef.current);
         if (codes[0] && await acceptCameraValue(codes[0].rawValue)) return;
       } catch {
-        stopCamera();
-        setMessage("De camera kon de code niet lezen. Probeer opnieuw of vul de code in.");
+        if (cameraGeneration !== cameraGenerationRef.current) return;
+        releaseCameraResources();
+        cameraGenerationRef.current += 1;
+        cameraAcceptingRef.current = false;
+        try {
+          await startFallbackCamera();
+        } catch {
+          stopCamera();
+          setMessage("De camera kon de code niet lezen. Probeer opnieuw of vul de code in.");
+        }
         return;
       }
       frameRef.current = requestAnimationFrame(() => {
@@ -326,8 +337,17 @@ export function IssuanceWorkspace() {
       const Detector = (
         window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }
       ).BarcodeDetector;
-      if (Detector) await startNativeCamera(Detector);
-      else await startFallbackCamera();
+      if (await supportsNativeQrDetection(Detector)) {
+        try {
+          await startNativeCamera(Detector!);
+          return;
+        } catch {
+          releaseCameraResources();
+          cameraGenerationRef.current += 1;
+          cameraAcceptingRef.current = false;
+        }
+      }
+      await startFallbackCamera();
     } catch {
       stopCamera();
       setMessage("Cameratoegang is niet beschikbaar. Controleer de browsertoestemming.");

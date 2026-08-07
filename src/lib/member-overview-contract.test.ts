@@ -3,6 +3,8 @@ import {
   memberDetailResponseSchema,
   memberListQuerySchema,
   memberListResponseSchema,
+  memberSavedViewFiltersFromQuery,
+  memberSavedViewSchema,
   memberSizesRequestSchema,
   memberStatusRequestSchema,
   teamMemberStatusRequestSchema,
@@ -26,12 +28,18 @@ const list = {
   filterOptions: { teams: ["JO11-1"], articles: [{ id: "72000000-0000-4000-8000-000000000001", name: "Shirt" }], sizes: ["M"] },
   members: [{
     id: "74000000-0000-4000-8000-000000000001",
+    memberSeasonId: "71000000-0000-4000-8000-000000000002",
     memberName: "Sophie Tester",
     relationNumber: "LED-001",
     team: "JO11-1",
     activeForSeason: true,
     updatedAt: "2026-07-18T12:00:00.000Z",
     order,
+    bulkEligibility: {
+      portalAccessPreflight: true,
+      mailPreflight: true,
+      teamStatusPreflight: true,
+    },
   }],
 };
 const detail = {
@@ -84,6 +92,7 @@ describe("member overview contract", () => {
   it("normalizes safe URL filters", () => {
     expect(memberListQuerySchema.parse({ search: "  Sophie ", page: "2" })).toMatchObject({ search: "Sophie", page: 2 });
     expect(memberListQuerySchema.parse({ team: "JO13-2", payment: "", orderStatus: "", articleId: "", lineStatus: "" })).toMatchObject({ team: "JO13-2" });
+    expect(memberListQuerySchema.parse({ payment: "review" })).toMatchObject({ payment: "review" });
   });
 
   it("rejects arbitrary filters and identifiers", () => {
@@ -91,8 +100,73 @@ describe("member overview contract", () => {
     expect(memberListQuerySchema.safeParse({ member: "not-an-id" }).success).toBe(false);
   });
 
+  it("saves only season-bound structured filters and excludes search context", () => {
+    const query = memberListQuerySchema.parse({
+      search: "Sophie",
+      team: "JO11-1",
+      payment: "paid",
+      member: list.members[0].id,
+      page: 2,
+    });
+    expect(memberSavedViewFiltersFromQuery(query)).toEqual({
+      team: "JO11-1",
+      payment: "paid",
+    });
+    expect(memberSavedViewSchema.safeParse({
+      id: "78000000-0000-4000-8000-000000000001",
+      scope: "members",
+      seasonId: season.id,
+      name: "Betaalde JO11",
+      schemaVersion: 1,
+      filters: { team: "JO11-1", payment: "paid" },
+      valid: true,
+      invalidReason: null,
+      updatedAt: "2026-08-03T20:00:00.000Z",
+    }).success).toBe(true);
+    expect(memberSavedViewSchema.safeParse({
+      id: "78000000-0000-4000-8000-000000000001",
+      scope: "members",
+      seasonId: season.id,
+      name: "Onveilig",
+      schemaVersion: 1,
+      filters: { search: "Sophie" },
+      valid: true,
+      invalidReason: null,
+      updatedAt: "2026-08-03T20:00:00.000Z",
+    }).success).toBe(false);
+  });
+
+  it("requires stale saved views to carry an explicit invalid reason", () => {
+    const base = {
+      id: "78000000-0000-4000-8000-000000000001",
+      scope: "members",
+      seasonId: season.id,
+      name: "Oud team",
+      schemaVersion: 1,
+      filters: { team: "JO99-9" },
+      updatedAt: "2026-08-03T20:00:00.000Z",
+    };
+    expect(memberSavedViewSchema.safeParse({
+      ...base,
+      valid: false,
+      invalidReason: "filters_stale",
+    }).success).toBe(true);
+    expect(memberSavedViewSchema.safeParse({
+      ...base,
+      valid: false,
+      invalidReason: null,
+    }).success).toBe(false);
+  });
+
   it("accepts a minimal list without e-mail", () => {
     expect(memberListResponseSchema.safeParse(list).success).toBe(true);
+    expect(memberListResponseSchema.safeParse({
+      ...list,
+      members: [{
+        ...list.members[0],
+        order: { ...order, paymentStatus: "Controle vereist" },
+      }],
+    }).success).toBe(true);
     expect(memberListResponseSchema.safeParse({
       ...list,
       members: [{ ...list.members[0], relationNumber: null }],

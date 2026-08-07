@@ -9,7 +9,15 @@ import { getEmailWorkspace } from "@/server/email/workspace";
 
 export const dynamic = "force-dynamic";
 
-export default async function EmailsPage() {
+export default async function EmailsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const rawTab = (await searchParams).tab;
+  const initialTab = rawTab === "bulk" || rawTab === "branding"
+    ? rawTab
+    : undefined;
   const { workspace, staff } = await getEmailWorkspace();
   const canManageTemplates = staff.role === "beheerder";
   const campaignWorkspacePromise = getMailV2CampaignWorkspace();
@@ -35,6 +43,7 @@ export default async function EmailsPage() {
       reminderWorkspace={reminderWorkspace}
       canManageTemplates={canManageTemplates}
       emailEnabled={process.env.EMAIL_ENABLED === "true"}
+      initialTab={initialTab}
     />
   );
 }

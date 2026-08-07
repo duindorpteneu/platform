@@ -116,6 +116,8 @@ where id in (
 update app.app_settings
 set active_season_id = nullif(:'active_season_before', '')::uuid
 where id = true;
+delete from app.inventory_settings
+where season_id = 'dc100000-0000-4000-8000-000000000001';
 delete from app.seasons
 where id = 'dc100000-0000-4000-8000-000000000001';
 delete from app.staff_profiles

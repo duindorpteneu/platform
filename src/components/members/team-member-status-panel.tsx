@@ -50,7 +50,7 @@ export function TeamMemberStatusPanel({ teams, initialTeam, disabled }: { teams:
     }
   }
 
-  return <section className="rounded-xl border border-line bg-white p-5 shadow-card">
+  return <section id="team-status-panel" className="scroll-mt-24 rounded-xl border border-line bg-white p-5 shadow-card">
     <div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700"><UsersRound className="size-4" /></span><div><h2 className="text-sm font-bold text-brand-900">Teamstatus in bulk</h2><p className="mt-1 text-xs leading-5 text-slate-500">Activeer of deactiveer alle leden van één team. Bestellingen, betalingen en historie blijven behouden.</p></div></div>
     <fieldset disabled={disabled || busy || teams.length === 0} className="mt-5 space-y-3">
       <label className="block text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Team<select value={team} onChange={(event) => { setTeam(event.target.value); invalidate(); }} className={"mt-2 " + fieldClass}><option value="">Kies een team</option>{teams.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>

@@ -4,6 +4,7 @@ import {
   parentPackageWorkspaceDatabaseSchema,
   staffPackageSelectionRequestSchema,
   staffPackageSelectionResponseSchema,
+  type ParentPackageWorkspaceDatabase,
 } from "./parent-package-contract";
 
 const memberSeasonId = "10000000-0000-4000-8000-000000000001";
@@ -12,7 +13,7 @@ const seasonId = "30000000-0000-4000-8000-000000000001";
 const articleId = "40000000-0000-4000-8000-000000000001";
 const variantId = "50000000-0000-4000-8000-000000000001";
 
-function workspace() {
+function workspace(): ParentPackageWorkspaceDatabase {
   return {
     enabled: true,
     members: [{
@@ -44,6 +45,33 @@ describe("parent package contract", () => {
     const input = workspace();
     Object.assign(input.members[0], { email: "niet-doorsturen@example.invalid" });
     expect(parentPackageWorkspaceDatabaseSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("vereist een canoniek artikelicoon voor ieder pakketproduct", () => {
+    const input = workspace();
+    input.members[0].availablePackages = [{
+      revisionId: variantId,
+      name: "Speler",
+      description: null,
+      priceCents: 12_500,
+      currency: "EUR",
+      revisionNumber: 1,
+      isDefault: true,
+      items: [{
+        articleId,
+        name: "Shirt",
+        code: "SHIRT",
+        iconType: "shirt",
+        quantity: 1,
+      }],
+    }];
+    expect(parentPackageWorkspaceDatabaseSchema.safeParse(input).success)
+      .toBe(true);
+    delete (input.members[0].availablePackages[0].items[0] as {
+      iconType?: string;
+    }).iconType;
+    expect(parentPackageWorkspaceDatabaseSchema.safeParse(input).success)
+      .toBe(false);
   });
 
   it("modelleert Anders uitsluitend als conflict met toelichting", () => {

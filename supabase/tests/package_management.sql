@@ -178,17 +178,33 @@ select throws_ok(
   'product zonder actieve maattabel kan niet in een pakket'
 );
 
+select throws_ok(
+  format(
+    $$select app.publish_package_revision_v2(
+      %L::uuid,
+      false,
+      %L,
+      'fbf00000-0000-4000-8000-000000000003'
+    )$$,
+    (select result->>'revisionId' from first_draft),
+    (select result->>'contentHash' from first_update)
+  ),
+  '23514',
+  'PACKAGE_DEFAULT_EXPLICIT_REQUIRED',
+  'eerste gepubliceerde pakket wordt nooit stil standaard'
+);
+
 create temporary table first_publish as
 select app.publish_package_revision_v2(
   (select (result->>'revisionId')::uuid from first_draft),
-  false,
+  true,
   (select result->>'contentHash' from first_update),
   'fbf00000-0000-4000-8000-000000000003'
 ) result;
 select is(
   (select result->>'default' from first_publish),
   'true',
-  'eerste gepubliceerde pakket wordt veilig de seizoensdefault'
+  'expliciet gekozen eerste pakket wordt de seizoensdefault'
 );
 select is(
   (select count(*) from app.package_template_revisions

@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import net from "node:net";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertKeyboardFocusVisible,
+  assertNoAutomatedA11yViolations,
+} from "./browser-a11y.mjs";
 
 if (process.env.SCANNER_BROWSER_DISPOSABLE_DB !== "1") {
   throw new Error(
@@ -374,6 +378,7 @@ async function assertNoBrowserQrStorage(page) {
 }
 
 async function exchange(page, locator, expectedReadyArticle) {
+  const startedAt = performance.now();
   const [response] = await Promise.all([
     page.waitForResponse((candidate) =>
       candidate.url() === `${baseUrl}/api/fulfilment/exchange`
@@ -394,9 +399,11 @@ async function exchange(page, locator, expectedReadyArticle) {
   if (hiddenMemberFacts.some((fact) => body.includes(fact))) {
     throw new Error("De uitgiftescanner toonde afgeschermde lidgegevens.");
   }
+  return performance.now() - startedAt;
 }
 
 async function issueLine(page, articleName, expectedOutcome) {
+  const startedAt = performance.now();
   const articleLabel = page.locator("label").filter({
     has: page.getByText(articleName, { exact: true }),
   });
@@ -419,6 +426,7 @@ async function issueLine(page, articleName, expectedOutcome) {
   await page
     .getByRole("heading", { name: expectedOutcome, exact: true })
     .waitFor();
+  return performance.now() - startedAt;
 }
 
 const local = localSupabaseEnv();
@@ -467,6 +475,7 @@ if (registered.error) {
 
 let appProcess;
 let browser;
+const criticalLatenciesMs = [];
 try {
   appProcess = spawn(
     "pnpm",
@@ -498,7 +507,7 @@ try {
 
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: 768, height: 1024 },
     serviceWorkers: "allow",
   });
   await context.addCookies([{
@@ -531,6 +540,8 @@ try {
     throw new Error("De scannerroute heeft geen exclusief camerabeleid.");
   }
   await page.getByRole("heading", { name: "Uitgifte", exact: true }).waitFor();
+  await assertNoAutomatedA11yViolations(page, "scanner_start");
+  await assertKeyboardFocusVisible(page, "scanner_start");
 
   const manifestResponse = await page.request.get(
     `${baseUrl}/uitgifte/manifest.webmanifest`,
@@ -562,16 +573,35 @@ try {
   await reopened.getByRole("heading", { name: "Uitgifte", exact: true }).waitFor();
   await reopened.close();
 
-  await exchange(page, qr.locator, firstArticleName);
-  await issueLine(page, firstArticleName, "Deeluitgifte voltooid");
+  criticalLatenciesMs.push(
+    await exchange(page, qr.locator, firstArticleName),
+  );
+  await assertNoAutomatedA11yViolations(page, "scanner_ready");
+  criticalLatenciesMs.push(
+    await issueLine(page, firstArticleName, "Deeluitgifte voltooid"),
+  );
   sql(local.DB_URL, secondDeliverySql());
   await page.getByRole("button", { name: "Nieuwe scan" }).click();
-  await exchange(page, qr.locator, secondArticleName);
+  criticalLatenciesMs.push(
+    await exchange(page, qr.locator, secondArticleName),
+  );
   await page.locator("label").filter({
     has: page.getByText(firstArticleName, { exact: true }),
   }).getByText(/Afgehaald/u).waitFor();
-  await issueLine(page, secondArticleName, "Pakket volledig uitgegeven");
+  criticalLatenciesMs.push(
+    await issueLine(page, secondArticleName, "Pakket volledig uitgegeven"),
+  );
   await assertNoBrowserQrStorage(page);
+
+  const maximumLatencyMs = Math.max(...criticalLatenciesMs);
+  if (
+    criticalLatenciesMs.length !== 4
+    || maximumLatencyMs >= 2_000
+  ) {
+    throw new Error(
+      "QR-lookup of fulfilmentbevestiging overschreed in de functionele smokecheck twee seconden.",
+    );
+  }
 
   if (
     requestedUrls.some((url) => url.includes(qr.locator))
@@ -635,7 +665,7 @@ try {
   }
 
   process.stdout.write(
-    "Scanner-PWA-browsertest geslaagd: sessie, minimale data, netwerk-only, deel- en nalevering met dezelfde QR.\n",
+    `Scanner-PWA-browsertest geslaagd: sessie, minimale data, netwerk-only, deel- en nalevering met dezelfde QR; maximale smoke-latentie ${Math.ceil(maximumLatencyMs)} ms.\n`,
   );
 } finally {
   await browser?.close();

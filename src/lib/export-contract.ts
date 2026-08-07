@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-export const EXPORT_TYPES = ["members", "orders", "payments", "deliveries", "fulfilments", "outstanding"] as const;
+export const EXPORT_TYPES = [
+  "members",
+  "orders",
+  "package_orders",
+  "package_items",
+  "payments",
+  "deliveries",
+  "fulfilments",
+  "outstanding",
+] as const;
 export const exportTypeSchema = z.enum(EXPORT_TYPES);
 export const exportFormatSchema = z.enum(["csv", "xlsx"]);
 
@@ -12,7 +21,7 @@ const exportColumnSchema = z.object({
 
 export const exportPayloadSchema = z.object({
   type: exportTypeSchema,
-  seasonName: z.string().trim().min(1).max(100).nullable(),
+  seasonName: z.string().trim().min(1).max(100),
   generatedAt: z.string().datetime({ offset: true }),
   columns: z.array(exportColumnSchema).min(1).max(40),
   rows: z.array(z.record(z.string(), primitiveSchema)).max(50_000),
@@ -22,6 +31,8 @@ const filterOptionSchema = z.object({ value: z.string().max(100), label: z.strin
 const filterMapSchema = z.object({
   members: z.array(filterOptionSchema).max(100),
   orders: z.array(filterOptionSchema).max(100),
+  package_orders: z.array(filterOptionSchema).max(100),
+  package_items: z.array(filterOptionSchema).max(100),
   payments: z.array(filterOptionSchema).max(100),
   deliveries: z.array(filterOptionSchema).max(100),
   fulfilments: z.array(filterOptionSchema).max(100),
@@ -29,7 +40,16 @@ const filterMapSchema = z.object({
 }).strict();
 
 export const exportWorkspaceSchema = z.object({
-  types: z.tuple(EXPORT_TYPES.map((type) => z.literal(type)) as [z.ZodLiteral<"members">, z.ZodLiteral<"orders">, z.ZodLiteral<"payments">, z.ZodLiteral<"deliveries">, z.ZodLiteral<"fulfilments">, z.ZodLiteral<"outstanding">]),
+  types: z.tuple([
+    z.literal("members"),
+    z.literal("orders"),
+    z.literal("package_orders"),
+    z.literal("package_items"),
+    z.literal("payments"),
+    z.literal("deliveries"),
+    z.literal("fulfilments"),
+    z.literal("outstanding"),
+  ]),
   seasons: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100), active: z.boolean() }).strict()).max(50),
   filters: filterMapSchema,
 }).strict();

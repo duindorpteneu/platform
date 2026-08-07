@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleDot, Edit3, Layers3, Link2, Loader2, Package, Plus, Power, Shirt, Unlink2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Edit3, Layers3, Link2, Loader2, Package, Plus, Power, Unlink2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArticleIcon } from "@/components/catalog/article-icon";
 import type { CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-contract";
 
 type Article = Workspace["articles"][number];
@@ -12,11 +13,6 @@ type MutationPayload = { error?: string; changedCount?: number };
 type SuccessMessage = string | ((payload: MutationPayload) => string);
 
 const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
-
-function ArticleIcon({ type }: { type: Article["iconType"] }) {
-  const Icon = type === "shirt" ? Shirt : type === "circle-dot" ? CircleDot : Package;
-  return <Icon className="size-5" strokeWidth={1.7} />;
-}
 
 async function postJson(path: string, body: unknown) {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Duindorp-CSRF": "same-origin" }, body: JSON.stringify(body) });

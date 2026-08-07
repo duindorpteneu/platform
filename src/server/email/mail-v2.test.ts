@@ -266,19 +266,22 @@ describe("mail-v2 renderer", () => {
 
   it("renders OTP exclusively through its three protected nodes", () => {
     const preview = mailV2PreviewData();
+    const bodyTipTap = mailTipTapDocumentSchema.parse({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Log veilig in." }] },
+        { type: "protectedBlock", attrs: { kind: "otp_code" } },
+        { type: "protectedBlock", attrs: { kind: "otp_validity" } },
+        { type: "protectedBlock", attrs: { kind: "otp_warning" } },
+        // TipTap keeps a cursor paragraph after a trailing atomic node.
+        { type: "paragraph" },
+      ],
+    });
     const source: MailTemplateSource = {
       templateKey: "login_otp",
       subjectSource: "Uw verificatiecode voor {{club_name}}",
       preheaderSource: "Tien minuten geldig.",
-      bodyTipTap: {
-        type: "doc",
-        content: [
-          { type: "paragraph", content: [{ type: "text", text: "Log veilig in." }] },
-          { type: "protectedBlock", attrs: { kind: "otp_code" } },
-          { type: "protectedBlock", attrs: { kind: "otp_validity" } },
-          { type: "protectedBlock", attrs: { kind: "otp_warning" } },
-        ],
-      },
+      bodyTipTap,
       allowedShortcodes: ["club_name", "otp_expiry_minutes"],
       allowedProtectedNodes: ["otp_code", "otp_validity", "otp_warning"],
       requiredProtectedNodes: ["otp_code", "otp_validity", "otp_warning"],

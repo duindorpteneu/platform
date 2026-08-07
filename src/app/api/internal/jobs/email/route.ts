@@ -30,6 +30,7 @@ const workerPreflightResponseSchema = z.object({
   ready: z.boolean(),
   brandingMatchCount: z.number().int().nonnegative(),
   senderDriftCount: z.number().int().nonnegative(),
+  brandingProjectionBlockers: z.number().int().nonnegative().default(0),
 }).strict();
 
 export async function POST(request: Request) {
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "paused", claimed: 0, sent: 0, retry: 0, failed: 0, deliveryUncertain: 0 });
   }
   const preflightResult = await admin.schema("app").rpc(
-    "get_email_worker_preflight_v1",
+    "get_email_worker_preflight_v2",
     {
       p_from_name: env.SENDGRID_FROM_NAME,
       p_from_email: env.SENDGRID_FROM_EMAIL,

@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, CircleOff, ClipboardList, Loader2, LockKey
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCentsForEuroInput, parseEuroAmountToCents, type CatalogOrderWorkspace as Workspace } from "@/lib/catalog-order-contract";
+import type { PackageChangeResponse } from "@/lib/package-change-contract";
 import { TeamArticleBulkPanel } from "@/components/orders/team-article-bulk-panel";
 
 type Member = Workspace["members"][number];
@@ -23,7 +24,10 @@ async function saveOrder(body: unknown) {
   if (!response.ok) throw new Error(payload.error ?? "De bestelling kon niet worden opgeslagen.");
 }
 
-async function postMutation(path: string, body: unknown) {
+async function postMutation<T = void>(
+  path: string,
+  body: unknown,
+): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
     headers: {
@@ -32,10 +36,11 @@ async function postMutation(path: string, body: unknown) {
     },
     body: JSON.stringify(body),
   });
-  const payload = await response.json() as { error?: string };
+  const payload = await response.json() as T & { error?: string };
   if (!response.ok) {
     throw new Error(payload.error ?? "De wijziging kon niet worden verwerkt.");
   }
+  return payload;
 }
 
 export function isLegacyOrder(
@@ -224,45 +229,111 @@ function PackageOrderEditor({
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [changePreflight, setChangePreflight] =
+    useState<PackageChangeResponse | null>(null);
   const currentPackage = revisions.find(
     (revision) => revision.revisionId === packageOrder?.packageRevisionId,
   );
-  const mutable = canManage
+  const editable = canManage
     && Boolean(activeSeason)
     && Boolean(revisionId)
-    && Boolean(packageOrder)
+    && Boolean(packageOrder);
+  const targetsDifferentPackage = revisionId
+    !== packageOrder?.packageRevisionId;
+  const mutable = editable
+    && targetsDifferentPackage
     && (!packageOrder?.orderId || packageOrder.canSwitchPackage);
+  const requiresWorkflow = editable
+    && targetsDifferentPackage
+    && Boolean(packageOrder?.orderId)
+    && !packageOrder?.canSwitchPackage;
 
   useEffect(() => {
     setRevisionId(defaultRevision);
     setReason("");
     setRequestId(crypto.randomUUID());
     setError(null);
+    setChangePreflight(null);
   }, [defaultRevision, member.id]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!packageOrder || !mutable || reason.trim().length < 3) return;
+    if (
+      !packageOrder
+      || (!mutable && !requiresWorkflow)
+      || reason.trim().length < 4
+    ) return;
     setSaving(true);
     setError(null);
     try {
-      await postMutation("/api/orders/package", {
-        memberSeasonId: packageOrder.memberSeasonId,
-        packageRevisionId: revisionId,
-        revision: packageOrder.revision,
-        reason,
-        requestId,
-      });
-      onChanged(
-        packageOrder.packageRevisionId
-          ? "Pakketkeuze is gecontroleerd bijgewerkt."
-          : "Pakketorder is aangemaakt.",
-      );
+      if (requiresWorkflow && packageOrder.orderId) {
+        const response = await postMutation<PackageChangeResponse>(
+          "/api/orders/package-change",
+          {
+            action: "preflight",
+            orderId: packageOrder.orderId,
+            targetPackageRevisionId: revisionId,
+            reason,
+            requestId,
+          },
+        );
+        setChangePreflight(response);
+        setRequestId(crypto.randomUUID());
+      } else {
+        await postMutation("/api/orders/package", {
+          memberSeasonId: packageOrder.memberSeasonId,
+          packageRevisionId: revisionId,
+          revision: packageOrder.revision,
+          reason,
+          requestId,
+        });
+        onChanged(
+          packageOrder.packageRevisionId
+            ? "Pakketkeuze is gecontroleerd bijgewerkt."
+            : "Pakketorder is aangemaakt.",
+        );
+      }
     } catch (mutationError) {
       setError(
         mutationError instanceof Error
           ? mutationError.message
           : "Het pakket kon niet worden verwerkt.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function applyChange() {
+    if (!changePreflight?.canApply) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await postMutation<PackageChangeResponse>(
+        "/api/orders/package-change",
+        {
+          action: "apply",
+          requestId: changePreflight.requestId,
+          revision: changePreflight.revision,
+          confirmation: changePreflight.requiresAllocationRelease
+            ? "RELEASE_ALLOCATIONS_AND_SWITCH"
+            : "SWITCH_PACKAGE",
+        },
+      );
+      if (
+        response.result?.paymentTransferred !== false
+        || response.result?.refundCreated !== false
+      ) {
+        throw new Error("Onveilig financieel antwoord geweigerd.");
+      }
+      onChanged(
+        "Pakket gewijzigd. Oude betalingen bleven aan hun historische snapshot gebonden.",
+      );
+    } catch (mutationError) {
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "De pakketwijziging kon niet worden uitgevoerd.",
       );
     } finally {
       setSaving(false);
@@ -300,7 +371,8 @@ function PackageOrderEditor({
       {packageOrder?.orderId && !packageOrder.canSwitchPackage && (
         <div className="border-b border-brand-100 bg-brand-50 px-6 py-4 text-xs leading-5 text-brand-800">
           Dit pakket is betaald, gereserveerd of deels uitgegeven. Een gewone
-          pakketwissel is daarom geblokkeerd.
+          pakketwissel is daarom geblokkeerd. Maak hieronder eerst een
+          geaudite preflight; een refund gebeurt nooit automatisch.
         </div>
       )}
       {error && (
@@ -309,7 +381,73 @@ function PackageOrderEditor({
         </div>
       )}
 
-      <fieldset disabled={!mutable || saving} className="space-y-5 p-6">
+      {changePreflight && (
+        <div className="border-b border-line bg-slate-50 px-6 py-5 text-xs">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="font-semibold text-slate-500">Prijsverschil</p>
+              <p className="mt-1 font-bold text-brand-900">
+                {(changePreflight.priceDeltaCents / 100).toLocaleString(
+                  "nl-NL",
+                  { style: "currency", currency: changePreflight.toCurrency },
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-500">Betaling</p>
+              <p className="mt-1 font-bold text-brand-900">
+                {changePreflight.requiresPaymentResolution
+                  ? "Eerst extern oplossen"
+                  : changePreflight.paidHistoryCount > 0
+                    ? "Historie blijft gekoppeld"
+                    : "Geen blokkade"}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-500">Voorraad</p>
+              <p className="mt-1 font-bold text-brand-900">
+                {changePreflight.blockedByFulfilment
+                  ? "Uitgifte blokkeert"
+                  : changePreflight.requiresAllocationRelease
+                    ? `${changePreflight.reservedAllocationCount} reservering(en) vrijgeven`
+                    : "Geen blokkade"}
+              </p>
+            </div>
+          </div>
+          {changePreflight.requiresExternalRefund && (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 leading-5 text-amber-900">
+              Registreer of verifieer eerst de externe refund via de bestaande
+              betaalcorrectie. Deze workflow maakt zelf geen refund en boekt
+              geen betaling over.
+            </p>
+          )}
+          {changePreflight.blockedByReconciliation && (
+            <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-danger">
+              Een historische reservering is nog niet gereconcilieerd.
+              Productie-uitvoering blijft geblokkeerd.
+            </p>
+          )}
+          {changePreflight.canApply && (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void applyChange()}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {saving
+                  ? <Loader2 className="size-4 animate-spin" />
+                  : <LockKeyhole className="size-4" />}
+                {changePreflight.requiresAllocationRelease
+                  ? "Reserveringen vrijgeven en wijzigen"
+                  : "Gecontroleerd wijzigen"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <fieldset disabled={!editable || saving} className="space-y-5 p-6">
         {revisions.length === 0 ? (
           <div className="rounded-lg border border-dashed border-line px-6 py-10 text-center">
             <PackageCheck className="mx-auto size-7 text-slate-300" />
@@ -330,6 +468,7 @@ function PackageOrderEditor({
                 onChange={(event) => {
                   setRevisionId(event.target.value);
                   setRequestId(crypto.randomUUID());
+                  setChangePreflight(null);
                 }}
                 className={"mt-2 " + fieldClass}
               >
@@ -351,9 +490,10 @@ function PackageOrderEditor({
                 onChange={(event) => {
                   setReason(event.target.value);
                   setRequestId(crypto.randomUUID());
+                  setChangePreflight(null);
                 }}
-                minLength={3}
-                maxLength={500}
+                minLength={4}
+                maxLength={480}
                 required
                 rows={3}
                 placeholder="Bijvoorbeeld: pakket gekozen na controle met lid"
@@ -367,11 +507,22 @@ function PackageOrderEditor({
       <div className="flex items-center justify-end border-t border-line bg-slate-50/60 px-6 py-4">
         <button
           type="submit"
-          disabled={!mutable || saving || reason.trim().length < 3}
+          disabled={
+            (!mutable && !requiresWorkflow)
+            || saving
+            || reason.trim().length < 4
+            || revisionId === packageOrder?.packageRevisionId
+          }
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          {packageOrder?.packageRevisionId ? "Pakket wijzigen" : "Pakket kiezen"}
+          {requiresWorkflow
+            ? changePreflight
+              ? "Opnieuw controleren"
+              : "Wijziging controleren"
+            : packageOrder?.packageRevisionId
+              ? "Pakket wijzigen"
+              : "Pakket kiezen"}
         </button>
       </div>
     </form>

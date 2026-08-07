@@ -113,6 +113,13 @@ export const operationalHealthSchema = z.object({
     processingEnabled: z.boolean(),
     cutoverActive: z.boolean(),
   }).strict(),
+  emailControl: z.object({
+    processingEnabled: z.boolean(),
+    testEventQuarantined: z.number().int().nonnegative(),
+  }).strict(),
+  brandingProjection: z.object({
+    blockers: z.number().int().nonnegative(),
+  }).strict().default({ blockers: 0 }),
   importStaging: z.object({
     pending: z.number().int().nonnegative(),
     expired: z.number().int().nonnegative(),
@@ -165,6 +172,7 @@ export function operationalHealthIsDegraded(
     || data.recentDeliveryFailures > 0
     || data.reconciliationIssues > 0
     || data.recentWebhookFailures > 0
+    || data.brandingProjection.blockers > 0
     || data.operations.emailWorker.stale
     || data.operations.emailWorker.runningStale
     || data.operations.emailWorker.lastStatus === "failed"

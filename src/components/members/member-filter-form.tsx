@@ -1,6 +1,12 @@
 import { Filter, Search } from "lucide-react";
 import Link from "next/link";
-import type { MemberListQuery, MemberListResponse } from "@/lib/member-overview-contract";
+import { MemberSavedViews } from "@/components/members/member-saved-views";
+import {
+  memberSavedViewFiltersFromQuery,
+  type MemberListQuery,
+  type MemberListResponse,
+  type MemberSavedViewsResponse,
+} from "@/lib/member-overview-contract";
 
 const orderStatuses = [
   "Nog niet betaald",
@@ -11,9 +17,10 @@ const orderStatuses = [
   "Afgerond",
 ] as const;
 
-export function MemberFilterForm({ query, options }: {
+export function MemberFilterForm({ query, options, savedViews }: {
   query: MemberListQuery;
   options: MemberListResponse["filterOptions"];
+  savedViews: MemberSavedViewsResponse | null;
 }) {
   const activeFilterCount = [
     query.team,
@@ -25,7 +32,14 @@ export function MemberFilterForm({ query, options }: {
   ].filter(Boolean).length;
 
   return (
-    <form method="get" className="border-b border-line bg-slate-50/40 px-5 py-4">
+    <>
+      {savedViews && (
+        <MemberSavedViews
+          workspace={savedViews}
+          currentFilters={memberSavedViewFiltersFromQuery(query)}
+        />
+      )}
+      <form method="get" className="border-b border-line bg-slate-50/40 px-5 py-4">
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_repeat(3,minmax(130px,0.45fr))]">
         <label className="relative">
           <span className="sr-only">Zoek naam, team of relatienummer</span>
@@ -33,7 +47,7 @@ export function MemberFilterForm({ query, options }: {
           <input name="search" defaultValue={query.search} placeholder="Zoek naam, team of relatienummer" className="h-10 w-full rounded-lg border border-line bg-white pl-9 pr-3 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" />
         </label>
         <label><span className="sr-only">Team</span><select name="team" defaultValue={query.team ?? ""} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-slate-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">Alle teams</option>{options.teams.map((team) => <option key={team} value={team}>{team}</option>)}</select></label>
-        <label><span className="sr-only">Betaalstatus</span><select name="payment" defaultValue={query.payment ?? ""} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-slate-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">Alle betalingen</option><option value="paid">Betaald</option><option value="unpaid">Nog te betalen</option><option value="no_order">Geen bestelling</option></select></label>
+        <label><span className="sr-only">Betaalstatus</span><select name="payment" defaultValue={query.payment ?? ""} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-slate-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">Alle betalingen</option><option value="paid">Betaald</option><option value="unpaid">Nog te betalen</option><option value="review">Controle vereist</option><option value="no_order">Geen bestelling</option></select></label>
         <label><span className="sr-only">Bestelstatus</span><select name="orderStatus" defaultValue={query.orderStatus ?? ""} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-slate-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"><option value="">Alle bestelstatussen</option>{orderStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
       </div>
       <details className="mt-3" open={Boolean(query.articleId || query.size || query.lineStatus)}>
@@ -51,6 +65,7 @@ export function MemberFilterForm({ query, options }: {
           <button className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3.5 text-xs font-semibold text-white hover:bg-brand-900"><Filter className="size-3.5" /> Filters toepassen</button>
         </div>
       </div>
-    </form>
+      </form>
+    </>
   );
 }

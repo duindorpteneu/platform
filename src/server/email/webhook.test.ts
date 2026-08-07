@@ -39,6 +39,35 @@ describe("SendGrid event webhook", () => {
     expect(() => parseSendGridOperationalEvents('[{"event":"delivered","email_job_id":"11111111-1111-4111-8111-111111111111","timestamp":1784376000}]')).toThrow("SENDGRID_EVENT_IDENTITY_INVALID");
   });
 
+  it("laat uitsluitend een attempt-gebonden bounce zonder message-ID door voor databaseherleiding", () => {
+    const emailJobId =
+      "11111111-1111-4111-8111-111111111111";
+    const deliveryAttemptId =
+      "22222222-2222-4222-8222-222222222222";
+    expect(parseSendGridOperationalEvents(JSON.stringify([{
+      event: "bounce",
+      email_job_id: emailJobId,
+      delivery_attempt_id: deliveryAttemptId,
+      sg_event_id: "bounce-without-message-id",
+      timestamp: 1_784_376_001,
+    }]))).toEqual([{
+      target: "email_job",
+      emailJobId,
+      deliveryAttemptId,
+      providerEventId: "bounce-without-message-id",
+      providerMessageId: null,
+      eventType: "bounced",
+      occurredAt: "2026-07-18T12:00:01.000Z",
+    }]);
+    expect(() => parseSendGridOperationalEvents(JSON.stringify([{
+      event: "delivered",
+      email_job_id: emailJobId,
+      delivery_attempt_id: deliveryAttemptId,
+      sg_event_id: "delivery-without-message-id",
+      timestamp: 1_784_376_001,
+    }]))).toThrow("SENDGRID_EVENT_IDENTITY_INVALID");
+  });
+
   it("herkent een expliciet attempt-gebonden OTP-event", () => {
     const deliveryAttemptId =
       "33333333-3333-4333-8333-333333333333";
@@ -54,6 +83,28 @@ describe("SendGrid event webhook", () => {
       deliveryAttemptId,
       providerEventId: "otp-event-1",
       providerMessageId: "otp-message-1",
+      eventType: "delivered",
+      occurredAt: "2026-07-18T12:00:03.000Z",
+    }]);
+  });
+
+  it("routeert testdelivery-events naar hun eigen append-only ledger", () => {
+    expect(parseSendGridOperationalEvents(JSON.stringify([{
+      event: "delivered",
+      delivery_kind: "admin_test",
+      test_delivery_id:
+        "44444444-4444-4444-8444-444444444444",
+      sg_event_id: "test-event-1",
+      sg_message_id: "test-message-1",
+      timestamp: 1_784_376_003,
+    }]))).toEqual([{
+      target: "mail_test",
+      testDeliveryId:
+        "44444444-4444-4444-8444-444444444444",
+      deliveryAttemptId:
+        "44444444-4444-4444-8444-444444444444",
+      providerEventId: "test-event-1",
+      providerMessageId: "test-message-1",
       eventType: "delivered",
       occurredAt: "2026-07-18T12:00:03.000Z",
     }]);

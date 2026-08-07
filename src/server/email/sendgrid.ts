@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 const recipientSchema = z.string().trim().email().max(320);
@@ -17,6 +18,11 @@ const renderedMessageSchema = z.object({
 
 const parentOtpV2MessageSchema = renderedMessageSchema
   .omit({ jobId: true })
+  .strict();
+
+const mailV2TestMessageSchema = renderedMessageSchema
+  .omit({ jobId: true, deliveryAttemptId: true, recipientEmail: true })
+  .extend({ testDeliveryId: z.string().uuid() })
   .strict();
 
 export type SendGridDeliveryResult =
@@ -40,6 +46,7 @@ function providerConfiguration() {
     || fromName.length < 3
     || fromName.length > 120
     || /[\r\n]/u.test(fromName)
+    || !sendGridKeyFingerprintMatches(apiKey)
     || !recipientSchema.safeParse(fromEmail).success
     || !recipientSchema.safeParse(replyToEmail).success
   ) {
@@ -52,6 +59,52 @@ function providerConfiguration() {
     fromName,
     fromEmail: recipientSchema.parse(fromEmail),
     replyToEmail: recipientSchema.parse(replyToEmail),
+  };
+}
+
+function sendGridKeyFingerprintMatches(apiKey: string | undefined) {
+  const expectedFingerprint =
+    process.env.SENDGRID_API_KEY_FINGERPRINT?.trim().toLowerCase();
+  if (
+    !apiKey
+    || !expectedFingerprint
+    || !/^[a-f0-9]{64}$/u.test(expectedFingerprint)
+  ) {
+    return false;
+  }
+  const actual = createHash("sha256").update(apiKey).digest();
+  const expected = Buffer.from(expectedFingerprint, "hex");
+  return expected.length === actual.length
+    && timingSafeEqual(actual, expected);
+}
+
+export function sendGridRuntimeHealth() {
+  const runtimeValue = process.env.EMAIL_ENABLED?.trim();
+  const runtimeValueValid = runtimeValue === "true"
+    || runtimeValue === "false";
+  const runtimeEnabled = runtimeValue === "true";
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromName = process.env.SENDGRID_FROM_NAME?.trim();
+  const providerConfigured = Boolean(
+    apiKey?.startsWith("SG.")
+    && fromName
+    && fromName.length >= 3
+    && fromName.length <= 120
+    && !/[\r\n]/u.test(fromName)
+    && recipientSchema.safeParse(
+      process.env.SENDGRID_FROM_EMAIL,
+    ).success
+    && recipientSchema.safeParse(
+      process.env.SENDGRID_REPLY_TO_EMAIL,
+    ).success
+    && process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY?.trim()
+    && (process.env.CRON_SECRET?.length ?? 0) >= 16
+  );
+  return {
+    runtimeValueValid,
+    runtimeEnabled,
+    providerConfigured,
+    keyFingerprintMatches: sendGridKeyFingerprintMatches(apiKey),
   };
 }
 
@@ -175,6 +228,99 @@ export async function sendParentOtpV2Email(
     }
     const providerMessageId =
       response.headers.get("x-message-id")?.trim();
+    if (!providerMessageId) {
+      return {
+        delivered: false,
+        reason: "delivery_uncertain",
+        outcome: "delivery_uncertain",
+      };
+    }
+    return { delivered: true, providerMessageId };
+  } catch {
+    return {
+      delivered: false,
+      reason: "delivery_uncertain",
+      outcome: "delivery_uncertain",
+    };
+  }
+}
+
+export async function sendMailV2TestEmail(
+  message: z.input<typeof mailV2TestMessageSchema>,
+): Promise<SendGridDeliveryResult> {
+  const configuration = providerConfiguration();
+  if (!configuration.enabled) {
+    return { delivered: false, reason: "disabled", outcome: "failed" };
+  }
+  if (!configuration.configured) {
+    return {
+      delivered: false,
+      reason: "configuration_error",
+      outcome: "failed",
+    };
+  }
+  const recipient = recipientSchema.safeParse(
+    process.env.SENDGRID_SMOKE_RECIPIENT,
+  );
+  const parsed = mailV2TestMessageSchema.safeParse(message);
+  if (
+    !recipient.success
+    || !parsed.success
+    || parsed.data.fromName !== configuration.fromName
+    || parsed.data.fromEmail !== configuration.fromEmail
+    || parsed.data.replyToEmail !== configuration.replyToEmail
+  ) {
+    return {
+      delivered: false,
+      reason: "configuration_error",
+      outcome: "failed",
+    };
+  }
+
+  try {
+    const response = await mailSend(configuration.apiKey, {
+      personalizations: [{
+        to: [{ email: recipient.data }],
+        custom_args: {
+          delivery_kind: "admin_test",
+          test_delivery_id: parsed.data.testDeliveryId,
+        },
+      }],
+      from: {
+        email: parsed.data.fromEmail,
+        name: parsed.data.fromName,
+      },
+      reply_to: { email: parsed.data.replyToEmail },
+      subject: parsed.data.subject,
+      headers: {
+        "X-Duindorp-Acceptance":
+          parsed.data.testDeliveryId,
+      },
+      content: [
+        { type: "text/plain", value: parsed.data.text },
+        { type: "text/html", value: parsed.data.html },
+      ],
+      tracking_settings: {
+        click_tracking: { enable: false, enable_text: false },
+        open_tracking: { enable: false },
+        subscription_tracking: { enable: false },
+      },
+    });
+    if (!response.ok) {
+      if (response.status === 408 || response.status >= 500) {
+        return {
+          delivered: false,
+          reason: "delivery_uncertain",
+          outcome: "delivery_uncertain",
+        };
+      }
+      return {
+        delivered: false,
+        reason: "provider_rejected",
+        outcome: response.status === 429 ? "retry" : "failed",
+      };
+    }
+    const providerMessageId = response.headers.get("x-message-id")?.trim();
     if (!providerMessageId) {
       return {
         delivered: false,

@@ -15,7 +15,7 @@ import {
   Smartphone,
   Type,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   MailBranding,
@@ -375,10 +375,11 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
     },
   );
   const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState<"save" | "publish" | "preview" | null>(null);
+  const [busy, setBusy] = useState<"save" | "publish" | "preview" | "test" | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
+  const testRequestId = useRef<string | null>(null);
 
   useEffect(() => {
     const revision = template?.draft ?? template?.published;
@@ -390,6 +391,7 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
     setDirty(false);
     setNotice(null);
     setPreview(null);
+    testRequestId.current = null;
   }, [template]);
 
   if (!template || !activeRevision) {
@@ -468,6 +470,52 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
       });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Preview mislukt." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendTestMail() {
+    if (!template.published) return;
+    setBusy("test");
+    setNotice(null);
+    const requestId = testRequestId.current ?? crypto.randomUUID();
+    testRequestId.current = requestId;
+    try {
+      const payload = await postJson("/api/email/v2/test-delivery", {
+        templateKey: template.key,
+        expectedContentHash: template.published.contentHash,
+        requestId,
+      });
+      const status = String(payload.status);
+      const reused = payload.reused === true;
+      if (status === "accepted") {
+        setNotice({
+          tone: "success",
+          text: reused
+            ? "Deze testmail was al veilig door SendGrid geaccepteerd."
+            : "De gepubliceerde template is met uitsluitend fictieve gegevens naar de vaste testinbox verzonden.",
+        });
+        testRequestId.current = null;
+      } else if (status === "prepared" || status === "delivery_uncertain") {
+        setNotice({
+          tone: "error",
+          text: "De afleverstatus is onzeker. Deze aanvraag wordt niet opnieuw verzonden; controleer eerst de vaste testinbox en providerstatus.",
+        });
+      } else {
+        setNotice({
+          tone: "error",
+          text: "De testmail is niet geaccepteerd. Controleer de veilige e-mailconfiguratie voordat u een nieuwe test start.",
+        });
+        testRequestId.current = null;
+      }
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error instanceof Error
+          ? error.message
+          : "De testmail kon niet veilig worden verwerkt.",
+      });
     } finally {
       setBusy(null);
     }
@@ -596,6 +644,32 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
               <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-brand-500">Getypeerde shortcodes</p>
               <p className="mt-2 text-xs leading-5 text-brand-900">{template.allowedShortcodes.join(", ")}</p>
             </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 rounded-lg border border-line bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold text-brand-900">
+                Gepubliceerde template testen
+              </p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                Verstuurt uitsluitend fictieve voorbeeldgegevens naar de vaste
+                beveiligde testinbox. Open- en kliktracking blijven uit.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void sendTestMail()}
+              disabled={Boolean(busy) || !template.published}
+              title={!template.published
+                ? "Publiceer deze template eerst"
+                : "Verstuur naar de vaste testinbox"}
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-bold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy === "test"
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Send className="size-4" />}
+              Testmail versturen
+            </button>
           </div>
 
           <div className="mt-6 flex flex-col-reverse gap-2 border-t border-line pt-5 sm:flex-row sm:justify-end">

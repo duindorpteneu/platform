@@ -92,10 +92,39 @@ select ok(
   )
   and has_function_privilege(
     'service_role',
+    'app.record_parent_otp_sendgrid_events_v3(jsonb)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'app.assert_sendgrid_events_ready_v1(jsonb)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'app.record_parent_otp_sendgrid_events_v2(jsonb)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
     'app.record_parent_otp_sendgrid_events_v1(jsonb)',
     'EXECUTE'
   ),
   'service_role heeft uitsluitend de smalle OTP-RPC-grens'
+);
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'parent_otp',
+        'delivery_attempt_id',
+        '27940000-0000-4000-8000-000000000099'
+      )
+    )
+  )->>'ready',
+  '1',
+  'onbekende OTP-identiteiten zijn permanent ongeldig en niet retrybaar'
 );
 select is(
   (
@@ -257,6 +286,42 @@ select ok(
   ),
   'send-time autorisatie hercontroleert challenge, toegang en mailpoort'
 );
+select throws_ok(
+  format(
+    $sql$select app.assert_sendgrid_events_ready_v1(
+      jsonb_build_array(
+        jsonb_build_object(
+          'target', 'parent_otp',
+          'delivery_attempt_id', %L
+        )
+      )
+    )$sql$,
+    (select result->>'deliveryAttemptId' from prepared_otp)
+  ),
+  '40001',
+  'SENDGRID_EVENT_ACCEPTANCE_PENDING',
+  'OTP-callback vóór HTTP-acceptatie wordt retrybaar geweigerd'
+);
+select is(
+  app.record_parent_otp_sendgrid_events_v3(
+    jsonb_build_array(
+      jsonb_build_object(
+        'delivery_attempt_id',
+        (select result->>'deliveryAttemptId' from prepared_otp),
+        'event_id',
+        'otp-provider-event-before-http-acceptance',
+        'provider_message_id',
+        'http-message-otp-1.filter0001.41.0',
+        'event_type',
+        'delivered',
+        'occurred_at',
+        statement_timestamp()
+      )
+    )
+  )->>'quarantined',
+  '1',
+  'OTP-provider-event vóór immutable HTTP-acceptatie projecteert nooit'
+);
 select ok(
   (
     select code_hash = repeat('d', 64)
@@ -308,6 +373,20 @@ select is(
   'true',
   'exacte completion replay is idempotent'
 );
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'parent_otp',
+        'delivery_attempt_id',
+        (select result->>'deliveryAttemptId' from prepared_otp)
+      )
+    )
+  )->>'ready',
+  '1',
+  'OTP-callback is gereed na immutable HTTP-acceptatie'
+);
 select throws_ok(
   format(
     $sql$select app.complete_parent_otp_delivery_v1(
@@ -340,8 +419,72 @@ select throws_ok(
   'normale updates op afleverfeiten zijn geblokkeerd'
 );
 
+insert into private.parent_otp_delivery_attempts(
+  id,
+  parent_account_id,
+  challenge_id,
+  template_revision_id,
+  branding_revision_id,
+  expires_at
+)
+select
+  '27940000-0000-4000-8000-000000000098',
+  attempt.parent_account_id,
+  '27950000-0000-4000-8000-000000000098',
+  attempt.template_revision_id,
+  attempt.branding_revision_id,
+  statement_timestamp() + interval '10 minutes'
+from private.parent_otp_delivery_attempts attempt
+where attempt.id = (
+  select (result->>'deliveryAttemptId')::uuid
+  from prepared_otp
+);
+insert into private.parent_otp_delivery_outcomes(
+  delivery_attempt_id,
+  outcome,
+  error_code
+) values (
+  '27940000-0000-4000-8000-000000000098',
+  'provider_rejected',
+  'provider_rejected'
+);
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target',
+        'parent_otp',
+        'delivery_attempt_id',
+        '27940000-0000-4000-8000-000000000098'
+      )
+    )
+  )->>'ready',
+  '1',
+  'een definitief afgewezen OTP-delivery is niet retrybaar'
+);
+select is(
+  app.record_parent_otp_sendgrid_events_v3(
+    jsonb_build_array(
+      jsonb_build_object(
+        'delivery_attempt_id',
+        '27940000-0000-4000-8000-000000000098',
+        'event_id',
+        'otp-provider-rejected-attempt',
+        'provider_message_id',
+        'otp-provider-rejected-message',
+        'event_type',
+        'delivered',
+        'occurred_at',
+        statement_timestamp()
+      )
+    )
+  )->>'quarantined',
+  '1',
+  'callback voor definitief afgewezen OTP-delivery wordt gequarantaineerd'
+);
+
 create temporary table provider_event as
-select app.record_parent_otp_sendgrid_events_v1(
+select app.record_parent_otp_sendgrid_events_v3(
   jsonb_build_array(
     jsonb_build_object(
       'delivery_attempt_id',
@@ -349,7 +492,7 @@ select app.record_parent_otp_sendgrid_events_v1(
       'event_id',
       'otp-provider-event-1',
       'provider_message_id',
-      'otp-provider-message-1',
+      'http-message-otp-1.filter0001.42.0',
       'event_type',
       'delivered',
       'occurred_at',
@@ -363,7 +506,25 @@ select is(
   'een attempt-gebonden provider-event wordt vastgelegd'
 );
 select is(
-  app.record_parent_otp_sendgrid_events_v1(
+  app.record_parent_otp_sendgrid_events_v3(
+    jsonb_build_array(
+      jsonb_build_object(
+        'delivery_attempt_id',
+        (select result->>'deliveryAttemptId' from prepared_otp),
+        'event_id',
+        'otp-provider-bounce-without-message-id',
+        'event_type',
+        'bounced',
+        'occurred_at',
+        statement_timestamp()
+      )
+    )
+  )->>'recorded',
+  '1',
+  'OTP-bounce zonder message-ID gebruikt alleen de geaccepteerde attemptbinding'
+);
+select is(
+  app.record_parent_otp_sendgrid_events_v3(
     jsonb_build_array(
       jsonb_build_object(
         'delivery_attempt_id',
@@ -371,7 +532,7 @@ select is(
         'event_id',
         'otp-provider-event-1',
         'provider_message_id',
-        'otp-provider-message-1',
+        'http-message-otp-1.filter0001.42.0',
         'event_type',
         'delivered',
         'occurred_at',
@@ -387,7 +548,27 @@ select is(
   'exacte providerreplay is idempotent'
 );
 select is(
-  app.record_parent_otp_sendgrid_events_v1(
+  app.record_parent_otp_sendgrid_events_v3(
+    jsonb_build_array(
+      jsonb_build_object(
+        'delivery_attempt_id',
+        (select result->>'deliveryAttemptId' from prepared_otp),
+        'event_id',
+        'otp-provider-cross-message',
+        'provider_message_id',
+        'other-http-message.filter0001.42.0',
+        'event_type',
+        'delivered',
+        'occurred_at',
+        statement_timestamp()
+      )
+    )
+  )->>'quarantined',
+  '1',
+  'OTP-event van een ander HTTP-bericht projecteert nooit'
+);
+select is(
+  app.record_parent_otp_sendgrid_events_v3(
     jsonb_build_array(
       jsonb_build_object(
         'delivery_attempt_id',
@@ -395,7 +576,7 @@ select is(
         'event_id',
         'otp-provider-event-1',
         'provider_message_id',
-        'otp-provider-message-1',
+        'http-message-otp-1.filter0001.42.0',
         'event_type',
         'bounced',
         'occurred_at',
@@ -421,7 +602,7 @@ select is(
       ) #>> '{parentOtpDelivery,quarantinedEvents}'
     )::integer
   ),
-  1,
+  4,
   'providerquarantaine is releaseblokkerend zichtbaar in health'
 );
 select is(

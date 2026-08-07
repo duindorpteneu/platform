@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, BellRing, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, Palette, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { emailTemplateLabels, type BulkEmailTemplateKey, type EmailWorkspace as Workspace } from "@/lib/email-contract";
 import {
@@ -21,6 +21,10 @@ import {
   MailV2TemplatesPanel,
 } from "@/components/email/mail-v2-workspace";
 import { MailV2RemindersPanel } from "@/components/email/mail-v2-reminders-panel";
+import {
+  MEMBER_BULK_CONTEXT_STORAGE_KEY,
+  parseFreshMemberBulkContext,
+} from "@/lib/member-bulk-contract";
 
 type Tab = "templates" | "branding" | "reminders" | "bulk" | "delivery";
 type Notice = { tone: "success" | "error"; text: string } | null;
@@ -77,6 +81,7 @@ export function EmailWorkspace({
   reminderWorkspace,
   canManageTemplates,
   emailEnabled,
+  initialTab,
 }: {
   workspace: Workspace;
   mailV2Workspace?: MailV2Workspace;
@@ -85,8 +90,11 @@ export function EmailWorkspace({
   reminderWorkspace?: MailReminderWorkspace;
   canManageTemplates: boolean;
   emailEnabled: boolean;
+  initialTab?: "bulk" | "branding";
 }) {
-  const [tab, setTab] = useState<Tab>(canManageTemplates ? "templates" : "bulk");
+  const [tab, setTab] = useState<Tab>(
+    initialTab ?? (canManageTemplates ? "templates" : "bulk"),
+  );
   const failed = workspace.jobs.filter((job) => ["failed", "delivery_uncertain"].includes(job.status) || ["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")).length;
   const queued = workspace.jobs.filter((job) => ["queued", "processing", "retry"].includes(job.status)).length;
   const delivered = workspace.jobs.filter((job) => job.deliveryStatus === "delivered").length;
@@ -261,6 +269,7 @@ function MailV2CampaignPanel({
   >(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState<"preview" | "confirm" | null>(null);
+  const importedSelectionRef = useRef(false);
   const normalizedQuery = query.trim().toLocaleLowerCase("nl-NL");
   const visible = useMemo(
     () => targets.filter((target) => (
@@ -281,11 +290,92 @@ function MailV2CampaignPanel({
   }, [seasons]);
 
   useEffect(() => {
+    if (importedSelectionRef.current) {
+      importedSelectionRef.current = false;
+      return;
+    }
     setSelected(new Set());
     setPreview(null);
     setConfirmation(null);
     setNotice(null);
   }, [season, templateKey]);
+
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem(
+      MEMBER_BULK_CONTEXT_STORAGE_KEY,
+    );
+    const context = parseFreshMemberBulkContext(raw, "email");
+    if (!context) {
+      if (raw) {
+        window.sessionStorage.removeItem(MEMBER_BULK_CONTEXT_STORAGE_KEY);
+      }
+      return;
+    }
+
+    const portalIds = new Set(
+      context.entries.map((entry) => entry.memberSeasonId),
+    );
+    const orderIds = new Set(
+      context.entries.flatMap((entry) => entry.orderId ? [entry.orderId] : []),
+    );
+    const portalMatches = campaignWorkspace.portalTargets.filter(
+      (target) => portalIds.has(target.memberSeasonId),
+    );
+    const orderMatches = campaignWorkspace.orderTargets.filter(
+      (target) => orderIds.has(target.orderId),
+    );
+
+    if (portalMode && portalMatches.length === 0 && orderMatches.length > 0) {
+      const orderTemplate = campaignWorkspace.allowedTemplates.find(
+        (entry) => entry !== "portal_access_reminder",
+      );
+      if (orderTemplate) {
+        setTemplateKey(orderTemplate);
+        return;
+      }
+    }
+    if (!portalMode && orderMatches.length === 0 && portalMatches.length > 0) {
+      if (campaignWorkspace.allowedTemplates.includes(
+        "portal_access_reminder",
+      )) {
+        setTemplateKey("portal_access_reminder");
+        return;
+      }
+    }
+
+    const matched = portalMode
+      ? portalMatches.map((target) => ({
+        id: target.memberSeasonId,
+        season: target.season,
+      }))
+      : orderMatches.map((target) => ({
+        id: target.orderId,
+        season: target.season,
+      }));
+    window.sessionStorage.removeItem(MEMBER_BULK_CONTEXT_STORAGE_KEY);
+    if (matched.length === 0) {
+      setNotice({
+        tone: "error",
+        text: "Geen geselecteerd lid is nog beschikbaar voor dit campagneproces. Kies de doelgroep opnieuw.",
+      });
+      return;
+    }
+
+    importedSelectionRef.current = true;
+    setSeason(matched[0].season);
+    setSelected(new Set(matched.map((target) => target.id)));
+    setPreview(null);
+    setConfirmation(null);
+    setNotice({
+      tone: "success",
+      text: `${matched.length} lid/leden uit het ledenoverzicht zijn overgenomen. Voer de campagnepreflight uit voor de actuele geschiktheid.`,
+    });
+  }, [
+    campaignWorkspace.allowedTemplates,
+    campaignWorkspace.orderTargets,
+    campaignWorkspace.portalTargets,
+    portalMode,
+  ]);
 
   function toggle(targetId: string) {
     setPreview(null);

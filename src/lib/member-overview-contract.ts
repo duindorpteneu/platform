@@ -6,7 +6,11 @@ const activeSeasonSchema = z.object({
   name: z.string().min(1).max(120),
 }).strict();
 const nonNegativeInteger = z.number().int().nonnegative();
-const paymentStatusSchema = z.enum(["Betaald", "Nog te betalen"]);
+const paymentStatusSchema = z.enum([
+  "Betaald",
+  "Nog te betalen",
+  "Controle vereist",
+]);
 export const memberLineStatusSchema = z.enum(["backorder", "ready_for_pickup", "picked_up", "cancelled"]);
 export const memberGenderSchema = z.enum(["male", "female", "other", "unknown"]);
 const uuid = z.string().uuid();
@@ -53,13 +57,100 @@ const optionalSelection = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(
 export const memberListQuerySchema = z.object({
   search: optionalTrimmedString(120),
   team: optionalTrimmedString(120),
-  payment: optionalSelection(z.enum(["paid", "unpaid", "no_order"])),
+  payment: optionalSelection(z.enum([
+    "paid",
+    "unpaid",
+    "review",
+    "no_order",
+  ])),
   orderStatus: optionalSelection(dashboardOrderStatusSchema),
   articleId: optionalSelection(z.string().uuid()),
   size: optionalTrimmedString(80),
   lineStatus: optionalSelection(memberLineStatusSchema),
   member: optionalSelection(z.string().uuid()),
   page: z.coerce.number().int().min(1).max(2001).default(1),
+}).strict();
+
+export const memberSavedViewFiltersSchema = z.object({
+  team: z.string().trim().min(1).max(120).optional(),
+  payment: z.enum(["paid", "unpaid", "review", "no_order"]).optional(),
+  orderStatus: dashboardOrderStatusSchema.optional(),
+  articleId: uuid.optional(),
+  size: z.string().trim().min(1).max(80).optional(),
+  lineStatus: memberLineStatusSchema.optional(),
+}).strict();
+
+export function memberSavedViewFiltersFromQuery(
+  query: MemberListQuery,
+): z.infer<typeof memberSavedViewFiltersSchema> {
+  return memberSavedViewFiltersSchema.parse({
+    team: query.team,
+    payment: query.payment,
+    orderStatus: query.orderStatus,
+    articleId: query.articleId,
+    size: query.size,
+    lineStatus: query.lineStatus,
+  });
+}
+
+export const memberSavedViewSchema = z.object({
+  id: uuid,
+  scope: z.literal("members"),
+  seasonId: uuid,
+  name: z.string().trim().min(1).max(80),
+  schemaVersion: z.literal(1),
+  filters: memberSavedViewFiltersSchema,
+  valid: z.boolean(),
+  invalidReason: z.enum([
+    "filters_stale",
+    "schema_version_unsupported",
+  ]).nullable(),
+  updatedAt: z.string().datetime({ offset: true }),
+}).strict().superRefine((view, context) => {
+  if (view.valid !== (view.invalidReason === null)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["invalidReason"],
+      message: "Een opgeslagen weergave heeft een inconsistente geldigheid.",
+    });
+  }
+});
+
+export const memberSavedViewsResponseSchema = z.object({
+  scope: z.literal("members"),
+  seasonId: uuid,
+  views: z.array(memberSavedViewSchema).max(100),
+}).strict();
+
+export const saveMemberSavedViewRequestSchema = z.object({
+  viewId: uuid.nullable(),
+  seasonId: uuid,
+  name: z.string().trim().min(1).max(80),
+  schemaVersion: z.literal(1),
+  filters: memberSavedViewFiltersSchema,
+}).strict();
+
+export const deleteMemberSavedViewRequestSchema = z.object({
+  viewId: uuid,
+  seasonId: uuid,
+}).strict();
+
+export const deleteMemberSavedViewResponseSchema = z.object({
+  id: uuid,
+  seasonId: uuid,
+  deleted: z.literal(true),
+}).strict();
+
+export const applyMemberSavedViewRequestSchema = z.object({
+  viewId: uuid,
+  seasonId: uuid,
+}).strict();
+
+export const applyMemberSavedViewResponseSchema = z.object({
+  id: uuid,
+  seasonId: uuid,
+  schemaVersion: z.literal(1),
+  filters: memberSavedViewFiltersSchema,
 }).strict();
 
 const memberOrderSummarySchema = z.object({
@@ -83,12 +174,18 @@ export const memberListResponseSchema = z.object({
   }).strict(),
   members: z.array(z.object({
     id: z.string().uuid(),
+    memberSeasonId: uuid.nullable(),
     memberName: z.string().min(1).max(320),
     relationNumber: z.string().min(1).max(120).nullable(),
     team: z.string().min(1).max(120),
     activeForSeason: z.boolean(),
     updatedAt: z.string().datetime({ offset: true }),
     order: memberOrderSummarySchema.nullable(),
+    bulkEligibility: z.object({
+      portalAccessPreflight: z.boolean(),
+      mailPreflight: z.boolean(),
+      teamStatusPreflight: z.boolean(),
+    }).strict(),
   }).strict()).max(50),
 }).strict();
 
@@ -197,6 +294,9 @@ export const teamMemberStatusResponseSchema = z.object({
 
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
 export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
+export type MemberSavedViewFilters = z.infer<typeof memberSavedViewFiltersSchema>;
+export type MemberSavedView = z.infer<typeof memberSavedViewSchema>;
+export type MemberSavedViewsResponse = z.infer<typeof memberSavedViewsResponseSchema>;
 export type MemberDetailResponse = z.infer<typeof memberDetailResponseSchema>;
 export type MemberSizeProfile = z.infer<typeof memberSizeProfileSchema>;
 export type MemberLineStatus = z.infer<typeof memberLineStatusSchema>;

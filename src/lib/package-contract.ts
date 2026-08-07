@@ -166,3 +166,15 @@ export function formatPackagePrice(cents: number) {
 
 export type PackageWorkspaceData = z.infer<typeof packageWorkspaceSchema>;
 export type PackageDraftRequest = z.infer<typeof packageDraftRequestSchema>;
+
+export function packageSeasonRequiresExplicitDefault(
+  workspace: PackageWorkspaceData,
+  seasonId: string,
+) {
+  return !workspace.templates.some(
+    (candidate) => candidate.seasonId === seasonId
+      && candidate.revisions.some(
+        (revision) => revision.active && revision.default,
+      ),
+  );
+}

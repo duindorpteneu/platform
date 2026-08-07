@@ -384,6 +384,74 @@ select lives_ok(
   )$$,
   'dezelfde post-request retourneert idempotent hetzelfde resultaat'
 );
+select set_config(
+  'test.inventory.notification_proposal',
+  app.get_inventory_delivery_notification_proposal_v1(
+    (
+      select id
+      from app.inventory_delivery_drafts
+      where create_request_id =
+        'f1800000-0000-4000-8000-000000000001'
+    )
+  )::text,
+  true
+);
+select is(
+  (
+    current_setting(
+      'test.inventory.notification_proposal'
+    )::jsonb->>'status'
+  ),
+  'open',
+  'geboekte levering maakt eerst alleen een expliciet notificatievoorstel'
+);
+select is(
+  jsonb_array_length(
+    current_setting(
+      'test.inventory.notification_proposal'
+    )::jsonb->'items'
+  ),
+  1,
+  'voorstel bevat exact de nieuwe harde allocatie uit deze levering'
+);
+select is(
+  (
+    app.confirm_inventory_delivery_notification_proposal_v1(
+      (
+        current_setting(
+          'test.inventory.notification_proposal'
+        )::jsonb->>'id'
+      )::uuid,
+      current_setting(
+        'test.inventory.notification_proposal'
+      )::jsonb->>'eligibilityRevision',
+      array[]::uuid[],
+      'f1800000-0000-4000-8000-000000000005',
+      null
+    )->>'eventCount'
+  ),
+  '0',
+  'lege expliciete selectie maakt geen maildomeinevent'
+);
+select is(
+  (
+    app.confirm_inventory_delivery_notification_proposal_v1(
+      (
+        current_setting(
+          'test.inventory.notification_proposal'
+        )::jsonb->>'id'
+      )::uuid,
+      current_setting(
+        'test.inventory.notification_proposal'
+      )::jsonb->>'eligibilityRevision',
+      array[]::uuid[],
+      'f1800000-0000-4000-8000-000000000005',
+      null
+    )->>'reused'
+  ),
+  'true',
+  'retry van dezelfde notificatiebevestiging is idempotent'
+);
 reset role;
 
 select is(
@@ -609,6 +677,20 @@ select throws_ok(
   'anon kan het voorraadjournaal niet lezen'
 );
 reset role;
+
+select ok(
+  not has_function_privilege(
+    'service_role',
+    'app.get_inventory_delivery_notification_proposal_v1(uuid)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'app.confirm_inventory_delivery_notification_proposal_v1(uuid,text,uuid[],uuid,uuid)',
+    'execute'
+  ),
+  'service-role kan de kledingcommissiepreflight niet nabootsen'
+);
 
 select * from finish();
 rollback;

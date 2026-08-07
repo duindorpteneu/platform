@@ -43,9 +43,9 @@ export function InventoryThresholdControl({
   return (
     <form onSubmit={(event) => void submit(event)} className="mt-6 rounded-2xl border border-line bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1"><h2 className="text-sm font-bold text-brand-900">Lagevoorraaddrempel</h2><p className="mt-1 text-[10px] text-slate-400">Standaard 10; wijziging vereist AAL2, reden en audit.</p></div>
-        <label className="text-[10px] font-semibold text-slate-600">Aantal<input type="number" min={0} max={100000} value={value} onChange={(event) => setValue(event.target.value)} className="mt-1 h-9 w-24 rounded-lg border border-line px-2 text-xs" /></label>
-        <label className="min-w-[220px] flex-1 text-[10px] font-semibold text-slate-600">Reden<input value={reason} onChange={(event) => setReason(event.target.value)} minLength={4} maxLength={500} required placeholder="Waarom wijzigt de drempel?" className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-xs" /></label>
+        <div className="min-w-0 flex-1"><h2 className="text-sm font-bold text-brand-900">Lagevoorraaddrempel</h2><p className="mt-1 text-xs text-slate-500">Standaard 10; wijziging vereist AAL2, reden en audit.</p></div>
+        <label className="text-xs font-semibold text-slate-600">Aantal<input type="number" min={0} max={100000} value={value} onChange={(event) => setValue(event.target.value)} className="mt-1 h-9 w-24 rounded-lg border border-line px-2 text-xs" /></label>
+        <label className="min-w-[220px] flex-1 text-xs font-semibold text-slate-600">Reden<input value={reason} onChange={(event) => setReason(event.target.value)} minLength={4} maxLength={500} required placeholder="Waarom wijzigt de drempel?" className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-xs" /></label>
         <button disabled={saving || reason.trim().length < 4} className="flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white disabled:bg-slate-300">{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />} Opslaan</button>
       </div>
     </form>

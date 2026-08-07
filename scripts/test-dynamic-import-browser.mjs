@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import net from "node:net";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertKeyboardFocusVisible,
+  assertNoAutomatedA11yViolations,
+} from "./browser-a11y.mjs";
 
 const host = "localhost";
 const port = 3110;
@@ -343,7 +347,10 @@ try {
   await waitForApp(appProcess);
 
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+  });
+  const page = await context.newPage();
   await page.goto(`${baseUrl}/backoffice/leden/importeren`);
   await page.waitForURL(`${baseUrl}/staff/login`);
   await page.getByLabel("E-mailadres").fill(email);
@@ -384,6 +391,8 @@ try {
   await page.getByRole("button", { name: "Koppeling valideren" }).click();
   await page.getByText("Koppeling gevalideerd", { exact: true }).waitFor();
   await page.getByText(/101 herkend · 0 leeg · 0 onbekend/u).waitFor();
+  await assertNoAutomatedA11yViolations(page, "dynamic_import_mapping");
+  await assertKeyboardFocusVisible(page, "dynamic_import_mapping");
 
   const [dryRunResponse] = await Promise.all([
     page.waitForResponse((response) =>
@@ -417,6 +426,7 @@ try {
   await page.getByText("1–2 van 2", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Tijdelijke details" }).first().click();
   await page.getByRole("heading", { name: /Conflictdetails CSV-rij/u }).waitFor();
+  await assertNoAutomatedA11yViolations(page, "dynamic_import_conflict");
   if ((await page.locator("body").innerText()).includes("NIET-BEWAREN")) {
     throw new Error("Een genegeerde CSV-waarde verscheen in conflictdetails.");
   }

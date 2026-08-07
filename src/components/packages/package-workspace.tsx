@@ -20,6 +20,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   formatPackagePrice,
+  packageSeasonRequiresExplicitDefault,
   parsePackagePriceToCents,
   type PackageWorkspaceData,
 } from "@/lib/package-contract";
@@ -255,6 +256,8 @@ function PackageEditor({
 
   const products = workspace.articles.filter((article) => article.active && article.seasonIds.includes(seasonId));
   const eligibleProducts = products.filter((article) => article.sizes.some((size) => size.active));
+  const requiresDefaultSelection =
+    packageSeasonRequiresExplicitDefault(workspace, seasonId);
 
   function toggleProduct(articleId: string, checked: boolean) {
     setItems((current) => {
@@ -300,6 +303,12 @@ function PackageEditor({
   async function publish() {
     if (!revision) return;
     setLocalError(null);
+    if (requiresDefaultSelection && !makeDefault) {
+      setLocalError(
+        "Kies expliciet het standaardpakket voordat je het eerste pakket in dit seizoen publiceert.",
+      );
+      return;
+    }
     const success = await onPublish({
       revisionId: revision.id,
       makeDefault,
@@ -390,7 +399,7 @@ function PackageEditor({
           <button type="button" onClick={() => setConfirmPublish((current) => !current)} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-semibold text-brand-700 hover:border-brand-500 disabled:opacity-50">
             <Send className="size-4" /> Publicatie voorbereiden
           </button>
-        ) : <span className="text-[11px] text-slate-400">Het eerste pakket wordt bij publicatie automatisch standaard.</span>}
+        ) : <span className="text-[11px] text-slate-400">Na opslaan kies je bij publicatie expliciet of dit het standaardpakket wordt.</span>}
         <button type="submit" disabled={saving || eligibleProducts.length === 0} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:opacity-50">
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Concept opslaan
         </button>
@@ -401,9 +410,14 @@ function PackageEditor({
           <h3 className="text-sm font-bold text-amber-950">Definitief publiceren?</h3>
           <p className="mt-1 text-xs leading-5 text-amber-900">Sla je laatste wijzigingen eerst op. Na publicatie zijn naam, prijs en inhoud van deze revisie niet meer wijzigbaar.</p>
           <label className="mt-4 flex items-center gap-3 text-xs font-semibold text-amber-950"><input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} className="size-4 accent-brand-700" /> Maak dit het standaardpakket voor dit seizoen</label>
+          {requiresDefaultSelection && (
+            <p role="note" className="mt-2 text-xs font-semibold text-amber-950">
+              Dit seizoen heeft nog geen standaardpakket. Deze keuze is daarom verplicht.
+            </p>
+          )}
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={() => setConfirmPublish(false)} className="h-9 rounded-lg border border-amber-300 bg-white px-4 text-xs font-semibold text-amber-900">Annuleren</button>
-            <button type="button" onClick={() => void publish()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:opacity-50"><CheckCircle2 className="size-4" /> Definitief publiceren</button>
+            <button type="button" onClick={() => void publish()} disabled={saving || (requiresDefaultSelection && !makeDefault)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:opacity-50"><CheckCircle2 className="size-4" /> Definitief publiceren</button>
           </div>
         </div>
       )}

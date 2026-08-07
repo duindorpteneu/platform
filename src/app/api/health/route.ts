@@ -3,6 +3,7 @@ import {
   emailDeliveryAttemptHealthHasIntegrityBlocker,
   operationalHealthSchema,
 } from "@/lib/operations-contract";
+import { sendGridRuntimeHealth } from "@/server/email/sendgrid";
 import { qrAcceptedKeyMetadata } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
@@ -14,6 +15,7 @@ const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosnif
 function releaseIdentity() {
   const environment = process.env.APP_ENVIRONMENT;
   const revision = process.env.RELEASE_SHA;
+  const artifactDigest = process.env.RELEASE_ARTIFACT_DIGEST;
   const value = (name: string) => process.env[name]?.trim() ?? "";
   const expectedOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
   const importEnabled = value("DYNAMIC_IMPORT_ENABLED");
@@ -40,6 +42,7 @@ function releaseIdentity() {
   if (
     !["staging", "production"].includes(environment ?? "")
     || !/^[a-f0-9]{40}$/.test(revision ?? "")
+    || !/^sha256:[a-f0-9]{64}$/.test(artifactDigest ?? "")
     || value("APP_BASE_URL") !== expectedOrigin
     || !/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(value("NEXT_PUBLIC_SUPABASE_URL"))
     || value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY").length < 20
@@ -56,7 +59,12 @@ function releaseIdentity() {
     || (importEnabled === "true" && importKey === "")
   ) return null;
   return {
-    identity: { service: "duindorpteneu", environment, revision },
+    identity: {
+      service: "duindorpteneu",
+      environment,
+      revision,
+      artifactDigest,
+    },
     importEnabled: importEnabled === "true",
   };
 }
@@ -70,7 +78,7 @@ export async function GET() {
     if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
     const qrKeys = qrAcceptedKeyMetadata();
     const { data, error } = await admin.schema("app").rpc(
-      "get_operational_health_v10",
+      "get_operational_health_v12",
       {
         p_current_key_version: qrKeys.current.version,
         p_current_pepper_fingerprint: qrKeys.current.fingerprint,
@@ -80,8 +88,21 @@ export async function GET() {
       },
     );
     const parsed = operationalHealthSchema.safeParse(data);
+    const emailRuntime = sendGridRuntimeHealth();
     const valid = !error
       && parsed.success
+      && emailRuntime.runtimeValueValid
+      && emailRuntime.runtimeEnabled
+        === parsed.data.emailControl.processingEnabled
+      && (
+        !emailRuntime.runtimeEnabled
+        || (
+          emailRuntime.providerConfigured
+          && emailRuntime.keyFingerprintMatches
+        )
+      )
+      && parsed.data.emailControl.testEventQuarantined === 0
+      && parsed.data.brandingProjection.blockers === 0
       && (
         !parsed.data.importControl.processingEnabled
         || parsed.data.importControl.cutoverActive
@@ -101,8 +122,10 @@ export async function GET() {
       && parsed.data.supplierPlanning.expiredUnrevokedSessions === 0
       && parsed.data.supplierPlanning.recentLoginFailures < 50
       && parsed.data.supplierPlanning.staleCredentials === 0
-      && releaseConfig.importEnabled
-        === parsed.data.importControl.processingEnabled;
+      && (
+        !releaseConfig.importEnabled
+        || parsed.data.importControl.processingEnabled
+      );
     return NextResponse.json({ status: valid ? "ok" : "degraded", ...release }, { status: valid ? 200 : 503, headers });
   } catch {
     return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });

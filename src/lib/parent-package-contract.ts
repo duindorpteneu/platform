@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { catalogIconTypeSchema } from "./catalog-order-contract";
 
 const uuid = z.string().uuid();
 const revisionHash = z.string().regex(/^[0-9a-f]{64}$/);
@@ -46,6 +47,7 @@ const availablePackageSchema = z.object({
     articleId: uuid,
     name: z.string().min(1).max(120),
     code: z.string().min(1).max(120),
+    iconType: catalogIconTypeSchema,
     quantity: z.number().int().min(1).max(25),
   }).strict()).min(1).max(25),
 }).strict();
@@ -61,6 +63,7 @@ const packageItemSchema = z.object({
   articleId: uuid,
   name: z.string().min(1).max(120),
   code: z.string().min(1).max(120),
+  iconType: catalogIconTypeSchema,
   quantity: z.number().int().min(1).max(25),
   selectedVariantId: uuid.nullable(),
   selectionStatus: selectionStatusSchema.nullable(),
