@@ -75,7 +75,7 @@ function validateStagingTarget(values, confirmationContract, requireExactProject
 }
 
 export function validateStagingRestoreTarget(values) {
-  return validateStagingTarget(values, RESTORE_CONFIRMATION, false);
+  return validateStagingTarget(values, RESTORE_CONFIRMATION, true);
 }
 
 export function validateStagingCleanupTarget(values) {

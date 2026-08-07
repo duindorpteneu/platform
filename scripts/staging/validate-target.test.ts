@@ -14,7 +14,7 @@ const {
   validateStagingRestoreTarget,
 } = targetContract;
 
-const projectRef = "abcdefghijklmnopqrst";
+const projectRef = STAGING_PROJECT_REF;
 const releaseSha = "a".repeat(40);
 const postgresImage = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 
@@ -51,7 +51,7 @@ describe("validateStagingRestoreTarget", () => {
 
   it("accepteert een Supabase-sessionpooler als de username de projectref draagt", () => {
     expect(validateStagingRestoreTarget(values({
-      SUPABASE_DB_URL: `postgresql://postgres.${projectRef}:secret@aws-0-eu-central-1.pooler.supabase.com:5432/postgres`,
+      SUPABASE_DB_URL: `postgresql://postgres.${projectRef}:secret@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require`,
     })).projectRef).toBe(projectRef);
   });
 
@@ -99,7 +99,7 @@ describe("validateStagingCleanupTarget", () => {
   it.each([
     { CLEANUP_MODE: "apply", CONFIRM_TARGET: CLEANUP_DRY_RUN_CONFIRMATION },
     { CLEANUP_MODE: "dry-run", CONFIRM_TARGET: CLEANUP_APPLY_CONFIRMATION },
-    { CLEANUP_MODE: "apply", SUPABASE_PROJECT_REF: projectRef, SUPABASE_DB_URL: `postgresql://postgres:secret@db.${projectRef}.supabase.co:5432/postgres?sslmode=require` },
+    { CLEANUP_MODE: "apply", SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst", SUPABASE_DB_URL: "postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co:5432/postgres?sslmode=require" },
     { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres` },
     { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://wrong:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require` },
     { CLEANUP_MODE: "erase", CONFIRM_TARGET: CLEANUP_APPLY_CONFIRMATION },

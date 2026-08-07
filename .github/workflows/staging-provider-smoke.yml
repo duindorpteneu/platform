@@ -3,6 +3,14 @@ name: Staging provider smoke
 on:
   workflow_dispatch:
     inputs:
+      release_sha:
+        description: Exacte 40-teken SHA die momenteel op staging staat
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run die exact dit artifact heeft geplaatst
+        required: true
+        type: string
       provider:
         description: Te controleren stagingprovider
         required: true
@@ -11,23 +19,56 @@ on:
           - mollie
           - sendgrid
 
-permissions: {}
+permissions:
+  actions: read
+  contents: read
 
 concurrency:
-  group: staging-provider-smoke-${{ inputs.provider }}
+  group: deploy-duindorpteneu-staging
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
   mollie:
+    name: Mollie credential and profile
     if: inputs.provider == 'mollie'
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
-    env:
-      MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
     steps:
+      - name: Checkout exact live release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Validate exact harness and live release
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${{ needs.preflight.outputs.artifact_digest }}"
+
       - name: Validate Mollie test credential without mutation
         shell: bash
+        env:
+          MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
         run: |
           set -euo pipefail
           [[ "${MOLLIE_API_KEY}" == test_* ]]
@@ -41,103 +82,205 @@ jobs:
           jq -e '.id | strings | startswith("pfl_")' "${response}" >/dev/null
           echo "Mollie testcredential is geldig. Er is niets aangemaakt of gewijzigd."
 
+      - name: Create exact Mollie provider result
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          RESULT_PATH: ${{ runner.temp }}/staging-result-provider-mollie.json
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" "${ARTIFACT_DIGEST}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RESULT_PATH}" provider-mollie "${RELEASE_SHA}" \
+            "${GITHUB_RUN_ID}" "${STAGING_DEPLOY_RUN_ID}" \
+            "${ARTIFACT_DIGEST}" -
+
+      - name: Upload exact Mollie provider result
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-provider-mollie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/staging-result-provider-mollie.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create result-bound Mollie provider attestation
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-provider-mollie.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-provider-mollie.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/staging-attestation.mjs create \
+            "${ATTESTATION_PATH}" "${RESULT_PATH}" provider-mollie \
+            "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${STAGING_DEPLOY_RUN_ID}" "${ARTIFACT_DIGEST}" \
+            "${RESULT_ARTIFACT_ID}" "${RESULT_ARTIFACT_DIGEST}"
+
+      - name: Upload exact Mollie provider attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-provider-mollie-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-provider-mollie.json
+          if-no-files-found: error
+          retention-days: 30
+
   sendgrid:
+    name: SendGrid Mail Send and signed event webhook
     if: inputs.provider == 'sendgrid'
+    needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 12
     environment: staging
     permissions:
+      actions: read
       contents: read
     env:
-      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-      SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
       SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
+      SENDGRID_API_KEY_FINGERPRINT: ${{ vars.SENDGRID_API_KEY_FINGERPRINT }}
+      SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT: ${{ vars.SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT }}
       SENDGRID_FROM_NAME: ${{ vars.SENDGRID_FROM_NAME }}
       SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
       SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
       SENDGRID_WEBHOOK_ID: ${{ vars.SENDGRID_WEBHOOK_ID }}
       SENDGRID_WEBHOOK_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}/api/webhooks/sendgrid
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
+      STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      E2E_MAILBOX_IMAP_HOST: ${{ vars.E2E_MAILBOX_IMAP_HOST }}
+      E2E_MAILBOX_IMAP_PORT: ${{ vars.E2E_MAILBOX_IMAP_PORT || '993' }}
+      E2E_MAILBOX_IMAP_MAILBOX: ${{ vars.E2E_MAILBOX_IMAP_MAILBOX || 'INBOX' }}
     steps:
       - name: Checkout provider validation code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
           persist-credentials: false
 
-      - name: Configure and verify signed staging webhook
-        id: webhook
+      - name: Validate exact harness and live release
         env:
-          SENDGRID_PUBLIC_KEY_FILE: ${{ runner.temp }}/sendgrid-public-key.txt
-        run: node scripts/providers/configure-sendgrid-webhook.mjs
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${{ needs.preflight.outputs.artifact_digest }}"
 
-      - name: Preserve public verification key for controlled handoff
-        uses: actions/upload-artifact@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.1.0
         with:
-          name: sendgrid-staging-public-key-${{ github.run_id }}
-          path: ${{ runner.temp }}/sendgrid-public-key.txt
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked provider acceptance dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Verify app delivery, signed callback and real inbox
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_ADMIN_API_KEY: ${{ secrets.SENDGRID_ADMIN_API_KEY }}
+          SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_ADMIN_TOTP_SECRET: ${{ secrets.E2E_ADMIN_TOTP_SECRET }}
+          E2E_MAILBOX_IMAP_USER: ${{ secrets.E2E_MAILBOX_IMAP_USER }}
+          E2E_MAILBOX_IMAP_PASSWORD: ${{ secrets.E2E_MAILBOX_IMAP_PASSWORD }}
+          SENDGRID_ACCEPTANCE_OBSERVATION_PATH: ${{ runner.temp }}/sendgrid-acceptance-observation.json
+        run: node scripts/providers/sendgrid-staging-acceptance.mjs
+
+      - name: Verify final internal health after provider evidence
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          OBSERVATION_PATH: ${{ runner.temp }}/sendgrid-acceptance-observation.json
+          EVIDENCE_PATH: ${{ runner.temp }}/sendgrid-acceptance-evidence.json
+        run: |
+          set -Eeuo pipefail
+          response="${RUNNER_TEMP}/sendgrid-final-health.json"
+          trap 'rm -f "${response}" "${OBSERVATION_PATH}"' EXIT
+          curl --fail --silent --show-error --max-time 30 \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --output "${response}" \
+            "${STAGING_BASE_URL}/api/internal/health"
+          jq -e '
+            .status == "healthy"
+            and .emailControl.gateMatches == true
+            and .emailControl.providerConfigured == true
+            and .emailControl.keyFingerprintMatches == true
+            and .emailControl.testEventQuarantined == 0
+          ' "${response}" >/dev/null
+          node scripts/providers/sendgrid-acceptance-evidence.mjs finalize \
+            "${OBSERVATION_PATH}" "${response}" "${EVIDENCE_PATH}" \
+            "${RELEASE_SHA}"
+
+      - name: Create exact SendGrid provider result
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          RESULT_PATH: ${{ runner.temp }}/staging-result-provider-sendgrid.json
+          EVIDENCE_PATH: ${{ runner.temp }}/sendgrid-acceptance-evidence.json
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" "${ARTIFACT_DIGEST}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RESULT_PATH}" provider-sendgrid "${RELEASE_SHA}" \
+            "${GITHUB_RUN_ID}" "${STAGING_DEPLOY_RUN_ID}" \
+            "${ARTIFACT_DIGEST}" "${EVIDENCE_PATH}"
+
+      - name: Upload exact SendGrid provider result
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-provider-sendgrid-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/staging-result-provider-sendgrid.json
+            ${{ runner.temp }}/sendgrid-acceptance-evidence.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
-      - name: Verify Mail Send permission
-        shell: bash
+      - name: Create result-bound SendGrid provider attestation
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-provider-sendgrid.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-provider-sendgrid.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
         run: |
-          set -euo pipefail
-          scopes="${RUNNER_TEMP}/sendgrid-scopes.json"
-          trap 'rm -f "${scopes}"' EXIT
-          status="$(curl --silent --show-error --max-time 20 \
-            --output "${scopes}" --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${SENDGRID_API_KEY}" \
-            "${SENDGRID_API_BASE_URL}/v3/scopes")"
-          if [[ "${status}" != "200" ]]; then
-            echo "SendGrid scopecontrole gaf HTTP ${status}." >&2
-            exit 1
-          fi
-          if ! jq -e '.scopes | arrays | index("mail.send") != null' "${scopes}" >/dev/null; then
-            echo "De staging-API-key mist de vereiste mail.send-scope." >&2
-            exit 1
-          fi
-          echo "De staging-API-key heeft de vereiste mail.send-scope."
+          set -Eeuo pipefail
+          node scripts/deploy/staging-attestation.mjs create \
+            "${ATTESTATION_PATH}" "${RESULT_PATH}" provider-sendgrid \
+            "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${STAGING_DEPLOY_RUN_ID}" "${ARTIFACT_DIGEST}" \
+            "${RESULT_ARTIFACT_ID}" "${RESULT_ARTIFACT_DIGEST}"
 
-      - name: Send one controlled staging message
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "${SENDGRID_API_KEY}" == SG.* ]]
-          [[ "${SENDGRID_API_BASE_URL}" == "https://api.sendgrid.com" || "${SENDGRID_API_BASE_URL}" == "https://api.eu.sendgrid.com" ]]
-          [[ -n "${SENDGRID_FROM_NAME}" && "${SENDGRID_FROM_EMAIL}" == *@* && "${SENDGRID_REPLY_TO_EMAIL}" == *@* && "${SENDGRID_SMOKE_RECIPIENT}" == *@* ]]
-          payload="${RUNNER_TEMP}/sendgrid-smoke.json"
-          headers="${RUNNER_TEMP}/sendgrid-headers.txt"
-          trap 'rm -f "${payload}" "${headers}"' EXIT
-          node <<'NODE' > "${payload}"
-          const { randomUUID } = require("node:crypto");
-          const body = {
-            personalizations: [{
-              to: [{ email: process.env.SENDGRID_SMOKE_RECIPIENT }],
-              custom_args: { email_job_id: randomUUID() },
-            }],
-            from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME },
-            reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL },
-            subject: "Stagingcontrole Duindorp SV Tenueportaal",
-            content: [
-              { type: "text/plain", value: "Dit is een gecontroleerd stagingbericht. Er is geen actie nodig." },
-              { type: "text/html", value: "<p>Dit is een gecontroleerd stagingbericht. Er is geen actie nodig.</p>" }
-            ],
-            tracking_settings: { click_tracking: { enable: false, enable_text: false }, open_tracking: { enable: false } }
-          };
-          process.stdout.write(JSON.stringify(body));
-          NODE
-          status="$(curl --silent --show-error --max-time 20 \
-            --output /dev/null --dump-header "${headers}" --write-out '%{http_code}' \
-            --request POST \
-            --header "Authorization: Bearer ${SENDGRID_API_KEY}" \
-            --header 'Content-Type: application/json' \
-            --data-binary "@${payload}" \
-            "${SENDGRID_API_BASE_URL}/v3/mail/send")"
-          if [[ "${status}" != "202" ]]; then
-            echo "SendGrid Mail Send gaf HTTP ${status}; er is geen stagingbericht geaccepteerd." >&2
-            exit 1
-          fi
-          if ! grep -qi '^x-message-id:' "${headers}"; then
-            echo "SendGrid gaf HTTP 202 maar geen X-Message-ID; de acceptatie kan niet worden gecorreleerd." >&2
-            exit 1
-          fi
-          echo "SendGrid heeft precies één gecontroleerd stagingbericht geaccepteerd."
+      - name: Upload exact SendGrid provider attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-provider-sendgrid-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-provider-sendgrid.json
+          if-no-files-found: error
+          retention-days: 30

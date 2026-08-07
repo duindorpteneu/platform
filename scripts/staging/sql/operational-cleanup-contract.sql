@@ -26,6 +26,8 @@ as $$
     'app.inventory_allocations',
     'app.inventory_delivery_draft_lines',
     'app.inventory_delivery_drafts',
+    'app.inventory_delivery_notification_items',
+    'app.inventory_delivery_notification_proposals',
     'app.inventory_movements',
     'app.inventory_reservations',
     'app.member_article_sizes',
@@ -37,6 +39,7 @@ as $$
     'app.order_lines',
     'app.order_package_snapshot_items',
     'app.order_package_snapshots',
+    'app.package_change_requests',
     'app.package_size_change_requests',
     'app.package_size_confirmation_items',
     'app.package_size_confirmations',
@@ -74,6 +77,12 @@ as $$
     'private.mail_v2_notification_episodes',
     'private.mail_v2_projection_batches',
     'private.mail_v2_projections',
+    'private.mail_test_deliveries',
+    'private.mail_test_delivery_outcomes',
+    'private.mail_test_delivery_provider_acceptances',
+    'private.mail_test_delivery_provider_events',
+    'private.mail_test_delivery_provider_quarantine',
+    'private.manual_payment_corrections',
     'private.manual_payment_requests',
     'private.member_sensitive_identity',
     'private.parent_access_batch_items',
@@ -90,6 +99,7 @@ as $$
     'private.parent_portal_grants',
     'private.parent_sessions',
     'private.payment_events',
+    'private.payment_reconciliation_resolutions',
     'private.qr_identity_commands',
     'private.qr_order_identities',
     'private.qr_order_locators',
@@ -118,6 +128,7 @@ as $$
     'app.release_feature_flags',
     'app.seasons',
     'app.staff_profiles',
+    'app.staff_saved_views',
     'private.mail_reminder_rule_revisions',
     'private.mail_reminder_runs',
     'private.mail_v2_process_capabilities',
@@ -330,7 +341,7 @@ as $$
       coalesce(
         string_agg(
           namespace_row.nspname || ':' || class_row.relname || ':'
-            || constraint_row.conname || ':' || constraint_row.contype || ':'
+            || constraint_row.conname || ':' || constraint_row.contype::text || ':'
             || constraint_row.convalidated::text || ':'
             || pg_get_constraintdef(constraint_row.oid, true),
           E'\n'
@@ -366,8 +377,8 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 90
-    or cardinality(pg_temp.preserved_tables()) <> 27
+  if cardinality(pg_temp.cleanup_tables()) <> 100
+    or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then
     raise exception 'cleanup table inventory drifted; update the explicit contract before proceeding';

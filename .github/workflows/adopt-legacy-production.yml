@@ -1,0 +1,253 @@
+name: Adopt exact legacy production rollback target
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte actuele main-SHA die al op staging draait
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle stagingdeploy-run voor exact deze kandidaat
+        required: true
+        type: string
+      confirmation:
+        description: Typ ADOPT-LEGACY-PRODUCTION-a79c8d843d75e90810ccceb228538c6368d2198b
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Trusted candidate staging preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
+  validate-control:
+    name: Validate one-time history and protected control plane
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+    steps:
+      - name: Checkout exact trusted candidate control plane
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Require the exact non-reusable legacy adoption request
+        env:
+          CONTROL_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ADOPTION_CONFIRMATION: ${{ inputs.confirmation }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "${CONTROL_RELEASE_SHA}" ]]
+          [[ "${ADOPTION_CONFIRMATION}" == \
+            "ADOPT-LEGACY-PRODUCTION-a79c8d843d75e90810ccceb228538c6368d2198b" ]]
+          node scripts/deploy/verify-legacy-history.mjs
+
+  capture-production:
+    name: Capture exact live legacy production image read-only
+    needs:
+      - preflight
+      - validate-control
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - production
+      - deploy
+    timeout-minutes: 45
+    concurrency:
+      group: deploy-duindorpteneu-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://duindorp.dgwebservices.nl
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout exact trusted candidate control plane
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Prove isolated production runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh production
+
+      - name: Install pinned Cosign signer
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Capture and byte-verify live legacy image without runtime secrets
+        env:
+          PRODUCTION_BASE_URL: https://duindorp.dgwebservices.nl
+          LEGACY_CAPTURE_DIRECTORY: ${{ runner.temp }}/legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash scripts/deploy/capture-legacy-release.sh
+
+      - name: Sign captured legacy manifest, evidence and recovered archive
+        env:
+          LEGACY_CAPTURE_DIRECTORY: ${{ runner.temp }}/legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+          (
+            cd "${LEGACY_CAPTURE_DIRECTORY}"
+            sha256sum \
+              LEGACY_RELEASE_MANIFEST \
+              legacy-capture-evidence.json \
+              legacy-production-image.tar.gz \
+              > SHA256SUMS
+          )
+          cosign sign-blob --yes \
+            --bundle "${LEGACY_CAPTURE_DIRECTORY}/SHA256SUMS.sigstore.json" \
+            "${LEGACY_CAPTURE_DIRECTORY}/SHA256SUMS"
+
+      - name: Upload the one-time recovered production image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30
+
+      - name: Remove recovered image from production runner
+        if: always()
+        run: >-
+          rm -rf --
+          "${RUNNER_TEMP}/legacy-production-capture-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+  adopt-staging:
+    name: Prove legacy rollback and restore exact candidate
+    needs:
+      - preflight
+      - capture-production
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+      - deploy
+    timeout-minutes: 45
+    concurrency:
+      group: deploy-duindorpteneu-staging
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: https://staging-duindorp.dgwebservices.nl
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout exact staged candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
+      - name: Install pinned Cosign verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Download exact captured production image from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .legacy-capture
+
+      - name: Verify capture signature and all captured bytes
+        run: |
+          set -Eeuo pipefail
+          cosign verify-blob .legacy-capture/SHA256SUMS \
+            --bundle .legacy-capture/SHA256SUMS.sigstore.json \
+            --certificate-identity \
+              "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/adopt-legacy-production.yml@refs/heads/main" \
+            --certificate-oidc-issuer \
+              "https://token.actions.githubusercontent.com" >/dev/null
+          (
+            cd .legacy-capture
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Prove candidate to legacy to candidate and install rollback metadata
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_APP_URL: https://staging-duindorp.dgwebservices.nl
+          LEGACY_CAPTURE_DIRECTORY: ${{ github.workspace }}/.legacy-capture
+          LEGACY_ADOPTION_RESULT_PATH: ${{ runner.temp }}/legacy-adoption-result-${{ github.run_id }}-${{ github.run_attempt }}.json
+        run: bash scripts/staging/adopt-legacy-release.sh
+
+      - name: Create and sign minimal adoption evidence
+        env:
+          ADOPTION_DIRECTORY: ${{ runner.temp }}/legacy-adoption-${{ github.run_id }}-${{ github.run_attempt }}
+          ADOPTION_RESULT: ${{ runner.temp }}/legacy-adoption-result-${{ github.run_id }}-${{ github.run_attempt }}.json
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "${ADOPTION_DIRECTORY}"
+          cp -- \
+            .legacy-capture/LEGACY_RELEASE_MANIFEST \
+            .legacy-capture/legacy-capture-evidence.json \
+            "${ADOPTION_DIRECTORY}/"
+          cp -- "${ADOPTION_RESULT}" \
+            "${ADOPTION_DIRECTORY}/legacy-adoption-result.json"
+          (
+            cd "${ADOPTION_DIRECTORY}"
+            sha256sum \
+              LEGACY_RELEASE_MANIFEST \
+              legacy-capture-evidence.json \
+              legacy-adoption-result.json \
+              > ADOPTION_SHA256SUMS
+          )
+          cosign sign-blob --yes \
+            --bundle "${ADOPTION_DIRECTORY}/ADOPTION_SHA256SUMS.sigstore.json" \
+            "${ADOPTION_DIRECTORY}/ADOPTION_SHA256SUMS"
+
+      - name: Upload signed minimal legacy adoption evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: legacy-production-adoption-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/legacy-adoption-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove captured image and runner evidence
+        if: always()
+        run: |
+          set +e
+          rm -rf -- \
+            "${GITHUB_WORKSPACE}/.legacy-capture" \
+            "${RUNNER_TEMP}/legacy-adoption-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rm -f -- \
+            "${RUNNER_TEMP}/legacy-adoption-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"

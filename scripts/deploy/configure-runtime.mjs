@@ -1,9 +1,11 @@
 import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
-import { createPublicKey } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import path from "node:path";
 
 const environment = process.env.DEPLOY_ENVIRONMENT;
 const releaseSha = process.env.RELEASE_SHA?.trim() ?? "";
+const releaseArtifactDigest =
+  process.env.RELEASE_ARTIFACT_DIGEST?.trim() ?? "";
 const rules = {
   staging: {
     host: "staging-duindorp.dgwebservices.nl",
@@ -70,6 +72,9 @@ function canonicalBase64UrlSecret(name, value) {
 if (!(environment in rules)) invalid("DEPLOY_ENVIRONMENT");
 const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "", supabaseRef: "" };
 if (!/^[a-f0-9]{40}$/.test(releaseSha)) invalid("RELEASE_SHA");
+if (!/^sha256:[a-f0-9]{64}$/.test(releaseArtifactDigest)) {
+  invalid("RELEASE_ARTIFACT_DIGEST");
+}
 
 const appHost = required("APP_HOST");
 const appPort = required("APP_BIND_PORT");
@@ -163,10 +168,13 @@ if (environment === "production" && mollieEnabled === "true" && !mollieKey.start
 
 const emailEnabled = required("EMAIL_ENABLED");
 const sendgridKey = optional("SENDGRID_API_KEY");
+const sendgridKeyFingerprint =
+  optional("SENDGRID_API_KEY_FINGERPRINT");
 const sendgridApiBaseUrl = optional("SENDGRID_API_BASE_URL") || "https://api.sendgrid.com";
 const fromName = optional("SENDGRID_FROM_NAME");
 const fromEmail = optional("SENDGRID_FROM_EMAIL");
 const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
+const smokeRecipient = optional("SENDGRID_SMOKE_RECIPIENT");
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
 if (!["https://api.sendgrid.com", "https://api.eu.sendgrid.com"].includes(sendgridApiBaseUrl)) invalid("SENDGRID_API_BASE_URL");
@@ -180,12 +188,23 @@ if (webhookKey) {
 }
 if (emailEnabled === "true") {
   if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
+  if (!/^[a-f0-9]{64}$/.test(sendgridKeyFingerprint)) {
+    invalid("SENDGRID_API_KEY_FINGERPRINT");
+  } else if (
+    createHash("sha256").update(sendgridKey).digest("hex")
+      !== sendgridKeyFingerprint
+  ) {
+    invalid("SENDGRID_API_KEY_FINGERPRINT");
+  }
   if (!fromName || fromName.length > 120 || /[\r\n]/.test(fromName)) invalid("SENDGRID_FROM_NAME");
   if (!fromEmail) invalid("SENDGRID_FROM_EMAIL");
   if (!replyEmail) invalid("SENDGRID_REPLY_TO_EMAIL");
+  if (environment === "staging" && !smokeRecipient) {
+    invalid("SENDGRID_SMOKE_RECIPIENT");
+  }
   if (!webhookKey) invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 }
-for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail]]) {
+for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail], ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient]]) {
   if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
 }
 
@@ -215,6 +234,7 @@ const runtime = {
   PORT: "3000",
   APP_ENVIRONMENT: environment,
   RELEASE_SHA: releaseSha,
+  RELEASE_ARTIFACT_DIGEST: releaseArtifactDigest,
   APP_BASE_URL: appUrl,
   NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -233,10 +253,12 @@ const runtime = {
   ...Object.fromEntries([
     ["MOLLIE_API_KEY", mollieKey],
     ["SENDGRID_API_KEY", sendgridKey],
+    ["SENDGRID_API_KEY_FINGERPRINT", sendgridKeyFingerprint],
     ["SENDGRID_API_BASE_URL", sendgridApiBaseUrl],
     ["SENDGRID_FROM_NAME", fromName],
     ["SENDGRID_FROM_EMAIL", fromEmail],
     ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
+    ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
     ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
     ["IMPORT_STAGING_ENCRYPTION_KEY", importStagingKey],

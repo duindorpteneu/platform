@@ -22,6 +22,7 @@ const fixtureSqlDirectory = path.join(path.dirname(fileURLToPath(import.meta.url
 const fixtureSqlFiles = Object.freeze({
   prepare: "mollie-fixture-prepare.sql",
   state: "mollie-fixture-state.sql",
+  readiness: "mollie-fixture-readiness.sql",
   cleanup: "mollie-fixture-cleanup.sql",
 });
 
@@ -118,6 +119,10 @@ export function createFixtureIdentity(runMarker) {
     parentAccountId: uuidFromMarker(runMarker, "parent-account"),
     parentSessionId: uuidFromMarker(runMarker, "parent-session"),
     wrongMetadataPaymentId: uuidFromMarker(runMarker, "wrong-metadata-payment"),
+    readinessArticleId: uuidFromMarker(runMarker, "readiness-article"),
+    readinessVariantId: uuidFromMarker(runMarker, "readiness-variant"),
+    readinessOrderLineId: uuidFromMarker(runMarker, "readiness-order-line"),
+    readinessQrRequestId: uuidFromMarker(runMarker, "readiness-qr-request"),
     paidRelation: `${relationPrefix}-P`,
     mismatchRelation: `${relationPrefix}-M`,
     fixtureEmail: `mollie-acceptance+${shortMarker}@example.invalid`,
@@ -129,8 +134,22 @@ function validateFixtureIdentity(identity) {
     || !uuidPattern.test(identity.mismatchMemberId ?? "")
     || !uuidPattern.test(identity.paidOrderId ?? "")
     || !uuidPattern.test(identity.mismatchOrderId ?? "")
+    || !uuidPattern.test(identity.readinessArticleId ?? "")
+    || !uuidPattern.test(identity.readinessVariantId ?? "")
+    || !uuidPattern.test(identity.readinessOrderLineId ?? "")
+    || !uuidPattern.test(identity.readinessQrRequestId ?? "")
     || identity.paidMemberId === identity.mismatchMemberId
     || identity.paidOrderId === identity.mismatchOrderId
+    || new Set([
+      identity.paidMemberId,
+      identity.mismatchMemberId,
+      identity.paidOrderId,
+      identity.mismatchOrderId,
+      identity.readinessArticleId,
+      identity.readinessVariantId,
+      identity.readinessOrderLineId,
+      identity.readinessQrRequestId,
+    ]).size !== 8
     || !fixtureRelationPattern.test(identity.paidRelation ?? "")
     || !fixtureRelationPattern.test(identity.mismatchRelation ?? "")
     || !identity.paidRelation.endsWith("-P")
@@ -148,6 +167,10 @@ function fixtureEnvironment(config, identity, stateIdentity) {
     FIXTURE_MISMATCH_MEMBER_ID: identity.mismatchMemberId,
     FIXTURE_PAID_ORDER_ID: identity.paidOrderId,
     FIXTURE_MISMATCH_ORDER_ID: identity.mismatchOrderId,
+    FIXTURE_READINESS_ARTICLE_ID: identity.readinessArticleId,
+    FIXTURE_READINESS_VARIANT_ID: identity.readinessVariantId,
+    FIXTURE_READINESS_ORDER_LINE_ID: identity.readinessOrderLineId,
+    FIXTURE_READINESS_QR_REQUEST_ID: identity.readinessQrRequestId,
     FIXTURE_PAID_RELATION: identity.paidRelation,
     FIXTURE_MISMATCH_RELATION: identity.mismatchRelation,
     FIXTURE_EMAIL: identity.fixtureEmail,
@@ -162,6 +185,10 @@ const fixtureSqlCommand = [
   "--set=mismatch_member_id=\"$FIXTURE_MISMATCH_MEMBER_ID\"",
   "--set=paid_order_id=\"$FIXTURE_PAID_ORDER_ID\"",
   "--set=mismatch_order_id=\"$FIXTURE_MISMATCH_ORDER_ID\"",
+  "--set=readiness_article_id=\"$FIXTURE_READINESS_ARTICLE_ID\"",
+  "--set=readiness_variant_id=\"$FIXTURE_READINESS_VARIANT_ID\"",
+  "--set=readiness_order_line_id=\"$FIXTURE_READINESS_ORDER_LINE_ID\"",
+  "--set=readiness_qr_request_id=\"$FIXTURE_READINESS_QR_REQUEST_ID\"",
   "--set=paid_relation=\"$FIXTURE_PAID_RELATION\"",
   "--set=mismatch_relation=\"$FIXTURE_MISMATCH_RELATION\"",
   "--set=fixture_email=\"$FIXTURE_EMAIL\"",
@@ -196,6 +223,10 @@ export function runFixtureSql(config, action, identity, dependencies = {}) {
       "--env", "FIXTURE_MISMATCH_MEMBER_ID",
       "--env", "FIXTURE_PAID_ORDER_ID",
       "--env", "FIXTURE_MISMATCH_ORDER_ID",
+      "--env", "FIXTURE_READINESS_ARTICLE_ID",
+      "--env", "FIXTURE_READINESS_VARIANT_ID",
+      "--env", "FIXTURE_READINESS_ORDER_LINE_ID",
+      "--env", "FIXTURE_READINESS_QR_REQUEST_ID",
       "--env", "FIXTURE_PAID_RELATION",
       "--env", "FIXTURE_MISMATCH_RELATION",
       "--env", "FIXTURE_EMAIL",
@@ -708,37 +739,68 @@ async function waitForProviderRefund(config, providerPaymentId, predicate, depen
   fail(`MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT_${statusCode}`);
 }
 
-function assertPaidSnapshot(snapshot) {
+export function assertPaidSnapshot(snapshot) {
   assert.equal(snapshot.paymentStatus, "paid");
   assert.equal(snapshot.reconciliationIssue, null);
   assert.equal(Number(snapshot.paidPayments), 1);
-  assert.equal(Number(snapshot.activeQr), 1);
-  assert.equal(Number(snapshot.allQr), 1);
+  assert.equal(Number(snapshot.hardAllocations), 0);
+  assert.equal(Number(snapshot.readyLines), 0);
+  assert.equal(Number(snapshot.activeQr), 0);
+  assert.equal(Number(snapshot.allQr), 0);
+  assert.equal(snapshot.qrBusinessEligible, false);
+  assert.equal(snapshot.qrUsable, false);
   assert.equal(Number(snapshot.paymentEmailJobs), 1);
   assert.equal(Number(snapshot.paidEvents), 1);
   assert.equal(Number(snapshot.paidAudits), 1);
 }
 
-function assertMismatchSnapshot(snapshot) {
+export function assertReadinessSnapshot(snapshot) {
+  assert.equal(snapshot.paymentStatus, "paid");
+  assert.equal(Number(snapshot.allocatedLines), 1);
+  assert.equal(Number(snapshot.allocatedQuantity), 1);
+  assert.equal(Number(snapshot.hardAllocations), 1);
+  assert.equal(Number(snapshot.readyLines), 1);
+  assert.equal(Number(snapshot.activeQr), 1);
+  assert.equal(Number(snapshot.allQr), 1);
+  assert.equal(snapshot.qrBusinessEligible, true);
+  assert.equal(snapshot.qrUsable, true);
+  assert.equal(snapshot.transactionRolledBack, true);
+}
+
+export function assertMismatchSnapshot(snapshot) {
   assert.notEqual(snapshot.paymentStatus, "paid");
   assert.equal(Number(snapshot.paidPayments), 0);
+  assert.equal(Number(snapshot.hardAllocations), 0);
+  assert.equal(Number(snapshot.readyLines), 0);
   assert.equal(Number(snapshot.activeQr), 0);
   assert.equal(Number(snapshot.allQr), 0);
+  assert.equal(snapshot.qrBusinessEligible, false);
+  assert.equal(snapshot.qrUsable, false);
   assert.equal(Number(snapshot.paymentEmailJobs), 0);
   assert.ok(typeof snapshot.reconciliationIssue === "string" && snapshot.reconciliationIssue.includes("MISMATCH"));
   assert.ok(Number(snapshot.mismatchEvents) >= 1);
   assert.ok(Number(snapshot.manualReviewAudits) >= 1);
 }
 
-function assertRefundSnapshot(snapshot) {
+export function assertRefundSnapshot(snapshot) {
   assert.equal(snapshot.paymentStatus, "refunded");
   assert.equal(Number(snapshot.paidPayments), 0);
+  assert.equal(Number(snapshot.hardAllocations), 0);
+  assert.equal(Number(snapshot.readyLines), 0);
   assert.equal(Number(snapshot.activeQr), 0);
-  assert.equal(Number(snapshot.allQr), 1);
+  assert.equal(Number(snapshot.allQr), 0);
+  assert.equal(snapshot.qrBusinessEligible, false);
+  assert.equal(snapshot.qrUsable, false);
   assert.equal(Number(snapshot.paymentEmailJobs), 1);
   assert.equal(Number(snapshot.paidEvents), 1);
   assert.equal(Number(snapshot.refundEvents), 1);
   assert.equal(Number(snapshot.refundAudits), 1);
+}
+
+export function isTerminalFullRefund(refund, expectedValue) {
+  return refund?.status === "refunded"
+    && refund?.amount?.currency === "EUR"
+    && refund?.amount?.value === expectedValue;
 }
 
 export async function runAcceptance(rawEnv = process.env, overrides = {}) {
@@ -773,7 +835,11 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
     const paidSnapshot = await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql);
     assertPaidSnapshot(paidSnapshot);
-    console.log("Paid-scenario is via de publieke stagingwebhook gevalideerd.");
+    console.log("Paid-scenario is zonder harde allocatie en zonder actieve QR via de publieke stagingwebhook gevalideerd.");
+
+    const readinessSnapshot = await runSql(config, "readiness", identity);
+    assertReadinessSnapshot(readinessSnapshot);
+    console.log("Een tijdelijke voorraad-, allocatie- en QR-transactie bewees readiness en is volledig teruggedraaid.");
 
     await postConcurrentReplays(config, paidBinding.providerPaymentId, fetchImpl);
     assert.deepEqual(
@@ -817,24 +883,21 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     const changePaymentStateUrl = paidProviderPayment?._links?.changePaymentState?.href;
     if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
     await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
-    const providerRefund = await waitForProviderRefund(config, paidBinding.providerPaymentId, (refund) => {
-      return ["pending", "processing", "refunded"].includes(refund?.status)
-        && refund?.amount?.currency === "EUR"
-        && refund?.amount?.value === paidProviderPayment.amount.value;
-    }, { fetchImpl, sleep });
-    if (providerRefund.status === "pending") {
-      assert.deepEqual(
-        await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
-        paidSnapshot,
-      );
-      console.log("Volledige refund is door Mollie geaccepteerd als pending; lokaal bleef betaald totdat de providerwebhook verschuldigd is.");
-    } else {
-      await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-      assertRefundSnapshot(
-        await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
-      );
-      console.log("Finale providerrefund trok de QR via de publieke stagingwebhook in.");
-    }
+    const providerRefund = await waitForProviderRefund(
+      config,
+      paidBinding.providerPaymentId,
+      (refund) => isTerminalFullRefund(
+        refund,
+        paidProviderPayment.amount.value,
+      ),
+      { fetchImpl, sleep },
+    );
+    assert.equal(providerRefund.status, "refunded");
+    await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
+    assertRefundSnapshot(
+      await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
+    );
+    console.log("Finale providerrefund trok de QR via de publieke stagingwebhook in.");
   } finally {
     if (fixturePrepared) {
       const cleaned = await runSql(config, "cleanup", identity);
@@ -858,7 +921,7 @@ async function main() {
     return;
   }
   await runAcceptance();
-  console.log("Mollie stagingacceptatie voor paid, mismatch, replay en refund is geslaagd.");
+  console.log("Mollie stagingacceptatie voor paid-zonder-QR, readiness, mismatch, replay en refund is geslaagd.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

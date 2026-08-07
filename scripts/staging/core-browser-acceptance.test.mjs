@@ -6,6 +6,7 @@ const valid = {
   STAGING_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
   SUPABASE_PROJECT_REF: "dxbdjtbyghsovlrdcwcr",
   RELEASE_SHA: "a".repeat(40),
+  ARTIFACT_DIGEST: `sha256:${"b".repeat(64)}`,
   CONFIRMATION: "STAGING-CORE",
 };
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
@@ -19,7 +20,17 @@ describe("staging core target", () => {
 
   it("requires an exact release and confirmation", () => {
     expect(() => targetFromEnvironment({ ...valid, RELEASE_SHA: "main" })).toThrow("RELEASE_SHA_INVALID");
+    expect(() => targetFromEnvironment({ ...valid, ARTIFACT_DIGEST: "sha256:short" })).toThrow("ARTIFACT_DIGEST_INVALID");
     expect(() => targetFromEnvironment({ ...valid, CONFIRMATION: "yes" })).toThrow("CONFIRMATION_INVALID");
+    expect(targetFromEnvironment({
+      ...valid,
+      CONFIRMATION: "STAGING-PHASE-B",
+      VERIFY_PHASE_B_SURFACES: "1",
+    }).verifyPhaseBSurfaces).toBe(true);
+    expect(() => targetFromEnvironment({
+      ...valid,
+      VERIFY_PHASE_B_SURFACES: "1",
+    })).toThrow("CONFIRMATION_INVALID");
   });
 
   it("accepts only a PostgreSQL URL bound to the staging project", () => {
@@ -43,10 +54,34 @@ describe("staging core target", () => {
 
   it("controleert het settings-RPC met hetzelfde echte AAL2-token zonder het token te loggen", () => {
     const source = readFileSync(new URL("./core-browser-acceptance.mjs", import.meta.url), "utf8");
-    expect(source).toContain("get_settings_workspace_v2");
+    expect(source).toContain("get_settings_workspace_v3");
     expect(source).toContain("settingsWorkspaceSchema.safeParse(payload)");
     expect(source).toContain("syncResponse.request().postDataJSON()");
     expect(source).toContain("ADMIN_SETTINGS_RPC_");
     expect(source).not.toContain("process.stdout.write(accessToken");
+  });
+
+  it("loopt de gedeployde Phase-B-oppervlakken en supplier-privacycopy na", () => {
+    const source = readFileSync(
+      new URL("./core-browser-acceptance.mjs", import.meta.url),
+      "utf8",
+    );
+    for (const path of [
+      "/backoffice/pakketten",
+      "/backoffice/actiepunten",
+      "/backoffice/leden",
+      "/backoffice/leveringen",
+      "/backoffice/emails",
+      "/backoffice/instellingen",
+      "/leverancier/login",
+    ]) {
+      expect(source).toContain(path);
+    }
+    expect(source).toContain(
+      "assertNoAutomatedA11yViolations",
+    );
+    expect(source).toContain(
+      "uitsluitend geaggregeerde aantallen",
+    );
   });
 });

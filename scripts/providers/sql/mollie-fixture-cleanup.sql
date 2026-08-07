@@ -11,6 +11,10 @@ create temporary table mollie_acceptance_input (
   mismatch_member_id uuid not null,
   paid_order_id uuid not null,
   mismatch_order_id uuid not null,
+  readiness_article_id uuid not null,
+  readiness_variant_id uuid not null,
+  readiness_order_line_id uuid not null,
+  readiness_qr_request_id uuid not null,
   paid_relation text not null,
   mismatch_relation text not null,
   fixture_email text not null
@@ -21,6 +25,10 @@ insert into mollie_acceptance_input values (
   :'mismatch_member_id'::uuid,
   :'paid_order_id'::uuid,
   :'mismatch_order_id'::uuid,
+  :'readiness_article_id'::uuid,
+  :'readiness_variant_id'::uuid,
+  :'readiness_order_line_id'::uuid,
+  :'readiness_qr_request_id'::uuid,
   :'paid_relation',
   :'mismatch_relation',
   :'fixture_email'
@@ -30,11 +38,39 @@ do $fixture$
 declare
   fixture_input mollie_acceptance_input%rowtype;
   fixture_marker_exists boolean;
+  fixture_marker text;
 begin
   select * into strict fixture_input from mollie_acceptance_input;
+  fixture_marker := regexp_replace(
+    fixture_input.paid_relation,
+    '^MOLLIE-(.+)-P$',
+    '\1'
+  );
 
   if fixture_input.paid_member_id = fixture_input.mismatch_member_id
     or fixture_input.paid_order_id = fixture_input.mismatch_order_id
+    or cardinality(array[
+      fixture_input.paid_member_id,
+      fixture_input.mismatch_member_id,
+      fixture_input.paid_order_id,
+      fixture_input.mismatch_order_id,
+      fixture_input.readiness_article_id,
+      fixture_input.readiness_variant_id,
+      fixture_input.readiness_order_line_id,
+      fixture_input.readiness_qr_request_id
+    ]) <> (
+      select count(distinct identifier)
+      from unnest(array[
+        fixture_input.paid_member_id,
+        fixture_input.mismatch_member_id,
+        fixture_input.paid_order_id,
+        fixture_input.mismatch_order_id,
+        fixture_input.readiness_article_id,
+        fixture_input.readiness_variant_id,
+        fixture_input.readiness_order_line_id,
+        fixture_input.readiness_qr_request_id
+      ]) identifier
+    )
     or fixture_input.paid_relation !~ '^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-P$'
     or fixture_input.mismatch_relation !~ '^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-M$'
     or fixture_input.fixture_email !~ '^mollie-acceptance\+[0-9]{1,20}a[0-9]{1,6}@example\.invalid$'
@@ -55,6 +91,18 @@ begin
     select 1
     from app.member_orders orders
     where orders.id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
+  ) or exists (
+    select 1
+    from app.articles article
+    where article.id = fixture_input.readiness_article_id
+  ) or exists (
+    select 1
+    from app.article_variants variant
+    where variant.id = fixture_input.readiness_variant_id
+  ) or exists (
+    select 1
+    from app.order_lines line
+    where line.id = fixture_input.readiness_order_line_id
   ) into fixture_marker_exists;
 
   if not fixture_marker_exists then
@@ -100,6 +148,61 @@ begin
       select count(*) from app.member_orders orders
       where orders.id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
     ) = 2
+    and exists (
+      select 1
+      from app.articles article
+      join app.article_variants variant
+        on variant.id = fixture_input.readiness_variant_id
+       and variant.article_id = article.id
+      join app.article_seasons article_season
+        on article_season.article_id = article.id
+       and article_season.season_id = (
+         select orders.season_id
+         from app.member_orders orders
+         where orders.id = fixture_input.paid_order_id
+       )
+      where article.id = fixture_input.readiness_article_id
+        and article.name = 'Mollie acceptance ' || fixture_marker
+        and article.code = 'MOL-' || upper(substr(
+          replace(fixture_input.readiness_article_id::text, '-', ''),
+          1,
+          12
+        ))
+        and variant.size = 'TEST-' || fixture_marker
+    )
+    and exists (
+      select 1
+      from app.order_lines line
+      where line.id = fixture_input.readiness_order_line_id
+        and line.order_id = fixture_input.paid_order_id
+        and line.article_id = fixture_input.readiness_article_id
+        and line.article_variant_id = fixture_input.readiness_variant_id
+        and line.quantity = 1
+    )
+    and (
+      select count(*)
+      from app.article_variants variant
+      where variant.article_id = fixture_input.readiness_article_id
+    ) = 1
+    and (
+      select count(*)
+      from app.order_lines line
+      where line.article_id = fixture_input.readiness_article_id
+         or line.article_variant_id = fixture_input.readiness_variant_id
+    ) = 1
+    and exists (
+      select 1
+      from app.member_article_sizes size_choice
+      join app.member_orders orders
+        on orders.id = fixture_input.paid_order_id
+       and orders.member_id = size_choice.member_id
+       and orders.season_id = size_choice.season_id
+       and orders.member_season_id = size_choice.member_season_id
+      where size_choice.article_id = fixture_input.readiness_article_id
+        and size_choice.article_variant_id = fixture_input.readiness_variant_id
+        and size_choice.selection_status = 'confirmed'
+        and size_choice.confirmed_at is not null
+    )
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
   end if;
@@ -162,8 +265,15 @@ begin
   delete from app.inventory_reservations reservation
   where reservation.order_line_id in (
     select line.id from app.order_lines line
-    where line.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
+      where line.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
   );
+  delete from private.inventory_allocation_queue queue
+  where queue.article_variant_id = fixture_input.readiness_variant_id
+    and queue.season_id = (
+      select orders.season_id
+      from app.member_orders orders
+      where orders.id = fixture_input.paid_order_id
+    );
   delete from app.order_lines line
   where line.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id);
   delete from app.member_orders orders
@@ -186,12 +296,39 @@ begin
   where event.scope in ('otp_request', 'otp_verify')
     and event.key_hash = encode(extensions.digest(fixture_input.fixture_email, 'sha256'), 'hex');
 
+  alter table app.member_size_selection_history
+    disable trigger member_size_selection_history_immutable;
+  delete from app.member_size_selection_history history
+  where history.member_season_id in (
+      select member_season.id
+      from app.member_seasons member_season
+      where member_season.member_id in (
+        fixture_input.paid_member_id,
+        fixture_input.mismatch_member_id
+      )
+    )
+    and history.article_id = fixture_input.readiness_article_id;
+  alter table app.member_size_selection_history
+    enable trigger member_size_selection_history_immutable;
   delete from app.member_article_sizes size_choice
   where size_choice.member_id in (fixture_input.paid_member_id, fixture_input.mismatch_member_id);
   delete from app.members member
   where member.id in (fixture_input.paid_member_id, fixture_input.mismatch_member_id)
     and member.relation_number in (fixture_input.paid_relation, fixture_input.mismatch_relation)
     and member.email = fixture_input.fixture_email;
+  delete from app.article_seasons article_season
+  where article_season.article_id = fixture_input.readiness_article_id;
+  delete from app.article_variants variant
+  where variant.id = fixture_input.readiness_variant_id
+    and variant.article_id = fixture_input.readiness_article_id;
+  delete from app.articles article
+  where article.id = fixture_input.readiness_article_id
+    and article.name = 'Mollie acceptance ' || fixture_marker
+    and article.code = 'MOL-' || upper(substr(
+      replace(fixture_input.readiness_article_id::text, '-', ''),
+      1,
+      12
+    ));
 
   if exists (
     select 1 from app.members member
@@ -203,6 +340,15 @@ begin
   ) or exists (
     select 1 from private.parent_accounts account
     where account.email_normalized = fixture_input.fixture_email
+  ) or exists (
+    select 1 from app.articles article
+    where article.id = fixture_input.readiness_article_id
+  ) or exists (
+    select 1 from app.article_variants variant
+    where variant.id = fixture_input.readiness_variant_id
+  ) or exists (
+    select 1 from app.order_lines line
+    where line.id = fixture_input.readiness_order_line_id
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_INCOMPLETE' using errcode = '23514';
   end if;

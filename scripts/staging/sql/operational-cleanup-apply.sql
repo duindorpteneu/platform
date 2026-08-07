@@ -15,6 +15,7 @@ select set_config('duindorp.cleanup.expected_state_digest', :'expected_state_dig
 select set_config('duindorp.cleanup.release_sha', :'release_sha', true);
 select set_config('duindorp.cleanup.run_id', :'cleanup_run_id', true);
 select set_config('duindorp.cleanup.backup_checksum', :'backup_checksum', true);
+select set_config('duindorp.cleanup.backup_artifact_id', :'backup_artifact_id', true);
 select set_config('duindorp.cleanup.commit', :'cleanup_commit', true);
 \o
 
@@ -34,6 +35,9 @@ begin
   end if;
   if current_setting('duindorp.cleanup.backup_checksum') !~ '^[a-f0-9]{64}$' then
     raise exception 'backup checksum is invalid';
+  end if;
+  if current_setting('duindorp.cleanup.backup_artifact_id') !~ '^[1-9][0-9]*$' then
+    raise exception 'backup artifact ID is invalid';
   end if;
   if current_setting('duindorp.cleanup.commit') not in ('true', 'false') then
     raise exception 'cleanup commit contract is invalid';
@@ -151,7 +155,8 @@ values (
     'cleanup_run_id', :'cleanup_run_id',
     'cleanup_table_count', cardinality(pg_temp.cleanup_tables()),
     'removed_rows', (select value::bigint from cleanup_preservation_proof where key = 'removed_rows'),
-    'backup_checksum', :'backup_checksum'
+    'backup_checksum', :'backup_checksum',
+    'backup_artifact_id', :'backup_artifact_id'
   ),
   :'cleanup_run_id'::uuid
 );

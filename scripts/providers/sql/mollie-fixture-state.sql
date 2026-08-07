@@ -32,10 +32,36 @@ select coalesce((
     'reconciliationIssue', payment.reconciliation_issue,
     'paidPayments', (select count(*) from app.payments item
       where item.order_id = fixture_input.state_order_id and item.status = 'paid'),
-    'activeQr', (select count(*) from private.qr_tokens qr
-      where qr.order_id = fixture_input.state_order_id and qr.active),
-    'allQr', (select count(*) from private.qr_tokens qr
-      where qr.order_id = fixture_input.state_order_id),
+    'hardAllocations', (select count(*) from app.inventory_allocations allocation
+      where allocation.order_id = fixture_input.state_order_id
+        and allocation.status in ('reserved', 'fulfilled')),
+    'readyLines', (select count(*) from app.order_lines line
+      where line.order_id = fixture_input.state_order_id
+        and line.status = 'ready_for_pickup'),
+    'activeQr', (
+      (select count(*) from private.qr_tokens qr
+        where qr.order_id = fixture_input.state_order_id and qr.active)
+      +
+      (select count(*)
+        from private.qr_order_identities identity
+        join private.qr_order_locators locator
+          on locator.identity_id = identity.id
+          and locator.active
+        where identity.order_id = fixture_input.state_order_id
+          and identity.suspended_at is null)
+    ),
+    'allQr', (
+      (select count(*) from private.qr_tokens qr
+        where qr.order_id = fixture_input.state_order_id)
+      +
+      (select count(*)
+        from private.qr_order_identities identity
+        join private.qr_order_locators locator
+          on locator.identity_id = identity.id
+        where identity.order_id = fixture_input.state_order_id)
+    ),
+    'qrBusinessEligible', private.order_qr_business_eligible(fixture_input.state_order_id),
+    'qrUsable', private.order_qr_usable(fixture_input.state_order_id),
     'paymentEmailJobs', (select count(*) from private.email_jobs job
       where job.order_id = fixture_input.state_order_id and job.template_key = 'payment_received'),
     'paidEvents', (select count(*) from private.payment_events event
@@ -45,9 +71,9 @@ select coalesce((
     'mismatchEvents', (select count(*) from private.payment_events event
       where event.payment_id = payment.id and event.event_type = 'mismatch'),
     'paidAudits', (select count(*) from app.audit_logs audit
-      where audit.entity_id = fixture_input.state_order_id and audit.action = 'payment.mollie.paid'),
+      where audit.entity_id = fixture_input.state_order_id and audit.action = 'payment.mollie.paid_v2'),
     'refundAudits', (select count(*) from app.audit_logs audit
-      where audit.entity_id = fixture_input.state_order_id and audit.action = 'payment.mollie.refunded'),
+      where audit.entity_id = fixture_input.state_order_id and audit.action = 'payment.mollie.refunded_v2'),
     'manualReviewAudits', (select count(*) from app.audit_logs audit
       where audit.entity_id = payment.id and audit.action = 'payment.mollie.manual_review')
   )

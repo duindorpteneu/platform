@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildCleanupEvidence } from "./write-cleanup-evidence.mjs";
 
 const rowCounts = Object.fromEntries(
-  Array.from({ length: 90 }, (_, index) => [`app.cleanup_${String(index).padStart(2, "0")}`, index]),
+  Array.from({ length: 100 }, (_, index) => [`app.cleanup_${String(index).padStart(2, "0")}`, index]),
 );
 const blockers = {
   active_import_leases: 0,
@@ -27,8 +27,8 @@ const preflight = {
   mode: "dry-run",
   latest_migration_version: "20260802280000",
   state_digest: "a".repeat(64),
-  cleanup_table_count: 90,
-  preserved_table_count: 27,
+  cleanup_table_count: 100,
+  preserved_table_count: 28,
   total_rows: totalRows,
   non_empty_tables: 89,
   row_counts: rowCounts,
@@ -63,12 +63,15 @@ describe("buildCleanupEvidence", () => {
       CLEANUP_RUN_ID: "019fc2c0-77e0-7e01-85b3-37e1f29a1a31",
       BACKUP_CHECKSUM: "c".repeat(64),
       BACKUP_ARTIFACT_NAME: "staging-domain-backup-019fc2c0-77e0-7e01-85b3-37e1f29a1a31",
+      BACKUP_ARTIFACT_ID: "123456",
+      EXACT_RESTORE_PROVEN: "true",
+      RUNTIME_RECOVERY_PROVEN: "true",
     };
     const evidence = buildCleanupEvidence(preflight, {
       schema_version: 1,
       result: "committed",
       cleanup_run_id: applyValues.CLEANUP_RUN_ID,
-      cleanup_table_count: 90,
+      cleanup_table_count: 100,
       removed_rows: totalRows,
       remaining_operational_rows: 0,
       cleanup_audit_rows: 1,
@@ -77,8 +80,57 @@ describe("buildCleanupEvidence", () => {
     expect(evidence).toMatchObject({
       result: "passed",
       mutation: { remaining_operational_rows: 0, cleanup_audit_rows: 1 },
-      backup: { encrypted: true, decrypted_restore_verified: true, restore_network: "none" },
+      backup: {
+        artifact_id: "123456",
+        encrypted: true,
+        decrypted_restore_verified: true,
+        restore_network: "none",
+      },
+      exact_restore: {
+        data_hmac_exact: true,
+        identity_hmac_exact: true,
+        inventory_proven: true,
+        owner_acl_rls_exact: true,
+        role_contract_exact: true,
+        schema_definition_exact: true,
+      },
+      runtime_recovery: {
+        app_health_proven: true,
+        scheduler_health_proven: true,
+      },
     });
+    expect(buildCleanupEvidence(preflight, {
+      schema_version: 1,
+      result: "committed",
+      cleanup_run_id: applyValues.CLEANUP_RUN_ID,
+      cleanup_table_count: 100,
+      removed_rows: totalRows,
+      remaining_operational_rows: 0,
+      cleanup_audit_rows: 1,
+      preserved,
+    }, {
+      ...applyValues,
+      RUNTIME_RECOVERY_PROVEN: "false",
+    })).toMatchObject({
+      result: "committed",
+      runtime_recovery: {
+        app_health_proven: false,
+        scheduler_health_proven: false,
+      },
+    });
+    expect(() => buildCleanupEvidence(preflight, {
+      schema_version: 1,
+      result: "committed",
+      cleanup_run_id: applyValues.CLEANUP_RUN_ID,
+      cleanup_table_count: 100,
+      removed_rows: totalRows,
+      remaining_operational_rows: 0,
+      cleanup_audit_rows: 1,
+      preserved,
+    }, {
+      ...applyValues,
+      EXACT_RESTORE_PROVEN: "false",
+    })).toThrow("Exact bron-/restorebewijs ontbreekt");
   });
 
   it.each([

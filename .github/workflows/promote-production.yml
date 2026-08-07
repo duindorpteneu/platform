@@ -4,117 +4,563 @@ on:
   workflow_dispatch:
     inputs:
       staging_run_id:
-        description: Succesvolle Deploy staging-run met het te promoveren immutable artefact.
+        description: Succesvolle Deploy staging-run met het immutable artifact
+        required: true
+        type: string
+      core_run_id:
+        description: Groene Staging core acceptance-run voor hetzelfde artifact
+        required: true
+        type: string
+      phase_b_run_id:
+        description: Groene volledige Phase-B matrix-run voor hetzelfde artifact
+        required: true
+        type: string
+      mollie_run_id:
+        description: Groene Staging Mollie acceptance-run voor hetzelfde artifact
+        required: true
+        type: string
+      sendgrid_run_id:
+        description: Groene SendGrid provider-run inclusief inbox/eventbewijs voor hetzelfde artifact
+        required: true
+        type: string
+      restore_run_id:
+        description: Groene restore-drillrun voor hetzelfde artifact
+        required: true
+        type: string
+      rollback_run_id:
+        description: Groene applicatierollback-drillrun voor hetzelfde artifact
+        required: true
+        type: string
+      operations_run_id:
+        description: Groene scheduler/health-operationsrun voor hetzelfde artifact
         required: true
         type: string
       release_sha:
-        description: Exacte volledige main-SHA die op staging is geverifieerd.
+        description: Exacte volledige main-SHA die op staging is geverifieerd
         required: true
         type: string
       confirmation:
-        description: Typ PROMOTE-PRODUCTION om de beschermde productionapproval te openen.
+        description: Typ HUMAN-UAT-PASSED+PROMOTE-PRODUCTION na afgetekende UAT
         required: true
         type: string
 
 permissions:
-  actions: read
   contents: read
-
-concurrency:
-  group: deploy-duindorpteneu-production
-  cancel-in-progress: false
 
 jobs:
   validate-release:
-    name: Validate staged immutable release
+    name: Validate exact staged release and all acceptance evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
     outputs:
       release_sha: ${{ steps.release.outputs.release_sha }}
       staging_run_id: ${{ steps.release.outputs.staging_run_id }}
+      artifact_digest: ${{ steps.release.outputs.artifact_digest }}
     steps:
-      - name: Checkout main history
-        uses: actions/checkout@v4
+      - name: Checkout trusted promotion control plane from main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
+          ref: refs/heads/main
           fetch-depth: 0
           clean: true
           persist-credentials: false
 
-      - name: Verify explicit promotion target
-        id: release
+      - name: Require explicit main-only human handoff
         env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_SHA: ${{ inputs.release_sha }}
-          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
-          CONFIRMATION: ${{ inputs.confirmation }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          PROMOTION_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
-          [[ "$CONFIRMATION" == "PROMOTE-PRODUCTION" ]]
-          [[ "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN_ID}")"
-          [[ "$(jq -r .conclusion <<<"$run_json")" == "success" ]]
-          [[ "$(jq -r .head_sha <<<"$run_json")" == "$REQUESTED_SHA" ]]
-          [[ "$(jq -r .path <<<"$run_json")" == ".github/workflows/deploy.yml" ]]
-          git fetch origin main --no-tags
-          git merge-base --is-ancestor "$REQUESTED_SHA" origin/main
-          printf 'release_sha=%s\n' "$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
-          printf 'staging_run_id=%s\n' "$STAGING_RUN_ID" >> "$GITHUB_OUTPUT"
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "${RELEASE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          [[ "$(git rev-parse origin/main)" == "${RELEASE_SHA}" ]]
+          [[ "${PROMOTION_CONFIRMATION}" == "HUMAN-UAT-PASSED+PROMOTE-PRODUCTION" ]]
 
-  deploy-production:
-    name: Approve, deploy and verify production
+      - name: Install pinned Cosign verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Download all evidence only from the exact run IDs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+          CORE_ACCEPTANCE_RUN_ID: ${{ inputs.core_run_id }}
+          PHASE_B_ACCEPTANCE_RUN_ID: ${{ inputs.phase_b_run_id }}
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.mollie_run_id }}
+          SENDGRID_ACCEPTANCE_RUN_ID: ${{ inputs.sendgrid_run_id }}
+          RESTORE_ACCEPTANCE_RUN_ID: ${{ inputs.restore_run_id }}
+          ROLLBACK_ACCEPTANCE_RUN_ID: ${{ inputs.rollback_run_id }}
+          OPERATIONS_ACCEPTANCE_RUN_ID: ${{ inputs.operations_run_id }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/validate-run-ids.mjs
+          mkdir -p .release .staging-release .promotion-evidence/{deploy,core,phase-b,mollie,sendgrid,restore,rollback,operations}
+          deploy_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_DEPLOY_RUN_ID}" --jq '.run_attempt')"
+          core_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CORE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          phase_b_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE_B_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          mollie_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${MOLLIE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          sendgrid_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SENDGRID_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          restore_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RESTORE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          rollback_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ROLLBACK_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          operations_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${OPERATIONS_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          for attempt in "${deploy_attempt}" "${core_attempt}" "${phase_b_attempt}" \
+            "${mollie_attempt}" "${sendgrid_attempt}" "${restore_attempt}" \
+            "${rollback_attempt}" "${operations_attempt}"; do
+            [[ "${attempt}" =~ ^[1-9][0-9]*$ ]]
+          done
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "release-image-${RELEASE_SHA}" --dir .release
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-release-${RELEASE_SHA}" --dir .staging-release
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-result-deploy-${STAGING_DEPLOY_RUN_ID}-${deploy_attempt}" --dir .promotion-evidence/deploy
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-attestation-deploy-${STAGING_DEPLOY_RUN_ID}" --dir .promotion-evidence/deploy
+          gh run download "${CORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-core-${CORE_ACCEPTANCE_RUN_ID}-${core_attempt}" --dir .promotion-evidence/core
+          gh run download "${CORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-core-${CORE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/core
+          gh run download "${PHASE_B_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-phase-b-${PHASE_B_ACCEPTANCE_RUN_ID}-${phase_b_attempt}" --dir .promotion-evidence/phase-b
+          gh run download "${PHASE_B_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-phase-b-${PHASE_B_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/phase-b
+          gh run download "${MOLLIE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-mollie-${MOLLIE_ACCEPTANCE_RUN_ID}-${mollie_attempt}" --dir .promotion-evidence/mollie
+          gh run download "${MOLLIE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-mollie-${MOLLIE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/mollie
+          gh run download "${SENDGRID_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-provider-sendgrid-${SENDGRID_ACCEPTANCE_RUN_ID}-${sendgrid_attempt}" --dir .promotion-evidence/sendgrid
+          gh run download "${SENDGRID_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-provider-sendgrid-${SENDGRID_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/sendgrid
+          gh run download "${RESTORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-restore-${RESTORE_ACCEPTANCE_RUN_ID}-${restore_attempt}" --dir .promotion-evidence/restore
+          gh run download "${RESTORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-restore-${RESTORE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/restore
+          gh run download "${ROLLBACK_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-rollback-${ROLLBACK_ACCEPTANCE_RUN_ID}-${rollback_attempt}" --dir .promotion-evidence/rollback
+          gh run download "${ROLLBACK_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-rollback-${ROLLBACK_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/rollback
+          LEGACY_ADOPTION_RUN_ID="$(
+            node -e '
+              const fs = require("node:fs");
+              const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              const runId = value.legacy_adoption_run_id;
+              if (runId !== null
+                && (!Number.isSafeInteger(runId) || runId < 1)) process.exit(1);
+              process.stdout.write(runId === null ? "" : String(runId));
+            ' .promotion-evidence/rollback/staging-application-rollback.json
+          )"
+          printf 'LEGACY_ADOPTION_RUN_ID=%s\n' \
+            "${LEGACY_ADOPTION_RUN_ID}" >> "${GITHUB_ENV}"
+          if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then
+            legacy_adoption_attempt="$(
+              gh api \
+                "/repos/${GITHUB_REPOSITORY}/actions/runs/${LEGACY_ADOPTION_RUN_ID}" \
+                --jq '.run_attempt'
+            )"
+            [[ "${legacy_adoption_attempt}" =~ ^[1-9][0-9]*$ ]]
+            mkdir -p .legacy-adoption
+            gh run download "${LEGACY_ADOPTION_RUN_ID}" \
+              --name "legacy-production-adoption-${LEGACY_ADOPTION_RUN_ID}-${legacy_adoption_attempt}" \
+              --dir .legacy-adoption
+          fi
+          gh run download "${OPERATIONS_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-operations-${OPERATIONS_ACCEPTANCE_RUN_ID}-${operations_attempt}" --dir .promotion-evidence/operations
+          gh run download "${OPERATIONS_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-operations-${OPERATIONS_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/operations
+
+      - name: Verify run metadata, jobs, artifacts, attestations and live staging
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+          CORE_ACCEPTANCE_RUN_ID: ${{ inputs.core_run_id }}
+          PHASE_B_ACCEPTANCE_RUN_ID: ${{ inputs.phase_b_run_id }}
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.mollie_run_id }}
+          SENDGRID_ACCEPTANCE_RUN_ID: ${{ inputs.sendgrid_run_id }}
+          RESTORE_ACCEPTANCE_RUN_ID: ${{ inputs.restore_run_id }}
+          ROLLBACK_ACCEPTANCE_RUN_ID: ${{ inputs.rollback_run_id }}
+          OPERATIONS_ACCEPTANCE_RUN_ID: ${{ inputs.operations_run_id }}
+          PROMOTION_EVIDENCE_ROOT: ${{ github.workspace }}/.promotion-evidence
+          PROMOTION_EVIDENCE_MANIFEST_PATH: ${{ github.workspace }}/.promotion-evidence/promotion-evidence-manifest.json
+          LEGACY_ADOPTION_EVIDENCE_ROOT: ${{ github.workspace }}/.legacy-adoption
+          STAGING_MANIFEST_PATH: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
+          STAGING_BASE_URL: https://staging-duindorp.dgwebservices.nl
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then
+            cosign verify-blob .legacy-adoption/ADOPTION_SHA256SUMS \
+              --bundle .legacy-adoption/ADOPTION_SHA256SUMS.sigstore.json \
+              --certificate-identity \
+                "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/adopt-legacy-production.yml@refs/heads/main" \
+              --certificate-oidc-issuer \
+                "https://token.actions.githubusercontent.com" >/dev/null
+            (
+              cd .legacy-adoption
+              sha256sum --check ADOPTION_SHA256SUMS
+            )
+          fi
+          node scripts/deploy/verify-promotion-evidence.mjs
+          cosign verify-blob .release/SHA256SUMS \
+            --bundle .release/SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+          (
+            cd .release
+            sha256sum --check SHA256SUMS
+          )
+          node scripts/deploy/release-manifest.mjs compare \
+            .release/RELEASE_MANIFEST .staging-release/RELEASE_MANIFEST
+          read -r _ _ artifact_digest < <(
+            node scripts/deploy/release-manifest.mjs fields \
+              .staging-release/RELEASE_MANIFEST
+          )
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" "${artifact_digest}"
+          {
+            printf 'release_sha=%s\n' "${RELEASE_SHA}"
+            printf 'staging_run_id=%s\n' "${STAGING_DEPLOY_RUN_ID}"
+            printf 'artifact_digest=%s\n' "${artifact_digest}"
+          } >> "${GITHUB_OUTPUT}"
+
+  stage-production-rollback-target:
+    name: Capture candidate runtime for post-production rollback sync
     needs: validate-release
     runs-on:
       - self-hosted
       - linux
       - x64
       - duindorpteneu
-      - production
-    timeout-minutes: 45
-    environment:
-      name: production
-      url: https://duindorp.dgwebservices.nl
+      - staging
+      - deploy
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-duindorpteneu-staging
+      cancel-in-progress: false
+    environment: staging
     steps:
       - name: Checkout exact staged release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
           ref: ${{ needs.validate-release.outputs.release_sha }}
           fetch-depth: 0
           clean: true
           persist-credentials: false
 
+      - name: Capture run-bound candidate runtime and manifest
+        env:
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-release.outputs.artifact_digest }}
+        run: bash scripts/staging/production-rollback-target.sh capture
+
+  deploy-production:
+    name: Approve, reverify and deploy production
+    needs:
+      - validate-release
+      - stage-production-rollback-target
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - production
+      - deploy
+    timeout-minutes: 120
+    concurrency:
+      group: deploy-duindorpteneu-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://duindorp.dgwebservices.nl
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      id-token: write
+    steps:
+      - name: Checkout exact staged release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.validate-release.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Prove isolated production runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh production
+
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.1.0
         with:
           version: 11.5.2
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install locked deployment dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          git diff --exit-code -- .
 
-      - name: Download exact staged image
-        uses: actions/download-artifact@v4
+      - name: Install checksum-verified Supabase CLI
+        run: bash scripts/deploy/install-supabase-cli.sh
+
+      - name: Install pinned Cosign verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          name: release-image-${{ needs.validate-release.outputs.release_sha }}
-          path: .release
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.validate-release.outputs.staging_run_id }}
+          cosign-release: v3.0.6
 
-      - name: Download staging release manifest
-        uses: actions/download-artifact@v4
+      - name: Download exact release and every acceptance attestation again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+          CORE_ACCEPTANCE_RUN_ID: ${{ inputs.core_run_id }}
+          PHASE_B_ACCEPTANCE_RUN_ID: ${{ inputs.phase_b_run_id }}
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.mollie_run_id }}
+          SENDGRID_ACCEPTANCE_RUN_ID: ${{ inputs.sendgrid_run_id }}
+          RESTORE_ACCEPTANCE_RUN_ID: ${{ inputs.restore_run_id }}
+          ROLLBACK_ACCEPTANCE_RUN_ID: ${{ inputs.rollback_run_id }}
+          OPERATIONS_ACCEPTANCE_RUN_ID: ${{ inputs.operations_run_id }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/validate-run-ids.mjs
+          mkdir -p .release .staging-release .promotion-evidence/{deploy,core,phase-b,mollie,sendgrid,restore,rollback,operations}
+          deploy_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_DEPLOY_RUN_ID}" --jq '.run_attempt')"
+          core_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CORE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          phase_b_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE_B_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          mollie_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${MOLLIE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          sendgrid_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SENDGRID_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          restore_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RESTORE_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          rollback_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ROLLBACK_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          operations_attempt="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${OPERATIONS_ACCEPTANCE_RUN_ID}" --jq '.run_attempt')"
+          for attempt in "${deploy_attempt}" "${core_attempt}" "${phase_b_attempt}" \
+            "${mollie_attempt}" "${sendgrid_attempt}" "${restore_attempt}" \
+            "${rollback_attempt}" "${operations_attempt}"; do
+            [[ "${attempt}" =~ ^[1-9][0-9]*$ ]]
+          done
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "release-image-${RELEASE_SHA}" --dir .release
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-release-${RELEASE_SHA}" --dir .staging-release
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-result-deploy-${STAGING_DEPLOY_RUN_ID}-${deploy_attempt}" --dir .promotion-evidence/deploy
+          gh run download "${STAGING_DEPLOY_RUN_ID}" \
+            --name "staging-attestation-deploy-${STAGING_DEPLOY_RUN_ID}" --dir .promotion-evidence/deploy
+          gh run download "${CORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-core-${CORE_ACCEPTANCE_RUN_ID}-${core_attempt}" --dir .promotion-evidence/core
+          gh run download "${CORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-core-${CORE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/core
+          gh run download "${PHASE_B_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-phase-b-${PHASE_B_ACCEPTANCE_RUN_ID}-${phase_b_attempt}" --dir .promotion-evidence/phase-b
+          gh run download "${PHASE_B_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-phase-b-${PHASE_B_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/phase-b
+          gh run download "${MOLLIE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-mollie-${MOLLIE_ACCEPTANCE_RUN_ID}-${mollie_attempt}" --dir .promotion-evidence/mollie
+          gh run download "${MOLLIE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-mollie-${MOLLIE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/mollie
+          gh run download "${SENDGRID_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-provider-sendgrid-${SENDGRID_ACCEPTANCE_RUN_ID}-${sendgrid_attempt}" --dir .promotion-evidence/sendgrid
+          gh run download "${SENDGRID_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-provider-sendgrid-${SENDGRID_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/sendgrid
+          gh run download "${RESTORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-restore-${RESTORE_ACCEPTANCE_RUN_ID}-${restore_attempt}" --dir .promotion-evidence/restore
+          gh run download "${RESTORE_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-restore-${RESTORE_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/restore
+          gh run download "${ROLLBACK_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-rollback-${ROLLBACK_ACCEPTANCE_RUN_ID}-${rollback_attempt}" --dir .promotion-evidence/rollback
+          gh run download "${ROLLBACK_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-rollback-${ROLLBACK_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/rollback
+          LEGACY_ADOPTION_RUN_ID="$(
+            node -e '
+              const fs = require("node:fs");
+              const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              const runId = value.legacy_adoption_run_id;
+              if (runId !== null
+                && (!Number.isSafeInteger(runId) || runId < 1)) process.exit(1);
+              process.stdout.write(runId === null ? "" : String(runId));
+            ' .promotion-evidence/rollback/staging-application-rollback.json
+          )"
+          printf 'LEGACY_ADOPTION_RUN_ID=%s\n' \
+            "${LEGACY_ADOPTION_RUN_ID}" >> "${GITHUB_ENV}"
+          if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then
+            legacy_adoption_attempt="$(
+              gh api \
+                "/repos/${GITHUB_REPOSITORY}/actions/runs/${LEGACY_ADOPTION_RUN_ID}" \
+                --jq '.run_attempt'
+            )"
+            [[ "${legacy_adoption_attempt}" =~ ^[1-9][0-9]*$ ]]
+            mkdir -p .legacy-adoption
+            gh run download "${LEGACY_ADOPTION_RUN_ID}" \
+              --name "legacy-production-adoption-${LEGACY_ADOPTION_RUN_ID}-${legacy_adoption_attempt}" \
+              --dir .legacy-adoption
+          fi
+          gh run download "${OPERATIONS_ACCEPTANCE_RUN_ID}" \
+            --name "staging-result-operations-${OPERATIONS_ACCEPTANCE_RUN_ID}-${operations_attempt}" --dir .promotion-evidence/operations
+          gh run download "${OPERATIONS_ACCEPTANCE_RUN_ID}" \
+            --name "staging-attestation-operations-${OPERATIONS_ACCEPTANCE_RUN_ID}" --dir .promotion-evidence/operations
+
+      - name: Reverify all remote and local evidence after production approval
+        id: production-source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+          CORE_ACCEPTANCE_RUN_ID: ${{ inputs.core_run_id }}
+          PHASE_B_ACCEPTANCE_RUN_ID: ${{ inputs.phase_b_run_id }}
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.mollie_run_id }}
+          SENDGRID_ACCEPTANCE_RUN_ID: ${{ inputs.sendgrid_run_id }}
+          RESTORE_ACCEPTANCE_RUN_ID: ${{ inputs.restore_run_id }}
+          ROLLBACK_ACCEPTANCE_RUN_ID: ${{ inputs.rollback_run_id }}
+          OPERATIONS_ACCEPTANCE_RUN_ID: ${{ inputs.operations_run_id }}
+          PROMOTION_EVIDENCE_ROOT: ${{ github.workspace }}/.promotion-evidence
+          PROMOTION_EVIDENCE_MANIFEST_PATH: ${{ github.workspace }}/.promotion-evidence/promotion-evidence-manifest.json
+          LEGACY_ADOPTION_EVIDENCE_ROOT: ${{ github.workspace }}/.legacy-adoption
+          STAGING_MANIFEST_PATH: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
+          STAGING_BASE_URL: https://staging-duindorp.dgwebservices.nl
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then
+            cosign verify-blob .legacy-adoption/ADOPTION_SHA256SUMS \
+              --bundle .legacy-adoption/ADOPTION_SHA256SUMS.sigstore.json \
+              --certificate-identity \
+                "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/adopt-legacy-production.yml@refs/heads/main" \
+              --certificate-oidc-issuer \
+                "https://token.actions.githubusercontent.com" >/dev/null
+            (
+              cd .legacy-adoption
+              sha256sum --check ADOPTION_SHA256SUMS
+            )
+          fi
+          node scripts/deploy/verify-promotion-evidence.mjs
+          cosign verify-blob .release/SHA256SUMS \
+            --bundle .release/SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+          (
+            cd .release
+            sha256sum --check SHA256SUMS
+          )
+          node scripts/deploy/release-manifest.mjs compare \
+            .release/RELEASE_MANIFEST .staging-release/RELEASE_MANIFEST
+          read -r _ _ artifact_digest < <(
+            node scripts/deploy/release-manifest.mjs fields \
+              .staging-release/RELEASE_MANIFEST
+          )
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" "${artifact_digest}"
+          printf 'artifact_digest=%s\n' "${artifact_digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Bind rollback target to current production before mutation
+        id: rollback-target
+        env:
+          ROLLBACK_EVIDENCE_PATH: ${{ github.workspace }}/.promotion-evidence/rollback/staging-application-rollback.json
+          CANDIDATE_MANIFEST_PATH: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
+          PRODUCTION_MANIFEST_PATH: /srv/apps/duindorpteneu/production/RELEASE_MANIFEST
+        run: |
+          set -Eeuo pipefail
+          [[ -f "${PRODUCTION_MANIFEST_PATH}" ]]
+          node scripts/deploy/rollback-evidence.mjs \
+            "${ROLLBACK_EVIDENCE_PATH}" "${CANDIDATE_MANIFEST_PATH}" \
+            "${PRODUCTION_MANIFEST_PATH}"
+          node -e '
+            const fs = require("node:fs");
+            const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            process.stdout.write("source_release_sha=" + value.gitSha + "\n");
+            process.stdout.write(
+              "source_artifact_digest=" + value.artifactDigest + "\n",
+            );
+          ' "${PRODUCTION_MANIFEST_PATH}" >> "${GITHUB_OUTPUT}"
+          node -e '
+            const fs = require("node:fs");
+            const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            process.stdout.write(
+              "legacy_adoption_run_id="
+                + (value.legacy_adoption_run_id ?? "") + "\n",
+            );
+            process.stdout.write(
+              "legacy_adoption_evidence_sha256="
+                + (value.legacy_adoption_evidence_sha256 ?? "") + "\n",
+            );
+          ' "${ROLLBACK_EVIDENCE_PATH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create, encrypt and isolated-restore the production recovery point
+        env:
+          TARGET_ENVIRONMENT: production
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          SOURCE_RELEASE_SHA: ${{ steps.rollback-target.outputs.source_release_sha }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.rollback-target.outputs.source_artifact_digest }}
+          RELEASE_ARTIFACT_DIGEST: ${{ steps.production-source.outputs.artifact_digest }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PRODUCTION_BACKUP_PASSPHRASE: ${{ secrets.PRODUCTION_BACKUP_PASSPHRASE }}
+          POSTGRES_IMAGE: public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453
+        run: bash scripts/staging/restore-drill.sh
+
+      - name: Upload encrypted production recovery point before migration
+        id: production-backup-upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: staging-release-${{ needs.validate-release.outputs.release_sha }}
-          path: .staging-release
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.validate-release.outputs.staging_run_id }}
+          name: production-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}.dump.gpg
+            ${{ runner.temp }}/duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}-evidence.json
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Verify staged artefact and deploy production
+      - name: Bind durable production backup identity to this promotion
+        id: production-backup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BACKUP_ARTIFACT_ID: ${{ steps.production-backup-upload.outputs.artifact-id }}
+          BACKUP_FILE_NAME: duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}.dump.gpg
+          BACKUP_EVIDENCE_FILE_NAME: duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}-evidence.json
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          SOURCE_RELEASE_SHA: ${{ steps.rollback-target.outputs.source_release_sha }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.rollback-target.outputs.source_artifact_digest }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -Eeuo pipefail
+          command -v gh >/dev/null
+          command -v unzip >/dev/null
+          [[ "${BACKUP_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]
+          download_directory="$(mktemp -d "${RUNNER_TEMP}/production-backup-download.XXXXXX")"
+          trap 'rm -rf -- "${download_directory}"' EXIT INT TERM HUP
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKUP_ARTIFACT_ID}/zip" \
+            > "${download_directory}/artifact.zip"
+          unzip -q "${download_directory}/artifact.zip" \
+            -d "${download_directory}/artifact"
+          [[ -f "${download_directory}/artifact/${BACKUP_FILE_NAME}" ]]
+          [[ -f "${download_directory}/artifact/${BACKUP_EVIDENCE_FILE_NAME}" ]]
+          backup_checksum="$(
+            node scripts/deploy/production-backup-evidence.mjs \
+              "${download_directory}/artifact/${BACKUP_EVIDENCE_FILE_NAME}"
+          )"
+          [[ "$(
+            sha256sum "${download_directory}/artifact/${BACKUP_FILE_NAME}" \
+              | cut -d' ' -f1
+          )" == "${backup_checksum}" ]]
+          printf 'artifact_id=%s\n' "${BACKUP_ARTIFACT_ID}" >> "${GITHUB_OUTPUT}"
+          printf 'encrypted_sha256=%s\n' "${backup_checksum}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify staged artifact and deploy production
         env:
           RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
           DEPLOYMENT_MODE: current
@@ -131,6 +577,7 @@ jobs:
           QR_TOKEN_PEPPER_VERSION: ${{ vars.QR_TOKEN_PEPPER_VERSION }}
           QR_TOKEN_PREVIOUS_PEPPER_VERSION: ${{ vars.QR_TOKEN_PREVIOUS_PEPPER_VERSION }}
           SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
+          SENDGRID_API_KEY_FINGERPRINT: ${{ vars.SENDGRID_API_KEY_FINGERPRINT }}
           SENDGRID_FROM_NAME: ${{ vars.SENDGRID_FROM_NAME }}
           SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
           SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
@@ -147,8 +594,146 @@ jobs:
           OPERATIONS_HEARTBEAT_URL: ${{ secrets.OPERATIONS_HEARTBEAT_URL }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          LEGACY_ADOPTION_RUN_ID: ${{ steps.rollback-target.outputs.legacy_adoption_run_id }}
+          LEGACY_CAPTURE_EVIDENCE_PATH: ${{ github.workspace }}/.legacy-adoption/legacy-capture-evidence.json
+          LEGACY_ADOPTION_RESULT_PATH: ${{ github.workspace }}/.legacy-adoption/legacy-adoption-result.json
           RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
           RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
           STAGING_RELEASE_MANIFEST: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
           GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/deploy-vps.sh production
+
+      - name: Verify public production and create durable deployment evidence
+        env:
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ steps.production-source.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.validate-release.outputs.staging_run_id }}
+          BACKUP_ARTIFACT_ID: ${{ steps.production-backup.outputs.artifact_id }}
+          BACKUP_ENCRYPTED_SHA256: ${{ steps.production-backup.outputs.encrypted_sha256 }}
+          CORE_ACCEPTANCE_RUN_ID: ${{ inputs.core_run_id }}
+          PHASE_B_ACCEPTANCE_RUN_ID: ${{ inputs.phase_b_run_id }}
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.mollie_run_id }}
+          SENDGRID_ACCEPTANCE_RUN_ID: ${{ inputs.sendgrid_run_id }}
+          RESTORE_ACCEPTANCE_RUN_ID: ${{ inputs.restore_run_id }}
+          ROLLBACK_ACCEPTANCE_RUN_ID: ${{ inputs.rollback_run_id }}
+          OPERATIONS_ACCEPTANCE_RUN_ID: ${{ inputs.operations_run_id }}
+          ROLLBACK_TARGET_RELEASE_SHA: ${{ steps.rollback-target.outputs.source_release_sha }}
+          ROLLBACK_TARGET_ARTIFACT_DIGEST: ${{ steps.rollback-target.outputs.source_artifact_digest }}
+          LEGACY_ADOPTION_RUN_ID: ${{ steps.rollback-target.outputs.legacy_adoption_run_id }}
+          LEGACY_ADOPTION_EVIDENCE_SHA256: ${{ steps.rollback-target.outputs.legacy_adoption_evidence_sha256 }}
+          UAT_ACTOR: ${{ github.actor }}
+          UAT_CONFIRMATION: ${{ inputs.confirmation }}
+          PRODUCTION_BASE_URL: https://duindorp.dgwebservices.nl
+          ATTESTATION_PATH: ${{ runner.temp }}/production-attestation.json
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/release-manifest.mjs compare \
+            .release/RELEASE_MANIFEST \
+            /srv/apps/duindorpteneu/production/RELEASE_MANIFEST
+          node scripts/deploy/check-http.mjs \
+            "${PRODUCTION_BASE_URL}" production "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+          node scripts/deploy/production-attestation.mjs \
+            "${ATTESTATION_PATH}" "${RELEASE_SHA}" "${ARTIFACT_DIGEST}" \
+            "${STAGING_DEPLOY_RUN_ID}" "${BACKUP_ARTIFACT_ID}" \
+            "${BACKUP_ENCRYPTED_SHA256}" \
+            "${GITHUB_WORKSPACE}/.promotion-evidence/promotion-evidence-manifest.json"
+          cosign sign-blob --yes \
+            --bundle "${RUNNER_TEMP}/production-attestation.sigstore.json" \
+            "${ATTESTATION_PATH}" >/dev/null
+          cosign sign-blob --yes \
+            --bundle "${RUNNER_TEMP}/promotion-evidence-manifest.sigstore.json" \
+            "${GITHUB_WORKSPACE}/.promotion-evidence/promotion-evidence-manifest.json" \
+            >/dev/null
+
+      - name: Upload immutable production deployment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-release-${{ needs.validate-release.outputs.release_sha }}-${{ github.run_id }}
+          path: |
+            /srv/apps/duindorpteneu/production/RELEASE_MANIFEST
+            ${{ runner.temp }}/production-attestation.json
+            ${{ runner.temp }}/production-attestation.sigstore.json
+            ${{ github.workspace }}/.promotion-evidence/promotion-evidence-manifest.json
+            ${{ runner.temp }}/promotion-evidence-manifest.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove production backup material from the runner
+        if: always()
+        run: |
+          set +e
+          rm -f -- \
+            "${RUNNER_TEMP}/duindorp-restore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.dump.gpg" \
+            "${RUNNER_TEMP}/duindorp-restore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-evidence.json" \
+            "${RUNNER_TEMP}/production-attestation.json" \
+            "${RUNNER_TEMP}/production-attestation.sigstore.json" \
+            "${RUNNER_TEMP}/promotion-evidence-manifest.sigstore.json"
+
+  sync-production-rollback-target:
+    name: Commit deployed production as durable staging rollback target
+    needs:
+      - validate-release
+      - stage-production-rollback-target
+      - deploy-production
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+      - deploy
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-duindorpteneu-staging
+      cancel-in-progress: false
+    environment: staging
+    steps:
+      - name: Checkout exact production release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.validate-release.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Atomically commit the durable production rollback target
+        env:
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-release.outputs.artifact_digest }}
+        run: bash scripts/staging/production-rollback-target.sh commit
+
+  cleanup-pending-production-rollback-target:
+    name: Remove run-bound pending rollback material
+    if: ${{ always() && needs.stage-production-rollback-target.result == 'success' }}
+    needs:
+      - validate-release
+      - stage-production-rollback-target
+      - deploy-production
+      - sync-production-rollback-target
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+      - deploy
+    timeout-minutes: 5
+    concurrency:
+      group: deploy-duindorpteneu-staging
+      cancel-in-progress: false
+    environment: staging
+    steps:
+      - name: Checkout exact promotion control
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.validate-release.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Remove only this run's pending files
+        env:
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.validate-release.outputs.artifact_digest }}
+        run: bash scripts/staging/production-rollback-target.sh cleanup

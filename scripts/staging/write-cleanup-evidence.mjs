@@ -18,6 +18,8 @@ const PRESERVED_KEYS = [
   "staff_profiles",
   "supplier_principals",
 ];
+const CLEANUP_TABLE_COUNT = 100;
+const PRESERVED_TABLE_COUNT = 28;
 
 function required(values, name) {
   const value = values[name]?.trim();
@@ -45,7 +47,11 @@ function exactIntegerObject(value, expectedKeys, name) {
 function rowCounts(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("row_counts is ongeldig");
   const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
-  if (entries.length !== 90) throw new Error("row_counts bevat niet exact 90 cleanup-tabellen");
+  if (entries.length !== CLEANUP_TABLE_COUNT) {
+    throw new Error(
+      `row_counts bevat niet exact ${CLEANUP_TABLE_COUNT} cleanup-tabellen`,
+    );
+  }
   for (const [key, count] of entries) {
     if (!/^(app|private)\.[a-z][a-z0-9_]*$/u.test(key)) throw new Error("row_counts bevat een onveilige tabelsleutel");
     integer(count, `row_counts.${key}`);
@@ -75,8 +81,12 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
   if (!/^\d{14}$/u.test(preflight.latest_migration_version ?? "")) {
     throw new Error("Cleanup-preflight mist een geldige migratieversie");
   }
-  if (integer(preflight.cleanup_table_count, "cleanup_table_count") !== 90
-    || integer(preflight.preserved_table_count, "preserved_table_count") !== 27) {
+  if (
+    integer(preflight.cleanup_table_count, "cleanup_table_count")
+      !== CLEANUP_TABLE_COUNT
+    || integer(preflight.preserved_table_count, "preserved_table_count")
+      !== PRESERVED_TABLE_COUNT
+  ) {
     throw new Error("Cleanup-tablecontract is onverwacht");
   }
 
@@ -89,16 +99,16 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
   }
 
   const evidence = {
-    schema_version: 1,
-    result: mode === "apply" ? "passed" : "dry-run",
+    schema_version: 2,
+    result: mode === "apply" ? "committed" : "dry-run",
     target: "duindorpteneu-staging-domain-cleanup",
     release_sha: releaseSha,
     source_project_fingerprint: createHash("sha256").update(projectRef).digest("hex").slice(0, 16),
     started_at: timestamp(values.STARTED_AT, "STARTED_AT"),
     completed_at: timestamp(values.COMPLETED_AT, "COMPLETED_AT"),
     preflight: {
-      cleanup_table_count: 90,
-      preserved_table_count: 27,
+      cleanup_table_count: CLEANUP_TABLE_COUNT,
+      preserved_table_count: PRESERVED_TABLE_COUNT,
       latest_migration_version: preflight.latest_migration_version,
       total_rows: totalRows,
       non_empty_tables: integer(preflight.non_empty_tables, "non_empty_tables"),
@@ -108,6 +118,8 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
     },
     mutation: null,
     backup: null,
+    exact_restore: null,
+    runtime_recovery: null,
   };
 
   if (mode === "dry-run") {
@@ -125,7 +137,9 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
   if (!/^[a-f0-9-]{36}$/u.test(runId) || postcondition.cleanup_run_id !== runId) {
     throw new Error("Cleanup-runidentiteit komt niet overeen");
   }
-  if (integer(postcondition.cleanup_table_count, "post.cleanup_table_count") !== 90
+  if (
+    integer(postcondition.cleanup_table_count, "post.cleanup_table_count")
+      !== CLEANUP_TABLE_COUNT
     || integer(postcondition.removed_rows, "post.removed_rows") !== totalRows
     || integer(postcondition.remaining_operational_rows, "post.remaining_operational_rows") !== 0
     || integer(postcondition.cleanup_audit_rows, "post.cleanup_audit_rows") !== 1) {
@@ -138,8 +152,10 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
 
   const backupChecksum = required(values, "BACKUP_CHECKSUM");
   const backupArtifact = required(values, "BACKUP_ARTIFACT_NAME");
+  const backupArtifactId = required(values, "BACKUP_ARTIFACT_ID");
   if (!/^[a-f0-9]{64}$/u.test(backupChecksum)
-    || !/^staging-domain-backup-[a-f0-9-]+$/u.test(backupArtifact)) {
+    || !/^staging-domain-backup-[a-f0-9-]+$/u.test(backupArtifact)
+    || !/^[1-9][0-9]*$/u.test(backupArtifactId)) {
     throw new Error("Backupbewijs is ongeldig");
   }
 
@@ -152,11 +168,36 @@ export function buildCleanupEvidence(preflight, postcondition, values) {
   };
   evidence.backup = {
     artifact_name: backupArtifact,
+    artifact_id: backupArtifactId,
     encrypted_sha256: backupChecksum,
     encrypted: true,
     decrypted_restore_verified: true,
     restore_network: "none",
     retention_days: 30,
+  };
+  const runtimeRecoveryProven =
+    required(values, "RUNTIME_RECOVERY_PROVEN");
+  const exactRestoreProven =
+    required(values, "EXACT_RESTORE_PROVEN");
+  if (!["true", "false"].includes(runtimeRecoveryProven)) {
+    throw new Error("Runtimeherstelbewijs is ongeldig");
+  }
+  if (exactRestoreProven !== "true") {
+    throw new Error("Exact bron-/restorebewijs ontbreekt");
+  }
+  const recovered = runtimeRecoveryProven === "true";
+  evidence.result = recovered ? "passed" : "committed";
+  evidence.exact_restore = {
+    data_hmac_exact: true,
+    identity_hmac_exact: true,
+    inventory_proven: true,
+    owner_acl_rls_exact: true,
+    role_contract_exact: true,
+    schema_definition_exact: true,
+  };
+  evidence.runtime_recovery = {
+    app_health_proven: recovered,
+    scheduler_health_proven: recovered,
   };
   return evidence;
 }

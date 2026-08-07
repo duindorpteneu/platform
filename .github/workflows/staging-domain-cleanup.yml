@@ -7,6 +7,10 @@ on:
         description: Exacte 40-teken SHA die momenteel op staging staat
         required: true
         type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run die exact dit artifact heeft geplaatst
+        required: true
+        type: string
       mode:
         description: Dry-run wijzigt niets; apply vereist encrypted backup en wist alleen de vaste allowlist
         required: true
@@ -33,33 +37,56 @@ env:
   CLEANUP_MODE: ${{ inputs.mode }}
   STAGING_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
   SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-  SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-  RELEASE_SHA: ${{ inputs.release_sha }}
   CONFIRM_TARGET: ${{ inputs.confirmation }}
   POSTGRES_IMAGE: public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453
 
 jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
   dry-run:
     if: inputs.mode == 'dry-run'
     name: Read-only staging cleanup preflight
-    runs-on: ubuntu-latest
+    needs: preflight
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+      - deploy
     timeout-minutes: 15
     environment: staging
+    env:
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - name: Checkout exact live release
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
-          ref: ${{ inputs.release_sha }}
+          ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
           clean: true
           persist-credentials: false
+
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
 
       - name: Validate exact staging target, main ancestry and live release
         run: |
           set -Eeuo pipefail
           node scripts/staging/validate-target.mjs
-          git merge-base --is-ancestor "${RELEASE_SHA}" origin/main
-          node scripts/deploy/check-http.mjs "${STAGING_APP_URL}" staging "${RELEASE_SHA}"
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_APP_URL}" staging "${RELEASE_SHA}" \
+            "${{ needs.preflight.outputs.artifact_digest }}"
 
       - name: Produce read-only aggregate cleanup evidence
         env:
@@ -67,12 +94,12 @@ jobs:
         run: bash scripts/staging/cleanup-operational-data.sh
 
       - name: Upload redacted dry-run evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: staging-domain-cleanup-dry-run-${{ inputs.release_sha }}-${{ github.run_id }}
+          name: staging-domain-cleanup-dry-run-${{ needs.preflight.outputs.release_sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/staging-domain-cleanup-dry-run.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Remove temporary evidence
         if: always()
@@ -81,34 +108,46 @@ jobs:
   apply:
     if: inputs.mode == 'apply'
     name: Backup, restore-verify and atomically clean staging
+    needs: preflight
     runs-on:
       - self-hosted
       - linux
       - x64
       - duindorpteneu
       - staging
+      - deploy
     timeout-minutes: 90
     environment: staging
+    permissions:
+      actions: read
+      contents: read
     env:
-      STAGING_CLEANUP_BACKUP_PASSPHRASE: ${{ secrets.STAGING_CLEANUP_BACKUP_PASSPHRASE }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
       MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
       EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
       DYNAMIC_IMPORT_ENABLED: ${{ vars.DYNAMIC_IMPORT_ENABLED || 'false' }}
     steps:
       - name: Checkout exact live release
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
-          ref: ${{ inputs.release_sha }}
+          ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
           clean: true
           persist-credentials: false
 
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
       - name: Validate exact staging target, main ancestry and live release
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -Eeuo pipefail
           node scripts/staging/validate-target.mjs
-          git merge-base --is-ancestor "${RELEASE_SHA}" origin/main
-          node scripts/deploy/check-http.mjs "${STAGING_APP_URL}" staging "${RELEASE_SHA}"
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_APP_URL}" staging "${RELEASE_SHA}" \
+            "${{ needs.preflight.outputs.artifact_digest }}"
 
       - name: Create cleanup run identity
         id: cleanup
@@ -118,30 +157,82 @@ jobs:
           printf 'run_id=%s\n' "${cleanup_run_id}" >> "${GITHUB_OUTPUT}"
           printf 'artifact_name=staging-domain-backup-%s\n' "${cleanup_run_id}" >> "${GITHUB_OUTPUT}"
 
-      - name: Pause only staging, prove encrypted restore and clean the fixed allowlist
+      - name: Prepare and restore-verify encrypted backup without deleting data
         env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_CLEANUP_BACKUP_PASSPHRASE: ${{ secrets.STAGING_CLEANUP_BACKUP_PASSPHRASE }}
+          CLEANUP_PHASE: prepare
           CLEANUP_RUN_ID: ${{ steps.cleanup.outputs.run_id }}
           BACKUP_ARTIFACT_NAME: ${{ steps.cleanup.outputs.artifact_name }}
           BACKUP_ARTIFACT_PATH: ${{ runner.temp }}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
-          CLEANUP_EVIDENCE_PATH: ${{ runner.temp }}/staging-domain-cleanup-apply.json
+          CLEANUP_PREPARED_STATE_PATH: ${{ runner.temp }}/${{ steps.cleanup.outputs.artifact_name }}.prepared.json
+          CLEANUP_EVIDENCE_PATH: ${{ runner.temp }}/staging-domain-cleanup-prepare-unused.json
         run: bash scripts/staging/cleanup-operational-data.sh
 
       - name: Upload encrypted recoverable pre-wipe backup
-        if: always()
-        uses: actions/upload-artifact@v4
+        id: backup-upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.cleanup.outputs.artifact_name }}
-          path: ${{ runner.temp }}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
-          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
+            ${{ runner.temp }}/${{ steps.cleanup.outputs.artifact_name }}.prepared.json
+          if-no-files-found: error
           retention-days: 30
+
+      - name: Re-download and byte-verify the durable backup artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BACKUP_ARTIFACT_ID: ${{ steps.backup-upload.outputs.artifact-id }}
+          BACKUP_ARTIFACT_NAME: ${{ steps.cleanup.outputs.artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          command -v gh >/dev/null
+          command -v unzip >/dev/null
+          [[ "${BACKUP_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]
+          download_directory="${RUNNER_TEMP}/staging-cleanup-redownload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "${download_directory}"
+          chmod 700 "${download_directory}"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKUP_ARTIFACT_ID}/zip" \
+            > "${download_directory}/artifact.zip"
+          unzip -q "${download_directory}/artifact.zip" \
+            -d "${download_directory}/artifact"
+          downloaded_backup="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.dump.gpg"
+          downloaded_state="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.prepared.json"
+          [[ -f "${downloaded_backup}" && ! -L "${downloaded_backup}" ]]
+          [[ -f "${downloaded_state}" && ! -L "${downloaded_state}" ]]
+          [[ "$(
+            sha256sum "${downloaded_backup}" | cut -d' ' -f1
+          )" == "$(
+            sha256sum "${RUNNER_TEMP}/${BACKUP_ARTIFACT_NAME}.dump.gpg" \
+              | cut -d' ' -f1
+          )" ]]
+          cmp --silent \
+            "${downloaded_state}" \
+            "${RUNNER_TEMP}/${BACKUP_ARTIFACT_NAME}.prepared.json"
+
+      - name: Recheck backup-bound state and atomically clean the fixed allowlist
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CLEANUP_PHASE: apply
+          CLEANUP_RUN_ID: ${{ steps.cleanup.outputs.run_id }}
+          BACKUP_ARTIFACT_NAME: ${{ steps.cleanup.outputs.artifact_name }}
+          BACKUP_ARTIFACT_ID: ${{ steps.backup-upload.outputs.artifact-id }}
+          BACKUP_ARTIFACT_PATH: ${{ runner.temp }}/staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}/artifact/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
+          CLEANUP_PREPARED_STATE_PATH: ${{ runner.temp }}/staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}/artifact/${{ steps.cleanup.outputs.artifact_name }}.prepared.json
+          CLEANUP_EVIDENCE_PATH: ${{ runner.temp }}/staging-domain-cleanup-apply.json
+        run: bash scripts/staging/cleanup-operational-data.sh
 
       - name: Upload redacted cleanup evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: staging-domain-cleanup-evidence-${{ inputs.release_sha }}-${{ github.run_id }}
+          name: staging-domain-cleanup-evidence-${{ needs.preflight.outputs.release_sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/staging-domain-cleanup-apply.json
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Always remove encrypted and redacted runner files
@@ -150,4 +241,11 @@ jobs:
           set +e
           rm -f -- \
             "${RUNNER_TEMP}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg" \
+            "${RUNNER_TEMP}/${{ steps.cleanup.outputs.artifact_name }}.prepared.json" \
+            "${RUNNER_TEMP}/staging-domain-cleanup-prepare-unused.json" \
             "${RUNNER_TEMP}/staging-domain-cleanup-apply.json"
+          rm -rf -- \
+            "${RUNNER_TEMP}/staging-cleanup-redownload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ ! -e "${RUNNER_TEMP}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg" ]]
+          [[ ! -e "${RUNNER_TEMP}/${{ steps.cleanup.outputs.artifact_name }}.prepared.json" ]]
+          [[ ! -e "${RUNNER_TEMP}/staging-cleanup-redownload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]

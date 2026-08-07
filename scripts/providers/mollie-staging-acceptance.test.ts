@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 // @ts-expect-error The production acceptance entrypoint intentionally uses plain Node.js ESM.
 import * as acceptance from "./mollie-staging-acceptance.mjs";
@@ -6,9 +7,14 @@ const {
   ACCEPTANCE_CONFIRMATION,
   POSTGRES_IMAGE,
   STAGING_SUPABASE_PROJECT_REF,
+  assertMismatchSnapshot,
+  assertPaidSnapshot,
+  assertReadinessSnapshot,
+  assertRefundSnapshot,
   choosePaidOnHostedTestPage,
   chooseRefundedOnHostedTestPage,
   createFixtureIdentity,
+  isTerminalFullRefund,
   postConcurrentReplays,
   providerRequest,
   runFixtureSql,
@@ -93,6 +99,17 @@ describe("Mollie staging acceptance guards", () => {
     expect(createFixtureIdentity("123456789-2")).not.toEqual(first);
     expect(first.fixtureEmail).toMatch(/@example\.invalid$/);
     expect(first.paidOrderId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first.readinessArticleId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(new Set([
+      first.paidMemberId,
+      first.mismatchMemberId,
+      first.paidOrderId,
+      first.mismatchOrderId,
+      first.readinessArticleId,
+      first.readinessVariantId,
+      first.readinessOrderLineId,
+      first.readinessQrRequestId,
+    ])).toHaveProperty("size", 8);
   });
 
   it("runs fixture SQL in a pinned least-privilege container without a database URL in arguments", () => {
@@ -121,6 +138,37 @@ describe("Mollie staging acceptance guards", () => {
     expect(options.stdio).toEqual(["pipe", "pipe", "ignore"]);
   });
 
+  it("runs the readiness proof through the isolated SQL harness", () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const spawnImpl = vi.fn().mockReturnValue({
+      status: 0,
+      stdout: '{"transactionRolledBack":true}\n',
+    });
+
+    expect(runFixtureSql(
+      { dbUrl: validEnv.SUPABASE_DB_URL },
+      "readiness",
+      identity,
+      { spawnImpl },
+    )).toEqual({ transactionRolledBack: true });
+    const [, args, options] = spawnImpl.mock.calls[0];
+    expect(args).toContain("--env");
+    expect(args).toContain("FIXTURE_READINESS_ARTICLE_ID");
+    expect(options.env.FIXTURE_READINESS_ORDER_LINE_ID).toBe(identity.readinessOrderLineId);
+  });
+
+  it("keeps the readiness inventory, allocation and QR proof rollback-only", () => {
+    const sql = readFileSync(
+      new URL("./sql/mollie-fixture-readiness.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("private.allocate_inventory_fifo_variant(");
+    expect(sql).toContain("app.register_order_qr_locator(");
+    expect(sql).toContain("'transactionRolledBack', true");
+    expect(sql.trim().endsWith("rollback;")).toBe(true);
+    expect(sql).not.toMatch(/\bcommit\s*;/i);
+  });
+
   it("allows state reads only for an exact fixture order/member pair", () => {
     const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
     expect(() => runFixtureSql(
@@ -144,7 +192,126 @@ describe("Mollie staging acceptance guards", () => {
   });
 });
 
+describe("Mollie allocation-gated QR snapshots", () => {
+  const common = {
+    paymentEmailJobs: 1,
+    paidEvents: 1,
+    paidAudits: 1,
+    refundEvents: 0,
+    refundAudits: 0,
+    mismatchEvents: 0,
+    manualReviewAudits: 0,
+  };
+
+  it("proves paid without a hard allocation has no QR", () => {
+    expect(() => assertPaidSnapshot({
+      ...common,
+      paymentStatus: "paid",
+      reconciliationIssue: null,
+      paidPayments: 1,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).not.toThrow();
+
+    expect(() => assertPaidSnapshot({
+      ...common,
+      paymentStatus: "paid",
+      reconciliationIssue: null,
+      paidPayments: 1,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).toThrow();
+  });
+
+  it("accepts QR readiness only after one concrete hard allocation", () => {
+    expect(() => assertReadinessSnapshot({
+      paymentStatus: "paid",
+      allocatedLines: 1,
+      allocatedQuantity: 1,
+      hardAllocations: 1,
+      readyLines: 1,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: true,
+      qrUsable: true,
+      transactionRolledBack: true,
+    })).not.toThrow();
+    expect(() => assertReadinessSnapshot({
+      paymentStatus: "paid",
+      allocatedLines: 0,
+      allocatedQuantity: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+      transactionRolledBack: true,
+    })).toThrow();
+  });
+
+  it("keeps mismatch and refund snapshots free of active QR access", () => {
+    expect(() => assertMismatchSnapshot({
+      ...common,
+      paymentStatus: "pending",
+      paidPayments: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      paymentEmailJobs: 0,
+      reconciliationIssue: "MISMATCH_METADATA",
+      mismatchEvents: 1,
+      manualReviewAudits: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).not.toThrow();
+    expect(() => assertRefundSnapshot({
+      ...common,
+      paymentStatus: "refunded",
+      paidPayments: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      reconciliationIssue: null,
+      qrBusinessEligible: false,
+      qrUsable: false,
+      refundEvents: 1,
+      refundAudits: 1,
+    })).not.toThrow();
+  });
+});
+
 describe("Mollie staging acceptance provider and webhook behavior", () => {
+  it("accepts only a terminal full refund as release evidence", () => {
+    const expectedAmount = "1.00";
+    expect(isTerminalFullRefund({
+      status: "pending",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(false);
+    expect(isTerminalFullRefund({
+      status: "processing",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(false);
+    expect(isTerminalFullRefund({
+      status: "refunded",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(true);
+    expect(isTerminalFullRefund({
+      status: "refunded",
+      amount: { currency: "EUR", value: "0.50" },
+    }, expectedAmount)).toBe(false);
+  });
+
   it("returns a redacted provider error without reflecting credentials or response bodies", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response("secret provider detail", { status: 500 }));
     await expect(providerRequest(
