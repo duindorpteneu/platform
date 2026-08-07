@@ -516,8 +516,8 @@ if [[ "$dynamic_writer_status" -ne 0 || "$dynamic_campaign_status" -eq 0 ]]; the
   sed -n '1,120p' "$dynamic_campaign_log" >&2
   exit 1
 fi
-if ! rg -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$dynamic_campaign_log" \
-  || rg -qi 'deadlock detected|40P01' "$dynamic_campaign_log"; then
+if ! grep -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$dynamic_campaign_log" \
+  || grep -Eqi 'deadlock detected|40P01' "$dynamic_campaign_log"; then
   echo "De uitgifte-lockrace eindigde niet als veilige serialisatieretry." >&2
   sed -n '1,120p' "$dynamic_campaign_log" >&2
   exit 1
@@ -582,8 +582,8 @@ if [[ "$allocator_writer_status" -ne 0 || "$allocator_campaign_status" -eq 0 ]];
   sed -n '1,120p' "$allocator_campaign_log" >&2
   exit 1
 fi
-if ! rg -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$allocator_campaign_log" \
-  || rg -qi 'deadlock detected|40P01' "$allocator_campaign_log"; then
+if ! grep -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$allocator_campaign_log" \
+  || grep -Eqi 'deadlock detected|40P01' "$allocator_campaign_log"; then
   echo "De allocator-lockrace eindigde niet als veilige serialisatieretry." >&2
   sed -n '1,120p' "$allocator_campaign_log" >&2
   exit 1
@@ -638,8 +638,8 @@ if [[ "$payment_writer_status" -ne 0 || "$payment_campaign_status" -eq 0 ]]; the
   sed -n '1,120p' "$payment_campaign_log" >&2
   exit 1
 fi
-if ! rg -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$payment_campaign_log" \
-  || rg -qi 'deadlock detected|40P01' "$payment_campaign_log"; then
+if ! grep -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$payment_campaign_log" \
+  || grep -Eqi 'deadlock detected|40P01' "$payment_campaign_log"; then
   echo "De betaal-lockrace eindigde niet als veilige serialisatieretry." >&2
   sed -n '1,120p' "$payment_campaign_log" >&2
   exit 1
@@ -711,12 +711,12 @@ if [[ "$first_status" -ne 0 || "$second_status" -eq 0 ]]; then
   exit 1
 fi
 
-if ! rg -q '"reused": false' "$first_log"; then
+if ! grep -q '"reused": false' "$first_log"; then
   echo "De eerste confirm leverde geen nieuwe run op." >&2
   exit 1
 fi
-if ! rg -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$second_log" \
-  || rg -qi 'deadlock detected|40P01' "$second_log"; then
+if ! grep -q 'MAIL_V2_CAMPAIGN_STATE_BUSY' "$second_log" \
+  || grep -Eqi 'deadlock detected|40P01' "$second_log"; then
   echo "De gelijktijdige tweede preflight leverde geen veilige retry op." >&2
   exit 1
 fi
@@ -742,7 +742,7 @@ select app.confirm_mail_v2_campaign_v1(
 commit;
 SQL
 if [[ "$second_retry_status" -eq 0 ]] \
-  || ! rg -q 'MAIL_V2_CAMPAIGN_ELIGIBILITY_CHANGED' "$second_retry_log"; then
+  || ! grep -q 'MAIL_V2_CAMPAIGN_ELIGIBILITY_CHANGED' "$second_retry_log"; then
   echo "De retry van de tweede preflight zag de gewijzigde episode niet." >&2
   sed -n '1,120p' "$second_retry_log" >&2
   exit 1
@@ -767,7 +767,7 @@ select app.confirm_mail_v2_campaign_v1(
 commit;
 SQL
 )"
-if ! rg -q '"reused": true' <<<"$reused_result"; then
+if ! grep -q '"reused": true' <<<"$reused_result"; then
   echo "Een tweede confirm van dezelfde preflight hergebruikte de run niet." >&2
   exit 1
 fi

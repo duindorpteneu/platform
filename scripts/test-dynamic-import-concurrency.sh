@@ -528,8 +528,8 @@ wait "$claim_two_pid"
 
 claimed_jobs="$(
   {
-    rg -c '"runId"' "$claim_one_log" || true
-    rg -c '"runId"' "$claim_two_log" || true
+    grep -c '"runId"' "$claim_one_log" || true
+    grep -c '"runId"' "$claim_two_log" || true
   } | awk '{total += $1} END {print total + 0}'
 )"
 if [[ "$claimed_jobs" != "1" ]]; then
@@ -587,7 +587,7 @@ select app.stage_dynamic_import_rows(
 SQL
 stale_status=$?
 set -e
-if [[ "$stale_status" -eq 0 ]] || ! rg -q "DYNAMIC_IMPORT_LEASE_CONFLICT" "$stale_log"; then
+if [[ "$stale_status" -eq 0 ]] || ! grep -q "DYNAMIC_IMPORT_LEASE_CONFLICT" "$stale_log"; then
   tail -n 30 "$stale_log"
   echo "Een verouderde importlease kon nog schrijven." >&2
   exit 1
@@ -606,7 +606,7 @@ select app.fail_dynamic_import_run(
 SQL
 stale_status=$?
 set -e
-if [[ "$stale_status" -eq 0 ]] || ! rg -q "DYNAMIC_IMPORT_LEASE_CONFLICT" "$stale_log"; then
+if [[ "$stale_status" -eq 0 ]] || ! grep -q "DYNAMIC_IMPORT_LEASE_CONFLICT" "$stale_log"; then
   tail -n 30 "$stale_log"
   echo "Een verouderde worker kon de importrun nog als mislukt afsluiten." >&2
   exit 1
@@ -653,7 +653,7 @@ if [[ "$commit_one_status" -ne 0 ]]; then
 else
   failed_commit_log="$commit_two_log"
 fi
-if ! rg -q "DYNAMIC_IMPORT_STATE_DRIFT" "$failed_commit_log"; then
+if ! grep -q "DYNAMIC_IMPORT_STATE_DRIFT" "$failed_commit_log"; then
   tail -n 30 "$failed_commit_log"
   echo "De verliezende importcommit meldde geen veilige state drift." >&2
   exit 1

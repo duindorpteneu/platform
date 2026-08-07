@@ -312,13 +312,13 @@ binding_second_pid=$!
 wait "$binding_first_pid"
 wait "$binding_second_pid"
 
-if ! rg -q '"recorded": 1' "$replay_first_log" \
-  || ! rg -q '"ignored": 1' "$replay_second_log"; then
+if ! grep -q '"recorded": 1' "$replay_first_log" \
+  || ! grep -q '"ignored": 1' "$replay_second_log"; then
   echo "Gelijktijdige exacte replay was niet één insert plus één idempotente replay." >&2
   exit 1
 fi
-if ! rg -q '"recorded": 1' "$binding_first_log" \
-  || ! rg -q '"quarantined": 1' "$binding_second_log"; then
+if ! grep -q '"recorded": 1' "$binding_first_log" \
+  || ! grep -q '"quarantined": 1' "$binding_second_log"; then
   echo "Gelijktijdige providerberichtcollisie werd niet fail-closed verwerkt." >&2
   exit 1
 fi
@@ -372,8 +372,8 @@ record_event \
 identity_second_pid=$!
 wait "$identity_first_pid"
 wait "$identity_second_pid"
-if ! rg -q '"recorded": 1' "$identity_first_log" \
-  || ! rg -q '"quarantined": 1' "$identity_second_log"; then
+if ! grep -q '"recorded": 1' "$identity_first_log" \
+  || ! grep -q '"quarantined": 1' "$identity_second_log"; then
   echo "Globale provider-event-ID-collision werd niet atomisch gequarantaineerd." >&2
   exit 1
 fi

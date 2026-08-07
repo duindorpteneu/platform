@@ -232,13 +232,13 @@ sed -n '1,$p' "$replay_second_log" >>"$replay_output"
 cp "$binding_first_log" "$binding_output"
 sed -n '1,$p' "$binding_second_log" >>"$binding_output"
 
-if [[ "$(rg -c '"recorded": 1' "$replay_output")" -ne 1 ]] \
-  || [[ "$(rg -c '"ignored": 1' "$replay_output")" -ne 1 ]]; then
+if [[ "$(grep -c '"recorded": 1' "$replay_output")" -ne 1 ]] \
+  || [[ "$(grep -c '"ignored": 1' "$replay_output")" -ne 1 ]]; then
   echo "Exacte parallelle OTP-replay was niet één insert plus één no-op." >&2
   exit 1
 fi
-if [[ "$(rg -c '"recorded": 1' "$binding_output")" -ne 1 ]] \
-  || [[ "$(rg -c '"quarantined": 1' "$binding_output")" -ne 1 ]]; then
+if [[ "$(grep -c '"recorded": 1' "$binding_output")" -ne 1 ]] \
+  || [[ "$(grep -c '"quarantined": 1' "$binding_output")" -ne 1 ]]; then
   echo "Tegenstrijdige parallelle providerbinding was niet één winnaar plus quarantaine." >&2
   exit 1
 fi
@@ -293,8 +293,8 @@ record_event \
 identity_second_pid=$!
 wait "$identity_first_pid"
 wait "$identity_second_pid"
-if ! rg -q '"recorded": 1' "$identity_first_log" \
-  || ! rg -q '"quarantined": 1' "$identity_second_log"; then
+if ! grep -q '"recorded": 1' "$identity_first_log" \
+  || ! grep -q '"quarantined": 1' "$identity_second_log"; then
   echo "Globale OTP-event-ID-collision werd niet atomisch gequarantaineerd." >&2
   exit 1
 fi

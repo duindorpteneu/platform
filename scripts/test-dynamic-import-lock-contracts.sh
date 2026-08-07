@@ -738,7 +738,7 @@ wait "$reverse_two_pid"
 reverse_two_status=$?
 set -e
 
-if rg -q "deadlock detected|40P01" "$reverse_one_log" "$reverse_two_log"; then
+if grep -Eq "deadlock detected|40P01" "$reverse_one_log" "$reverse_two_log"; then
   tail -n 30 "$reverse_one_log"
   tail -n 30 "$reverse_two_log"
   echo "Omgekeerde importvolgorde veroorzaakte een deadlock." >&2
@@ -755,7 +755,7 @@ if [[ "$reverse_one_status" -ne 0 ]]; then
 else
   reverse_failure_log="$reverse_two_log"
 fi
-if ! rg -q "DYNAMIC_IMPORT_STATE_DRIFT" "$reverse_failure_log"; then
+if ! grep -q "DYNAMIC_IMPORT_STATE_DRIFT" "$reverse_failure_log"; then
   tail -n 30 "$reverse_failure_log"
   echo "De verliezende omgekeerde import meldde geen state drift." >&2
   exit 1
@@ -899,7 +899,7 @@ member_mutation_status=$?
 set -e
 if [[ "$member_import_status" -ne 0 ]] \
   || [[ "$member_mutation_status" -eq 0 ]] \
-  || ! rg -q "MEMBER_SIZES_CONFLICT" "$member_mutation_log"; then
+  || ! grep -q "MEMBER_SIZES_CONFLICT" "$member_mutation_log"; then
   tail -n 40 "$member_import_log"
   tail -n 40 "$member_mutation_log"
   echo "De geserialiseerde leden-/maatmutatie gaf geen exacte stale-writeblokkade." >&2

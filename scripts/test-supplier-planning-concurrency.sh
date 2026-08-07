@@ -137,8 +137,8 @@ wait "$second_pid"
 create_output="$test_tmp_dir/create-output.log"
 cp "$test_tmp_dir/create-1.log" "$create_output"
 sed -n '1,$p' "$test_tmp_dir/create-2.log" >>"$create_output"
-if [[ "$(rg -c '"alreadyProcessed": false' "$create_output")" -ne 1 ]] \
-  || [[ "$(rg -c '"alreadyProcessed": true' "$create_output")" -ne 1 ]]; then
+if [[ "$(grep -c '"alreadyProcessed": false' "$create_output")" -ne 1 ]] \
+  || [[ "$(grep -c '"alreadyProcessed": true' "$create_output")" -ne 1 ]]; then
   echo "Parallelle supplier-create was niet exact één mutatie plus één replay." >&2
   exit 1
 fi
