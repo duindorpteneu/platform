@@ -18,7 +18,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - node
+        - /nodejs/bin/node
         - -e
         - fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
       interval: 10s
@@ -34,7 +34,6 @@ services:
     image: ${APP_IMAGE:?APP_IMAGE is required}
     restart: unless-stopped
     command:
-      - node
       - operations-scheduler.mjs
     env_file:
       - path: ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
@@ -53,7 +52,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - node
+        - /nodejs/bin/node
         - -e
         - require('node:fs').stat('/tmp/scheduler-health',(e,s)=>{if(e||Date.now()-s.mtimeMs>150000)process.exit(1)})
       interval: 30s

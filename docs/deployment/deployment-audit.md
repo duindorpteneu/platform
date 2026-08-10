@@ -1,4 +1,4 @@
-# Deploymentaudit — bijgewerkt 2026-08-03
+# Deploymentaudit — bijgewerkt 2026-08-11
 
 ## Bevindingen en acties
 
@@ -16,6 +16,7 @@
 - Alle vier self-hosted mutatiejobs eisen afzonderlijke runnernamen, Unix-users, homes, Rootless-Docker-sockets met mode `0600`, data-roots en private runtimebomen. De bestaande gedeelde `deploy`-principal voldoet niet meer en blokkeert bewust tot hostbeheer de runners opnieuw provisiont.
 - De actuele productionrelease `a79c8d8…` heeft nog legacyhealth zonder `artifactDigest`, een historisch gequote runtimebestand en geen huidige schedulerentrypoint; de oorspronkelijke artifacts zijn verlopen. Een afzonderlijke eenmalige, signed adoptieworkflow bindt de werkelijk draaiende image read-only, normaliseert runtime zonder `eval`, bewijst op staging candidate→legacy-app met gestopte scheduler→candidate met gezonde scheduler en bindt dat bewijs aan rollback/promotie. Rebuild, hergebruik na een geslaagde adoptie of een algemene healthbypass bestaat niet.
 - De vier staging-specifieke Mollie-acceptatie-RPC's en hun ledgertabel zijn forward-only uit het productschema verwijderd. De externe acceptance-run vereist exact staging/TLS, deelt de stagingdeploy-serialisatiegroep, wijzigt geen globale instellingen en de deploy blokkeert vóór activatie wanneer een verboden RPC niet exact `404/PGRST202` retourneert.
+- De merge van PR `#49` slaagde, maar deployrun `31434321788` stopte veilig vóór stagingactivatie omdat de volledige Debian 12 Node-runtime de 0-HIGH/0-CRITICAL-gate niet haalde. De runtime is vervangen door digest-gepinde distroless Node 22 op Debian 13 als numeric non-root, zonder shell of package manager. App en scheduler delen hetzelfde image; Compose gebruikt absolute Node-healthchecks en Sharp/libvips wordt expliciet meegeleverd. Het volledige lokale kandidaatimage is met dezelfde Trivy 0.70.0-versie op 0 HIGH/0 CRITICAL en met echte app-, scheduler- en Sharp-smokes bewezen. De hosted scan/deploy op de herstelmerge-SHA blijft verplicht.
 
 ## Resterende externe validatie
 

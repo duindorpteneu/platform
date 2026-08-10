@@ -107,6 +107,29 @@ describe("deployment environment isolation", () => {
     expect(layout).toContain("globalThis.__DUINDORP_RUNTIME_CONFIG__");
   });
 
+  it("ships a digest-pinned shell-less Node 22 runtime without package managers", () => {
+    const dockerfile = readFileSync(path.join(repositoryRoot, "Dockerfile"), "utf8");
+    const compose = readFileSync(path.join(repositoryRoot, "deploy/compose.vps.yml"), "utf8");
+    const runtimeMarker = "FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:";
+    const runtimeStart = dockerfile.indexOf(runtimeMarker);
+    expect(runtimeStart).toBeGreaterThan(-1);
+    const runtimeStage = dockerfile.slice(runtimeStart);
+    expect(runtimeStage.split(/\r?\n/, 1)[0]).toMatch(
+      /^FROM gcr\.io\/distroless\/nodejs22-debian13:nonroot@sha256:[a-f0-9]{64} AS runtime$/,
+    );
+    expect(runtimeStage).toContain("USER 65532:65532");
+    expect(runtimeStage).toContain('ENTRYPOINT ["/nodejs/bin/node"]');
+    expect(runtimeStage).toContain('CMD ["server.js"]');
+    expect(runtimeStage).toContain("@img+sharp-libvips-linux-x64@1.3.0");
+    expect(runtimeStage).not.toMatch(/^RUN\s/m);
+    expect(runtimeStage).not.toMatch(
+      /^(?:ENTRYPOINT|CMD)\s.*\b(?:corepack|npm|pnpm|yarn)\b/m,
+    );
+    expect(compose.match(/- \/nodejs\/bin\/node/g)).toHaveLength(2);
+    expect(compose).toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- operations-scheduler\.mjs/);
+    expect(compose).not.toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- node/);
+  });
+
   it("accepts the staging Mollie profile id from a protected secret or variable", () => {
     const workflow = readFileSync(
       path.join(repositoryRoot, ".github/workflows/staging-mollie-acceptance.yml"),
