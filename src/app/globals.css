@@ -12,8 +12,28 @@ html { background: var(--background); }
 body { margin: 0; background: var(--background); color: var(--foreground); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 button, input { font: inherit; }
 button { cursor: pointer; }
-::selection { background: #dce8f9; color: #0b2e63; }
+::selection { background: #dce8f9; color: rgb(var(--brand-900-rgb, 11 46 99)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}
 
 @layer utilities {
   .bg-white\/12 { background-color: rgb(255 255 255 / 0.12); }
+
+  /*
+   * The default Tailwind slate-400/500 foregrounds fall below 4.5:1 on the
+   * canonical canvas. Keep the existing semantic utility names, but give text
+   * (not borders or fills) the accessible secondary/tertiary ink values.
+   */
+  .text-slate-400 { color: #526176; }
+  .text-slate-500 { color: #475569; }
 }

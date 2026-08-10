@@ -1,6 +1,6 @@
 export default function MembersLoading() {
   return (
-    <div className="mx-auto max-w-[1440px] animate-pulse" aria-label="Ledenoverzicht laden">
+    <div role="status" aria-busy="true" className="mx-auto max-w-[1440px] animate-pulse" aria-label="Ledenoverzicht laden">
       <div className="h-3 w-28 rounded bg-slate-200" />
       <div className="mt-4 h-10 w-48 rounded bg-slate-200" />
       <div className="mt-3 h-4 w-96 max-w-full rounded bg-slate-100" />

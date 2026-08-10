@@ -1,0 +1,112 @@
+name: Trusted staging release preflight
+
+on:
+  workflow_call:
+    inputs:
+      release_sha:
+        description: Exacte actuele main-SHA die al op staging staat
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run voor exact deze SHA
+        required: true
+        type: string
+    outputs:
+      release_sha:
+        description: Vertrouwde actuele main-SHA
+        value: ${{ jobs.verify.outputs.release_sha }}
+      staging_run_id:
+        description: Gevalideerde stagingdeployrun
+        value: ${{ jobs.verify.outputs.staging_run_id }}
+      artifact_digest:
+        description: Digest van het op staging geverifieerde artifact
+        value: ${{ jobs.verify.outputs.artifact_digest }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    name: Verify current main and exact staged artifact without environment secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      release_sha: ${{ steps.source.outputs.release_sha }}
+      staging_run_id: ${{ steps.source.outputs.staging_run_id }}
+      artifact_digest: ${{ steps.source.outputs.artifact_digest }}
+    steps:
+      - name: Checkout trusted control plane from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Validate untrusted dispatch inputs before artifact use
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUESTED_STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "${REQUESTED_RELEASE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          [[ "${REQUESTED_STAGING_RUN_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "$(git rev-parse HEAD)" == "${REQUESTED_RELEASE_SHA}" ]]
+          [[ "$(git rev-parse origin/main)" == "${REQUESTED_RELEASE_SHA}" ]]
+
+      - name: Download exact staging manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: staging-release-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/trusted-staging-source
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.staging_run_id }}
+
+      - name: Download exact staging deploy attestation
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: staging-attestation-deploy-${{ inputs.staging_run_id }}
+          path: ${{ runner.temp }}/trusted-staging-attestation
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.staging_run_id }}
+
+      - name: Resolve exact staging deploy attempt
+        id: deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          set -Eeuo pipefail
+          attempt="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_DEPLOY_RUN_ID}" \
+            --jq '.run_attempt')"
+          [[ "${attempt}" =~ ^[1-9][0-9]*$ ]]
+          printf 'attempt=%s\n' "${attempt}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download exact staging deploy result
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: staging-result-deploy-${{ inputs.staging_run_id }}-${{ steps.deploy.outputs.attempt }}
+          path: ${{ runner.temp }}/trusted-staging-result
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.staging_run_id }}
+
+      - name: Verify canonical deploy run, manifest and deploy attestation
+        id: source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          STAGING_DEPLOY_RUN_ID: ${{ inputs.staging_run_id }}
+          STAGING_MANIFEST_PATH: ${{ runner.temp }}/trusted-staging-source/RELEASE_MANIFEST
+          STAGING_DEPLOY_ATTESTATION_PATH: ${{ runner.temp }}/trusted-staging-attestation/staging-attestation-deploy.json
+          STAGING_DEPLOY_RESULT_PATH: ${{ runner.temp }}/trusted-staging-result/staging-result-deploy.json
+        run: |
+          set -Eeuo pipefail
+          artifact_digest="$(node scripts/deploy/verify-staging-deploy.mjs)"
+          {
+            printf 'release_sha=%s\n' "${RELEASE_SHA}"
+            printf 'staging_run_id=%s\n' "${STAGING_DEPLOY_RUN_ID}"
+            printf 'artifact_digest=%s\n' "${artifact_digest}"
+          } >> "${GITHUB_OUTPUT}"

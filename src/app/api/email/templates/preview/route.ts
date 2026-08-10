@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { previewEmailTemplateRequestSchema } from "@/lib/email-contract";
 import { fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateForPurpose } from "@/server/email/templates";
 import { getEmailWorkspace, templateShortcodeNames } from "@/server/email/workspace";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
-  const parsed = previewEmailTemplateRequestSchema.safeParse(await request.json().catch(() => null));
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonMedium }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonMedium);
+  if (!body.ok) return body.response;
+  const parsed = previewEmailTemplateRequestSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Controleer onderwerp en inhoud." }, { status: 400 });
   try {
     const { workspace } = await getEmailWorkspace();

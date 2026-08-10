@@ -3,8 +3,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
 
-insert into app.staff_profiles(auth_user_id, display_name, role)
-values('c0000000-0000-4000-8000-000000000001', 'Hardening commissie', 'kledingcommissie');
+insert into app.staff_profiles(auth_user_id, display_name, role) values
+  ('c0000000-0000-4000-8000-000000000001', 'Hardening commissie', 'kledingcommissie'),
+  ('c0000000-0000-4000-8000-000000000004', 'Hardening beheerder', 'beheerder');
 insert into app.members(id, relation_number, first_name, last_name, email, team) values
   ('c1000000-0000-4000-8000-000000000001', 'HARD-001', 'Snapshot', 'Lid', 'snapshot@example.invalid', 'JO11-1'),
   ('c1000000-0000-4000-8000-000000000002', 'HARD-002', 'Timeout', 'Lid', 'timeout@example.invalid', 'JO13-1'),
@@ -27,9 +28,12 @@ insert into app.order_lines(order_id, article_variant_id, quantity) values
 select ok(not has_function_privilege('service_role',
   'app.reconcile_mollie_payment(text,text,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,integer,text,jsonb)', 'EXECUTE'),
   'oude reconcile-wrapper zonder metadata-payment-id is voor service role ingetrokken');
-select ok(has_function_privilege('service_role',
+select ok(not has_function_privilege('service_role',
   'app.reconcile_mollie_payment(text,text,uuid,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,integer,text,text,jsonb)', 'EXECUTE'),
-  'workercontract vereist metadata-payment-id en expliciete validation issue');
+  'legacy workercontract dat betaling aan QR koppelt is ingetrokken');
+select ok(has_function_privilege('service_role',
+  'app.reconcile_mollie_payment_v2(text,text,uuid,uuid,uuid,uuid,uuid,uuid,integer,text,app.payment_status,timestamptz,timestamptz,timestamptz,timestamptz,timestamptz,text,jsonb)', 'EXECUTE'),
+  'v2-workercontract bindt member-season en activeert geen QR');
 
 insert into private.parent_accounts(id, email_normalized)
 values('c5000000-0000-4000-8000-000000000001', 'timeout@example.invalid');
@@ -37,6 +41,14 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('c5000000-0000-4000-8000-000000000001', repeat('6',64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('c5000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'c0000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'c5000000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 insert into app.payments(id, order_id, method, status, amount_cents, idempotency_key, created_at)
 values('c6000000-0000-4000-8000-000000000001', 'c4000000-0000-4000-8000-000000000002',
   'mollie', 'open', 12500, 'unbound-hour-old-attempt', timezone('utc', now()) - interval '61 minutes');
@@ -80,7 +92,7 @@ create temporary table hardening_template_id as select id from app.email_templat
 grant select on hardening_template_id to authenticated;
 select is((select template_version from snapshot_before), 1, 'job bewaart oorspronkelijke templateversie');
 
-select set_config('request.jwt.claims', '{"sub":"c0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+select set_config('request.jwt.claims', '{"sub":"c0000000-0000-4000-8000-000000000004","aal":"aal2"}', true);
 set local role authenticated;
 select lives_ok($$select app.update_email_template(
   (select id from hardening_template_id),
@@ -109,7 +121,7 @@ select isnt(result #>> '{jobs,0,subjectSource}',
 
 select throws_ok($$insert into private.email_jobs(kind, recipient_email, template_key, payload)
   values('otp', 'otp@example.invalid', 'verification_code', '{"code":"123456"}'::jsonb)$$,
-  '23514', 'DURABLE_ORDER_EMAIL_REQUIRED', 'OTP blijft buiten de duurzame orderqueue');
+  '23514', 'DURABLE_EMAIL_CONTEXT_REQUIRED', 'OTP blijft buiten iedere duurzame mailcontext');
 
 select * from finish();
 rollback;

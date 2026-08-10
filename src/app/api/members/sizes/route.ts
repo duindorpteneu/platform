@@ -2,20 +2,20 @@ import { NextResponse } from "next/server";
 import { memberSizeProfileSchema, memberSizesRequestSchema } from "@/lib/member-overview-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 20_000 } });
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonMedium });
   if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = memberSizesRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonMedium);
+    if (!body.ok) return body.response;
+    const parsed = memberSizesRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Controleer de gekozen kledingmaten." }, { status: 400 });
 
     const supabase = await getSupabaseServerClient();

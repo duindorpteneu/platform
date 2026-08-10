@@ -6,13 +6,14 @@ Bouw en lever de werkende minimale MVP van het **Duindorp SV Tenueportaal** in d
 
 De bindende bronnen zijn, in deze volgorde:
 
-1. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`
-2. `docs/canon/MVP_CANON_TEXT.txt`
-3. `docs/design/APPROVED_MASTER_SHOWCASE.png`
-4. deze `AGENTS.md`
-5. overige documenten in `docs/project/`
+1. `docs/canon/MVP_CANON_ADDENDUM_v1.1.md`
+2. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`
+3. `docs/canon/MVP_CANON_TEXT.txt`
+4. `docs/design/APPROVED_MASTER_SHOWCASE.png`
+5. deze `AGENTS.md`
+6. overige documenten in `docs/project/`
 
-Bij twijfel geldt de strengste interpretatie die de MVP klein, veilig, controleerbaar en canoniek houdt. Verzin geen functionaliteit. Leg een echte canononduidelijkheid vast in `docs/project/DECISIONS.md` en vraag alleen wanneer de keuze niet veilig en niet omkeerbaar is.
+Het addendum vervangt v1.0 uitsluitend voor de onderwerpen die het expliciet noemt. Bij twijfel geldt de strengste interpretatie die de MVP klein, veilig, controleerbaar en canoniek houdt. Verzin geen functionaliteit. Leg een echte canononduidelijkheid vast in `docs/project/DECISIONS.md` en vraag alleen wanneer de keuze niet veilig en niet omkeerbaar is.
 
 ## 2. Niet-onderhandelbare MVP
 

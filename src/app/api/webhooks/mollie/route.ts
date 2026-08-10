@@ -7,6 +7,7 @@ import {
   type MollieRpcClient,
 } from "@/server/payments/mollie-service";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { RequestBodyError } from "@/server/security/request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,10 @@ export async function POST(request: Request) {
   let providerPaymentId: string;
   try {
     providerPaymentId = await extractMollieWebhookPaymentId(request);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return NextResponse.json({ received: false }, { status: error.status, headers: responseHeaders });
+    }
     return NextResponse.json({ received: false }, { status: 400, headers: responseHeaders });
   }
 

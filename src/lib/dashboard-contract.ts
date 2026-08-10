@@ -36,7 +36,7 @@ export const dashboardOverviewSchema = z.object({
     orderId: z.string().uuid(),
     memberName: z.string().min(1).max(300),
     team: z.string().min(1).max(160),
-    relationNumber: z.string().min(1).max(120),
+    relationNumber: z.string().min(1).max(120).nullable(),
     paymentStatus: z.enum(["Betaald", "Nog te betalen"]),
     orderStatus: dashboardOrderStatusSchema,
     progressQuantity: nonNegativeInteger,

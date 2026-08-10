@@ -1,4 +1,4 @@
-# Deploymentaudit — bijgewerkt 2026-07-21
+# Deploymentaudit — bijgewerkt 2026-08-03
 
 ## Bevindingen en acties
 
@@ -7,11 +7,21 @@
 - De build-time browser-Supabaseconfig maakte één image voor twee projecten onmogelijk. Publieke Supabaseconfig wordt nu server-side per request in de HTML-bootstrap geïnjecteerd; geheimen worden nooit geïnjecteerd. De CSP staat alleen Supabase HTTPS/WSS-hosts toe wanneer geen buildspecifieke origin aanwezig is.
 - `/admin` bestond niet. Het is nu een staff-beveiligde alias naar de canonieke `/backoffice`; `/uitgifte` blijft dezelfde applicatieservice.
 - `/` verwees ten onrechte naar de backoffice en ouder-OTP zette het e-mailadres in de querystring. `/` toont nu de ouderlogin (of hervat `/mijn-tenue`), terwijl de OTP-flow een versleutelde, HttpOnly en tien minuten geldige challengecookie gebruikt. Staffredirects komen uitsluitend van de canonical app-origin en vertrouwen geen Host-header.
-- Health gaf geen release-identiteit. Het antwoord bevat nu uitsluitend status, service, environment en revision, met 503 bij ongeldige config/readiness.
+- Health gaf geen release-identiteit. Het actuele antwoord bevat uitsluitend status, service, environment, revision en `artifactDigest`, met 503 bij ongeldige config/readiness.
 - Staging `APP_HOST` bevatte een extra `d`; deze GitHub variable is gecorrigeerd. Andere variables waren correct en Supabaseprojecten verschillen.
-- Alle bestaande runtime-/providersecret-namen, inclusief `PARENT_TOKEN_PEPPER` en `CRON_SECRET`, zijn aanwezig. Nieuw ontbreekt `OPERATIONS_HEARTBEAT_URL`; productionpreflight blokkeert bewust totdat een onafhankelijke monitor is gekozen. Voor de Mollie-acceptatie ontbreekt de niet-geheime stagingvariable `MOLLIE_PROFILE_ID`.
-- Production vereist review door `TIXOCEO`. Er is geen productionapproval verleend; superseded wachtende runs zijn na succesvolle stagingdeploy geannuleerd.
+- Staging bevat de Supabase-, server-action-, parent-, QR-, cron-, import-, Mollie-, SendGrid- en encrypted-cleanupsecretnamen. `OPERATIONS_HEARTBEAT_URL`, de dedicated SendGrid-adminkey/accountfingerprint en de IMAP-testinbox ontbreken nog. Production mist de nieuwe QR-/import-/heartbeat- en mail-v2-configuratie en blijft geblokkeerd.
+- De organisatie gebruikt GitHub Free met een private repository. Production heeft alleen de `main` branch policy en geen required reviewer; de promotieverifier weigert daarom iedere productionmutatie totdat een planupgrade en onafhankelijke reviewer met geblokkeerde self-review aantoonbaar zijn.
+- GitHub-native private-repositoryattestaties vereisen Enterprise Cloud. Het releaseartifact gebruikt daarom een keyless Sigstore/Cosign-bundel via GitHub OIDC; de ondertekende checksumset bindt image, manifest en SPDX-SBOM.
+- Iedere handmatige stagingacceptatie gebruikt nu vóór environmentsecrets een secrets-vrije trusted-main-preflight en production houdt dezelfde stagingconcurrency vast.
+- Alle vier self-hosted mutatiejobs eisen afzonderlijke runnernamen, Unix-users, homes, Rootless-Docker-sockets met mode `0600`, data-roots en private runtimebomen. De bestaande gedeelde `deploy`-principal voldoet niet meer en blokkeert bewust tot hostbeheer de runners opnieuw provisiont.
+- De actuele productionrelease `a79c8d8…` heeft nog legacyhealth zonder `artifactDigest`, een historisch gequote runtimebestand en geen huidige schedulerentrypoint; de oorspronkelijke artifacts zijn verlopen. Een afzonderlijke eenmalige, signed adoptieworkflow bindt de werkelijk draaiende image read-only, normaliseert runtime zonder `eval`, bewijst op staging candidate→legacy-app met gestopte scheduler→candidate met gezonde scheduler en bindt dat bewijs aan rollback/promotie. Rebuild, hergebruik na een geslaagde adoptie of een algemene healthbypass bestaat niet.
+- De vier staging-specifieke Mollie-acceptatie-RPC's en hun ledgertabel zijn forward-only uit het productschema verwijderd. De externe acceptance-run vereist exact staging/TLS, deelt de stagingdeploy-serialisatiegroep, wijzigt geen globale instellingen en de deploy blokkeert vóór activatie wanneer een verboden RPC niet exact `404/PGRST202` retourneert.
 
 ## Resterende externe validatie
 
-Staging is meermaals via het immutable pad gedeployed; de actuele mobiele release `965233d…` is publiek groen. Production is bewust niet uitgevoerd. Voor NO-GO naar GO zijn nog nodig: de afgeschermde core/Mollie/restore-runs op de nieuwe merge-SHA, een echte heartbeat-/alarmtest, SendGrid Mail Send zonder 401 en bewijs dat Duindorp staging, Duindorp production en Castivo afzonderlijke Linux-users/rootless sockets/runners gebruiken.
+Production is bewust niet uitgevoerd. Voor NO-GO naar GO zijn nog nodig: de
+afgeschermde core/Mollie/SendGrid/restore/operationsruns op één nieuwe
+merge-SHA, de encrypted cleanup-backup/apply, een echte heartbeat-/alarmtest,
+SendGrid Mail Send zonder 401 plus inbox/eventbewijs, required-reviewerbeleid
+na planupgrade en bewijs dat Duindorp staging, Duindorp production en Castivo
+afzonderlijke Linux-users/rootless sockets/runners gebruiken.

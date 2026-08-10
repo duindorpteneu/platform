@@ -7,53 +7,75 @@ on:
         description: Exacte 40-teken SHA die al op staging staat
         required: true
         type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run die exact dit artifact heeft geplaatst
+        required: true
+        type: string
       confirmation:
         description: Typ STAGING-MOLLIE-TESTMODE om de muterende test te starten
         required: true
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: staging-mollie-acceptance
+  group: deploy-duindorpteneu-staging
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
   acceptance:
+    name: Mollie paid, mismatch, replay and refund
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging
     env:
       APP_BASE_URL: https://staging-duindorp.dgwebservices.nl
       EXPECTED_STAGING_SUPABASE_PROJECT_REF: dxbdjtbyghsovlrdcwcr
-      RELEASE_SHA: ${{ inputs.release_sha }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
       MOLLIE_ACCEPTANCE_CONFIRMATION: ${{ inputs.confirmation }}
       MOLLIE_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Checkout the exact accepted revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
       - name: Require protected main revision
         shell: bash
         run: |
           set -euo pipefail
           [[ "${GITHUB_REF}" == "refs/heads/main" ]]
           [[ "${RELEASE_SHA}" =~ ^[a-f0-9]{40}$ ]]
-          [[ "${RELEASE_SHA}" == "${GITHUB_SHA}" ]]
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
           [[ "${MOLLIE_ACCEPTANCE_CONFIRMATION}" == "STAGING-MOLLIE-TESTMODE" ]]
-
-      - name: Checkout the exact accepted revision
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
+          node scripts/deploy/check-http.mjs \
+            "${APP_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${{ needs.preflight.outputs.artifact_digest }}"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.5.2
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -76,7 +98,7 @@ jobs:
 
       - name: Preserve fictitious checkout failure screenshot
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mollie-acceptance-failure-${{ github.run_id }}
           path: ${{ runner.temp }}/mollie-acceptance-failure.png
@@ -87,5 +109,54 @@ jobs:
         if: always()
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only
+
+      - name: Create exact Mollie acceptance result
+        if: success()
+        env:
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          RESULT_PATH: ${{ runner.temp }}/staging-result-mollie.json
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${APP_BASE_URL}" staging "${RELEASE_SHA}" "${ARTIFACT_DIGEST}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RESULT_PATH}" mollie "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${STAGING_DEPLOY_RUN_ID}" "${ARTIFACT_DIGEST}" -
+
+      - name: Upload exact Mollie acceptance result
+        if: success()
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-mollie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/staging-result-mollie.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create result-bound Mollie acceptance attestation
+        if: success()
+        env:
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-mollie.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-mollie.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/staging-attestation.mjs create \
+            "${ATTESTATION_PATH}" "${RESULT_PATH}" mollie "${RELEASE_SHA}" \
+            "${GITHUB_RUN_ID}" "${STAGING_DEPLOY_RUN_ID}" \
+            "${ARTIFACT_DIGEST}" "${RESULT_ARTIFACT_ID}" \
+            "${RESULT_ARTIFACT_DIGEST}"
+
+      - name: Upload exact Mollie acceptance attestation
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-mollie-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-mollie.json
+          if-no-files-found: error
+          retention-days: 30

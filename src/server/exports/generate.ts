@@ -44,11 +44,17 @@ export async function createXlsxExport(payload: ExportPayload) {
 }
 
 const slugs: Record<ExportType, string> = {
-  members: "leden", orders: "bestellingen", payments: "betalingen", deliveries: "leveringen", fulfilments: "uitgiftes", outstanding: "openstaand",
+  members: "leden",
+  orders: "bestellingen",
+  package_orders: "pakketorders",
+  package_items: "pakketonderdelen",
+  payments: "betalingen",
+  deliveries: "leveringen",
+  fulfilments: "uitgiftes",
+  outstanding: "openstaand",
 };
 
 export function createExportFilename(payload: ExportPayload, extension: "csv" | "xlsx") {
-  const season = (payload.seasonName ?? "alle-seizoenen").toLocaleLowerCase("nl-NL").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const season = payload.seasonName.toLocaleLowerCase("nl-NL").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `duindorp-sv-${slugs[payload.type]}-${season}-${payload.generatedAt.slice(0, 10)}.${extension}`;
 }
-

@@ -52,6 +52,14 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('ca400000-0000-4000-8000-000000000001', repeat('c', 64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('ca400000-0000-4000-8000-000000000001', 'ca100000-0000-4000-8000-000000000001');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'ca000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'ca400000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"ca000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
@@ -62,6 +70,16 @@ select lives_ok($$select app.bulk_set_article_season(
   true, 'caf00000-0000-4000-8000-000000000002'
 )$$, 'kledingcommissie kan artikelen in bulk koppelen');
 select is((select count(*)::integer from app.article_seasons where season_id = (select id from app.seasons where name = '2038/2039 beheer')), 2, 'beide artikelen zijn gekoppeld');
+select lives_ok($$select app.bulk_set_article_season(
+  (select id from app.seasons where name = '2038/2039 beheer'),
+  array['ca200000-0000-4000-8000-000000000001'::uuid, 'ca200000-0000-4000-8000-000000000002'::uuid],
+  true, 'caf00000-0000-4000-8000-000000000005'
+)$$, 'herhaalde meer-artikelenkoppeling gebruikt een ondubbelzinnig conflictcontract');
+select is(
+  (select (metadata->>'changedCount')::integer from app.audit_logs where correlation_id = 'caf00000-0000-4000-8000-000000000005'),
+  0,
+  'idempotente meer-artikelenkoppeling wijzigt geen bestaande koppelingen'
+);
 select is(jsonb_array_length((select metadata->'articleIds' from app.audit_logs where correlation_id = 'caf00000-0000-4000-8000-000000000002')), 2, 'bulkaudit bewaart de twee gekozen artikel-ID’s');
 select is(app.audit_category('catalog.article_seasons.bulk_linked'), 'inventory', 'catalogusmutatie valt in de operationele voorraadcategorie');
 select lives_ok($$select app.bulk_set_article_season(

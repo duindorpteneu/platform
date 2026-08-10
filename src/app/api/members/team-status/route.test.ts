@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ requireRole: vi.fn(), serverClient: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/server/auth/staff", () => ({ requireStaffRole: mocks.requireRole }));
 vi.mock("@/server/supabase/server", () => ({ getSupabaseServerClient: mocks.serverClient }));
-vi.mock("@/server/security/route-guard", () => ({ guardBrowserMutation: () => null }));
+vi.mock("@/server/security/route-guard", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/security/route-guard")>(),
+  guardBrowserMutation: () => null,
+}));
 vi.mock("@/lib/env", () => ({ getServerEnv: () => ({ PARENT_TOKEN_PEPPER: "route-test-pepper-with-at-least-32-characters" }) }));
 
 import { POST } from "./route";

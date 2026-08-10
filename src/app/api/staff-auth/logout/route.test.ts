@@ -16,7 +16,7 @@ vi.mock("@/server/auth/staff-context", () => ({
 
 import { POST } from "./route";
 
-function logoutRequest(csrf = "same-origin") {
+function logoutRequest(csrf = "same-origin", body?: BodyInit) {
   return new Request("https://tenue.example/api/staff-auth/logout", {
     method: "POST",
     headers: {
@@ -25,7 +25,9 @@ function logoutRequest(csrf = "same-origin") {
       "Sec-Fetch-Site": "same-origin",
       "X-Duindorp-CSRF": csrf,
     },
-  });
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
 }
 
 describe("POST /api/staff-auth/logout", () => {
@@ -52,6 +54,18 @@ describe("POST /api/staff-auth/logout", () => {
     const response = await POST(logoutRequest("cross-site"));
 
     expect(response.status).toBe(403);
+    expect(mocks.revoke).not.toHaveBeenCalled();
+  });
+
+  it("weigert ook een chunked body op deze inhoudsloze mutatie", async () => {
+    const response = await POST(logoutRequest("same-origin", new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("x"));
+        controller.close();
+      },
+    })));
+
+    expect(response.status).toBe(413);
     expect(mocks.revoke).not.toHaveBeenCalled();
   });
 });

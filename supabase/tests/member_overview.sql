@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(29);
 
 insert into app.staff_profiles (auth_user_id, display_name, role)
 values
@@ -83,6 +83,28 @@ select is((app.get_member_list() #>> '{activeCount}')::integer, 2, 'actieftellin
 select is((app.get_member_list() #>> '{filteredCount}')::integer, 3, 'ongefilterde telling is exact');
 select is(jsonb_array_length(app.get_member_list()->'members'), 3, 'ongefilterde pagina bevat drie leden');
 select ok(position('email' in (app.get_member_list()->'members')::text) = 0, 'ledenlijst bevat geen e-mailadres');
+select ok(not exists(
+  select 1
+  from jsonb_array_elements(app.get_member_list()->'members') member
+  where member->>'memberSeasonId' is null
+), 'ieder lid in het actieve seizoen bevat een expliciete lid-seizoenidentiteit');
+select ok(not exists(
+  select 1
+  from jsonb_array_elements(app.get_member_list()->'members') member
+  where (
+    select array_agg(key order by key)
+    from jsonb_object_keys(member->'bulkEligibility') key
+  ) <> array[
+    'mailPreflight',
+    'portalAccessPreflight',
+    'teamStatusPreflight'
+  ]::text[]
+  or exists(
+    select 1
+    from jsonb_each(member->'bulkEligibility') eligibility
+    where jsonb_typeof(eligibility.value) <> 'boolean'
+  )
+), 'bulkgeschiktheid bevat uitsluitend getypeerde preflightsignalen');
 select is((app.get_member_list(p_search => 'Sophie') #>> '{filteredCount}')::integer, 1, 'zoeken op naam werkt');
 select is((app.get_member_list(p_team => 'JO13-2') #>> '{filteredCount}')::integer, 2, 'teamfilter werkt');
 select is((app.get_member_list(p_payment_filter => 'paid') #>> '{filteredCount}')::integer, 1, 'betaaldfilter werkt');

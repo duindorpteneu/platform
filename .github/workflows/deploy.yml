@@ -5,19 +5,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      deployment_mode:
-        description: Gebruik current voor de actuele main; redeploy is de expliciete oudere-SHA-modus.
-        required: true
-        default: current
-        type: choice
-        options:
-          - current
-          - redeploy
-      release_sha:
-        description: Volledige oudere main-SHA; uitsluitend verplicht bij redeploy.
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -34,13 +21,15 @@ jobs:
   preflight:
     name: Preflight and quality gates
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 70
+    permissions:
+      actions: read
+      contents: read
     outputs:
       release_sha: ${{ steps.release.outputs.release_sha }}
-      deployment_mode: ${{ steps.release.outputs.deployment_mode }}
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           clean: true
@@ -49,8 +38,6 @@ jobs:
       - name: Resolve release SHA
         id: release
         env:
-          REQUESTED_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.deployment_mode || 'current' }}
-          REQUESTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || '' }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
@@ -59,43 +46,41 @@ jobs:
           GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${git_auth_header}" git fetch origin main --no-tags
           unset git_auth_header
           current_main="$(git rev-parse origin/main)"
-          if [[ "$REQUESTED_MODE" == "current" ]]; then
-            [[ -z "$REQUESTED_SHA" ]]
-            release_sha="${GITHUB_SHA}"
-            [[ "$release_sha" == "$current_main" ]]
-          elif [[ "$REQUESTED_MODE" == "redeploy" ]]; then
-            [[ "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ ]]
-            git cat-file -e "${REQUESTED_SHA}^{commit}"
-            git merge-base --is-ancestor "$REQUESTED_SHA" origin/main
-            release_sha="$REQUESTED_SHA"
-          else
-            exit 1
-          fi
+          release_sha="${GITHUB_SHA}"
+          [[ "$release_sha" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$release_sha" == "$current_main" ]]
           printf 'release_sha=%s\n' "$release_sha" >> "$GITHUB_OUTPUT"
-          printf 'deployment_mode=%s\n' "$REQUESTED_MODE" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact release commit
         run: git checkout --force "${{ steps.release.outputs.release_sha }}"
 
+      - name: Require successful full CI on exact release SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: node scripts/deploy/wait-for-ci.mjs
+
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.5.2
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Run repository gates
         run: |
+          pnpm security:dependencies
           pnpm security:secrets
           pnpm security:migrations
+          pnpm lint:workflows
           pnpm lint
           pnpm typecheck
           pnpm test
@@ -105,10 +90,13 @@ jobs:
     name: Build immutable release image
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           clean: true
@@ -119,14 +107,57 @@ jobs:
           RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
         run: bash scripts/deploy-vps.sh build-release
 
+      - name: Reject high or critical runtime vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: duindorpteneu-app:${{ needs.preflight.outputs.release_sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+          hide-progress: true
+
+      - name: Generate SPDX SBOM for the immutable image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: duindorpteneu-app:${{ needs.preflight.outputs.release_sha }}
+          format: spdx-json
+          output: .release/sbom.spdx.json
+          hide-progress: true
+
+      - name: Create deterministic release checksums
+        run: |
+          set -Eeuo pipefail
+          cd .release
+          sha256sum duindorpteneu-app.tar.gz RELEASE_MANIFEST sbom.spdx.json > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Install pinned Cosign verifier and signer
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign checksums, release manifest and SBOM with GitHub OIDC
+        run: |
+          set -Eeuo pipefail
+          cosign sign-blob .release/SHA256SUMS \
+            --bundle .release/SHA256SUMS.sigstore.json \
+            --yes
+          cosign verify-blob .release/SHA256SUMS \
+            --bundle .release/SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+
       - name: Upload immutable image and manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-image-${{ needs.preflight.outputs.release_sha }}
           path: .release/
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 30
 
   deploy-staging:
     name: Deploy and verify staging
@@ -139,46 +170,74 @@ jobs:
       - x64
       - duindorpteneu
       - staging
+      - deploy
     timeout-minutes: 45
     environment:
       name: staging
       url: https://staging-duindorp.dgwebservices.nl
+    permissions:
+      actions: read
+      contents: read
     outputs:
       release_sha: ${{ needs.preflight.outputs.release_sha }}
-      deployment_mode: ${{ needs.preflight.outputs.deployment_mode }}
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           clean: true
           persist-credentials: false
 
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.5.2
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install locked deployment dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          git diff --exit-code -- .
+
+      - name: Install checksum-verified Supabase CLI
+        run: bash scripts/deploy/install-supabase-cli.sh
+
+      - name: Install pinned Cosign verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
 
       - name: Download immutable release
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-image-${{ needs.preflight.outputs.release_sha }}
           path: .release
 
+      - name: Verify signed checksums, immutable image, manifest and SBOM
+        run: |
+          set -Eeuo pipefail
+          cosign verify-blob .release/SHA256SUMS \
+            --bundle .release/SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+          (
+            cd .release
+            sha256sum --check SHA256SUMS
+          )
+
       - name: Deploy, migrate and verify all staging routes
         env:
           RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
-          DEPLOYMENT_MODE: ${{ needs.preflight.outputs.deployment_mode }}
+          DEPLOYMENT_MODE: current
           APP_HOST: ${{ vars.APP_HOST }}
           APP_BIND_PORT: ${{ vars.APP_BIND_PORT }}
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
@@ -187,7 +246,13 @@ jobs:
           SUPABASE_JWKS: ${{ vars.SUPABASE_JWKS }}
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          DYNAMIC_IMPORT_ENABLED: ${{ vars.DYNAMIC_IMPORT_ENABLED || 'false' }}
+          IMPORT_RAW_RETENTION_HOURS: ${{ vars.IMPORT_RAW_RETENTION_HOURS || '24' }}
+          QR_TOKEN_PEPPER_VERSION: ${{ vars.QR_TOKEN_PEPPER_VERSION }}
+          QR_TOKEN_PREVIOUS_PEPPER_VERSION: ${{ vars.QR_TOKEN_PREVIOUS_PEPPER_VERSION }}
           SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
+          SENDGRID_API_KEY_FINGERPRINT: ${{ vars.SENDGRID_API_KEY_FINGERPRINT }}
+          SENDGRID_FROM_NAME: ${{ vars.SENDGRID_FROM_NAME }}
           SENDGRID_FROM_EMAIL: ${{ vars.SENDGRID_FROM_EMAIL }}
           SENDGRID_REPLY_TO_EMAIL: ${{ vars.SENDGRID_REPLY_TO_EMAIL }}
           SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
@@ -196,18 +261,69 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
+          QR_TOKEN_PEPPER: ${{ secrets.QR_TOKEN_PEPPER }}
+          QR_TOKEN_PREVIOUS_PEPPER: ${{ secrets.QR_TOKEN_PREVIOUS_PEPPER }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          IMPORT_STAGING_ENCRYPTION_KEY: ${{ secrets.IMPORT_STAGING_ENCRYPTION_KEY }}
           OPERATIONS_HEARTBEAT_URL: ${{ secrets.OPERATIONS_HEARTBEAT_URL }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
           RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
           RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/deploy-vps.sh staging
 
       - name: Upload verified staging manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staging-release-${{ needs.preflight.outputs.release_sha }}
           path: /srv/apps/duindorpteneu/staging/RELEASE_MANIFEST
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
+
+      - name: Create exact deploy result after final public health
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          RESULT_PATH: ${{ runner.temp }}/staging-result-deploy.json
+        run: |
+          set -Eeuo pipefail
+          read -r _ _ artifact_digest < <(node scripts/deploy/release-manifest.mjs fields /srv/apps/duindorpteneu/staging/RELEASE_MANIFEST)
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" "${artifact_digest}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RESULT_PATH}" deploy "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${GITHUB_RUN_ID}" "${artifact_digest}" -
+
+      - name: Upload exact deploy result
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/staging-result-deploy.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create result-bound deploy attestation
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-deploy.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-deploy.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          read -r _ _ artifact_digest < <(node scripts/deploy/release-manifest.mjs fields /srv/apps/duindorpteneu/staging/RELEASE_MANIFEST)
+          node scripts/deploy/staging-attestation.mjs create \
+            "${ATTESTATION_PATH}" "${RESULT_PATH}" deploy "${RELEASE_SHA}" \
+            "${GITHUB_RUN_ID}" "${GITHUB_RUN_ID}" "${artifact_digest}" \
+            "${RESULT_ARTIFACT_ID}" "${RESULT_ARTIFACT_DIGEST}"
+
+      - name: Upload exact deploy attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-deploy-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-deploy.json
+          if-no-files-found: error
+          retention-days: 30

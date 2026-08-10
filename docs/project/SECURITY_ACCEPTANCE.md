@@ -22,6 +22,8 @@ Een controle is alleen groen met reproduceerbaar bewijs. Gebruik fictieve data, 
 | Schone migratie/seed | `pnpm db:reset` | `________________` |
 | Database/RLS | `pnpm test:db` | `________________` |
 | Uitgifteconcurrency | `pnpm test:db:concurrency` | `________________` |
+| Betaalconcurrency | `pnpm test:db:payment-concurrency` | `________________` |
+| Voorraadconcurrency | `pnpm test:db:inventory-concurrency` | `________________` |
 | Staff MFA | `pnpm test:staff-mfa` | `________________` |
 | Browserregressie | `pnpm test:dashboard-browser` | `________________` |
 | Canonieke Playwrightsuite | `pnpm test:e2e` | `________________` |
@@ -42,7 +44,9 @@ De lokale secret scan is defense-in-depth en vervangt de secretstore, GitHub pus
 - [ ] Oudersessie is opaque en gehasht, herroepbaar en via `Secure; HttpOnly; SameSite` cookie zonder token in URL.
 - [ ] Logout/intrekking maakt een gekopieerde oude sessie direct ongeldig.
 - [ ] Ouder krijgt voor ieder niet-gekoppeld `member_id` 403/404 zonder lidmetadata.
-- [ ] QR-plaintext staat niet in database, logs, URL-querystring of analytics; rotatie maakt oude token direct ongeldig.
+- [ ] QR-plaintext staat niet in database, logs, URL-querystring, history, referrer of analytics; rotatie maakt oude locator en open grants direct ongeldig.
+- [ ] Scannerexchange geeft uitsluitend voornaam, geslacht en pakketregels terug; achternaam, DOB, e-mail, team, relatienummer, order-ID en individuele betaaldetails ontbreken.
+- [ ] De scanner-PWA is netwerk-only, bewaart uitsluitend de HttpOnly medewerkerssessie en bevat geen QR/grant in Cache Storage, IndexedDB, localStorage of sessionStorage.
 
 Bewijs: `________________`
 
@@ -55,11 +59,11 @@ Test zowel pagina als directe API/RPC; client-side verborgen knoppen tellen niet
 | Backoffice lezen | Weigeren | Weigeren | Toestaan | Toestaan binnen operatie | Weigeren |
 | Staff-/systeembeheer | Weigeren | Weigeren | Toestaan | Weigeren | Weigeren |
 | Import/catalogus/orders | Weigeren | Weigeren | Toestaan | Toestaan | Weigeren |
-| Kas/pin exact registreren | Weigeren | Weigeren | Toestaan | Toestaan | Weigeren |
+| Kas exact registreren | Weigeren | Weigeren | Toestaan met AAL2 | Weigeren | Weigeren |
 | Exports/audit | Weigeren | Weigeren | Toestaan | Alleen canoniek operationeel | Weigeren |
 | Eigen gekoppelde lidkaart | Weigeren | Toestaan | Niet via ouderroute | Niet via ouderroute | Weigeren |
 | Niet-gekoppelde lidkaart | Weigeren | Weigeren | Niet van toepassing | Niet van toepassing | Weigeren |
-| QR-lookup/uitgifte | Weigeren | Weigeren | Volgens canon | Volgens canon | Toestaan, minimale data |
+| QR-exchange/uitgifte | Weigeren | Weigeren | Toestaan | Weigeren | Toestaan, minimale data |
 | Correctie/QR-rotatie | Weigeren | Weigeren | Toestaan | Toestaan | Weigeren |
 
 Negatief bewijs bevat HTTP-status plus controle dat geen gevoelige responsebody of databasewijziging ontstond.
@@ -169,7 +173,8 @@ Bewijs: `________________`
 - [ ] E-mailworker, retentiejob en healthmonitor alarmeren op gemiste/stale/foute toestand.
 - [ ] Incidentprocedures staffaccount, QR, verdachte betaling en datalek zijn getabletopt.
 - [ ] Keys zijn per omgeving gescheiden en rotatie is getest zonder waarden in bewijs.
-- [ ] `PARENT_TOKEN_PEPPER` wordt niet ongecoördineerd geroteerd; sessie-/QR-impact heeft expliciet plan.
+- [ ] `PARENT_TOKEN_PEPPER` wordt niet ongecoördineerd geroteerd; bestaande oudersessies worden gecontroleerd ingetrokken.
+- [ ] QR-current/previous keyring is per omgeving uniek; previous wordt pas verwijderd wanneer actieve previous locators én open grants nul zijn.
 - [ ] Forward-fixplan wijzigt geen toegepaste migratie en approllback vereist schemacompatibiliteit.
 
 Bewijs: `________________`

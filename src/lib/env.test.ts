@@ -6,6 +6,8 @@ describe("server provider configuration", () => {
     const env = parseServerEnv({ APP_BASE_URL: "http://localhost:3100" });
     expect(env.MOLLIE_ENABLED).toBe("false");
     expect(env.EMAIL_ENABLED).toBe("false");
+    expect(env.DYNAMIC_IMPORT_ENABLED).toBe("false");
+    expect(env.IMPORT_RAW_RETENTION_HOURS).toBe(24);
   });
 
   it("treats explicitly empty optional provider values as unset while disabled", () => {
@@ -15,19 +17,75 @@ describe("server provider configuration", () => {
       MOLLIE_API_KEY: "",
       EMAIL_ENABLED: "false",
       SENDGRID_API_KEY: "",
+      SENDGRID_API_KEY_FINGERPRINT: "",
+      SENDGRID_FROM_NAME: "",
       SENDGRID_FROM_EMAIL: "",
       SENDGRID_REPLY_TO_EMAIL: "   ",
+      SENDGRID_SMOKE_RECIPIENT: "",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "",
     });
     expect(env.MOLLIE_API_KEY).toBeUndefined();
     expect(env.SENDGRID_API_KEY).toBeUndefined();
+    expect(env.SENDGRID_API_KEY_FINGERPRINT).toBeUndefined();
+    expect(env.SENDGRID_FROM_NAME).toBeUndefined();
     expect(env.SENDGRID_FROM_EMAIL).toBeUndefined();
     expect(env.SENDGRID_REPLY_TO_EMAIL).toBeUndefined();
+    expect(env.SENDGRID_SMOKE_RECIPIENT).toBeUndefined();
     expect(env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY).toBeUndefined();
   });
 
   it("fails closed when Mollie is enabled without HTTPS and credentials", () => {
     expect(() => parseServerEnv({ MOLLIE_ENABLED: "true", APP_BASE_URL: "http://localhost:3100" })).toThrow();
+  });
+
+  it("vereist een canonieke aparte importstaging-sleutel bij activatie", () => {
+    expect(() => parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: "",
+    })).toThrow();
+    expect(() => parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+    })).toThrow();
+    expect(parseServerEnv({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64url"),
+      IMPORT_RAW_RETENTION_HOURS: "72",
+    })).toMatchObject({
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_RAW_RETENTION_HOURS: 72,
+    });
+    expect(() => parseServerEnv({ IMPORT_RAW_RETENTION_HOURS: "73" })).toThrow();
+  });
+
+  it("valideert een huidige en optionele vorige QR-sleutel als één keyring", () => {
+    const current = Buffer.alloc(32, 4).toString("base64url");
+    const previous = Buffer.alloc(32, 3).toString("base64url");
+    expect(parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "1",
+    })).toMatchObject({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: 2,
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: 1,
+    });
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+    })).toThrow();
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: current,
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER: previous,
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "2",
+    })).toThrow();
+    expect(() => parseServerEnv({
+      QR_TOKEN_PEPPER: "x".repeat(43),
+    })).toThrow();
   });
 
   it("rejects a live Mollie key outside production", () => {
@@ -44,13 +102,31 @@ describe("server provider configuration", () => {
     expect(() => parseServerEnv({ EMAIL_ENABLED: "true" })).toThrow();
   });
 
+  it("vereist bij actieve e-mail een keyfingerprint maar geen productie-smokeontvanger", () => {
+    const env = parseServerEnv({
+      EMAIL_ENABLED: "true",
+      APP_BASE_URL: "https://duindorp.dgwebservices.nl",
+      SENDGRID_API_KEY: "SG.test",
+      SENDGRID_API_KEY_FINGERPRINT: "a".repeat(64),
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
+      SENDGRID_FROM_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_REPLY_TO_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
+      CRON_SECRET: "x".repeat(16),
+    });
+    expect(env.EMAIL_ENABLED).toBe("true");
+    expect(env.SENDGRID_SMOKE_RECIPIENT).toBeUndefined();
+  });
+
   it("requires HTTPS for links in enabled e-mail", () => {
     expect(() => parseServerEnv({
       EMAIL_ENABLED: "true",
       APP_BASE_URL: "http://localhost:3100",
       SENDGRID_API_KEY: "SG.test",
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
       SENDGRID_FROM_EMAIL: "tenue@duindorp.example",
       SENDGRID_REPLY_TO_EMAIL: "commissie@duindorp.example",
+      SENDGRID_SMOKE_RECIPIENT: "testinbox@duindorp.example",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: "public-key",
       CRON_SECRET: "x".repeat(16),
     })).toThrow();

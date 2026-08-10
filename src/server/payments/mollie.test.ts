@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, getMolliePayment, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
 
-const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 1 as const };
+const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", member_season_id: "10000000-0000-4000-8000-000000000005", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 2 as const };
 
 describe("Mollie provider boundary", () => {
   it("formats and parses exact EUR cents without floating point", () => {
@@ -12,6 +12,19 @@ describe("Mollie provider boundary", () => {
 
   it("requires exact internal metadata", () => {
     expect(parseMollieMetadata(JSON.stringify(metadata))).toEqual(metadata);
+    expect(parseMollieMetadata({
+      payment_id: metadata.payment_id,
+      order_id: metadata.order_id,
+      member_id: metadata.member_id,
+      season_id: metadata.season_id,
+      schema_version: 1,
+    })).toEqual({
+      payment_id: metadata.payment_id,
+      order_id: metadata.order_id,
+      member_id: metadata.member_id,
+      season_id: metadata.season_id,
+      schema_version: 1,
+    });
     expect(() => parseMollieMetadata({ ...metadata, order_id: "wrong" })).toThrow("MOLLIE_METADATA_INVALID");
   });
 
@@ -27,7 +40,7 @@ describe("Mollie provider boundary", () => {
     expect(result._links.checkout?.href).toContain("mollie.com");
   });
 
-  it("accepts only a classic Mollie form or JSON payment id", async () => {
+  it("accepts uitsluitend het klassieke Mollie-formulier", async () => {
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "id=tr_abc123" }))).resolves.toBe("tr_abc123");
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: '{"id":"tr_abc123"}' }))).rejects.toThrow("MOLLIE_WEBHOOK_CONTENT_TYPE_INVALID");
   });
@@ -72,6 +85,18 @@ describe("Mollie provider boundary", () => {
       _embedded: { refunds: [{ id: "re_test123", status: "refunded" }] },
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("begrensd ook een chunked antwoord van de Mollie API vóór JSON-parsing", async () => {
+    const fetcher = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(100_001));
+        controller.close();
+      },
+    }), { status: 200 }));
+
+    await expect(getMolliePayment("test_key", "tr_test123", fetcher as typeof fetch))
+      .rejects.toThrow("MOLLIE_RESPONSE_TOO_LARGE");
   });
 
   it("accepts checkout links only from Mollie over HTTPS", () => {

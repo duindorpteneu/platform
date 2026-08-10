@@ -1,0 +1,89 @@
+\set ON_ERROR_STOP on
+
+do $$
+declare
+  role_name text;
+begin
+  foreach role_name in array array[
+    'anon',
+    'authenticated',
+    'service_role',
+    'authenticator',
+    'supabase_admin',
+    'supabase_auth_admin',
+    'supabase_functions_admin',
+    'supabase_privileged_role',
+    'supabase_read_only_user',
+    'supabase_realtime_admin',
+    'supabase_replication_admin',
+    'supabase_storage_admin',
+    'dashboard_user'
+  ]
+  loop
+    if not exists (
+      select 1
+      from pg_roles
+      where rolname = role_name
+    ) then
+      execute format('create role %I nologin', role_name);
+    end if;
+  end loop;
+end;
+$$;
+
+alter role anon
+  nosuperuser inherit nocreaterole nocreatedb nologin
+  noreplication nobypassrls connection limit -1;
+alter role authenticated
+  nosuperuser inherit nocreaterole nocreatedb nologin
+  noreplication nobypassrls connection limit -1;
+alter role authenticator
+  nosuperuser noinherit nocreaterole nocreatedb login
+  noreplication nobypassrls connection limit -1;
+alter role dashboard_user
+  nosuperuser inherit createrole createdb nologin
+  replication nobypassrls connection limit -1;
+alter role postgres
+  nosuperuser inherit createrole createdb login
+  replication bypassrls connection limit -1;
+alter role service_role
+  nosuperuser inherit nocreaterole nocreatedb nologin
+  noreplication bypassrls connection limit -1;
+alter role supabase_admin
+  superuser inherit createrole createdb login
+  replication bypassrls connection limit -1;
+alter role supabase_auth_admin
+  nosuperuser noinherit createrole nocreatedb login
+  noreplication nobypassrls connection limit -1;
+alter role supabase_functions_admin
+  nosuperuser noinherit createrole nocreatedb login
+  noreplication nobypassrls connection limit -1;
+alter role supabase_read_only_user
+  nosuperuser inherit nocreaterole nocreatedb login
+  noreplication bypassrls connection limit -1;
+alter role supabase_replication_admin
+  nosuperuser inherit nocreaterole nocreatedb login
+  replication nobypassrls connection limit -1;
+alter role supabase_storage_admin
+  nosuperuser noinherit createrole nocreatedb login
+  noreplication nobypassrls connection limit -1;
+
+grant anon, authenticated, service_role to authenticator;
+grant
+  anon,
+  authenticated,
+  authenticator,
+  pg_create_subscription,
+  pg_monitor,
+  pg_read_all_data,
+  pg_signal_backend,
+  service_role,
+  supabase_functions_admin,
+  supabase_privileged_role,
+  supabase_realtime_admin
+to postgres;
+grant pg_monitor, pg_read_all_data to supabase_read_only_user;
+grant authenticator to supabase_storage_admin;
+
+create schema if not exists extensions authorization supabase_admin;
+create extension if not exists pgcrypto with schema extensions;

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(38);
 
 insert into app.staff_profiles(auth_user_id, display_name, role)
 values
@@ -99,7 +99,8 @@ select throws_ok(
   '23514', 'PAID_AMOUNT_MISMATCH', 'paid vereist exact orderbedrag op tabelniveau'
 );
 select ok(not has_function_privilege('authenticated', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'trusted betaal-RPC is niet voor authenticated');
-select ok(has_function_privilege('service_role', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'trusted betaal-RPC is alleen server-side uitvoerbaar');
+select ok(not has_function_privilege('service_role', 'app.record_manual_payment_with_qr_trusted(uuid,uuid,app.payment_method,text,text)', 'EXECUTE'), 'legacy trusted betaal-RPC is ook voor service role ingetrokken');
+select ok(has_function_privilege('authenticated', 'app.record_manual_payment_v2(uuid,app.payment_method,integer,text,uuid,uuid)', 'EXECUTE'), 'nieuwe kas-RPC valideert beheerder en AAL2 in de database');
 select throws_ok(
   $$select app.record_manual_payment_with_qr_trusted(
     'a0000000-0000-4000-8000-000000000001',
@@ -136,120 +137,19 @@ reset role;
 select ok(not has_function_privilege('authenticated', 'app.store_order_qr(uuid,text,integer)', 'EXECUTE'), 'oude caller-supplied QR-RPC is ingetrokken');
 select ok(has_schema_privilege('service_role', 'app', 'USAGE'), 'service role kan uitsluitend gegrante app-RPCs bereiken');
 select ok(not has_function_privilege('authenticated', 'app.get_order_qr_rotation_context(uuid,uuid)', 'EXECUTE'), 'QR-versiecontext is niet direct voor authenticated');
-select ok(has_function_privilege('service_role', 'app.get_order_qr_rotation_context(uuid,uuid)', 'EXECUTE'), 'QR-versiecontext is alleen server-side uitvoerbaar');
+select ok(not has_function_privilege('service_role', 'app.get_order_qr_rotation_context(uuid,uuid)', 'EXECUTE'), 'oude QR-versiecontext is ook voor service role ingetrokken');
 select ok(not has_function_privilege('authenticated', 'app.rotate_order_qr(uuid,uuid,integer,text,text)', 'EXECUTE'), 'QR-rotatie accepteert hashes alleen via service role');
-select lives_ok(
-  $$select app.rotate_order_qr(
-    'a0000000-0000-4000-8000-000000000001',
-    (select (result->>'orderId')::uuid from saved_order), 1, repeat('b',64), 'Ouder meldde verlies'
-  )$$, 'serververtrouwde QR-rotatie slaagt'
-);
-
-select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
-set local role authenticated;
-select is(app.lookup_fulfilment(repeat('a',64))->>'status', 'invalid', 'oude QR is direct ongeldig');
-select is(app.lookup_fulfilment(repeat('b',64))->>'status', 'found', 'nieuwe QR is direct actief');
-reset role;
-select lives_ok(
-  $$select app.revoke_order_qr(
-    'a0000000-0000-4000-8000-000000000001',
-    (select (result->>'orderId')::uuid from saved_order), 'Tijdelijk veiligheidsincident'
-  )$$, 'serververtrouwde QR-intrekking slaagt'
-);
-set local role authenticated;
-select is(app.lookup_fulfilment(repeat('b',64))->>'status', 'invalid', 'ingetrokken QR geeft neutraal ongeldig');
-reset role;
-select lives_ok(
-  $$select app.rotate_order_qr(
-    'a0000000-0000-4000-8000-000000000001',
-    (select (result->>'orderId')::uuid from saved_order), 2, repeat('c',64), 'Nieuwe code na intrekking'
-  )$$, 'expliciete rotatie activeert na intrekking een volgende versie'
-);
-set local role authenticated;
-select is(app.lookup_fulfilment(repeat('c',64))->>'status', 'found', 'opnieuw geactiveerde QR werkt');
-
-reset role;
-select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
-set local role authenticated;
-select lives_ok(
-  $$select app.register_delivery_receipt(current_date, 'Sprint leverancier', 'SPRINT-PAK', '[
-    {"variant_id":"a3000000-0000-4000-8000-000000000001","quantity":1},
-    {"variant_id":"a3000000-0000-4000-8000-000000000002","quantity":1}
-  ]'::jsonb)$$, 'voorraad voor beide varianten wordt ontvangen'
-);
-select lives_ok(
-  $$select app.reserve_order_lines(
-    (select line.id from app.delivery_receipt_lines line join app.delivery_receipts receipt on receipt.id=line.receipt_id where receipt.supplier='Sprint leverancier' and line.article_variant_id='a3000000-0000-4000-8000-000000000001'),
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) and article_variant_id='a3000000-0000-4000-8000-000000000001')]
-  )$$, 'eerste variant wordt gereserveerd'
-);
-select lives_ok(
-  $$select app.reserve_order_lines(
-    (select line.id from app.delivery_receipt_lines line join app.delivery_receipts receipt on receipt.id=line.receipt_id where receipt.supplier='Sprint leverancier' and line.article_variant_id='a3000000-0000-4000-8000-000000000002'),
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) and article_variant_id='a3000000-0000-4000-8000-000000000002')]
-  )$$, 'tweede variant wordt gereserveerd'
-);
-create temporary table selected_sprint_lines as
-select id, article_variant_id
-from app.order_lines
-where order_id=(select (result->>'orderId')::uuid from saved_order);
-
-reset role;
-select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
-set local role authenticated;
-select lives_ok(
-  $$select app.commit_fulfilment(
-    (select (result->>'orderId')::uuid from saved_order),
-    array[
-      (select id from selected_sprint_lines where article_variant_id='a3000000-0000-4000-8000-000000000001'),
-      (select id from selected_sprint_lines where article_variant_id='a3000000-0000-4000-8000-000000000002')
-    ],
-    'Sprintbalie', repeat('c',64)
-  )$$, 'uitgifte voltooit beide gereserveerde regels'
-);
-select throws_ok(
-  $$select app.correct_fulfilment(
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)],
-    'ready_for_pickup', 'Uitgiftefout'
-  )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'uitgifterol kan een uitgifte niet corrigeren'
-);
-
-reset role;
-select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
-set local role authenticated;
-select lives_ok(
-  $$select app.correct_fulfilment(
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)],
-    'ready_for_pickup', 'Verkeerde tas meegegeven'
-  )$$, 'correctie naar Af te halen slaagt'
-);
-select is((select status::text from app.inventory_reservations where order_line_id=(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id limit 1)), 'reserved', 'Af te halen herstelt de reservering');
-select lives_ok(
-  $$select app.correct_fulfilment(
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)],
-    'backorder', 'Artikel bleek niet meegegeven'
-  )$$, 'correctie naar Nalevering slaagt'
-);
-select is((select status::text from app.inventory_reservations where order_line_id=(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)), 'released', 'Nalevering geeft de reservering vrij');
-select throws_ok(
-  $$select app.correct_fulfilment(
-    array[(select id from app.order_lines where order_id=(select (result->>'orderId')::uuid from saved_order) order by id desc limit 1)],
-    'backorder', 'Nogmaals proberen'
-  )$$, '23514', 'ORDER_LINE_NOT_PICKED_UP', 'dezelfde uitgifte kan niet dubbel worden gecorrigeerd'
-);
-
-reset role;
-select is((select count(*)::integer from app.fulfilment_lines where fulfilment_id=(select id from app.fulfilments where location='Sprintbalie')), 2, 'oorspronkelijke fulfilmentregels blijven bestaan');
-select is((select count(*)::integer from app.fulfilment_lines where fulfilment_id=(select id from app.fulfilments where location='Sprintbalie') and reversed_at is not null), 2, 'beide correcties krijgen reversalmetadata');
-select is((select count(*)::integer from app.audit_logs where action='fulfilment.corrected' and entity_id=(select (result->>'orderId')::uuid from saved_order)), 2, 'iedere correctie is geaudit');
-
-set local role authenticated;
-select is(jsonb_array_length(app.get_fulfilment_corrections_workspace()->'fulfilments'), 1, 'historie-readmodel toont de uitgifte');
-select ok(position('email' in app.get_fulfilment_corrections_workspace()::text) = 0, 'uitgiftehistorie bevat geen e-mailadres');
-reset role;
-select ok(not exists(select 1 from app.audit_logs where metadata::text like '%' || repeat('b',64) || '%'), 'QR-hash komt niet in auditmetadata');
-select is((select size_snapshot from app.order_lines where article_variant_id='a3000000-0000-4000-8000-000000000001'), 'M', 'orderregel bewaart de historische maat');
-select is((select order_status from app.member_orders where id=(select (result->>'orderId')::uuid from saved_order)), 'Gedeeltelijk af te halen', 'correcties herberekenen de afgeleide orderstatus');
+select ok(not has_function_privilege('service_role', 'app.rotate_order_qr(uuid,uuid,integer,text,text)', 'EXECUTE'), 'oude QR-rotatie is ook voor service role ingetrokken');
+select ok(not has_function_privilege('authenticated', 'app.lookup_fulfilment(text)', 'EXECUTE'), 'legacy bearerlookup is definitief ingetrokken');
+select ok(not has_function_privilege('service_role', 'app.lookup_fulfilment(text)', 'EXECUTE'), 'legacy bearerlookup heeft geen serveromweg');
+select ok(not has_function_privilege('authenticated', 'app.commit_fulfilment_v2(uuid,uuid[],text,text)', 'EXECUTE'), 'legacy uitgiftecommit is niet voor authenticated');
+select ok(not has_function_privilege('service_role', 'app.commit_fulfilment_v2(uuid,uuid[],text,text)', 'EXECUTE'), 'legacy uitgiftecommit is ook server-side ingetrokken');
+select ok(not has_function_privilege('authenticated', 'app.exchange_order_qr_locator_v2(uuid,text,text,text,integer,uuid)', 'EXECUTE'), 'browserrollen kunnen locator exchange niet rechtstreeks aanroepen');
+select ok(has_function_privilege('service_role', 'app.exchange_order_qr_locator_v2(uuid,text,text,text,integer,uuid)', 'EXECUTE'), 'locator exchange is uitsluitend voor de serveradapter');
+select ok(not has_function_privilege('authenticated', 'app.commit_fulfilment_v3(uuid,text,text,uuid[],uuid,uuid)', 'EXECUTE'), 'browserrollen kunnen v3-uitgifte niet rechtstreeks aanroepen');
+select ok(has_function_privilege('service_role', 'app.commit_fulfilment_v3(uuid,text,text,uuid[],uuid,uuid)', 'EXECUTE'), 'v3-uitgifte is uitsluitend voor de serveradapter');
+select ok(not has_function_privilege('authenticated', 'app.correct_fulfilment_v3(uuid,text,uuid[],text,text,uuid,uuid)', 'EXECUTE'), 'browserrollen kunnen journalcorrecties niet rechtstreeks aanroepen');
+select ok(has_function_privilege('service_role', 'app.correct_fulfilment_v3(uuid,text,uuid[],text,text,uuid,uuid)', 'EXECUTE'), 'journalcorrecties zijn uitsluitend voor de serveradapter');
 
 select * from finish();
 rollback;

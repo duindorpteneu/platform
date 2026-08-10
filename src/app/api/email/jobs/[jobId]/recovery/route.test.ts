@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ recover: vi.fn() }));
 vi.mock("@/lib/env", () => ({ getServerEnv: () => ({ APP_BASE_URL: "https://tenue.example" }) }));
-vi.mock("@/server/security/route-guard", () => ({ guardBrowserMutation: () => null }));
+vi.mock("@/server/security/route-guard", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/security/route-guard")>(),
+  guardBrowserMutation: () => null,
+}));
 vi.mock("@/server/email/recovery", () => ({ recoverEmailJob: mocks.recover }));
 
 import { POST } from "./route";

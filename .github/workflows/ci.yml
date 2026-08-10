@@ -24,24 +24,30 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.5.2
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
 
+      - name: Lint GitHub Actions workflows
+        run: pnpm lint:workflows
+
       - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Reject known high or critical dependencies
+        run: pnpm security:dependencies
 
       - name: Scan repository for secrets
         run: node scripts/check-secrets.mjs
@@ -58,6 +64,9 @@ jobs:
       - name: Run unit and integration tests
         run: pnpm test
 
+      - name: Prove application log privacy
+        run: pnpm test:log-privacy
+
       - name: Build production application
         run: pnpm build
 
@@ -67,22 +76,25 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.5.2
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install checksum-verified Supabase CLI
+        run: bash scripts/deploy/install-supabase-cli.sh
 
       - name: Start isolated local Supabase
         run: pnpm supabase:start
@@ -90,14 +102,68 @@ jobs:
       - name: Export local Supabase browser build configuration
         run: node scripts/export-local-supabase-ci-env.mjs
 
+      - name: Run legacy Phase B upgrade reconciliation
+        run: pnpm test:db:upgrade:phase-b
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
       - name: Run database and RLS tests
         run: pnpm test:db
 
+      - name: Run isolated Mollie fixture SQL integration
+        run: pnpm test:db:mollie-fixture
+
       - name: Run fulfilment concurrency test
         run: pnpm test:db:concurrency
+
+      - name: Run parent-access concurrency test
+        run: pnpm test:db:access-concurrency
+
+      - name: Run variant alias concurrency test
+        run: pnpm test:db:variant-concurrency
+
+      - name: Run action-item concurrency test
+        run: pnpm test:db:action-concurrency
+
+      - name: Run dynamic-import concurrency test
+        run: pnpm test:db:import-concurrency
+
+      - name: Run package concurrency test
+        run: pnpm test:db:package-concurrency
+
+      - name: Run payment concurrency test
+        run: pnpm test:db:payment-concurrency
+
+      - name: Run manual refund concurrency test
+        run: pnpm test:db:refund-concurrency
+
+      - name: Run inventory concurrency test
+        run: pnpm test:db:inventory-concurrency
+
+      - name: Run delivery notification concurrency test
+        run: pnpm test:db:delivery-notification-concurrency
+
+      - name: Run mail projection concurrency test
+        run: |
+          pnpm test:db:mail-projection-concurrency
+          pnpm test:db:mail-supersession-concurrency
+          pnpm test:db:mail-test-delivery-concurrency
+          pnpm test:db:branding-concurrency
+
+      - name: Run mail campaign concurrency test
+        run: pnpm test:db:mail-campaign-concurrency
+      - name: Run e-mail delivery-attempt concurrency test
+        run: pnpm test:db:email-attempt-concurrency
+
+      - name: Run parent OTP concurrency test
+        run: pnpm test:db:parent-otp-concurrency
+
+      - name: Run supplier planning concurrency test
+        run: pnpm test:db:supplier-concurrency
+
+      - name: Run staging cleanup transaction contract
+        run: pnpm test:db:staging-cleanup
 
       - name: Build browser-test application
         run: pnpm build
@@ -105,11 +171,22 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Prove canon capacity and critical p95 latency
+        env:
+          CAPACITY_TEST_DISPOSABLE_DB: "1"
+        run: pnpm test:capacity
+
       - name: Run staff MFA integration
         run: pnpm test:staff-mfa
 
+      - name: Run staff password recovery acceptance
+        run: pnpm test:staff-password-recovery
+
+      - name: Run parent portal access browser acceptance
+        run: timeout --signal=TERM --kill-after=10s 4m pnpm test:portal-access-browser
+
       - name: Run full Playwright browser review
-        run: pnpm test:e2e
+        run: pnpm test:a11y
 
       - name: Stop local Supabase
         if: always()

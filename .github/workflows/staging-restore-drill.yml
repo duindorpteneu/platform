@@ -7,21 +7,37 @@ on:
         description: Volledige SHA die momenteel op staging staat
         required: true
         type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run die exact dit artifact heeft geplaatst
+        required: true
+        type: string
       confirm_target:
         description: Typ exact STAGING-RESTORE
         required: true
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: staging-restore-drill
+  group: deploy-duindorpteneu-staging
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
   restore-drill:
     name: Logical backup and network-isolated restore
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: staging
@@ -30,14 +46,16 @@ jobs:
       STAGING_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      RELEASE_SHA: ${{ inputs.release_sha }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      SOURCE_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      SOURCE_ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
       CONFIRM_TARGET: ${{ inputs.confirm_target }}
       POSTGRES_IMAGE: public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453
     steps:
       - name: Checkout protected restore harness
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
           clean: true
           persist-credentials: false
@@ -47,22 +65,65 @@ jobs:
         run: |
           set -Eeuo pipefail
           node scripts/staging/validate-target.mjs
-          git merge-base --is-ancestor "${RELEASE_SHA}" origin/main
 
       - name: Verify exact release is live on public staging
-        run: node scripts/deploy/check-http.mjs "${STAGING_APP_URL}" staging "${RELEASE_SHA}"
+        run: >-
+          node scripts/deploy/check-http.mjs "${STAGING_APP_URL}" staging
+          "${RELEASE_SHA}" "${{ needs.preflight.outputs.artifact_digest }}"
 
       - name: Create PostgreSQL 17 backup and run isolated restore
         shell: bash
         run: bash scripts/staging/restore-drill.sh
 
-      - name: Upload redacted restore evidence only
-        uses: actions/upload-artifact@v4
+      - name: Create exact restore result
+        env:
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          RESULT_PATH: ${{ runner.temp }}/staging-result-restore.json
+          RESTORE_EVIDENCE_PATH: ${{ runner.temp }}/duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}-evidence.json
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_APP_URL}" staging "${RELEASE_SHA}" "${ARTIFACT_DIGEST}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RESULT_PATH}" restore "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${STAGING_DEPLOY_RUN_ID}" "${ARTIFACT_DIGEST}" \
+            "${RESTORE_EVIDENCE_PATH}"
+
+      - name: Upload exact restore result and redacted evidence
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: staging-restore-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}-evidence.json
+          name: staging-result-restore-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/staging-result-restore.json
+            ${{ runner.temp }}/duindorp-restore-${{ github.run_id }}-${{ github.run_attempt }}-evidence.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Create result-bound restore attestation
+        env:
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-restore.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-restore.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/staging-attestation.mjs create \
+            "${ATTESTATION_PATH}" "${RESULT_PATH}" restore "${RELEASE_SHA}" \
+            "${GITHUB_RUN_ID}" "${STAGING_DEPLOY_RUN_ID}" \
+            "${ARTIFACT_DIGEST}" "${RESULT_ARTIFACT_ID}" \
+            "${RESULT_ARTIFACT_DIGEST}"
+
+      - name: Upload exact restore attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-restore-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-restore.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Always remove run-specific containers, volumes and sensitive files
         if: always()
@@ -74,4 +135,6 @@ jobs:
           rm -f -- \
             "${RUNNER_TEMP}/duindorp-restore-${run_key}.dump" \
             "${RUNNER_TEMP}/duindorp-restore-${run_key}-verification.json" \
-            "${RUNNER_TEMP}/duindorp-restore-${run_key}-evidence.json"
+            "${RUNNER_TEMP}/duindorp-restore-${run_key}-evidence.json" \
+            "${RUNNER_TEMP}/staging-result-restore.json" \
+            "${RUNNER_TEMP}/staging-attestation-restore.json"

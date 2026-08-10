@@ -3,6 +3,7 @@ import { z } from "zod";
 const countSchema = z.number().int().nonnegative();
 
 export const paymentWorkspaceSchema = z.object({
+  canRecordRefund: z.boolean().default(false),
   summary: z.object({
     open: countSchema,
     pending: countSchema,
@@ -15,7 +16,7 @@ export const paymentWorkspaceSchema = z.object({
     paymentId: z.string().uuid(),
     orderId: z.string().uuid(),
     memberName: z.string().min(1).max(320),
-    relationNumber: z.string().min(1).max(120),
+    relationNumber: z.string().min(1).max(120).nullable(),
     team: z.string().min(1).max(160),
     method: z.enum(["cash", "card", "mollie"]),
     status: z.enum(["open", "pending", "paid", "failed", "canceled", "expired", "refunded", "duplicate_paid"]),

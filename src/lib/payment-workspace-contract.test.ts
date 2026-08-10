@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { paymentWorkspaceSchema } from "@/lib/payment-workspace-contract";
 
 const valid = {
+  canRecordRefund: true,
   summary: { open: 1, pending: 0, paid: 2, duplicatePaid: 0, refunded: 0, review: 0 },
   attempts: [{
     paymentId: "10000000-0000-4000-8000-000000000001",

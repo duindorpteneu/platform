@@ -4,7 +4,7 @@ import { getStaffLandingPath } from "@/lib/staff-auth-contract";
 import { getStaffContext } from "@/server/auth/staff";
 import { createStaffSessionForUser, STAFF_SESSION_COOKIE, StaffSessionUnavailableError } from "@/server/auth/staff-context";
 import { StaffJwtUnavailableError, verifyStaffAal2AccessToken } from "@/server/auth/staff-jwt";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0" };
 const sessionTokensSchema = z.object({
@@ -38,11 +38,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const guarded = guardBrowserMutation(request, {
-    body: { allowedContentTypes: ["application/json"], maxBytes: 40 * 1024 },
+    body: BODY_POLICIES.staffSession,
   });
   if (guarded) return guarded;
 
-  const parsed = sessionTokensSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonRequest(request, BODY_POLICIES.staffSession);
+  if (!body.ok) return body.response;
+  const parsed = sessionTokensSchema.safeParse(body.data);
   if (!parsed.success) {
     return authError("INVALID_SESSION_TOKENS", 400);
   }

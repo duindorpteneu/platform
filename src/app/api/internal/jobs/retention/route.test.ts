@@ -12,20 +12,77 @@ describe("POST /api/internal/jobs/retention", () => {
     mocks.bearer.mockReset().mockReturnValue(true);
     mocks.startRun.mockReset().mockResolvedValue(true);
     mocks.finishRun.mockReset().mockResolvedValue(true);
-    mocks.rpc.mockReset().mockResolvedValue({
-      data: { otpChallenges: 1, rateLimitEvents: 2, parentSessions: 3, emailEvents: 4 },
-      error: null,
-    });
+    mocks.rpc.mockReset().mockImplementation(async (name: string) => (
+      name === "purge_mail_v2_campaign_preflights_v1"
+        ? { data: 10, error: null }
+        : name === "purge_parent_otp_delivery_history_v1"
+          ? { data: 11, error: null }
+          : name === "purge_supplier_planner_history_v1"
+            ? { data: 12, error: null }
+        : {
+          data: {
+            otpChallenges: 1,
+            rateLimitEvents: 2,
+            parentSessions: 3,
+            emailEvents: 4,
+            importStaging: 5,
+            importSelectedRows: 6,
+            importRunsExpired: 7,
+            importPartialFailures: 8,
+            importPlansPurged: 9,
+          },
+          error: null,
+        }
+    ));
     mocks.admin.mockReset().mockReturnValue({ schema: () => ({ rpc: mocks.rpc }) });
   });
 
   it("records the monitored run and only aggregate deletion counts", async () => {
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
     expect(response.status).toBe(200);
-    expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "succeeded", 10);
+    expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "succeeded", 78);
+    expect(mocks.rpc).toHaveBeenCalledWith("cleanup_expired_security_data_v3", { p_now: expect.any(String) });
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "purge_mail_v2_campaign_preflights_v1",
+      {
+        p_now: expect.any(String),
+        p_retention_hours: 24,
+        p_limit: 500,
+      },
+    );
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "purge_parent_otp_delivery_history_v1",
+      {
+        p_now: expect.any(String),
+        p_retention_days: 90,
+        p_limit: 500,
+      },
+    );
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "purge_supplier_planner_history_v1",
+      {
+        p_event_retention_days: 365,
+        p_limit: 500,
+        p_now: expect.any(String),
+        p_session_retention_days: 30,
+      },
+    );
     expect(await response.json()).toEqual({
       status: "completed",
-      deleted: { otpChallenges: 1, rateLimitEvents: 2, parentSessions: 3, emailEvents: 4 },
+      deleted: {
+        otpChallenges: 1,
+        rateLimitEvents: 2,
+        parentSessions: 3,
+        emailEvents: 4,
+        importStaging: 5,
+        importSelectedRows: 6,
+        importRunsExpired: 7,
+        importPartialFailures: 8,
+        importPlansPurged: 9,
+        campaignPreflights: 10,
+        otpDeliveryHistory: 11,
+        supplierPlanningHistory: 12,
+      },
     });
   });
 
@@ -34,5 +91,150 @@ describe("POST /api/internal/jobs/retention", () => {
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
     expect(response.status).toBe(503);
     expect(mocks.finishRun).toHaveBeenCalledWith(expect.anything(), "retention", expect.any(String), "failed", 0, "cleanup_failed");
+  });
+
+  it("faalt gemonitord als campagnepreflightretentie niet kan draaien", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => (
+      name === "purge_mail_v2_campaign_preflights_v1"
+        ? { data: null, error: { code: "XX000" } }
+        : {
+          data: {
+            otpChallenges: 1,
+            rateLimitEvents: 2,
+            parentSessions: 3,
+            emailEvents: 4,
+            importStaging: 5,
+            importSelectedRows: 6,
+            importRunsExpired: 7,
+            importPartialFailures: 8,
+            importPlansPurged: 9,
+          },
+          error: null,
+        }
+    ));
+    const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "retention",
+      expect.any(String),
+      "failed",
+      0,
+      "campaign_cleanup_failed",
+    );
+  });
+
+  it("faalt gemonitord als OTP-afleverretentie niet kan draaien", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "purge_mail_v2_campaign_preflights_v1") {
+        return { data: 10, error: null };
+      }
+      if (name === "purge_parent_otp_delivery_history_v1") {
+        return { data: null, error: { code: "XX000" } };
+      }
+      return {
+        data: {
+          otpChallenges: 1,
+          rateLimitEvents: 2,
+          parentSessions: 3,
+          emailEvents: 4,
+          importStaging: 5,
+          importSelectedRows: 6,
+          importRunsExpired: 7,
+          importPartialFailures: 8,
+          importPlansPurged: 9,
+        },
+        error: null,
+      };
+    });
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/retention",
+      { method: "POST" },
+    ));
+    expect(response.status).toBe(503);
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "retention",
+      expect.any(String),
+      "failed",
+      0,
+      "otp_delivery_cleanup_failed",
+    );
+  });
+
+  it("faalt gemonitord als supplierretentie niet kan draaien", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "purge_mail_v2_campaign_preflights_v1") {
+        return { data: 10, error: null };
+      }
+      if (name === "purge_parent_otp_delivery_history_v1") {
+        return { data: 11, error: null };
+      }
+      if (name === "purge_supplier_planner_history_v1") {
+        return { data: null, error: { code: "XX000" } };
+      }
+      return {
+        data: {
+          otpChallenges: 1,
+          rateLimitEvents: 2,
+          parentSessions: 3,
+          emailEvents: 4,
+          importStaging: 5,
+          importSelectedRows: 6,
+          importRunsExpired: 7,
+          importPartialFailures: 8,
+          importPlansPurged: 9,
+        },
+        error: null,
+      };
+    });
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/retention",
+      { method: "POST" },
+    ));
+    expect(response.status).toBe(503);
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "retention",
+      expect.any(String),
+      "failed",
+      0,
+      "supplier_cleanup_failed",
+    );
+  });
+
+  it("sluit een gestarte run gecontroleerd na een onverwachte RPC-fout", async () => {
+    mocks.rpc.mockRejectedValueOnce(new Error("database details die niet mogen lekken"));
+    const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Retentiejob kon niet veilig worden uitgevoerd.",
+    });
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "retention",
+      expect.any(String),
+      "failed",
+      0,
+      "cleanup_failed",
+    );
+  });
+
+  it("lekt geen afsluitfout wanneer monitoring zelf tijdelijk faalt", async () => {
+    mocks.rpc.mockRejectedValueOnce(new Error("provider secret"));
+    mocks.finishRun.mockRejectedValueOnce(new Error("monitoring secret"));
+    const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain("secret");
+  });
+
+  it("weigert een body voordat de retentiejob start", async () => {
+    const response = await POST(new Request("https://tenue.example/api/internal/jobs/retention", {
+      method: "POST",
+      body: "unexpected",
+    }));
+    expect(response.status).toBe(413);
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(mocks.startRun).not.toHaveBeenCalled();
   });
 });

@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import { catalogArticleRequestSchema, catalogMutationResponseSchema } from "@/lib/catalog-order-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = catalogArticleRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonStandard);
+    if (!body.ok) return body.response;
+    const parsed = catalogArticleRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Controleer naam, code, icoon, volgorde en seizoen." }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot de catalogus." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Artikel of seizoen bestaat niet meer." }, { status: 404 });
       if (error.code === "23505") return NextResponse.json({ error: "Deze artikelnaam of code bestaat al." }, { status: 409 });
+      if (error.message.includes("PACKAGE_PRODUCT_STILL_IN_USE")) return NextResponse.json({ error: "Dit artikel staat in een concept of actief pakket. Pas dat pakket eerst aan." }, { status: 409 });
       return NextResponse.json({ error: "Het artikel kon niet veilig worden opgeslagen." }, { status: 422 });
     }
     const response = catalogMutationResponseSchema.safeParse(data);

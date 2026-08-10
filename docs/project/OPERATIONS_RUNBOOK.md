@@ -10,7 +10,7 @@ Dit runbook gebruikt geen productiecredentials en geeft geen toestemming voor pr
 ### Health
 
 - `GET /api/health` is de publieke liveness/readinesscontrole. Verwacht `200` met uitsluitend `status`, `service`, `environment` en de volledige `revision`. Een `503` of `degraded` alarmeert, maar bevat geen database- of persoonsgegevens.
-- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie en recente webhookmismatches. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
+- `GET /api/internal/health` vereist `Authorization: Bearer <CRON_SECRET>` en retourneert uitsluitend operationele tellingen: e-mailqueue, onzekere/stale/failed jobs, recente afleverfouten, scheduler-runstatus, betaalreconciliatie, recente webhookmismatches en geaggregeerde importstaging. Groen is HTTP `200` met `status: "healthy"`; een operationeel probleem retourneert HTTP `503` met `status: "degraded"`, zodat `curl --fail` en externe monitors dit niet als groen behandelen.
 - Beide responses moeten `Cache-Control: no-store` gebruiken. Bewaar nooit de bearerheader in monitorlogs.
 
 Voorbeeld vanaf een beveiligde runner:
@@ -31,17 +31,33 @@ Alarmeer direct bij:
 - één of meer recente `bounced`, `dropped` of `failed` SendGrid-events;
 - één of meer betaalreconciliatieproblemen;
 - één of meer webhookmismatches in 24 uur;
+- één of meer verlopen versleutelde importuploads na twee retentiecycli;
 - scheduler die twee verwachte uitvoeringen mist;
 - dagelijkse databaseback-up ouder dan 24 uur.
 
 Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eigenaar vast. Kopieer geen requestbody, e-mailadres, OTP, QR-token, sessiecookie of providerkey naar logs of tickets.
+
+### Reverse-proxy bodylimieten
+
+De beheerde Caddy moet versie 2.10 of nieuwer zijn en de niet-overlappende
+`request_body`-matchers uit `deploy/caddy/duindorp-tenueportaal.caddy.example`
+actief hebben voor beide omgevingen. Valideer de hostconfig vóór een reload.
+De applicatielimieten blijven zelfstandig leidend; Caddy is een tweede grens
+vóór Next.js.
+
+Iedere staging- en productiondeployment voert na de publieke healthcheck
+`scripts/deploy/check-edge-body-limits.mjs` uit. Die verstuurt per routegroep
+een anonieme chunked payload met een bewust onjuist inhoudstype. Alleen HTTP
+`413` is groen: HTTP `415` bewijst dat de payload de applicatie heeft bereikt
+en blokkeert de release. De probe logt uitsluitend routegroep en status, nooit
+payload, credentials of persoonsgegevens.
 
 ### Schedulers
 
 | Job | Route | Frequentie | Geldige uitkomst |
 | --- | --- | --- | --- |
 | E-mailworker | `POST /api/internal/jobs/email` | Iedere minuut | `200` met `status: "processed"`; `status: "paused"` is alleen geldig wanneer de runtime- of databaseswitch voor e-mail uit staat |
-| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna dagelijks na 03:17 Europe/Amsterdam | `200` met `status: "completed"` en alleen verwijderde aantallen |
+| Retentie | `POST /api/internal/jobs/retention` | Bij schedulerstart en daarna uiterlijk iedere vijf minuten | `200` met `status: "completed"` en alleen verwijderde aantallen |
 
 Beide jobs gebruiken dezelfde omgevingsspecifieke `CRON_SECRET` via een bearerheader. De scheduler volgt redirects niet, logt de header niet en heeft een korte timeout. Een `401` betekent secret/configuratiemismatch; `5xx` betekent een operationeel incident.
 
@@ -54,7 +70,19 @@ De retentiejob:
 - verwijdert oudersessies uiterlijk 30 dagen na expiratie of intrekking;
 - verwijdert e-mailprovider-events ouder dan 12 maanden;
 - verwijdert voltooide operation-runrecords ouder dan 90 dagen, maar behoudt vastgelopen `running`-records voor onderzoek;
+- verwijdert versleutelde ruwe importuploads op hun per-upload expiry (standaard 24 uur, configureerbaar 1–72 uur) en behoudt alleen PII-vrije batch-/auditmetadata;
 - verwijdert geen orders, betalingen, fulfilments of auditregels.
+
+Roteer `IMPORT_STAGING_ENCRYPTION_KEY` alleen wanneer geen actieve raw uploads bestaan. De deploy voert na migraties en vóór appactivatie de service-only `assert_dynamic_import_staging_key`-gate uit met uitsluitend een SHA-256-fingerprint; een andere of ontbrekende key blokkeert zolang een niet-verlopen upload nog decryptie vereist. Veilige rotatie:
+
+1. zet eerst de databaseflag `dynamic_import_v2=false` en daarna `DYNAMIC_IMPORT_ENABLED=false`, zodat geen nieuwe upload wordt aangenomen; de duurzame cutovermarker blijft daarbij staan en het legacy-importpad blijft dus gesloten;
+2. laat bestaande uploads verwerken of wacht tot de vijfminutenretentie alle expiraties heeft verwijderd; voer geen ongeautoriseerde purge uit;
+3. bevestig via geaggregeerde interne health dat `importStaging.pending=0` en `expired=0`;
+4. wijzig de omgevingsunieke key uitsluitend in de beschermde secretstore;
+5. deploy hetzelfde goedgekeurde artefact; de sleutelgate moet vóór runtimeactivatie groen zijn;
+6. activeer pas daarna eerst de databasepoort en vervolgens de runtimepoort.
+
+Cleanup en health blijven actief wanneer import uit staat. De databasepoort sluit bij v2-cutover ook de legacy preview- en commit-RPC af; het terugzetten van alleen de runtimeflag kan het oude pad daarom niet heropenen.
 
 Uitgiftehistorie wordt minimaal twee volledige seizoenen behouden en daarna handmatig beoordeeld. Financiële administratie blijft zeven jaar wanneer fiscaal vereist. Audit blijft minimaal 24 maanden; betaalgerelateerde audit volgt financiële retentie.
 
@@ -119,15 +147,37 @@ Inschakelen:
 Voer vóór eerste productie en daarna periodiek een gedateerde oefening uit. Start hiervoor handmatig de GitHub-workflow `Staging backup and isolated restore drill` met de volledige SHA die aantoonbaar op staging staat en bevestiging `STAGING-RESTORE`. De workflow draait op een tijdelijke GitHub-hosted runner, zodat de gedeelde applicatie-VPS en Castivo niet worden benaderd.
 
 1. De workflow valideert het vaste stagingdomein, de stagingprojectref, databasehost, bevestiging en volledige release-SHA. De publieke healthcheck moet exact dezelfde SHA rapporteren.
-2. De RTO-klok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
+2. De technische drillklok start vóór de dump. PostgreSQL 17 maakt een verse logische stagingback-up onder `RUNNER_TEMP`; het bestand heeft mode `0600` en wordt nooit als artifact geüpload.
 3. De back-up wordt hersteld naar een run-unieke PostgreSQL 17-container zonder hostpoort, Caddy-route, extern netwerk, permanente volumes of providerconfiguratie.
 4. De verificatie bewijst uitsluitend PostgreSQL-majorversie, migratieversies, constrainttotalen, RLS-telling en geaggregeerde aantallen per hoofdentiteit. Rijdata en persoonsgegevens komen niet in logs of artifacts.
 5. De workflow faalt wanneer de verse snapshot bij afronding ouder dan 24 uur is, de totale oefening langer dan vier uur duurt, constraints ongeldig zijn of het herstel onvolledig is.
 6. Een `always()`-stap verwijdert de run-specifieke containers, anonieme volumes, dump en ruwe verificatie. Alleen het geredigeerde JSON-bewijs blijft veertien dagen beschikbaar.
 
-Deze logische oefening bewijst het technische dump-/herstelpad en de gemeten RPO/RTO voor de verse staging-snapshot. Zij vervangt niet de afzonderlijke controle dat de dagelijkse beheerde productionback-up maximaal 24 uur oud is. Een productieherstel blijft een expliciet changeproces met een geïsoleerde restorebestemming.
+Deze logische oefening bewijst de leeftijd van de gebruikte verse snapshot en
+de gemeten technische restoreduur. Zij bewijst uitdrukkelijk geen managed
+backup-RPO. Controleer afzonderlijk dat de dagelijkse beheerde
+productionback-up maximaal 24 uur oud is en leg providerbewijs vast. Een
+productieherstel blijft een expliciet changeproces met een geïsoleerde
+restorebestemming.
 
 Een drill is mislukt wanneer de back-up ouder dan 24 uur is, herstel langer dan vier uur duurt, providerverkeer mogelijk is, integriteitscontroles falen of credentials/data buiten de geïsoleerde omgeving terechtkomen.
+
+### Geautoriseerde staging-domeinopschoning
+
+Gebruik uitsluitend de handmatige workflow `Staging domain cleanup`. Deze procedure mag nooit tegen production worden gebruikt en vervangt geen migratie, seed of algemene databasereset.
+
+1. Deploy eerst exact de beoogde `main`-SHA naar staging. Zet de runtime- én databaseswitches voor Mollie, e-mail en dynamische import uit.
+2. Start modus `dry-run` met de live SHA en bevestiging `STAGING-CLEANUP-DRY-RUN`. Controleer het PII-vrije artifact met tellingen voor exact 100 wistabellen, 28 behouden tabellen en alle veiligheidsblockers.
+3. Modus `apply` vereist bevestiging `STAGING-CLEANUP-APPLY`, exact origin `https://staging-duindorp.dgwebservices.nl`, exact Supabase-project `dxbdjtbyghsovlrdcwcr` en secret `STAGING_CLEANUP_BACKUP_PASSPHRASE`. De bekende production-ref en iedere andere project-ref worden geweigerd.
+4. De stagingrunner controleert Rootless Docker, runtimepad, Composeproject, actieve image en live SHA en stopt uitsluitend `app` en `scheduler` van `duindorpteneu-staging`. De deploylock en workflowconcurrency voorkomen overlap met deployment en Mollieacceptatie.
+5. PostgreSQL 17 maakt een verse dump van `app`, `private`, `public`, `auth` en `supabase_migrations`. De dump wordt lokaal AES-256 versleuteld, weer gedecrypteerd en in een container met `--network none` volledig hersteld en geverifieerd vóór de eerste datamutatie.
+6. De encrypted dump plus een PII-vrije prepared-state worden eerst als immutable artifact geüpload. Alleen een succesvolle upload levert het artifact-ID waarmee de applyfase verder mag. Apply stopt staging opnieuw en weigert wanneer de actuele operationele SHA-256-statedigest afwijkt van de geüploade back-up.
+7. De transactie neemt `ACCESS EXCLUSIVE`-locks op de vaste 100-tabellenallowlist, vergelijkt onder lock opnieuw dezelfde digest en gebruikt één `TRUNCATE ... RESTART IDENTITY` zonder `CASCADE`.
+8. `auth.*`, `app.staff_profiles`, seizoenen, instellingen, templates, branding, reminderregels/-runs, audit, featureflags, migratie-/operationele ledgers, staffsessies en supplierconfiguratie blijven behouden. De audit groeit met exact één PII-vrije `staging.domain_cleanup.completed`-regel.
+9. Iedere doelrij moet na commit nul zijn. Staff-/Auth-ID's, beheerderstatus, configuratiedigest, constraints en migratieledger moeten exact gelijk blijven. Daarna worden exact dezelfde appimage en scheduler herstart en opnieuw gezond verklaard.
+10. Bewaar het encrypted back-upartifact en geredigeerde bewijs dertig dagen. De decryptiesleutel blijft uitsluitend in het afgeschermde stagingenvironment. Een mislukking vóór commit rolt atomair terug; na commit is herstel alleen vanuit dit artifact toegestaan.
+
+Verwijder of wijzig nooit de allowlist om een driftfout te omzeilen. Een nieuwe `app`- of `private`-tabel vereist eerst een bewuste preserve/wipebeslissing, testaanpassing en review.
 
 ## 6. Incidentprocedures
 
@@ -174,7 +224,12 @@ Algemene volgorde: nieuwe key maken met minimale rechten, applicatie/scheduler a
 - `CRON_SECRET`: maak nieuw secret, wijzig app en scheduler in hetzelfde changevenster, bewijs eerst `401` met oude en daarna succes met nieuwe waarde.
 - Mollie: providerflag uit, nieuwe omgevingsjuiste key plaatsen, testmode-smoke/reconciliatie, oude key intrekken, pas daarna flag aan.
 - SendGrid: e-mailflag uit, nieuwe minimaal bevoegde key plaatsen, één fictieve testjob, oude key intrekken, queue monitoren.
-- `PARENT_TOKEN_PEPPER`: een directe vervanging maakt bestaande sessie-/QR-hashes onbruikbaar. Roteer alleen met een expliciet plan voor sessie-intrekking en QR-heruitgifte of geteste dual-peppermigratie. Een ongecoördineerde wijziging is verboden.
+- `PARENT_TOKEN_PEPPER`: een directe vervanging maakt bestaande OTP-/oudersessiehashes onbruikbaar. Pauzeer ouderlogin, trek bestaande oudersessies gecontroleerd in, wijzig de unieke omgevingskey en bewijs opnieuw OTP plus sessie-intrekking.
+- QR-keyring:
+  1. plaats de bestaande current key/version tijdelijk als `QR_TOKEN_PREVIOUS_PEPPER` en `QR_TOKEN_PREVIOUS_PEPPER_VERSION`;
+  2. plaats een nieuwe unieke `QR_TOKEN_PEPPER` met de volgende `QR_TOKEN_PEPPER_VERSION`, deploy hetzelfde artifact en controleer dat current/previous verschillend en geldig zijn;
+  3. roteer alle actieve locators gecontroleerd; oude locators en open grants worden daarbij ingetrokken en ouders krijgen alleen de nieuwe QR;
+  4. verwijder de previous key pas wanneer interne health zowel `previousKeyActiveLocators=0` als `previousKeyOpenGrants=0` meldt. Een key mismatch, verwijdering vóór nul of hergebruik tussen omgevingen blokkeert release.
 - Webhookverificatiesleutels: accepteer overlap alleen wanneer de implementatie dat expliciet ondersteunt; bewijs oude/nieuwe handtekening en verwijder de oude na het changevenster.
 
 ## 8. Forward-fix en herstel van releases

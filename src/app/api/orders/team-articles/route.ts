@@ -3,7 +3,7 @@ import { getServerEnv } from "@/lib/env";
 import { teamOrderArticlesRequestSchema, teamOrderArticlesResponseSchema } from "@/lib/catalog-order-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 import { createTeamPreviewToken, verifyTeamPreviewToken } from "@/server/security/team-preview-token";
 
@@ -11,13 +11,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 20_000 } });
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonMedium });
   if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
-    let body: unknown;
-    try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-    const parsed = teamOrderArticlesRequestSchema.safeParse(body);
+    const body = await readJsonRequest(request, BODY_POLICIES.jsonMedium);
+    if (!body.ok) return body.response;
+    const parsed = teamOrderArticlesRequestSchema.safeParse(body.data);
     if (!parsed.success) return NextResponse.json({ error: "Kies een team en minimaal één unieke artikelvariant." }, { status: 400 });
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });

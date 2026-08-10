@@ -55,11 +55,59 @@ update private.email_jobs set
   updated_at = '2026-07-21T09:04:00Z'
 where id = 'a4000000-0000-4000-8000-000000000005';
 
+insert into private.email_delivery_attempts(
+  id,
+  email_job_id,
+  attempt_number,
+  claim_token,
+  claimed_at
+)
+select
+  attempt_id,
+  job.id,
+  1,
+  coalesce(job.claim_token, fallback_claim_token),
+  coalesce(job.claimed_at, job.updated_at)
+from private.email_jobs job
+join (
+  values
+    (
+      'a8000000-0000-4000-8000-000000000001'::uuid,
+      'a4000000-0000-4000-8000-000000000001'::uuid,
+      'a5000000-0000-4000-8000-000000000001'::uuid
+    ),
+    (
+      'a8000000-0000-4000-8000-000000000002'::uuid,
+      'a4000000-0000-4000-8000-000000000002'::uuid,
+      'a5000000-0000-4000-8000-000000000002'::uuid
+    ),
+    (
+      'a8000000-0000-4000-8000-000000000003'::uuid,
+      'a4000000-0000-4000-8000-000000000003'::uuid,
+      'a5000000-0000-4000-8000-000000000003'::uuid
+    ),
+    (
+      'a8000000-0000-4000-8000-000000000004'::uuid,
+      'a4000000-0000-4000-8000-000000000004'::uuid,
+      'a5000000-0000-4000-8000-000000000004'::uuid
+    ),
+    (
+      'a8000000-0000-4000-8000-000000000005'::uuid,
+      'a4000000-0000-4000-8000-000000000005'::uuid,
+      'a5000000-0000-4000-8000-000000000005'::uuid
+    )
+) input(attempt_id, job_id, fallback_claim_token)
+  on input.job_id = job.id;
+update private.email_jobs job
+set current_delivery_attempt_id = attempt.id
+from private.email_delivery_attempts attempt
+where attempt.email_job_id = job.id;
+
 select ok(not has_function_privilege('anon',
-  'app.recover_stale_email_job(uuid,timestamptz,text,text,text,text,boolean,uuid)', 'EXECUTE'),
+  'app.recover_stale_email_job_v2(uuid,timestamptz,text,text,text,text,boolean,uuid)', 'EXECUTE'),
   'anon kan e-mailrecovery niet uitvoeren');
 select ok(has_function_privilege('authenticated',
-  'app.recover_stale_email_job(uuid,timestamptz,text,text,text,text,boolean,uuid)', 'EXECUTE'),
+  'app.recover_stale_email_job_v2(uuid,timestamptz,text,text,text,text,boolean,uuid)', 'EXECUTE'),
   'authenticated bereikt uitsluitend de intern AAL2-beveiligde recoveryfunctie');
 select ok(not has_function_privilege('authenticated', 'app.start_operation_run(text,uuid)', 'EXECUTE'),
   'operation-run start is service-only');
@@ -68,13 +116,13 @@ select ok(has_function_privilege('service_role', 'app.start_operation_run(text,u
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
-select throws_ok($$select app.recover_stale_email_job(
+select throws_ok($$select app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000001', '2026-07-21T09:00:00Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-AAL1', null, true, null
 )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'beheerder zonder AAL2 kan niet herstellen');
 
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
-select throws_ok($$select app.recover_stale_email_job(
+select throws_ok($$select app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000001', '2026-07-21T09:00:00Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-COMMISSION', null, true, null
 )$$, '42501', 'STAFF_AUTHORIZATION_REQUIRED', 'kledingcommissie kan niet herstellen');
@@ -88,20 +136,20 @@ select is((select item->>'status' from jsonb_array_elements(app.get_email_worksp
 select is((select item->>'status' from jsonb_array_elements(app.get_email_workspace_v2()->'jobs') item
   where item->>'id' = 'a4000000-0000-4000-8000-000000000002'), 'delivery_uncertain',
   'v2-workspace toont de expliciete onzekere status');
-select throws_ok($$select app.recover_stale_email_job(
+select throws_ok($$select app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000004', '2026-07-21T09:03:00Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-FRESH', null, true, null
 )$$, '23514', 'EMAIL_JOB_NOT_RECOVERABLE', 'fresh processing-job is niet herstelbaar');
-select throws_ok($$select app.recover_stale_email_job(
+select throws_ok($$select app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000001', '2026-07-21T08:59:59Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-STALE', null, true, null
 )$$, '40001', 'EMAIL_JOB_RECOVERY_CONFLICT', 'optimistic concurrency blokkeert stale herstelinput');
-select throws_ok($$select app.recover_stale_email_job(
+select throws_ok($$select app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000001', '2026-07-21T09:00:00Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-NOATTEST', null, false, null
 )$$, '22023', 'INVALID_EMAIL_RETRY_EVIDENCE', 'retry vereist expliciete niet-acceptatie-attestatie');
 
-select is(app.recover_stale_email_job(
+select is(app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000001', '2026-07-21T09:00:00Z',
   'retry_proven_not_accepted', 'provider_confirmed_not_accepted', 'ticket/SG-NOT-ACCEPTED', null, true,
   'a6000000-0000-4000-8000-000000000001'
@@ -126,7 +174,7 @@ select ok((select metadata::text from app.audit_logs where action = 'email.job.r
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
-select is(app.recover_stale_email_job(
+select is(app.recover_stale_email_job_v2(
   'a4000000-0000-4000-8000-000000000003', '2026-07-21T09:02:00Z',
   'confirm_sent', 'provider_confirmed_accepted', 'ticket/SG-ACCEPTED', 'sg-http-message-3', false,
   'a6000000-0000-4000-8000-000000000003'

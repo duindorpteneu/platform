@@ -10,6 +10,7 @@ const ids = {
   order: "00000000-0000-4000-8000-000000000002",
   member: "00000000-0000-4000-8000-000000000003",
   season: "00000000-0000-4000-8000-000000000004",
+  memberSeason: "00000000-0000-4000-8000-000000000005",
 };
 
 describe("Mollie-contract", () => {
@@ -39,8 +40,9 @@ describe("Mollie-contract", () => {
         payment_id: "00000000-0000-4000-8000-000000000099",
         order_id: ids.order,
         member_id: ids.member,
+        member_season_id: ids.memberSeason,
         season_id: ids.season,
-        schema_version: 1,
+        schema_version: 2,
       },
     });
 

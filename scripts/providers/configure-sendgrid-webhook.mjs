@@ -1,5 +1,5 @@
 import { appendFile, writeFile } from "node:fs/promises";
-import { createPublicKey } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const webhookIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -39,6 +39,9 @@ function assertPublicKey(value) {
 
 function validateInput(input) {
   if (!input.apiKey?.startsWith("SG.")) throw new Error("SENDGRID_API_KEY_INVALID");
+  if (!/^[a-f0-9]{64}$/u.test(input.expectedAccountFingerprint ?? "")) {
+    throw new Error("SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT_INVALID");
+  }
   if (!allowedApiBaseUrls.has(input.apiBaseUrl)) throw new Error("SENDGRID_API_BASE_URL_INVALID");
   if (!webhookIdPattern.test(input.webhookId)) throw new Error("SENDGRID_WEBHOOK_ID_INVALID");
   let webhookUrl;
@@ -83,6 +86,14 @@ export async function configureSendGridWebhook(rawInput) {
   const signingPath = `/v3/user/webhooks/event/settings/signed/${input.webhookId}`;
   const settingsBody = { enabled: true, url: input.webhookUrl, ...expectedEventSettings };
 
+  const identity = await providerRequest(input, "/v3/user/username");
+  const identityFingerprint = createHash("sha256")
+    .update(`${identity?.username ?? ""}:${identity?.user_id ?? ""}`)
+    .digest("hex");
+  if (identityFingerprint !== input.expectedAccountFingerprint) {
+    throw new Error("SENDGRID_ACCOUNT_IDENTITY_MISMATCH");
+  }
+
   await providerRequest(input, settingsPath, "PATCH", settingsBody);
   const signing = await providerRequest(input, signingPath, "PATCH", { enabled: true });
   const publicKey = assertPublicKey(signing?.public_key);
@@ -99,8 +110,9 @@ export async function configureSendGridWebhook(rawInput) {
 
 async function main() {
   const result = await configureSendGridWebhook({
-    apiKey: process.env.SENDGRID_API_KEY,
+    apiKey: process.env.SENDGRID_ADMIN_API_KEY,
     apiBaseUrl: process.env.SENDGRID_API_BASE_URL,
+    expectedAccountFingerprint: process.env.SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT,
     webhookId: process.env.SENDGRID_WEBHOOK_ID,
     webhookUrl: process.env.SENDGRID_WEBHOOK_URL,
   });

@@ -22,7 +22,10 @@ describe("catalogus- en bestelcontract", () => {
   });
 
   it("normaliseert een lege leverancierscode naar null", () => {
-    expect(catalogVariantRequestSchema.parse({ articleId: id, variantId: null, size: " 152 ", supplierCode: "  ", active: true, sortOrder: 1 })).toMatchObject({ size: "152", supplierCode: null });
+    expect(catalogVariantRequestSchema.parse({ articleId: id, variantId: null, size: " 152 ", supplierCode: "  ", aliases: ["  maat 152  "], active: true, sortOrder: 1 })).toMatchObject({ size: "152", supplierCode: null, aliases: ["maat 152"] });
+    expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "152", supplierCode: null, aliases: ["2xl", "２ＸＬ"], active: true, sortOrder: 1 }).success).toBe(false);
+    expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "Anders…", supplierCode: null, aliases: [], active: true, sortOrder: 1 }).success).toBe(false);
+    expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "XX\uFE0FL", supplierCode: null, aliases: [], active: true, sortOrder: 1 }).success).toBe(false);
   });
 
   it("converteert alleen ondubbelzinnige euro-invoer naar centen", () => {
@@ -54,8 +57,85 @@ describe("catalogus- en bestelcontract", () => {
   });
 
   it("valideert de workspace strikt en weigert onverwachte PII", () => {
-    const workspace = { activeSeason: { id, name: "2026/2027", defaultAmountCents: 8_700 }, seasons: [{ id, name: "2026/2027", status: "open", active: true }], teamOptions: ["JO9-1"], articles: [], members: [] };
+    const workspace = {
+      activeSeason: {
+        id,
+        name: "2026/2027",
+        defaultAmountCents: 8_700,
+      },
+      seasons: [{
+        id,
+        name: "2026/2027",
+        status: "open",
+        active: true,
+      }],
+      teamOptions: ["JO9-1"],
+      articles: [],
+      members: [],
+      packageFeatureEnabled: true,
+      packageRevisions: [],
+      packageOrders: [],
+      packageSizeChangeRequests: [],
+    };
     expect(catalogOrderWorkspaceSchema.safeParse(workspace).success).toBe(true);
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      members: [{
+        id,
+        name: "Lid zonder Sportlinknummer",
+        relationNumber: null,
+        team: "JO9-1",
+        order: null,
+      }],
+    }).success).toBe(true);
     expect(catalogOrderWorkspaceSchema.safeParse({ ...workspace, members: [{ id, name: "Lid", relationNumber: "DSV-1", team: "JO9-1", email: "niet@in.de.workspace", order: null }] }).success).toBe(false);
+    const sizeRequest = {
+      requestId: id,
+      memberId: secondId,
+      memberSeasonId: id,
+      memberName: "Voornaam Lid",
+      team: "JO9-1",
+      articleId: secondId,
+      articleName: "Broek",
+      currentVariantId: id,
+      currentSize: "152",
+      requestedKind: "other",
+      requestedVariantId: null,
+      requestedSize: null,
+      requestedRawValue: "Anders…",
+      requestedMemberNote: "Langere maat nodig",
+      requestedAt: "2026-08-02T10:00:00+00:00",
+      revision: "a".repeat(64),
+      variants: [{ id: secondId, label: "164" }],
+    };
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      packageSizeChangeRequests: [sizeRequest],
+    }).success).toBe(true);
+    expect(catalogOrderWorkspaceSchema.safeParse({
+      ...workspace,
+      packageSizeChangeRequests: [{
+        ...sizeRequest,
+        requestedKind: "variant",
+        requestedVariantId: secondId,
+      }],
+    }).success).toBe(false);
+    for (const forbidden of [
+      "parentAccountId",
+      "dateOfBirth",
+      "email",
+      "orderLineId",
+      "reservationId",
+    ]) {
+      expect(catalogOrderWorkspaceSchema.safeParse({
+        ...workspace,
+        packageSizeChangeRequests: [{
+          ...sizeRequest,
+          [forbidden]: forbidden === "email"
+            ? "ouder@example.invalid"
+            : secondId,
+        }],
+      }).success).toBe(false);
+    }
   });
 });

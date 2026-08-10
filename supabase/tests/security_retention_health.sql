@@ -19,6 +19,35 @@ insert into app.members(
   ('f1000000-0000-4000-8000-000000000002', 'SEC-002', 'Bekend', 'Inactief', 'inactief-sec@example.invalid', 'JO13-2', false),
   ('f1000000-0000-4000-8000-000000000003', 'SEC-003', 'Uurlimiet', 'Actief', 'uurlimiet@example.invalid', 'JO15-1', true),
   ('f1000000-0000-4000-8000-000000000004', 'SEC-004', 'Health', 'Lid', 'health@example.invalid', 'JO17-1', true);
+insert into private.parent_accounts(id, email_normalized) values
+  ('f9000000-0000-4000-8000-000000000001', 'bekend@example.invalid'),
+  ('f9000000-0000-4000-8000-000000000003', 'uurlimiet@example.invalid');
+insert into private.parent_portal_grants(
+  member_season_id,
+  email_normalized,
+  parent_account_id,
+  status,
+  source,
+  granted_by,
+  granted_at
+)
+select member_season.id,
+  member.email,
+  case member.id
+    when 'f1000000-0000-4000-8000-000000000001'
+      then 'f9000000-0000-4000-8000-000000000001'::uuid
+    else 'f9000000-0000-4000-8000-000000000003'::uuid
+  end,
+  'active',
+  'administrator',
+  'f0000000-0000-4000-8000-000000000001',
+  timezone('utc', now())
+from app.member_seasons member_season
+join app.members member on member.id = member_season.member_id
+where member.id in (
+  'f1000000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000003'
+);
 
 select ok(not has_table_privilege('authenticated', 'private.rate_limit_events', 'SELECT'),
   'rate-limit-events zijn default-deny');
@@ -97,7 +126,7 @@ select public.create_parent_otp(
   timezone('utc', now()) + interval '1 day'
 ) account_id;
 select isnt((select account_id from known_otp_result), null::uuid,
-  'bekend actief lid krijgt een ouderaccount');
+  'expliciet gegrant actief lid krijgt een OTP-challenge');
 select is((
   select challenge.expires_at - challenge.created_at
   from private.parent_otp_challenges challenge
@@ -141,8 +170,12 @@ select is(public.create_parent_otp(
   timezone('utc', now()) + interval '10 minutes'
 ), null::uuid, 'maximaal vijf OTP-aanvragen per uur wordt afgedwongen');
 select is((select count(*) from private.parent_accounts
-  where email_normalized = 'uurlimiet@example.invalid'), 0::bigint,
-  'uurlimiet creëert geen account of challenge bij blokkade');
+  where email_normalized = 'uurlimiet@example.invalid'), 1::bigint,
+  'uurlimiet behoudt het vooraf door beheer geactiveerde account');
+select is((select count(*) from private.parent_otp_challenges challenge
+  join private.parent_accounts account on account.id = challenge.parent_account_id
+  where account.email_normalized = 'uurlimiet@example.invalid'), 0::bigint,
+  'uurlimiet creëert geen challenge bij blokkade');
 
 select ok(not has_function_privilege('authenticated', 'app.revoke_parent_session(text)', 'EXECUTE'),
   'single-session revocation is niet beschikbaar voor authenticated');

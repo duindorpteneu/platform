@@ -1,14 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { manualPaymentRequestSchema } from "@/server/payments/manual";
+import {
+  manualPaymentRefundRequestSchema,
+  manualPaymentRequestSchema,
+} from "@/server/payments/manual";
 
 describe("manual payment boundary", () => {
-  it("accepts only order and fixed payment method", () => {
-    const result = manualPaymentRequestSchema.safeParse({ orderId: "00000000-0000-4000-8000-000000000001", method: "cash" });
+  const valid = {
+    orderId: "00000000-0000-4000-8000-000000000001",
+    method: "cash",
+    amountCents: 12_500,
+    reason: "Contant ontvangen",
+    requestId: "00000000-0000-4000-8000-000000000002",
+  } as const;
+
+  it("vereist exact bedrag, reden en stabiele request-id", () => {
+    const result = manualPaymentRequestSchema.safeParse(valid);
     expect(result.success).toBe(true);
   });
 
-  it("rejects a browser-supplied amount", () => {
-    const result = manualPaymentRequestSchema.safeParse({ orderId: "00000000-0000-4000-8000-000000000001", method: "card", amountCents: 1 });
-    expect(result.success).toBe(false);
+  it("weigert ontbrekende of onbegrensde registratiecontext", () => {
+    expect(manualPaymentRequestSchema.safeParse({ orderId: valid.orderId, method: "cash" }).success).toBe(false);
+    expect(manualPaymentRequestSchema.safeParse({ ...valid, reason: "x" }).success).toBe(false);
+    expect(manualPaymentRequestSchema.safeParse({ ...valid, amountCents: 0 }).success).toBe(false);
+    expect(manualPaymentRequestSchema.safeParse({ ...valid, extra: true }).success).toBe(false);
+  });
+
+  it("vereist een expliciete externe bewijsreferentie voor refunds", () => {
+    const refund = {
+      orderId: valid.orderId,
+      paymentId: "00000000-0000-4000-8000-000000000003",
+      amountCents: valid.amountCents,
+      reason: "Contante betaling teruggegeven",
+      evidenceReference: "Kasbon 2026-081",
+      requestId: "00000000-0000-4000-8000-000000000004",
+    };
+    expect(manualPaymentRefundRequestSchema.safeParse(refund).success).toBe(true);
+    expect(manualPaymentRefundRequestSchema.safeParse({
+      ...refund,
+      evidenceReference: "",
+    }).success).toBe(false);
   });
 });

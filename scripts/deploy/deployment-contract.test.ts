@@ -1,6 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  createHash,
+  generateKeyPairSync,
+} from "node:crypto";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,6 +32,7 @@ function runtimeEnvironment(environment: "staging" | "production") {
     ...process.env,
     DEPLOY_ENVIRONMENT: environment,
     RELEASE_SHA: releaseSha,
+    RELEASE_ARTIFACT_DIGEST: `sha256:${"b".repeat(64)}`,
     RUNTIME_DIRECTORY: `/srv/apps/duindorpteneu/${environment}`,
     COMPOSE_PROJECT_NAME: `duindorpteneu-${environment}`,
     APP_HOST: host,
@@ -40,7 +49,11 @@ function runtimeEnvironment(environment: "staging" | "production") {
     SUPABASE_DB_URL: `postgresql://postgres:password@db.${ref}.supabase.co:5432/postgres?sslmode=require`,
     NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PARENT_TOKEN_PEPPER: "p".repeat(32),
+    QR_TOKEN_PEPPER: Buffer.alloc(32, 8).toString("base64url"),
+    QR_TOKEN_PEPPER_VERSION: "1",
     CRON_SECRET: "c".repeat(32),
+    DYNAMIC_IMPORT_ENABLED: "false",
+    IMPORT_RAW_RETENTION_HOURS: "24",
     ...(staging ? {} : { OPERATIONS_HEARTBEAT_URL: "https://monitor.example/ping-secret" }),
     MOLLIE_ENABLED: "false",
     EMAIL_ENABLED: "false",
@@ -102,6 +115,7 @@ describe("deployment environment isolation", () => {
     expect(workflow).toContain(
       "MOLLIE_PROFILE_ID: ${{ secrets.MOLLIE_PROFILE_ID || vars.MOLLIE_PROFILE_ID }}",
     );
+    expect(workflow).toContain("group: deploy-duindorpteneu-staging");
   });
 
   it("keeps the hosted PostgREST schema list aligned with local Supabase", () => {
@@ -118,29 +132,82 @@ describe("deployment environment isolation", () => {
   });
 
   it("refreshes and verifies the settings RPC contract before application activation", () => {
-    const refreshMigration = readFileSync(
+    const baselineRefreshMigration = readFileSync(
       path.join(repositoryRoot, "supabase/migrations/20260720142000_refresh_postgrest_settings_contract.sql"),
+      "utf8",
+    );
+    const refreshMigration = readFileSync(
+      path.join(repositoryRoot, "supabase/migrations/20260803244000_canonical_published_branding.sql"),
       "utf8",
     );
     const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
     const contractScript = readFileSync(path.join(repositoryRoot, "scripts/deploy/check-postgrest-rpcs.mjs"), "utf8");
+    expect(baselineRefreshMigration).not.toMatch(
+      /\b(?:insert|update|delete|truncate)\b/i,
+    );
     expect(refreshMigration).toContain("notify pgrst, 'reload schema'");
-    expect(refreshMigration).not.toMatch(/\b(?:insert|update|delete|truncate)\b/i);
     expect(refreshMigration).toContain("get_settings_rpc_contract_version");
-    expect(refreshMigration).toContain("'get_settings_workspace_v2'");
-    expect(refreshMigration).toContain("'update_settings_v2'");
-    expect(refreshMigration).toContain("'create_season_v2'");
-    expect(refreshMigration).toContain("grant execute on function app.get_settings_rpc_contract_version() to service_role");
+    expect(refreshMigration).toContain("'get_settings_workspace_v3'");
+    expect(refreshMigration).toContain("'update_settings_v3'");
+    expect(refreshMigration).toContain("'create_season_v3'");
+    expect(refreshMigration).toMatch(
+      /grant execute on function app\.get_settings_rpc_contract_version\(\)\s+to service_role/,
+    );
     expect(contractScript).toContain("/rest/v1/rpc/get_settings_rpc_contract_version");
     expect(contractScript).toContain("/rest/v1/rpc/create_staff_app_session_for_user");
     expect(contractScript).toContain("/rest/v1/rpc/get_staff_app_session");
     expect(contractScript).toContain("/rest/v1/rpc/revoke_staff_app_session");
+    expect(contractScript).toContain('"list_order_qr_identity_candidates"');
+    expect(contractScript).toContain('"get_parent_package_workspace_v5"');
+    expect(contractScript).toContain('"get_operational_health_v12"');
+    expect(contractScript).toContain('"register_order_qr_locator"');
+    expect(contractScript).toContain('"exchange_order_qr_locator_v2"');
+    expect(contractScript).toContain('"commit_fulfilment_v3"');
+    expect(contractScript).toContain('"expire_qr_scan_grants"');
+    expect(contractScript).toContain('"get_release_feature_controls_v1"');
+    expect(contractScript).toContain('"activate_release_feature_v1"');
+    expect(contractScript).toContain('"pause_release_feature_v1"');
+    expect(contractScript).toContain('"get_action_item_workspace_v2"');
+    expect(contractScript).toContain('"assign_action_item"');
+    expect(contractScript).toContain('"start_action_item"');
+    expect(contractScript).toContain('"resolve_action_item_v3"');
+    expect(contractScript).toContain('"dismiss_action_item"');
+    expect(contractScript).toContain('"prepare_mollie_acceptance_fixture"');
+    expect(contractScript).toContain('"get_mollie_acceptance_payment_state"');
+    expect(contractScript).toContain('"cleanup_mollie_acceptance_fixture"');
+    expect(contractScript).toContain('"parent_otp_members_visible"');
+    expect(contractScript).toContain('response.status !== 404 || code !== "PGRST202"');
     expect(contractScript).toContain('safeRemoteCode(result?.code) !== "42501"');
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
-    expect(deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs"))
-      .toBeGreaterThan(deployScript.indexOf('pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes'));
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER_VERSION");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+    expect(deployScript).toContain("Actieve runtime bevat onverwacht een vorige QR-sleutel");
+    expect(deployScript).toContain("Actieve runtime bevat niet de verwachte importstaging-sleutel");
+    expect(deployScript).toContain("source scripts/deploy/failure-guard.sh");
+    const postgrestGate = deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs");
+    const importKeyGate = deployScript.indexOf("node scripts/deploy/check-import-staging-key.mjs");
+    expect(postgrestGate)
+      .toBeGreaterThan(deployScript.indexOf('"$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --yes'));
+    expect(postgrestGate).toBeLessThan(deployScript.indexOf("activated=true"));
+    expect(importKeyGate).toBeGreaterThan(postgrestGate);
+    expect(importKeyGate).toBeLessThan(deployScript.indexOf("activated=true"));
+  });
+
+  it("blocks staging and production until the public proxy rejects chunked oversize bodies", () => {
+    const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
+    const probeScript = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy/check-edge-body-limits.mjs"),
+      "utf8",
+    );
+    expect(deployScript).toContain('node scripts/deploy/check-edge-body-limits.mjs "$environment"');
+    expect(deployScript.indexOf('node scripts/deploy/check-edge-body-limits.mjs "$environment"'))
+      .toBeGreaterThan(deployScript.indexOf('check_with_retries "https://${expected_host}"'));
+    expect(probeScript).toContain('"Content-Type": "application/octet-stream"');
+    expect(probeScript).toContain('duplex: "half"');
+    expect(probeScript).not.toContain("Authorization");
   });
 
   it("refreshes the service-only staff session RPC without mutating business data", () => {
@@ -166,6 +233,36 @@ describe("deployment environment isolation", () => {
     expect(migration).toContain("notify pgrst, 'reload schema'");
   });
 
+  it("removes every acceptance-only RPC without cascade or product fixture state", () => {
+    const migration = readFileSync(
+      path.join(
+        repositoryRoot,
+        "supabase/migrations/20260802170000_remove_product_mollie_acceptance_fixtures.sql",
+      ),
+      "utf8",
+    );
+    const acceptance = readFileSync(
+      path.join(repositoryRoot, "scripts/providers/mollie-staging-acceptance.mjs"),
+      "utf8",
+    );
+    for (const functionName of [
+      "prepare_mollie_acceptance_fixture",
+      "get_mollie_acceptance_payment_state",
+      "cleanup_mollie_acceptance_fixture",
+      "is_mollie_acceptance_identity",
+      "parent_otp_members_visible",
+    ]) {
+      expect(migration).toContain(functionName);
+      expect(acceptance).not.toContain(`"${functionName}"`);
+    }
+    expect(migration).toContain("notify pgrst, 'reload schema'");
+    expect(migration).toContain("ACTIVE_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_CLEANUP");
+    expect(migration).toContain("ORPHAN_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_REVIEW");
+    expect(migration.indexOf("ACTIVE_MOLLIE_ACCEPTANCE_FIXTURE_REQUIRES_CLEANUP"))
+      .toBeLessThan(migration.indexOf("drop function if exists"));
+    expect(migration).not.toMatch(/\bcascade\b/i);
+  });
+
   it("does not serialize empty optional provider values into runtime", () => {
     const source = readFileSync(configureRuntime, "utf8");
     expect(source).toContain('].filter(([, value]) => value)');
@@ -189,15 +286,77 @@ describe("deployment environment isolation", () => {
     expect(result.stderr).toContain("OPERATIONS_HEARTBEAT_URL");
   });
 
+  it("requires a canonical importstaging key only when dynamic import is enabled", () => {
+    const enabled = {
+      ...runtimeEnvironment("staging"),
+      DYNAMIC_IMPORT_ENABLED: "true",
+      IMPORT_STAGING_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64url"),
+    };
+    expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], {
+      env: enabled,
+      stdio: "pipe",
+    })).not.toThrow();
+    const missing = spawnSync(process.execPath, [configureRuntime, "validate"], {
+      env: { ...enabled, IMPORT_STAGING_ENCRYPTION_KEY: "" },
+      encoding: "utf8",
+    });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("IMPORT_STAGING_ENCRYPTION_KEY");
+  });
+
+  it("requires a canonical QR keyring and paired previous key", () => {
+    const current = runtimeEnvironment("staging");
+    const invalidCurrent = spawnSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      {
+        env: { ...current, QR_TOKEN_PEPPER: "q".repeat(43) },
+        encoding: "utf8",
+      },
+    );
+    expect(invalidCurrent.status).toBe(1);
+    expect(invalidCurrent.stderr).toContain("QR_TOKEN_PEPPER");
+
+    const rotating = {
+      ...current,
+      QR_TOKEN_PEPPER: Buffer.alloc(32, 10).toString("base64url"),
+      QR_TOKEN_PEPPER_VERSION: "2",
+      QR_TOKEN_PREVIOUS_PEPPER:
+        Buffer.alloc(32, 8).toString("base64url"),
+      QR_TOKEN_PREVIOUS_PEPPER_VERSION: "1",
+    };
+    expect(() => execFileSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      { env: rotating, stdio: "pipe" },
+    )).not.toThrow();
+
+    const unpaired = spawnSync(
+      process.execPath,
+      [configureRuntime, "validate"],
+      {
+        env: { ...rotating, QR_TOKEN_PREVIOUS_PEPPER_VERSION: "" },
+        encoding: "utf8",
+      },
+    );
+    expect(unpaired.status).toBe(1);
+    expect(unpaired.stderr).toContain("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+  });
+
   it("accepts only a P-256 SendGrid webhook verification key", () => {
     const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const enabledEmail = {
       ...runtimeEnvironment("staging"),
       EMAIL_ENABLED: "true",
       SENDGRID_API_KEY: "SG.test-key",
+      SENDGRID_API_KEY_FINGERPRINT: createHash("sha256")
+        .update("SG.test-key")
+        .digest("hex"),
       SENDGRID_API_BASE_URL: "https://api.eu.sendgrid.com",
-      SENDGRID_FROM_EMAIL: "danny.goldenbelt@duindorpsv.nl",
-      SENDGRID_REPLY_TO_EMAIL: "danny.goldenbelt@duindorpsv.nl",
+      SENDGRID_FROM_NAME: "Kledingcommissie Duindorp SV",
+      SENDGRID_FROM_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_REPLY_TO_EMAIL: "kleding@duindorpsv.nl",
+      SENDGRID_SMOKE_RECIPIENT: "testinbox@example.invalid",
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: publicKey.export({ type: "spki", format: "der" }).toString("base64"),
     };
     expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], { env: enabledEmail, stdio: "pipe" })).not.toThrow();
@@ -207,6 +366,207 @@ describe("deployment environment isolation", () => {
     });
     expect(invalid.status).toBe(1);
     expect(invalid.stderr).toContain("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
+  });
+});
+
+describe("fail-closed release chain", () => {
+  const workflowsDirectory = path.join(repositoryRoot, ".github/workflows");
+  const workflow = (name: string) => readFileSync(path.join(workflowsDirectory, name), "utf8");
+
+  it("pins every third-party workflow action to a full commit SHA", () => {
+    const names = readdirSync(workflowsDirectory)
+      .filter((name) => name.endsWith(".yml"));
+    for (const name of names) {
+      const references = [...workflow(name).matchAll(/uses:\s+[^@\s]+@([^\s#]+)/gu)];
+      for (const reference of references) expect(reference[1]).toMatch(/^[a-f0-9]{40}$/u);
+    }
+  });
+
+  it("deploys only after canonical full CI and attests a scanned immutable image", () => {
+    const deploy = workflow("deploy.yml");
+    expect(deploy).toContain("node scripts/deploy/wait-for-ci.mjs");
+    expect(deploy).toContain("Reject high or critical runtime vulnerabilities");
+    expect(deploy).toContain("format: spdx-json");
+    expect(deploy).toContain("cosign sign-blob .release/SHA256SUMS");
+    expect(deploy).toContain("--bundle .release/SHA256SUMS.sigstore.json");
+    expect(deploy.match(/cosign verify-blob \.release\/SHA256SUMS/gu)).toHaveLength(2);
+    expect(deploy).toContain("sha256sum duindorpteneu-app.tar.gz RELEASE_MANIFEST sbom.spdx.json");
+    expect(deploy).not.toContain("actions/attest-build-provenance@");
+    expect(deploy).not.toContain("actions/attest-sbom@");
+    expect(deploy).toContain("staging-attestation-deploy-${{ github.run_id }}");
+    expect(deploy).toContain("retention-days: 30");
+  });
+
+  it("never runs dependency lifecycle scripts in a trusted workflow checkout", () => {
+    for (const name of [
+      "ci.yml",
+      "deploy.yml",
+      "promote-production.yml",
+      "staging-core-acceptance.yml",
+      "staging-mollie-acceptance.yml",
+      "staging-phase-b-acceptance.yml",
+      "staging-provider-smoke.yml",
+    ]) {
+      const source = workflow(name);
+      for (const install of source.matchAll(
+        /pnpm install --frozen-lockfile[^\n]*/gu,
+      )) {
+        expect(install[0]).toContain("--ignore-scripts");
+      }
+    }
+    for (const name of [
+      "ci.yml",
+      "deploy.yml",
+      "promote-production.yml",
+      "staging-phase-b-acceptance.yml",
+    ]) {
+      expect(workflow(name)).toContain(
+        "bash scripts/deploy/install-supabase-cli.sh",
+      );
+    }
+  });
+
+  it("serializes every staging mutation or acceptance on the deployment lock", () => {
+    for (const name of [
+      "adopt-legacy-production.yml",
+      "deploy.yml",
+      "promote-production.yml",
+      "staging-core-acceptance.yml",
+      "staging-domain-cleanup.yml",
+      "staging-mollie-acceptance.yml",
+      "staging-phase-b-acceptance.yml",
+      "staging-operations.yml",
+      "staging-provider-smoke.yml",
+      "staging-restore-drill.yml",
+      "staging-rollback-drill.yml",
+      "staging-sendgrid-webhook-configure.yml",
+    ]) expect(workflow(name)).toContain("group: deploy-duindorpteneu-staging");
+  });
+
+  it("binds SendGrid delivery evidence after final health and gates branding races", () => {
+    const provider = workflow("staging-provider-smoke.yml");
+    const harness = provider.indexOf(
+      "Verify app delivery, signed callback and real inbox",
+    );
+    const finalHealth = provider.indexOf(
+      "Verify final internal health after provider evidence",
+    );
+    const result = provider.indexOf(
+      "Create exact SendGrid provider result",
+    );
+    expect(harness).toBeGreaterThan(-1);
+    expect(finalHealth).toBeGreaterThan(harness);
+    expect(result).toBeGreaterThan(finalHealth);
+    expect(provider).toContain(
+      "sendgrid-acceptance-evidence.mjs finalize",
+    );
+    expect(provider).toContain(
+      "${{ runner.temp }}/sendgrid-acceptance-evidence.json",
+    );
+    expect(provider).toContain(
+      '"${ARTIFACT_DIGEST}" "${EVIDENCE_PATH}"',
+    );
+    expect(workflow("ci.yml")).toContain(
+      "pnpm test:db:branding-concurrency",
+    );
+    expect(workflow("staging-phase-b-acceptance.yml")).toContain(
+      "test:db:branding-concurrency",
+    );
+  });
+
+  it("requires every exact-artifact acceptance and human UAT before production", () => {
+    const promotion = workflow("promote-production.yml");
+    for (const input of [
+      "core_run_id:",
+      "phase_b_run_id:",
+      "mollie_run_id:",
+      "sendgrid_run_id:",
+      "restore_run_id:",
+      "rollback_run_id:",
+      "operations_run_id:",
+      '[[ "${PROMOTION_CONFIRMATION}" == "HUMAN-UAT-PASSED+PROMOTE-PRODUCTION" ]]',
+      "node scripts/deploy/verify-promotion-evidence.mjs",
+    ]) expect(promotion).toContain(input);
+    expect(promotion.match(/verify-promotion-evidence\.mjs/gu)).toHaveLength(2);
+    expect(promotion.match(/cosign verify-blob \.release\/SHA256SUMS/gu)).toHaveLength(2);
+    expect(promotion).not.toContain("gh attestation verify");
+  });
+
+  it("validates every manual staging release on trusted main before environment secrets", () => {
+    const trusted = workflow("_trusted-staging-preflight.yml");
+    expect(trusted).toContain("ref: refs/heads/main");
+    expect(trusted).toContain('[[ "$(git rev-parse HEAD)" == "${REQUESTED_RELEASE_SHA}" ]]');
+    expect(trusted).toContain("node scripts/deploy/verify-staging-deploy.mjs");
+    expect(trusted).not.toMatch(/\bsecrets\./u);
+    expect(trusted).not.toContain("environment: staging");
+    for (const name of [
+      "adopt-legacy-production.yml",
+      "staging-core-acceptance.yml",
+      "staging-domain-cleanup.yml",
+      "staging-mollie-acceptance.yml",
+      "staging-phase-b-acceptance.yml",
+      "staging-operations.yml",
+      "staging-provider-smoke.yml",
+      "staging-restore-drill.yml",
+      "staging-rollback-drill.yml",
+      "staging-sendgrid-webhook-configure.yml",
+    ]) {
+      const source = workflow(name);
+      expect(source).toContain("uses: ./.github/workflows/_trusted-staging-preflight.yml");
+      expect(source).toContain("needs: preflight");
+    }
+  });
+
+  it("rechecks origin/main immediately on both staging and production runners", () => {
+    const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
+    const productionConditional = deployScript.indexOf('if [[ "$environment" == production ]]');
+    const mainFetch = deployScript.indexOf("git fetch origin main --no-tags");
+    expect(mainFetch).toBeGreaterThan(productionConditional);
+    expect(deployScript.slice(productionConditional, mainFetch)).toContain(
+      "release-manifest.mjs compare",
+    );
+    expect(deployScript.slice(mainFetch)).toContain(
+      '[[ "$current_main" == "$RELEASE_SHA" && "${GITHUB_SHA:-}" == "$RELEASE_SHA" ]]',
+    );
+  });
+
+  it("keeps the one-time legacy rollback contract evidence-bound", () => {
+    const deployScript = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy-vps.sh"),
+      "utf8",
+    );
+    expect(deployScript).toContain(
+      "a79c8d843d75e90810ccceb228538c6368d2198b",
+    );
+    expect(deployScript).toContain(
+      "legacy-adoption-evidence.mjs verify-result",
+    );
+    expect(deployScript).toContain("check-legacy-http.mjs");
+    expect(deployScript).toContain("legacy-v1-exact-four-fields");
+    expect(deployScript).toContain(
+      "node scripts/deploy/normalize-legacy-runtime.mjs",
+    );
+    expect(deployScript).toContain("stop_scheduler_for_legacy");
+    expect(deployScript).toContain(
+      '-f "$compose_file" up -d --no-build app',
+    );
+    expect(deployScript).not.toContain("ALLOW_LEGACY_HEALTH");
+  });
+
+  it("authenticates and verifies the durable production backup redownload", () => {
+    const promotion = workflow("promote-production.yml");
+    const start = promotion.indexOf(
+      "Bind durable production backup identity to this promotion",
+    );
+    const end = promotion.indexOf(
+      "Verify staged artifact and deploy production",
+    );
+    const step = promotion.slice(start, end);
+    expect(step).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(step).toContain("command -v gh");
+    expect(step).toContain("command -v unzip");
+    expect(step).toContain("gh api");
+    expect(step).toContain("sha256sum");
   });
 });
 

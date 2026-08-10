@@ -6,6 +6,7 @@ import {
   type StaffContext,
   type StaffRole,
 } from "@/lib/staff-auth-contract";
+import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { fetchStaffContext, STAFF_SESSION_COOKIE } from "@/server/auth/staff-context";
 
@@ -23,4 +24,18 @@ export async function requireStaffRole(allowedRoles?: readonly StaffRole[]) {
     throw new Error("STAFF_AUTHORIZATION_REQUIRED");
   }
   return context;
+}
+
+export async function requireStaffSessionBinding(
+  allowedRoles?: readonly StaffRole[],
+) {
+  const token = (await cookies()).get(STAFF_SESSION_COOKIE)?.value;
+  const context = token ? await fetchStaffContext(token) : null;
+  if (!token || !context || (allowedRoles && !allowedRoles.includes(context.role))) {
+    throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+  }
+  return {
+    ...context,
+    sessionTokenHash: createHash("sha256").update(token, "utf8").digest("hex"),
+  };
 }

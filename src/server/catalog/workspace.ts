@@ -10,7 +10,7 @@ export async function getCatalogOrderWorkspace() {
   if (!supabase) throw new Error("CATALOG_DATABASE_UNAVAILABLE");
 
   const [{ data, error }, { data: seasons, error: seasonsError }, { data: teamOptions, error: teamsError }] = await Promise.all([
-    supabase.schema("app").rpc("get_catalog_order_workspace"),
+    supabase.schema("app").rpc("get_catalog_order_workspace_v4"),
     supabase.schema("app").rpc("get_catalog_seasons"),
     supabase.schema("app").rpc("get_member_team_options"),
   ]);
@@ -20,5 +20,10 @@ export async function getCatalogOrderWorkspace() {
   }
   const parsed = catalogOrderWorkspaceSchema.safeParse({ ...(data as object), seasons, teamOptions });
   if (!parsed.success) throw new Error("CATALOG_WORKSPACE_RESPONSE_INVALID");
-  return { workspace: parsed.data, staff };
+  return {
+    workspace: staff.role === "beheerder"
+      ? parsed.data
+      : { ...parsed.data, packageSizeChangeRequests: [] },
+    staff,
+  };
 }

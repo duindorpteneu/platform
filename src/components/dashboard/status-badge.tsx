@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 const statusStyles = {
   Betaald: "bg-emerald-50 text-success ring-emerald-100",
   "Nog te betalen": "bg-amber-50 text-warning ring-amber-100",
+  "Controle vereist": "bg-rose-50 text-danger ring-rose-100",
   "Volledig af te halen": "bg-blue-50 text-brand-700 ring-blue-100",
   "Gedeeltelijk af te halen": "bg-violet-50 text-violet-700 ring-violet-100",
   Nalevering: "bg-amber-50 text-warning ring-amber-100",

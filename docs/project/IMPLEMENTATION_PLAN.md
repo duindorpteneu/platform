@@ -1,7 +1,12 @@
 # Duindorp SV Tenueportaal — Implementation Plan
 
-Status: preflight plan
-Baseline: MVP Canon v1.0 (17 July 2026)
+Status: historisch preflightplan; uitgevoerd en voor Phase B deels gesupersedeerd
+Baseline: MVP Canon v1.0 (17 July 2026) plus het bindende, goedgekeurde
+`docs/canon/MVP_CANON_ADDENDUM_v1.1.md`
+
+> Dit bestand beschrijft de oorspronkelijke bouwvolgorde en is geen actuele
+> requirementsbron. Bij verschil gelden het addendum, `AGENTS.md`,
+> `DECISIONS.md`, `PROGRESS.md` en de actuele releasechecklist.
 
 ## 1. Objective and non-negotiable boundaries
 
@@ -19,13 +24,17 @@ The following are explicitly out of scope: combined or partial household payment
 
 Requirements are interpreted in this order:
 
-1. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`
-2. `docs/canon/MVP_CANON_TEXT.txt`
-3. `docs/design/APPROVED_MASTER_SHOWCASE.png`
-4. `AGENTS.md`
-5. The remaining files in `docs/project/`
+1. `docs/canon/MVP_CANON_ADDENDUM_v1.1.md` voor de expliciet
+   gesupersedeerde onderwerpen;
+2. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`;
+3. `docs/canon/MVP_CANON_TEXT.txt`;
+4. `docs/design/APPROVED_MASTER_SHOWCASE.png`;
+5. `AGENTS.md`;
+6. de actuele besluiten en overige bestanden in `docs/project/`.
 
-The PDF and text canon are the functional, technical and visual source of truth. A new feature or deviation requires a documented change request and canon decision before implementation.
+Het addendum, de PDF en tekstcanon vormen samen de functionele en technische
+bron; het showcasebeeld blijft de visuele bron. Een nieuwe afwijking vereist
+een gedocumenteerd besluit.
 
 ## 3. Target architecture
 
@@ -210,4 +219,3 @@ Implementation starts with local mocks and feature flags. Live Mollie/SendGrid c
 - `RISKS.md`: security, payment, privacy, delivery, operational and dependency risks with mitigations.
 - `TEST_EVIDENCE.md`: exact commands, results, fixtures and screenshots/notes.
 - `MVP_CHECKLIST.md`: expanded traceability from every canon requirement to implementation and tests.
-

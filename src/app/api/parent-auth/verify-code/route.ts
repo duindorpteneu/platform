@@ -3,14 +3,16 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { generateParentSessionToken, hashParentSecret, openParentChallengeEmail, parentCodeInputSchema } from "@/server/auth/parent";
 import { consumeRateLimit, requestRateKey, valueRateKey } from "@/server/auth/rate-limit";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["application/json"], maxBytes: 4_096 } }); if (guarded) return guarded;
-  const parsed = parentCodeInputSchema.safeParse(await request.json().catch(() => null));
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonTiny }); if (guarded) return guarded;
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
+  if (!body.ok) return body.response;
+  const parsed = parentCodeInputSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Voer de zescijferige code in." }, { status: 400 });
   const cookieStore = await cookies();
   const email = openParentChallengeEmail(cookieStore.get("duindorp_parent_challenge")?.value ?? "");
@@ -29,11 +31,6 @@ export async function POST(request: Request) {
   const sessionToken = generateParentSessionToken();
   const { error: sessionError } = await admin.rpc("create_parent_session", { p_parent_account_id: result.parentAccountId, p_token_hash: hashParentSecret(sessionToken), p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
   if (sessionError) return NextResponse.json({ error: "De sessie kon niet worden aangemaakt." }, { status: 503 });
-  const tokenHash = hashParentSecret(sessionToken);
-  const { data: candidates } = await admin.rpc("get_parent_candidates", { p_token_hash: tokenHash });
-  if (Array.isArray(candidates) && candidates.length === 1 && typeof candidates[0]?.member_id === "string") {
-    await admin.rpc("link_parent_member", { p_token_hash: tokenHash, p_member_id: candidates[0].member_id });
-  }
   cookieStore.set("duindorp_parent_session", sessionToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60 });
   cookieStore.set("duindorp_parent_challenge", "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 0 });
   return NextResponse.json({ status: "verified" }, { status: 200 });

@@ -1,7 +1,35 @@
-const [baseUrl, environment, revision] = process.argv.slice(2);
-if (!baseUrl || !["staging", "production"].includes(environment) || !/^[a-f0-9]{40}$/.test(revision ?? "")) process.exit(2);
+import { assertHealthIdentity } from "./health-identity.mjs";
+
+const [baseUrl, environment, revision, artifactDigest] = process.argv.slice(2);
+if (
+  !baseUrl
+  || !["staging", "production"].includes(environment)
+  || !/^[a-f0-9]{40}$/.test(revision ?? "")
+  || !/^sha256:[a-f0-9]{64}$/.test(artifactDigest ?? "")
+) process.exit(2);
 const publicOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
-const allowedOrigins = new Set([new URL(baseUrl).origin, publicOrigin]);
+const loopbackOrigin = environment === "staging"
+  ? "http://127.0.0.1:14000"
+  : "http://127.0.0.1:24000";
+let base;
+try {
+  base = new URL(baseUrl);
+} catch {
+  process.exit(2);
+}
+if (
+  ![publicOrigin, loopbackOrigin].includes(base.origin)
+  || base.username
+  || base.password
+  || base.pathname !== "/"
+  || base.search
+  || base.hash
+) process.exit(2);
+const allowedOrigins = new Set(
+  base.origin === loopbackOrigin
+    ? [loopbackOrigin, publicOrigin]
+    : [publicOrigin],
+);
 
 async function request(path, health = false, expectedFinalPath = path) {
   let target = new URL(path, baseUrl);
@@ -21,7 +49,11 @@ async function request(path, health = false, expectedFinalPath = path) {
   if (health) {
     if (response.status !== 200 || !response.headers.get("content-type")?.toLowerCase().includes("application/json")) throw new Error(`${path}: ongeldige healthresponse`);
     const body = await response.json();
-    if (body.status !== "ok" || body.service !== "duindorpteneu" || body.environment !== environment || body.revision !== revision) throw new Error(`${path}: verkeerde release-identiteit`);
+    try {
+      assertHealthIdentity(body, environment, revision, artifactDigest);
+    } catch {
+      throw new Error(`${path}: verkeerde release-identiteit`);
+    }
     const serialized = JSON.stringify(body).toLowerCase();
     if (serialized.includes("supabase") || serialized.includes("postgres") || serialized.includes("secret")) throw new Error(`${path}: gevoelige metadata`);
     return;

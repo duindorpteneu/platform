@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { inviteStaffRequestSchema } from "@/lib/settings-audit-contract";
 import { normalizeCorrelationId } from "@/server/security/correlation";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 import { inviteStaff } from "@/server/settings/invitations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { appBaseUrl: getServerEnv().APP_BASE_URL, body: { allowedContentTypes: ["application/json"], maxBytes: 4_000 } });
+  const guarded = guardBrowserMutation(request, { appBaseUrl: getServerEnv().APP_BASE_URL, body: BODY_POLICIES.jsonTiny });
   if (guarded) return guarded;
-  let body: unknown;
-  try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige JSON-aanvraag." }, { status: 400 }); }
-  const parsed = inviteStaffRequestSchema.safeParse(body);
+  const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
+  if (!body.ok) return body.response;
+  const parsed = inviteStaffRequestSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Controleer e-mailadres, naam en rol." }, { status: 400 });
 
   try {

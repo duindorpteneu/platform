@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(26);
 
 insert into app.seasons(id, name, default_amount_cents, status) values
   ('e1000000-0000-4000-8000-000000000001', 'Maatseizoen', 9900, 'open'),
@@ -25,6 +25,23 @@ insert into app.article_seasons(article_id, season_id) values
 select has_table('app', 'member_article_sizes', 'maatprofieltabel bestaat');
 select ok(not has_table_privilege('authenticated', 'app.member_article_sizes', 'INSERT'), 'authenticated heeft geen directe schrijfrechten');
 select ok(not has_function_privilege('anon', 'app.set_member_article_sizes(uuid,uuid,jsonb,text,uuid)', 'EXECUTE'), 'anon kan de mutatie-RPC niet uitvoeren');
+select ok(
+  exists(
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'app.member_article_sizes'::regclass
+      and trigger_row.tgname = 'member_article_sizes_00_lock_member'
+      and not trigger_row.tgisinternal
+  )
+  and not exists(
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'app.member_article_sizes'::regclass
+      and trigger_row.tgname < 'member_article_sizes_00_lock_member'
+      and not trigger_row.tgisinternal
+  ),
+  'de member-advisorylocktrigger is aantoonbaar de eerste gebruikstrigger'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000001","aal":"aal1"}', true);
@@ -35,6 +52,10 @@ select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-0000000
 select lives_ok($$select app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001')$$, 'kledingcommissie kan maatprofiel openen');
 select is(jsonb_array_length(app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #> '{sizeProfile,articles}'), 2, 'profiel toont gekoppelde seizoensartikelen');
 select ok((app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #>> '{sizeProfile,revision}') ~ '^[0-9a-f]{64}$', 'profiel bevat concurrencyrevisie');
+select throws_ok($$select app.set_member_article_sizes(
+  'e2000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001',
+  null::jsonb, repeat('a', 64), null
+)$$, '22023', 'MEMBER_SIZES_INVALID', 'SQL NULL is geen geldige matenlijst');
 
 create temporary table first_profile as
 select app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #> '{sizeProfile}' profile;
@@ -43,7 +64,7 @@ select lives_ok($$select app.set_member_article_sizes(
   '[{"articleId":"e3000000-0000-4000-8000-000000000001","variantId":"e4000000-0000-4000-8000-000000000001"}]'::jsonb,
   (select profile->>'revision' from first_profile), 'e5000000-0000-4000-8000-000000000001'
 )$$, 'maat kan individueel worden opgeslagen');
-select is((select article_variant_id::text from app.member_article_sizes where member_id = 'e2000000-0000-4000-8000-000000000001'), 'e4000000-0000-4000-8000-000000000001', 'gekozen variant staat seizoensgebonden opgeslagen');
+select is(app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #>> '{sizeProfile,articles,0,selectedVariantId}', 'e4000000-0000-4000-8000-000000000001', 'gekozen variant staat seizoensgebonden opgeslagen');
 select is((select count(*)::integer from app.audit_logs where action = 'member.sizes.updated' and correlation_id = 'e5000000-0000-4000-8000-000000000001'), 1, 'maatwijziging wordt eenmaal geaudit');
 select is(app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #>> '{sizeProfile,articles,0,selectedVariantId}', 'e4000000-0000-4000-8000-000000000001', 'detail retourneert de opgeslagen maat');
 select throws_ok($$select app.set_member_article_sizes(
@@ -65,7 +86,14 @@ select lives_ok($$select app.set_member_article_sizes(
   '[{"articleId":"e3000000-0000-4000-8000-000000000001","variantId":null}]'::jsonb,
   (app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001') #>> '{sizeProfile,revision}'), null
 )$$, 'niet-bestelde maat kan worden gewist');
-select is((select count(*)::integer from app.member_article_sizes where member_id = 'e2000000-0000-4000-8000-000000000001'), 0, 'wissen verwijdert alleen het voorbereidende profiel');
+select is((
+  select count(*)::integer
+  from jsonb_array_elements(
+    app.get_member_detail_v2('e2000000-0000-4000-8000-000000000001')
+      #> '{sizeProfile,articles}'
+  ) article
+  where article.value->>'selectedVariantId' is not null
+), 0, 'wissen verwijdert alleen het voorbereidende profiel');
 
 reset role;
 insert into app.member_orders(id, member_id, season_id, amount_due_cents)
@@ -95,7 +123,13 @@ select throws_ok($$insert into app.member_article_sizes(member_id, season_id, ar
   'e3000000-0000-4000-8000-000000000002', 'e4000000-0000-4000-8000-000000000003'
 )$$, '42501', 'permission denied for table member_article_sizes', 'directe tabelmutatie is geblokkeerd');
 select set_config('request.jwt.claims', '{"sub":"e0000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
-select is((select count(*)::integer from app.member_article_sizes), 0, 'uitgifte ziet geen maatprofielen via RLS');
+select throws_ok(
+  $$select count(*) from app.member_article_sizes$$,
+  '42501',
+  'permission denied for table member_article_sizes',
+  'uitgifte kan de maatprofieltabel niet rechtstreeks lezen'
+);
 
+reset role;
 select * from finish();
 rollback;

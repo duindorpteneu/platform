@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { validateBodyHeaders, validateBrowserMutation } from "./request";
+import {
+  readBoundedBody,
+  readBoundedJson,
+  readBoundedText,
+  RequestBodyError,
+  validateBodyHeaders,
+  validateBrowserMutation,
+} from "./request";
 
 const canonical = "https://tenue.duindorpsv.nl";
 
@@ -60,6 +67,7 @@ describe("body header guard", () => {
     ["oversized body", { "content-length": "1025", "content-type": "application/json" }, { ok: false, code: "body_too_large", status: 413 }],
     ["missing type", { "content-length": "10" }, { ok: false, code: "content_type_required", status: 415 }],
     ["wrong type", { "content-length": "10", "content-type": "text/plain" }, { ok: false, code: "content_type_not_allowed", status: 415 }],
+    ["compressed body", { "content-length": "10", "content-type": "application/json", "content-encoding": "gzip" }, { ok: false, code: "content_encoding_not_allowed", status: 415 }],
   ] as const)("handles %s", (_name, headers, expected) => {
     expect(validateBodyHeaders(new Request(canonical, { headers }), options)).toEqual(expected);
   });
@@ -69,5 +77,114 @@ describe("body header guard", () => {
       ...options,
       requireContentLength: false,
     })).toEqual({ ok: true });
+  });
+});
+
+function chunkedRequest(chunks: Uint8Array[], headers: Record<string, string> = {}) {
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[index];
+      index += 1;
+      if (chunk) controller.enqueue(chunk);
+      else controller.close();
+    },
+  });
+  return new Request(canonical, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
+describe("bounded body reader", () => {
+  const encoder = new TextEncoder();
+
+  it("accepts a chunked body exactly at the byte limit without Content-Length", async () => {
+    const request = chunkedRequest([encoder.encode('{"ok":'), encoder.encode("true}")]);
+    await expect(readBoundedJson(request, { maxBytes: 11 })).resolves.toEqual({ ok: true });
+  });
+
+  it("rejects a chunked body after the actual bytes exceed the declared cap", async () => {
+    const request = chunkedRequest(
+      [encoder.encode("1234"), encoder.encode("5678")],
+      { "content-length": "1" },
+    );
+    await expect(readBoundedBody(request, { maxBytes: 7 })).rejects.toMatchObject({
+      code: "body_too_large",
+      status: 413,
+    });
+  });
+
+  it("rejects excessive tiny chunks independently of total bytes", async () => {
+    const request = chunkedRequest([encoder.encode("a"), encoder.encode("b"), encoder.encode("c")]);
+    await expect(readBoundedBody(request, { maxBytes: 10, maxChunks: 2 })).rejects.toMatchObject({
+      code: "body_too_fragmented",
+      status: 413,
+    });
+  });
+
+  it("rejects a body that does not arrive within the total read deadline", async () => {
+    const request = new Request(canonical, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: new ReadableStream<Uint8Array>({ pull() { return new Promise(() => undefined); } }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    await expect(readBoundedText(request, { maxBytes: 10, timeoutMs: 10 })).rejects.toMatchObject({
+      code: "body_timeout",
+      status: 408,
+    });
+  });
+
+  it("rejects malformed UTF-8 and JSON with typed safe errors", async () => {
+    await expect(readBoundedText(chunkedRequest([new Uint8Array([0xc3, 0x28])]), { maxBytes: 2 }))
+      .rejects.toEqual(expect.objectContaining({ code: "body_invalid_utf8", status: 400 }));
+    await expect(readBoundedJson(chunkedRequest([encoder.encode("{")]), { maxBytes: 1 }))
+      .rejects.toEqual(expect.objectContaining({ code: "body_invalid_json", status: 400 }));
+  });
+
+  it("refuses a previously consumed stream", async () => {
+    const request = chunkedRequest([encoder.encode("{}")]);
+    await request.text();
+    await expect(readBoundedBody(request, { maxBytes: 10 })).rejects.toBeInstanceOf(RequestBodyError);
+    await expect(readBoundedBody(request, { maxBytes: 10 })).rejects.toMatchObject({
+      code: "body_stream_unavailable",
+    });
+  });
+
+  it("bounds hostile stream cancellation after a read timeout", async () => {
+    const request = new Request(canonical, {
+      method: "POST",
+      body: new ReadableStream<Uint8Array>({
+        pull() { return new Promise(() => undefined); },
+        cancel() { return new Promise(() => undefined); },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    const startedAt = Date.now();
+
+    await expect(readBoundedBody(request, { maxBytes: 10, timeoutMs: 5 }))
+      .rejects.toMatchObject({ code: "body_timeout", status: 408 });
+    expect(Date.now() - startedAt).toBeLessThan(250);
+  });
+
+  it("maps an aborted or errored body stream to a safe typed error", async () => {
+    const request = new Request(canonical, {
+      method: "POST",
+      body: new ReadableStream<Uint8Array>({
+        start(controller) { controller.error(new Error("sensitive transport detail")); },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    await expect(readBoundedBody(request, { maxBytes: 10 }))
+      .rejects.toMatchObject({ code: "body_stream_error", status: 400 });
+  });
+
+  it("treats invalid reader configuration as a programmer error", async () => {
+    await expect(readBoundedBody(chunkedRequest([]), { maxBytes: -1 }))
+      .rejects.toBeInstanceOf(TypeError);
   });
 });

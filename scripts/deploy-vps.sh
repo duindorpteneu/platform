@@ -5,7 +5,9 @@ umask 077
 readonly repository_image="duindorpteneu-app"
 readonly compose_file="deploy/compose.vps.yml"
 
-die() { echo "$1" >&2; exit 1; }
+source scripts/deploy/failure-guard.sh
+source scripts/deploy/assert-runner-boundary.sh
+die() { deployment_die "$1"; }
 require_command() { command -v "$1" >/dev/null 2>&1 || die "Vereist commando ontbreekt: $1"; }
 valid_sha() { [[ "${1:-}" =~ ^[a-f0-9]{40}$ ]]; }
 
@@ -68,25 +70,25 @@ deploy_environment() {
   valid_sha "${RELEASE_SHA:-}" || die "RELEASE_SHA is ongeldig."
   [[ -f "${RELEASE_ARTIFACT:-}" && -f "${RELEASE_MANIFEST_SOURCE:-}" ]] || die "Release-artefact of manifest ontbreekt."
 
+  local supabase_cli="${SUPABASE_CLI_BINARY_OVERRIDE:-supabase}"
   for command in base64 docker curl flock node pnpm gzip sha256sum stat tar; do require_command "$command"; done
+  require_command "$supabase_cli"
+  [[ "$("$supabase_cli" --version)" == "2.109.1" ]] \
+    || die "Supabase CLI moet exact versie 2.109.1 zijn."
   [[ "$EUID" -ne 0 ]] || die "Deployment als root is niet toegestaan."
-  [[ "${USER:-}" == "deploy" && "${HOME:-}" == "/home/deploy" ]] || die "Deployment moet onder de geïsoleerde deploygebruiker draaien."
   [[ " $(id -nG) " != *" docker "* ]] || die "Lidmaatschap van de rootful dockergroep is niet toegestaan."
-  local deploy_uid expected_runtime_dir expected_socket
-  deploy_uid="$(id -u)"
-  expected_runtime_dir="/run/user/${deploy_uid}"
-  expected_socket="${expected_runtime_dir}/docker.sock"
-  [[ "${XDG_RUNTIME_DIR:-}" == "$expected_runtime_dir" ]] || die "XDG_RUNTIME_DIR wijst niet naar de deploygebruiker."
-  [[ "${DOCKER_HOST:-}" == "unix://${expected_socket}" ]] || die "DOCKER_HOST wijst niet naar de Rootless Docker-socket."
-  [[ -S "$expected_socket" && "$(stat -c '%u' "$expected_socket")" == "$deploy_uid" ]] || die "Rootless Docker-socket of eigendom is ongeldig."
+  assert_runner_boundary "$environment"
   docker compose version >/dev/null
-  local security_options
-  security_options="$(docker info --format '{{json .SecurityOptions}}')"
-  [[ "$security_options" == *rootless* ]] || die "Docker daemon is niet Rootless."
 
+  local image_tag="${repository_image}:${RELEASE_SHA}" expected_digest expected_config_digest expected_artifact_digest loaded_digest loaded_label archive_digest archive_manifest_digest archive_config_path archive_config_digest
+  read -r expected_digest expected_config_digest expected_artifact_digest < <(
+    node scripts/deploy/release-manifest.mjs fields "$RELEASE_MANIFEST_SOURCE"
+  )
+  node scripts/deploy/release-manifest.mjs verify \
+    "$RELEASE_MANIFEST_SOURCE" "$RELEASE_SHA" "$expected_digest" \
+    "$expected_config_digest" "$expected_artifact_digest" >/dev/null
+  export RELEASE_ARTIFACT_DIGEST="$expected_artifact_digest"
   node scripts/deploy/configure-runtime.mjs validate
-  [[ ! -L "$runtime_directory" ]] || die "Runtime directory mag geen symlink zijn."
-  mkdir -p "$runtime_directory"
   [[ -d "$runtime_directory" && -O "$runtime_directory" ]] || die "Runtime directory heeft een onjuiste eigenaar."
   chmod 700 "$runtime_directory"
   [[ ! -L "${runtime_directory}/.deploy.lock" ]] || die "Deploylock mag geen symlink zijn."
@@ -94,9 +96,6 @@ deploy_environment() {
   chmod 600 "${runtime_directory}/.deploy.lock"
   flock -n 9 || die "Er draait al een deployment voor ${environment}."
 
-  local image_tag="${repository_image}:${RELEASE_SHA}" expected_digest expected_config_digest expected_artifact_digest loaded_digest loaded_label archive_digest archive_manifest_digest archive_config_path archive_config_digest
-  read -r expected_digest expected_config_digest expected_artifact_digest < <(node scripts/deploy/release-manifest.mjs fields "$RELEASE_MANIFEST_SOURCE")
-  node scripts/deploy/release-manifest.mjs verify "$RELEASE_MANIFEST_SOURCE" "$RELEASE_SHA" "$expected_digest" "$expected_config_digest" "$expected_artifact_digest" >/dev/null
   archive_digest="sha256:$(sha256sum "$RELEASE_ARTIFACT" | cut -d' ' -f1)"
   [[ "$archive_digest" == "$expected_artifact_digest" ]] || die "Release-artefact wijkt af van het buildmanifest."
   archive_manifest_digest="$(tar -xOzf "$RELEASE_ARTIFACT" index.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.manifests?.length!==1)process.exit(1);process.stdout.write(x.manifests[0].digest)})')"
@@ -111,21 +110,17 @@ deploy_environment() {
   if [[ "$environment" == production ]]; then
     [[ -f "${STAGING_RELEASE_MANIFEST:-}" ]] || die "Staging release manifest ontbreekt."
     node scripts/deploy/release-manifest.mjs compare "$RELEASE_MANIFEST_SOURCE" "$STAGING_RELEASE_MANIFEST"
-    [[ -n "${GITHUB_TOKEN:-}" ]] || die "Job-scoped GitHub-token ontbreekt."
-    local git_auth_header
-    git_auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\r\n')"
-    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${git_auth_header}" git fetch origin main --no-tags
-    unset git_auth_header
-    local current_main
-    current_main="$(git rev-parse origin/main)"
-    if [[ "${DEPLOYMENT_MODE:-current}" == current ]]; then
-      [[ "$current_main" == "$RELEASE_SHA" && "${GITHUB_SHA:-}" == "$RELEASE_SHA" ]] || die "Release is verouderd ten opzichte van main."
-    elif [[ "${DEPLOYMENT_MODE:-}" == redeploy ]]; then
-      git merge-base --is-ancestor "$RELEASE_SHA" origin/main || die "Redeploy-SHA hoort niet bij main."
-    else
-      die "Ongeldige deploymentmodus."
-    fi
   fi
+  [[ -n "${GITHUB_TOKEN:-}" ]] || die "Job-scoped GitHub-token ontbreekt."
+  local git_auth_header
+  git_auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\r\n')"
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${git_auth_header}" git fetch origin main --no-tags
+  unset git_auth_header
+  local current_main
+  current_main="$(git rev-parse origin/main)"
+  [[ "${DEPLOYMENT_MODE:-current}" == current ]] || die "Alleen de actuele main-release mag worden gedeployed."
+  [[ "$current_main" == "$RELEASE_SHA" && "${GITHUB_SHA:-}" == "$RELEASE_SHA" ]] \
+    || die "Release is verouderd ten opzichte van main."
 
   gzip -dc "$RELEASE_ARTIFACT" | docker load >/dev/null
   loaded_digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
@@ -145,36 +140,209 @@ deploy_environment() {
   grep -F "published: \"${expected_port}\"" "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde hostpoort."
   grep -F 'target: 3000' "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde containerpoort."
 
-  pnpm security:migrations
-  echo "Controleer remote migratievolgorde en drift."
-  pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
-  pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes
-  node scripts/deploy/check-postgrest-rpcs.mjs
-
-  local previous_revision="" previous_image="" runtime_backup="${runtime_directory}/.env.runtime.previous" runtime_existed=false
+  local previous_revision="" previous_image="" previous_digest="" previous_config_digest="" previous_artifact_digest="" previous_health_contract="artifact-v2" runtime_backup="${runtime_directory}/.env.runtime.previous" legacy_runtime_backup="" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
   [[ -f "${runtime_directory}/REVISION" ]] && previous_revision="$(tr -d '\r\n' < "${runtime_directory}/REVISION")"
-  if valid_sha "$previous_revision"; then previous_image="${repository_image}:${previous_revision}"; fi
+  if valid_sha "$previous_revision"; then
+    previous_image="${repository_image}:${previous_revision}"
+    [[ -f "$RUNTIME_ENV_FILE" ]] \
+      || die "Vorige release heeft geen herstelbaar runtimebestand."
+    [[ -f "${runtime_directory}/RELEASE_MANIFEST" ]] \
+      || die "Vorige release heeft geen herstelmanifest."
+    read -r previous_digest previous_config_digest previous_artifact_digest < <(
+      node scripts/deploy/release-manifest.mjs fields \
+        "${runtime_directory}/RELEASE_MANIFEST"
+    )
+    node scripts/deploy/release-manifest.mjs verify \
+      "${runtime_directory}/RELEASE_MANIFEST" "$previous_revision" \
+      "$previous_digest" "$previous_config_digest" \
+      "$previous_artifact_digest" >/dev/null
+    docker image inspect "$previous_image" >/dev/null 2>&1 \
+      || die "Vorige release-image ontbreekt; activatie en migratie zijn geblokkeerd."
+    local previous_loaded_digest
+    previous_loaded_digest="$(
+      docker image inspect --format '{{.Id}}' "$previous_image"
+    )"
+    [[ "$previous_loaded_digest" == "$previous_digest" || "$previous_loaded_digest" == "$previous_config_digest" ]] \
+      || die "Vorige release-image wijkt af van het herstelmanifest."
+    if [[ "$previous_revision" == \
+      "a79c8d843d75e90810ccceb228538c6368d2198b" ]]
+    then
+      local legacy_capture_path legacy_result_path legacy_run_id
+      legacy_capture_path="${LEGACY_CAPTURE_EVIDENCE_PATH:-${runtime_directory}/LEGACY_ADOPTION_EVIDENCE}"
+      legacy_result_path="${LEGACY_ADOPTION_RESULT_PATH:-${runtime_directory}/LEGACY_ADOPTION_RESULT}"
+      legacy_run_id="${LEGACY_ADOPTION_RUN_ID:-}"
+      [[ -f "$legacy_capture_path" && ! -L "$legacy_capture_path"
+        && -f "$legacy_result_path" && ! -L "$legacy_result_path"
+        && "$legacy_run_id" =~ ^[1-9][0-9]*$ ]] \
+        || die "Legacy rollbacktarget mist geverifieerd adoptiebewijs."
+      node scripts/deploy/legacy-adoption-evidence.mjs verify-result \
+        "$legacy_result_path" "$legacy_capture_path" \
+        "$RELEASE_MANIFEST_SOURCE" "$legacy_run_id" >/dev/null
+      previous_health_contract="legacy-v1-exact-four-fields"
+    fi
+  else
+    [[ "${ALLOW_FIRST_DEPLOY:-false}" == true ]] \
+      || die "Geen verifieerbare vorige release; expliciete ALLOW_FIRST_DEPLOY=true is vereist."
+    [[ -z "$(docker compose -p "$compose_project" -f "$compose_file" ps -q app)" ]] \
+      || die "First-deploymodus is niet toegestaan terwijl een applicatiecontainer bestaat."
+  fi
   if [[ -f "$RUNTIME_ENV_FILE" ]]; then
     runtime_existed=true
     cp -f -- "$RUNTIME_ENV_FILE" "$runtime_backup"
     chmod 600 "$runtime_backup"
+    if [[ "$previous_health_contract" == \
+      "legacy-v1-exact-four-fields" ]]
+    then
+      legacy_runtime_backup="$(
+        mktemp "${runtime_directory}/.env.runtime.previous-legacy.XXXXXX"
+      )"
+      node scripts/deploy/normalize-legacy-runtime.mjs \
+        "$runtime_backup" "$legacy_runtime_backup" "$environment" \
+        "$previous_revision" "$previous_artifact_digest"
+    fi
   fi
+
+  pnpm security:migrations
+  echo "Controleer remote migratievolgorde en drift."
+  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --dry-run
+  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --yes
+  node scripts/deploy/check-postgrest-rpcs.mjs
+  node scripts/deploy/check-import-staging-key.mjs
+
   node scripts/deploy/configure-runtime.mjs write-runtime "$RUNTIME_ENV_FILE"
 
   local activated=false
+  check_with_retries() {
+    local url="$1"
+    local expected_revision="${2:-$RELEASE_SHA}"
+    local expected_artifact="${3:-$expected_artifact_digest}"
+    for attempt in $(seq 1 20); do
+      if node scripts/deploy/check-http.mjs \
+        "$url" "$environment" "$expected_revision" "$expected_artifact"; then
+        return 0
+      fi
+      [[ "$attempt" == 20 ]] && return 1
+      sleep 3
+    done
+  }
+  check_scheduler_with_retries() {
+    local image="$1"
+    local scheduler_container scheduler_health
+    scheduler_container="$(
+      APP_IMAGE="$image" docker compose -p "$compose_project" \
+        -f "$compose_file" ps -q scheduler
+    )" || return 1
+    [[ -n "$scheduler_container" ]] || return 1
+    for attempt in $(seq 1 20); do
+      scheduler_health="$(
+        docker inspect \
+          --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' \
+          "$scheduler_container"
+      )" || return 1
+      [[ "$scheduler_health" == healthy ]] && return 0
+      [[ "$attempt" == 20 ]] && return 1
+      sleep 3
+    done
+  }
+  stop_scheduler_for_legacy() {
+    local image="$1"
+    if ! APP_IMAGE="$image" docker compose -p "$compose_project" \
+      -f "$compose_file" stop scheduler
+    then
+      [[ -z "$(
+        APP_IMAGE="$image" docker compose -p "$compose_project" \
+          -f "$compose_file" ps -aq scheduler
+      )" ]] || return 1
+    fi
+    [[ -z "$(
+      APP_IMAGE="$image" docker compose -p "$compose_project" \
+        -f "$compose_file" ps --status running -q scheduler
+    )" ]]
+  }
+  check_previous_with_retries() {
+    local url="$1"
+    if [[ "$previous_health_contract" == \
+      "legacy-v1-exact-four-fields" ]]
+    then
+      for attempt in $(seq 1 20); do
+        if node scripts/deploy/check-legacy-http.mjs \
+          "$url" "$environment" "$previous_revision"
+        then
+          return 0
+        fi
+        [[ "$attempt" == 20 ]] && return 1
+        sleep 3
+      done
+    else
+      check_with_retries "$url" "$previous_revision" \
+        "$previous_artifact_digest"
+    fi
+  }
   rollback() {
     local status="${1:-1}"
-    if [[ -f "$runtime_backup" ]]; then
-      mv -f -- "$runtime_backup" "$RUNTIME_ENV_FILE"
-    elif [[ "$runtime_existed" == false ]]; then
-      rm -f -- "$RUNTIME_ENV_FILE"
+    trap - ERR INT TERM HUP
+    local rollback_failed=false
+    local rollback_runtime="$runtime_backup"
+    if [[ "$previous_health_contract" == \
+      "legacy-v1-exact-four-fields" ]]
+    then
+      rollback_runtime="$legacy_runtime_backup"
     fi
-    if [[ "$activated" == true && -n "$previous_image" ]] && docker image inspect "$previous_image" >/dev/null 2>&1; then
+    if [[ -f "$rollback_runtime" ]]; then
+      cp -f -- "$rollback_runtime" "$RUNTIME_ENV_FILE" \
+        || rollback_failed=true
+    elif [[ "$runtime_existed" == false ]]; then
+      rm -f -- "$RUNTIME_ENV_FILE" || rollback_failed=true
+    fi
+    if [[ "$activated" == true ]]; then
+      [[ -n "$previous_image" ]] || rollback_failed=true
       echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
-      APP_IMAGE="$previous_image" docker compose -p "$compose_project" -f "$compose_file" up -d --no-build --remove-orphans || true
+      if [[ "$rollback_failed" == false ]]; then
+        if [[ "$previous_health_contract" == \
+          "legacy-v1-exact-four-fields" ]]
+        then
+          stop_scheduler_for_legacy "$previous_image" \
+            || rollback_failed=true
+          if [[ "$rollback_failed" == false ]]; then
+            APP_IMAGE="$previous_image" docker compose -p "$compose_project" \
+              -f "$compose_file" up -d --no-build app \
+              || rollback_failed=true
+          fi
+        else
+          APP_IMAGE="$previous_image" docker compose -p "$compose_project" \
+            -f "$compose_file" up -d --no-build --remove-orphans \
+            || rollback_failed=true
+        fi
+      fi
+      if [[ "$rollback_failed" == false ]]; then
+        check_previous_with_retries \
+          "http://127.0.0.1:${expected_port}" \
+          || rollback_failed=true
+        check_previous_with_retries "https://${expected_host}" \
+          || rollback_failed=true
+        if [[ "$previous_health_contract" == \
+          "legacy-v1-exact-four-fields" ]]
+        then
+          stop_scheduler_for_legacy "$previous_image" \
+            || rollback_failed=true
+        else
+          check_scheduler_with_retries "$previous_image" \
+            || rollback_failed=true
+        fi
+      fi
     fi
     docker compose -p "$compose_project" -f "$compose_file" logs --no-color --tail 80 app scheduler 2>&1 | node scripts/deploy/redact-logs.mjs || true
+    if [[ "$rollback_failed" == true ]]; then
+      echo "KRITIEK: automatische applicatierollback kon niet worden bewezen." >&2
+      rm -f -- "$runtime_backup" "$rendered_compose"
+      [[ -z "$legacy_runtime_backup" ]] \
+        || rm -f -- "$legacy_runtime_backup"
+      exit 70
+    fi
+    rm -f -- "$runtime_backup" "$rendered_compose"
+    [[ -z "$legacy_runtime_backup" ]] \
+      || rm -f -- "$legacy_runtime_backup"
     exit "$status"
   }
   signal_abort() {
@@ -193,39 +361,73 @@ deploy_environment() {
   expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.PARENT_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
   [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER."
+  expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+  [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER."
+  docker exec "$app_container" node -e \
+    'process.exit(process.env.QR_TOKEN_PEPPER_VERSION === process.argv[1] ? 0 : 1)' \
+    "$QR_TOKEN_PEPPER_VERSION" \
+    || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PEPPER_VERSION."
+  if [[ -n "${QR_TOKEN_PREVIOUS_PEPPER:-}" ]]; then
+    expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PREVIOUS_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.QR_TOKEN_PREVIOUS_PEPPER).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER."
+    docker exec "$app_container" node -e \
+      'process.exit(process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION === process.argv[1] ? 0 : 1)' \
+      "$QR_TOKEN_PREVIOUS_PEPPER_VERSION" \
+      || die "Actieve runtime bevat niet de verwachte QR_TOKEN_PREVIOUS_PEPPER_VERSION."
+  else
+    docker exec "$app_container" node -e \
+      'process.exit(!process.env.QR_TOKEN_PREVIOUS_PEPPER && !process.env.QR_TOKEN_PREVIOUS_PEPPER_VERSION ? 0 : 1)' \
+      || die "Actieve runtime bevat onverwacht een vorige QR-sleutel."
+  fi
+  if [[ "${DYNAMIC_IMPORT_ENABLED}" == true ]]; then
+    expected_runtime_probe="$(DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    actual_runtime_probe="$(docker exec -e DUINDORP_RUNTIME_PROBE_NONCE="$runtime_probe_nonce" "$app_container" node -e 'const {createHmac}=require("node:crypto");process.stdout.write(createHmac("sha256",process.env.IMPORT_STAGING_ENCRYPTION_KEY).update(process.env.DUINDORP_RUNTIME_PROBE_NONCE).digest("hex"))')"
+    [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte importstaging-sleutel."
+  fi
 
-  check_with_retries() {
-    local url="$1"
-    for attempt in $(seq 1 20); do
-      if node scripts/deploy/check-http.mjs "$url" "$environment" "$RELEASE_SHA"; then return 0; fi
-      [[ "$attempt" == 20 ]] && return 1
-      sleep 3
-    done
-  }
   check_with_retries "http://127.0.0.1:${expected_port}"
   check_with_retries "https://${expected_host}"
-  local scheduler_container scheduler_health
-  scheduler_container="$(docker compose -p "$compose_project" -f "$compose_file" ps -q scheduler)"
-  [[ -n "$scheduler_container" ]] || die "Schedulercontainer ontbreekt."
-  for attempt in $(seq 1 20); do
-    scheduler_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$scheduler_container")"
-    [[ "$scheduler_health" == healthy ]] && break
-    [[ "$attempt" == 20 ]] && die "Scheduler werd niet gezond."
-    sleep 3
-  done
+  node scripts/deploy/check-edge-body-limits.mjs "$environment"
+  check_scheduler_with_retries "$image_tag" \
+    || die "Scheduler werd niet gezond."
 
-  local temp_revision temp_previous temp_manifest
+  local temp_revision temp_previous temp_manifest temp_previous_manifest temp_previous_runtime
   temp_revision="$(mktemp "${runtime_directory}/REVISION.XXXXXX")"
   temp_previous="$(mktemp "${runtime_directory}/PREVIOUS_REVISION.XXXXXX")"
   temp_manifest="$(mktemp "${runtime_directory}/RELEASE_MANIFEST.XXXXXX")"
+  temp_previous_manifest="$(mktemp "${runtime_directory}/PREVIOUS_RELEASE_MANIFEST.XXXXXX")"
+  temp_previous_runtime="$(mktemp "${runtime_directory}/.env.runtime.previous-release.XXXXXX")"
   printf '%s\n' "$RELEASE_SHA" > "$temp_revision"
   printf '%s\n' "$previous_revision" > "$temp_previous"
   node scripts/deploy/release-manifest.mjs create "$temp_manifest" "$environment" "$RELEASE_SHA" "$image_tag" "$expected_digest" "$expected_config_digest" "$expected_artifact_digest"
-  chmod 600 "$temp_revision" "$temp_previous" "$temp_manifest"
+  if valid_sha "$previous_revision"; then
+    cp -f -- "${runtime_directory}/RELEASE_MANIFEST" \
+      "$temp_previous_manifest"
+    if [[ "$previous_health_contract" == \
+      "legacy-v1-exact-four-fields" ]]
+    then
+      cp -f -- "$legacy_runtime_backup" "$temp_previous_runtime"
+    else
+      cp -f -- "$runtime_backup" "$temp_previous_runtime"
+    fi
+  else
+    : > "$temp_previous_manifest"
+    : > "$temp_previous_runtime"
+  fi
+  chmod 600 "$temp_revision" "$temp_previous" "$temp_manifest" \
+    "$temp_previous_manifest" "$temp_previous_runtime"
+  mv -f -- "$temp_previous_manifest" \
+    "${runtime_directory}/PREVIOUS_RELEASE_MANIFEST"
+  mv -f -- "$temp_previous_runtime" \
+    "${runtime_directory}/.env.runtime.previous-release"
   mv -f -- "$temp_previous" "${runtime_directory}/PREVIOUS_REVISION"
   mv -f -- "$temp_revision" "${runtime_directory}/REVISION"
   mv -f -- "$temp_manifest" "${runtime_directory}/RELEASE_MANIFEST"
   rm -f -- "$runtime_backup" "$rendered_compose"
+  [[ -z "$legacy_runtime_backup" ]] \
+    || rm -f -- "$legacy_runtime_backup"
   activated=false
   trap - ERR EXIT INT TERM HUP
 

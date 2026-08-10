@@ -1,26 +1,37 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/env";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { normalizeSportlinkFileName, previewSportlinkImport, SPORTLINK_MAX_REQUEST_BYTES, toSportlinkDatabaseRows, validateSportlinkUpload } from "@/server/imports/sportlink";
-import { guardBrowserMutation } from "@/server/security/route-guard";
+import {
+  normalizeSportlinkFileName,
+  previewSportlinkImport,
+  sportlinkUploadMetadata,
+  toSportlinkDatabaseRows,
+} from "@/server/imports/sportlink";
+import { BODY_POLICIES, guardBrowserMutation, readTextRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: { allowedContentTypes: ["multipart/form-data"], maxBytes: SPORTLINK_MAX_REQUEST_BYTES } }); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.sportlinkCsv });
+  if (guarded) return guarded;
   try {
+    if (getServerEnv().DYNAMIC_IMPORT_ENABLED === "true") {
+      return NextResponse.json(
+        { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+        { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     await requireStaffRole(["beheerder", "kledingcommissie"]);
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
 
-    const formData = await request.formData();
-    const file = formData.get("file");
-    if (!(file instanceof File)) return NextResponse.json({ error: "CSV-bestand ontbreekt." }, { status: 400 });
-    validateSportlinkUpload(file);
-
-    const input = await file.text();
+    const body = await readTextRequest(request, BODY_POLICIES.sportlinkCsv);
+    if (!body.ok) return body.response;
+    const file = sportlinkUploadMetadata(request.headers, new TextEncoder().encode(body.data).byteLength);
+    const input = body.data;
     const preview = previewSportlinkImport(input);
     if (preview.issues.length > 0 || preview.members.length === 0) {
       return NextResponse.json({ error: "De import bevat ongeldige rijen en is niet opgeslagen.", issues: preview.issues, summary: preview.summary }, { status: 422 });
@@ -34,6 +45,12 @@ export async function POST(request: Request) {
       p_members: toSportlinkDatabaseRows(preview.members),
     });
     if (error) {
+      if (error.message?.includes("LEGACY_IMPORT_DISABLED")) {
+        return NextResponse.json(
+          { error: "De oude import is uitgeschakeld. Gebruik de dynamische import." },
+          { status: 410, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+        );
+      }
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze import." }, { status: 403 });
       return NextResponse.json({ error: "De import kon niet transactioneel worden opgeslagen." }, { status: 500 });
     }

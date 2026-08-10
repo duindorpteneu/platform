@@ -28,8 +28,9 @@ export const preparedMolliePaymentSchema = z.object({
     payment_id: uuidSchema,
     order_id: uuidSchema,
     member_id: uuidSchema,
+    member_season_id: uuidSchema,
     season_id: uuidSchema,
-    schema_version: z.literal(1),
+    schema_version: z.literal(2),
   }).strict(),
 }).strict().superRefine((value, context) => {
   if (value.paymentId !== value.metadata.payment_id || value.orderId !== value.metadata.order_id) {
@@ -43,12 +44,12 @@ export const mollieReconciliationContextSchema = z.object({
   paymentStatus: z.enum(["open", "pending", "paid", "failed", "canceled", "expired", "refunded", "duplicate_paid"]),
   amountCents: z.number().int().positive(),
   currency: z.literal("EUR"),
+  metadataSchemaVersion: z.union([z.literal(1), z.literal(2)]),
   orderId: uuidSchema,
   memberId: uuidSchema,
+  memberSeasonId: uuidSchema,
   seasonId: uuidSchema,
   amountDueCents: z.number().int().positive(),
-  qrVersion: z.number().int().nonnegative(),
-  activeQrVersion: z.number().int().positive().nullable(),
 }).strict();
 
 export const mollieReconciliationResultSchema = z.union([

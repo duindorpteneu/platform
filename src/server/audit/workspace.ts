@@ -8,7 +8,7 @@ export async function getAuditWorkspace(filters: AuditFilters): Promise<AuditWor
   await requireStaffRole(["beheerder", "kledingcommissie"]);
   const supabase = await getSupabaseServerClient();
   if (!supabase) throw new Error("AUDIT_DATABASE_UNAVAILABLE");
-  const { data, error } = await supabase.schema("app").rpc("get_audit_workspace", {
+  const { data, error } = await supabase.schema("app").rpc("get_audit_workspace_v2", {
     p_category: filters.category ?? null,
     p_action: filters.action ?? null,
     p_actor_user_id: filters.actorUserId ?? null,

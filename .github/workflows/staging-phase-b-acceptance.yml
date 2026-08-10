@@ -1,0 +1,232 @@
+name: Staging Phase-B acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte 40-teken SHA die al naar staging is gedeployed
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run voor exact dit artifact
+        required: true
+        type: string
+      confirmation:
+        description: Typ STAGING-PHASE-B
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-duindorpteneu-staging
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
+  phase-b:
+    name: Phase-B candidate matrix and deployed staging surfaces
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment: staging
+    env:
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+      STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+      SCANNER_BROWSER_DISPOSABLE_DB: "1"
+    steps:
+      - name: Checkout exact accepted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Validate exact checkout, confirmation and live artifact
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${CONFIRMATION}" == "STAGING-PHASE-B" ]]
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Install checksum-verified Supabase CLI
+        run: bash scripts/deploy/install-supabase-cli.sh
+
+      - name: Create ephemeral local test keyring
+        run: |
+          set -Eeuo pipefail
+          qr_key="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+          parent_key="$(openssl rand -hex 32)"
+          cron_key="$(openssl rand -hex 32)"
+          actions_key="$(openssl rand -base64 32 | tr -d '\n')"
+          printf '::add-mask::%s\n' \
+            "${qr_key}" "${parent_key}" "${cron_key}" "${actions_key}"
+          {
+            printf 'QR_TOKEN_PEPPER=%s\n' "${qr_key}"
+            printf 'QR_TOKEN_PEPPER_VERSION=1\n'
+            printf 'PARENT_TOKEN_PEPPER=%s\n' "${parent_key}"
+            printf 'CRON_SECRET=%s\n' "${cron_key}"
+            printf 'NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=%s\n' "${actions_key}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Start only this repository local Supabase stack
+        run: >-
+          node scripts/run-supabase.mjs start
+          --workdir "${GITHUB_WORKSPACE}"
+
+      - name: Replay migrations and run complete database matrix
+        run: |
+          set -Eeuo pipefail
+          pnpm test:db:upgrade:phase-b
+          pnpm db:reset
+          pnpm test:db
+          for script_name in \
+            test:db:mollie-fixture \
+            test:db:concurrency \
+            test:db:access-concurrency \
+            test:db:variant-concurrency \
+            test:db:action-concurrency \
+            test:db:import-concurrency \
+            test:db:package-concurrency \
+            test:db:payment-concurrency \
+            test:db:refund-concurrency \
+            test:db:inventory-concurrency \
+            test:db:delivery-notification-concurrency \
+            test:db:mail-projection-concurrency \
+            test:db:mail-supersession-concurrency \
+            test:db:mail-test-delivery-concurrency \
+            test:db:branding-concurrency \
+            test:db:mail-campaign-concurrency \
+            test:db:email-attempt-concurrency \
+            test:db:parent-otp-concurrency \
+            test:db:supplier-concurrency \
+            test:db:staging-cleanup
+          do
+            pnpm "${script_name}"
+          done
+
+      - name: Run exact-source unit, build and browser flows
+        env:
+          SCANNER_BROWSER_DISPOSABLE_DB: "1"
+        run: |
+          set -Eeuo pipefail
+          pnpm test
+          pnpm typecheck
+          pnpm lint
+          pnpm build
+          pnpm test:log-privacy
+          CAPACITY_TEST_DISPOSABLE_DB=1 pnpm test:capacity
+          pnpm test:a11y
+          pnpm test:portal-access-browser
+
+      - name: Run self-cleaning deployed Phase-B role and surface acceptance
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VERIFY_PHASE_B_SURFACES: "1"
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: >-
+          timeout --signal=TERM --kill-after=15s 10m
+          node scripts/staging/core-browser-acceptance.mjs
+
+      - name: Always remove deployed Phase-B acceptance fixtures
+        if: always()
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VERIFY_PHASE_B_SURFACES: "1"
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CLEANUP_ONLY: "1"
+        run: >-
+          timeout --signal=TERM --kill-after=15s 3m
+          node scripts/staging/core-browser-acceptance.mjs
+
+      - name: Stop only this repository local Supabase stack
+        if: always()
+        run: >-
+          node scripts/run-supabase.mjs stop
+          --workdir "${GITHUB_WORKSPACE}"
+          --no-backup
+
+      - name: Create exact Phase-B result after cleanup
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+          node scripts/deploy/staging-result.mjs create \
+            "${RUNNER_TEMP}/staging-result-phase-b.json" phase-b \
+            "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${{ needs.preflight.outputs.staging_run_id }}" \
+            "${ARTIFACT_DIGEST}" -
+
+      - name: Upload exact Phase-B acceptance result
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-phase-b-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/staging-result-phase-b.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create result-bound Phase-B attestation
+        env:
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          RESULT_ARTIFACT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/staging-attestation.mjs create \
+            "${RUNNER_TEMP}/staging-attestation-phase-b.json" \
+            "${RUNNER_TEMP}/staging-result-phase-b.json" phase-b \
+            "${RELEASE_SHA}" "${GITHUB_RUN_ID}" \
+            "${{ needs.preflight.outputs.staging_run_id }}" \
+            "${ARTIFACT_DIGEST}" "${RESULT_ARTIFACT_ID}" \
+            "${RESULT_ARTIFACT_DIGEST}"
+
+      - name: Upload exact Phase-B acceptance attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-phase-b-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-phase-b.json
+          if-no-files-found: error
+          retention-days: 30

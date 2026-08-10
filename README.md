@@ -2,7 +2,7 @@
 
 Het Duindorp SV Tenueportaal is één Next.js-applicatie voor backoffice, het ledenportaal en de uitgifte van clubtenues. De MVP beheert leden, orders en exacte betalingen per lid, deelleveringen, één seizoensgebonden QR-code en transactionele e-mail- en betaalproviderflows.
 
-De bindende productbaseline staat in [MVP Canon v1.0](docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf) en [AGENTS.md](AGENTS.md). Dit is een Duindorp SV-product, geen generiek of multi-tenant SaaS-platform.
+De bindende productbaseline staat in [MVP Canon v1.0](docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf), het [goedgekeurde addendum v1.1](docs/canon/MVP_CANON_ADDENDUM_v1.1.md) en [AGENTS.md](AGENTS.md). Het addendum supersedeert uitsluitend de daarin benoemde v1.0-regels. Dit is een Duindorp SV-product, geen generiek of multi-tenant SaaS-platform.
 
 ## Stack
 
@@ -51,9 +51,13 @@ Met een actieve, schone lokale Supabase-stack:
 ```bash
 pnpm db:reset
 pnpm test:db
+pnpm test:db:upgrade:phase-b
 pnpm test:db:concurrency
 pnpm test:staff-mfa
+pnpm test:staff-password-recovery
 pnpm test:e2e
+pnpm test:portal-access-browser
+pnpm test:a11y
 ```
 
 De CI voert locked installatie, secret scan, migration lint, lint, typecheck, tests, productiebuild, schone migratie en pgTAP/RLS-tests uit. Een groene lokale of CI-run is nog geen stagingacceptatie.
@@ -65,8 +69,8 @@ De CI voert locked installatie, secret scan, migration lint, lint, typecheck, te
 - [Releasechecklist](docs/project/RELEASE_CHECKLIST.md) — lokale, staging- en productiepoorten.
 - [VPS-deployment](docs/deployment/vps-deployment.md) — self-hosted runners, GitHub environments, immutable Dockerpromotie, Supabase-migraties en Caddy-loopbackrouting.
 - [GitHub environments](docs/deployment/github-environments.md) — geaudite variables, secrets en resterende handmatige configuratie.
-- [Rollback](docs/deployment/rollback.md) — veilige appredeploy en forward-only databaseherstel.
-- [Stagingverificatie](docs/project/STAGING_VERIFICATION.md) — alle achttien canonieke E2E-scenario’s en bewijsvelden.
+- [Rollback](docs/deployment/rollback.md) — automatische appfallback, revertcommit en forward-only databaseherstel.
+- [Stagingverificatie](docs/project/STAGING_VERIFICATION.md) — alle 28 canonieke E2E-scenario’s en bewijsvelden.
 - [Securityacceptatie](docs/project/SECURITY_ACCEPTANCE.md) — autorisatie-, request-, provider- en privacycontroles.
 
 Live Mollie-testmode, SendGrid-domein/delivery en publiek bereikbare HTTPS-webhooks worden uitsluitend in staging geverifieerd. Productie vereist daarna de handmatige GitHub production-environmentapproval; dit repositorywerk voert geen deployment of productieactie uit.

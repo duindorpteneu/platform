@@ -8,9 +8,9 @@ const config: Config = {
         brand: {
           50: "#EEF4FD",
           100: "#DCE8F9",
-          500: "#2E69CC",
-          700: "#17418B",
-          900: "#0B2E63",
+          500: "rgb(var(--brand-500-rgb, 46 105 204) / <alpha-value>)",
+          700: "rgb(var(--brand-700-rgb, 23 65 139) / <alpha-value>)",
+          900: "rgb(var(--brand-900-rgb, 11 46 99) / <alpha-value>)",
         },
         ink: "#172033",
         canvas: "#F6F8FB",

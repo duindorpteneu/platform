@@ -9,46 +9,45 @@ values ('f4000000-0000-4000-8000-000000000001', 'Adresbeheerder', 'beheerder', t
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"f4000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 
-select lives_ok($$select app.get_settings_workspace_v2()$$, 'beheerder kan de uitgebreide instellingen openen');
-select ok(app.get_settings_workspace_v2()->'settings' ? 'pickupAddressDiffers', 'workspace bevat expliciete afhaaladreskeuze');
+select lives_ok($$select app.get_settings_workspace_v3()$$, 'beheerder kan de canonieke instellingen openen');
+select ok(app.get_settings_workspace_v3()->'settings' ? 'brandingRevision', 'workspace bevat de gepubliceerde brandingrevisie');
 
-select lives_ok($$select app.update_settings_v2(
-  ' KLEDING@DUINDORPSV.NL ', ' Duinlaan 1 ', '2584 AB', ' Den Haag ',
-  false, null, null, null, null, null, '[]'::jsonb, false, false,
+select lives_ok($$select app.update_settings_v3(
+  null, '[]'::jsonb, false, false,
   'f4100000-0000-4000-8000-000000000001'
-)$$, 'verenigingsgegevens kunnen zonder actief seizoen worden opgeslagen');
-select is((select contact_email from app.app_settings where id), 'kleding@duindorpsv.nl', 'contactmail wordt genormaliseerd');
-select is((select club_address_line from app.app_settings where id), 'Duinlaan 1', 'verenigingsadres wordt getrimd');
-select is((select pickup_location from app.app_settings where id), 'Duindorp SV, Duinlaan 1, 2584 AB Den Haag', 'mailshortcode gebruikt standaard het verenigingsadres');
+)$$, 'operationele instellingen kunnen zonder actief seizoen worden opgeslagen');
+select is((select contact_email from app.app_settings where id), 'kleding@duindorpsv.nl', 'contactmail komt uit de gepubliceerde branding');
+select is((select club_address_line from app.app_settings where id), 'Houtrustlaan 1', 'verenigingsadres komt uit de gepubliceerde branding');
+select is((select pickup_location from app.app_settings where id), 'Free-Kick Sport, De Savornin Lohmanplein 45, 2566 AE Den Haag', 'mail en uitgifte gebruiken dezelfde afhaallocatie');
 select is((select active_season_id from app.app_settings where id), null, 'instellingen opslaan vereist geen actief seizoen');
 select ok(
-  jsonb_array_length(app.get_settings_workspace_v2()->'seasons') > 0
+  jsonb_array_length(app.get_settings_workspace_v3()->'seasons') > 0
   and not exists (
     select 1
-    from jsonb_array_elements(app.get_settings_workspace_v2()->'seasons') season
+    from jsonb_array_elements(app.get_settings_workspace_v3()->'seasons') season
     where jsonb_typeof(season->'active') <> 'boolean' or (season->>'active')::boolean
   ),
   'workspace retourneert false voor ieder seizoen wanneer geen actief seizoen is ingesteld'
 );
 
 select lives_ok($$select app.update_settings_v2(
-  'kleding@duindorpsv.nl', 'Duinlaan 1', '2584 AB', 'Den Haag',
-  true, 'Tenuepunt', 'Markt 2', '2511 AA', 'Den Haag', null, '[]'::jsonb, false, false,
+  'kleding@duindorpsv.nl', 'Houtrustlaan 1', '2566 ZW', 'Den Haag',
+  true, 'Free-Kick Sport', 'De Savornin Lohmanplein 45', '2566 AE', 'Den Haag', null, '[]'::jsonb, false, false,
   'f4100000-0000-4000-8000-000000000002'
-)$$, 'afwijkend afhaaladres kan volledig worden opgeslagen');
-select is((select pickup_location from app.app_settings where id), 'Tenuepunt, Markt 2, 2511 AA Den Haag', 'afhaallocatie wordt voor bestaande communicatie afgeleid');
-select is(app.get_settings_workspace_v2() #>> '{settings,pickupName}', 'Tenuepunt', 'workspace retourneert het gestructureerde afhaaladres');
+)$$, 'rollbackcompatibele v2 accepteert exact de gepubliceerde branding');
+select is((select pickup_location from app.app_settings where id), 'Free-Kick Sport, De Savornin Lohmanplein 45, 2566 AE Den Haag', 'compatibiliteitsprojectie blijft canoniek');
+select is(app.get_settings_workspace_v3() #>> '{settings,pickupName}', 'Free-Kick Sport', 'workspace retourneert het gepubliceerde afhaaladres');
 select throws_ok($$select app.update_settings_v2(
-  null, 'Duinlaan 1', null, 'Den Haag', false, null, null, null, null,
+  null, 'Houtrustlaan 1', '2566 ZW', 'Den Haag', true, 'Free-Kick Sport', 'De Savornin Lohmanplein 45', '2566 AE', 'Den Haag',
   null, '[]'::jsonb, false, false, null
-)$$, '22023', 'SETTINGS_CLUB_ADDRESS_INVALID', 'onvolledig verenigingsadres wordt geweigerd');
+)$$, '22023', 'SETTINGS_BRANDING_MANAGED_SEPARATELY', 'afwijkende contactbranding wordt geweigerd');
 select throws_ok($$select app.update_settings_v2(
-  null, null, null, null, true, 'Tenuepunt', null, '2511 AA', 'Den Haag',
+  'kleding@duindorpsv.nl', 'Houtrustlaan 1', '2566 ZW', 'Den Haag', true, 'Andere locatie', 'De Savornin Lohmanplein 45', '2566 AE', 'Den Haag',
   null, '[]'::jsonb, false, false, null
-)$$, '22023', 'SETTINGS_PICKUP_ADDRESS_INVALID', 'onvolledig afhaaladres wordt geweigerd');
+)$$, '22023', 'SETTINGS_BRANDING_MANAGED_SEPARATELY', 'afwijkende afhaalbranding wordt geweigerd');
 
 create temporary table created_season_response as
-select app.create_season_v2(
+select app.create_season_v3(
   '2041/42 adrescontrole', '2041-07-01', '2042-06-30', 9900, true,
   'f4100000-0000-4000-8000-000000000003'
 ) response;
@@ -59,8 +58,8 @@ select ok(
 );
 select is((select response #>> '{settings,activeSeasonId}' from created_season_response), (select id::text from app.seasons where name = '2041/42 adrescontrole'), 'nieuw seizoen is direct actief in dezelfde mutatierespons');
 select is((select count(*)::integer from app.app_settings where id), 1, 'seizoensmutatie behoudt exact één instellingenrij');
-select ok(exists(select 1 from app.audit_logs where action = 'settings.updated' and correlation_id = 'f4100000-0000-4000-8000-000000000002'), 'adreswijziging is geaudit');
-select ok(not exists(select 1 from app.audit_logs where correlation_id = 'f4100000-0000-4000-8000-000000000002' and metadata::text ~* 'tenuepunt|markt'), 'audit bevat geen adresgegevens');
+select ok(exists(select 1 from app.audit_logs where action = 'settings.updated' and correlation_id = 'f4100000-0000-4000-8000-000000000002'), 'compatibele operationele wijziging is geaudit');
+select ok(not exists(select 1 from app.audit_logs where correlation_id = 'f4100000-0000-4000-8000-000000000002' and metadata::text ~* 'kleding@|savornin'), 'audit bevat geen adresgegevens');
 
 select * from finish();
 rollback;

@@ -2,7 +2,7 @@ import { operationFinishResponseSchema, operationStartResponseSchema } from "@/l
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
-export type OperationName = "email_worker" | "retention";
+export type OperationName = "email_worker" | "import_worker" | "inventory_allocator" | "retention";
 export type OperationResultStatus = "succeeded" | "failed" | "paused";
 
 export async function startOperationRun(admin: AdminClient, operation: OperationName, runId: string) {

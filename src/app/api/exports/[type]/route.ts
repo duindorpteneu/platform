@@ -7,7 +7,7 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const querySchema = z.object({ format: exportFormatSchema, seasonId: z.string().uuid().nullable(), filter: z.string().max(100).nullable() }).strict();
+const querySchema = z.object({ format: exportFormatSchema, seasonId: z.string().uuid(), filter: z.string().max(100).nullable() }).strict();
 
 export async function GET(request: Request, context: { params: Promise<{ type: string }> }) {
   try {

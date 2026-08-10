@@ -1,9 +1,11 @@
 import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
-import { createPublicKey } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import path from "node:path";
 
 const environment = process.env.DEPLOY_ENVIRONMENT;
 const releaseSha = process.env.RELEASE_SHA?.trim() ?? "";
+const releaseArtifactDigest =
+  process.env.RELEASE_ARTIFACT_DIGEST?.trim() ?? "";
 const rules = {
   staging: {
     host: "staging-duindorp.dgwebservices.nl",
@@ -57,10 +59,22 @@ function postgresUrl(name, projectRef) {
     ) invalid(name);
   } catch { invalid(name); }
 }
+function canonicalBase64UrlSecret(name, value) {
+  try {
+    if (
+      !/^[A-Za-z0-9_-]{43}$/.test(value)
+      || Buffer.from(value, "base64url").length !== 32
+      || Buffer.from(value, "base64url").toString("base64url") !== value
+    ) invalid(name);
+  } catch { invalid(name); }
+}
 
 if (!(environment in rules)) invalid("DEPLOY_ENVIRONMENT");
 const expected = environment in rules ? rules[environment] : { host: "", port: "", root: "", project: "", supabaseRef: "" };
 if (!/^[a-f0-9]{40}$/.test(releaseSha)) invalid("RELEASE_SHA");
+if (!/^sha256:[a-f0-9]{64}$/.test(releaseArtifactDigest)) {
+  invalid("RELEASE_ARTIFACT_DIGEST");
+}
 
 const appHost = required("APP_HOST");
 const appPort = required("APP_BIND_PORT");
@@ -90,7 +104,47 @@ jwt("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon", projectRef);
 jwt("SUPABASE_SERVICE_ROLE_KEY", "service_role", projectRef);
 postgresUrl("SUPABASE_DB_URL", projectRef);
 required("PARENT_TOKEN_PEPPER", 32);
+const qrTokenPepper = required("QR_TOKEN_PEPPER", 43);
+const qrTokenPepperVersion = required("QR_TOKEN_PEPPER_VERSION");
+const previousQrTokenPepper = optional("QR_TOKEN_PREVIOUS_PEPPER");
+const previousQrTokenPepperVersion = optional("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+canonicalBase64UrlSecret("QR_TOKEN_PEPPER", qrTokenPepper);
+if (!/^[1-9][0-9]{0,3}$/.test(qrTokenPepperVersion)) {
+  invalid("QR_TOKEN_PEPPER_VERSION");
+}
+if (Boolean(previousQrTokenPepper) !== Boolean(previousQrTokenPepperVersion)) {
+  invalid("QR_TOKEN_PREVIOUS_PEPPER");
+  invalid("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
+}
+if (previousQrTokenPepper) {
+  canonicalBase64UrlSecret(
+    "QR_TOKEN_PREVIOUS_PEPPER",
+    previousQrTokenPepper,
+  );
+}
+if (
+  previousQrTokenPepperVersion
+  && (
+    !/^[1-9][0-9]{0,3}$/.test(previousQrTokenPepperVersion)
+    || previousQrTokenPepperVersion === qrTokenPepperVersion
+  )
+) invalid("QR_TOKEN_PREVIOUS_PEPPER_VERSION");
 required("CRON_SECRET", 16);
+const dynamicImportEnabled = required("DYNAMIC_IMPORT_ENABLED");
+const importStagingKey = optional("IMPORT_STAGING_ENCRYPTION_KEY");
+const importRetentionHours = required("IMPORT_RAW_RETENTION_HOURS");
+if (!["true", "false"].includes(dynamicImportEnabled)) invalid("DYNAMIC_IMPORT_ENABLED");
+if (!/^(?:[1-9]|[1-6][0-9]|7[0-2])$/.test(importRetentionHours)) invalid("IMPORT_RAW_RETENTION_HOURS");
+if (importStagingKey) {
+  try {
+    if (
+      !/^[A-Za-z0-9_-]{43}$/.test(importStagingKey)
+      || Buffer.from(importStagingKey, "base64url").length !== 32
+      || Buffer.from(importStagingKey, "base64url").toString("base64url") !== importStagingKey
+    ) invalid("IMPORT_STAGING_ENCRYPTION_KEY");
+  } catch { invalid("IMPORT_STAGING_ENCRYPTION_KEY"); }
+}
+if (dynamicImportEnabled === "true" && !importStagingKey) invalid("IMPORT_STAGING_ENCRYPTION_KEY");
 const operationsHeartbeatUrl = optional("OPERATIONS_HEARTBEAT_URL");
 if (environment === "production" && !operationsHeartbeatUrl) invalid("OPERATIONS_HEARTBEAT_URL");
 if (operationsHeartbeatUrl) {
@@ -114,9 +168,13 @@ if (environment === "production" && mollieEnabled === "true" && !mollieKey.start
 
 const emailEnabled = required("EMAIL_ENABLED");
 const sendgridKey = optional("SENDGRID_API_KEY");
+const sendgridKeyFingerprint =
+  optional("SENDGRID_API_KEY_FINGERPRINT");
 const sendgridApiBaseUrl = optional("SENDGRID_API_BASE_URL") || "https://api.sendgrid.com";
+const fromName = optional("SENDGRID_FROM_NAME");
 const fromEmail = optional("SENDGRID_FROM_EMAIL");
 const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
+const smokeRecipient = optional("SENDGRID_SMOKE_RECIPIENT");
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
 if (!["https://api.sendgrid.com", "https://api.eu.sendgrid.com"].includes(sendgridApiBaseUrl)) invalid("SENDGRID_API_BASE_URL");
@@ -130,11 +188,23 @@ if (webhookKey) {
 }
 if (emailEnabled === "true") {
   if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
+  if (!/^[a-f0-9]{64}$/.test(sendgridKeyFingerprint)) {
+    invalid("SENDGRID_API_KEY_FINGERPRINT");
+  } else if (
+    createHash("sha256").update(sendgridKey).digest("hex")
+      !== sendgridKeyFingerprint
+  ) {
+    invalid("SENDGRID_API_KEY_FINGERPRINT");
+  }
+  if (!fromName || fromName.length > 120 || /[\r\n]/.test(fromName)) invalid("SENDGRID_FROM_NAME");
   if (!fromEmail) invalid("SENDGRID_FROM_EMAIL");
   if (!replyEmail) invalid("SENDGRID_REPLY_TO_EMAIL");
+  if (environment === "staging" && !smokeRecipient) {
+    invalid("SENDGRID_SMOKE_RECIPIENT");
+  }
   if (!webhookKey) invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 }
-for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail]]) {
+for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail], ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient]]) {
   if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
 }
 
@@ -164,6 +234,7 @@ const runtime = {
   PORT: "3000",
   APP_ENVIRONMENT: environment,
   RELEASE_SHA: releaseSha,
+  RELEASE_ARTIFACT_DIGEST: releaseArtifactDigest,
   APP_BASE_URL: appUrl,
   NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -171,18 +242,28 @@ const runtime = {
   SUPABASE_JWKS: supabaseJwks,
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
   PARENT_TOKEN_PEPPER: process.env.PARENT_TOKEN_PEPPER,
+  QR_TOKEN_PEPPER: qrTokenPepper,
+  QR_TOKEN_PEPPER_VERSION: qrTokenPepperVersion,
   CRON_SECRET: process.env.CRON_SECRET,
+  DYNAMIC_IMPORT_ENABLED: dynamicImportEnabled,
+  IMPORT_RAW_RETENTION_HOURS: importRetentionHours,
   OPERATIONS_INTERNAL_BASE_URL: "http://app:3000",
   MOLLIE_ENABLED: mollieEnabled,
   EMAIL_ENABLED: emailEnabled,
   ...Object.fromEntries([
     ["MOLLIE_API_KEY", mollieKey],
     ["SENDGRID_API_KEY", sendgridKey],
+    ["SENDGRID_API_KEY_FINGERPRINT", sendgridKeyFingerprint],
     ["SENDGRID_API_BASE_URL", sendgridApiBaseUrl],
+    ["SENDGRID_FROM_NAME", fromName],
     ["SENDGRID_FROM_EMAIL", fromEmail],
     ["SENDGRID_REPLY_TO_EMAIL", replyEmail],
+    ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient],
     ["SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", webhookKey],
     ["OPERATIONS_HEARTBEAT_URL", operationsHeartbeatUrl],
+    ["IMPORT_STAGING_ENCRYPTION_KEY", importStagingKey],
+    ["QR_TOKEN_PREVIOUS_PEPPER", previousQrTokenPepper],
+    ["QR_TOKEN_PREVIOUS_PEPPER_VERSION", previousQrTokenPepperVersion],
   ].filter(([, value]) => value)),
 };
 await mkdir(expected.root, { recursive: true, mode: 0o700 });

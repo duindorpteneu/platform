@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { settingsWorkspaceSchema } from "../../src/lib/settings-audit-contract.ts";
+import {
+  assertNoAutomatedA11yViolations,
+} from "../browser-a11y.mjs";
 
 const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
@@ -48,11 +51,31 @@ export function targetFromEnvironment(environment = process.env) {
   const baseUrl = envRequired(environment, "STAGING_BASE_URL");
   const projectRef = envRequired(environment, "SUPABASE_PROJECT_REF");
   const releaseSha = envRequired(environment, "RELEASE_SHA");
+  const artifactDigest = envRequired(environment, "ARTIFACT_DIGEST");
   const confirmation = envRequired(environment, "CONFIRMATION");
+  const verifyPhaseBSurfaces =
+    environment.VERIFY_PHASE_B_SURFACES === "1";
   if (baseUrl !== STAGING_ORIGIN || projectRef !== STAGING_REF) throw new Error("STAGING_TARGET_INVALID");
   if (!/^[a-f0-9]{40}$/.test(releaseSha)) throw new Error("RELEASE_SHA_INVALID");
-  if (confirmation !== "STAGING-CORE") throw new Error("CONFIRMATION_INVALID");
-  return { baseUrl, projectRef, releaseSha };
+  if (!/^sha256:[a-f0-9]{64}$/.test(artifactDigest)) {
+    throw new Error("ARTIFACT_DIGEST_INVALID");
+  }
+  if (
+    confirmation !== (
+      verifyPhaseBSurfaces
+        ? "STAGING-PHASE-B"
+        : "STAGING-CORE"
+    )
+  ) {
+    throw new Error("CONFIRMATION_INVALID");
+  }
+  return {
+    baseUrl,
+    projectRef,
+    releaseSha,
+    artifactDigest,
+    verifyPhaseBSurfaces,
+  };
 }
 
 export function databaseTargetFromEnvironment(environment = process.env) {
@@ -192,7 +215,13 @@ async function cleanupStaleFixtures(admin, databaseUrl) {
 async function verifyHealth(target) {
   const response = await fetch(`${target.baseUrl}/api/health`, { redirect: "error", signal: AbortSignal.timeout(10_000) });
   const body = await response.json();
-  if (!response.ok || body.status !== "ok" || body.environment !== "staging" || body.revision !== target.releaseSha) {
+  if (
+    !response.ok
+    || body.status !== "ok"
+    || body.environment !== "staging"
+    || body.revision !== target.releaseSha
+    || body.artifactDigest !== target.artifactDigest
+  ) {
     throw new Error("STAGING_RELEASE_MISMATCH");
   }
 }
@@ -315,7 +344,17 @@ async function verifyMobileMenu(page, role) {
   } catch {
     throw new Error("MOBILE_MENU_OPEN_FAILED");
   }
-  await dialog.getByRole("link", { name: "Uitgifte", exact: true }).waitFor();
+  const issuanceLink = dialog.getByRole("link", {
+    name: "Uitgifte",
+    exact: true,
+  });
+  if (role === "kledingcommissie") {
+    if (await issuanceLink.count()) {
+      throw new Error("COMMITTEE_ISSUANCE_EXPOSED");
+    }
+  } else {
+    await issuanceLink.waitFor();
+  }
   if (role === "uitgifte") {
     if (await dialog.getByRole("link", { name: "Dashboard", exact: true }).count()) throw new Error("ISSUANCE_MENU_OVEREXPOSED");
   } else {
@@ -363,7 +402,7 @@ async function verifyAdminSettings(page, baseUrl) {
 }
 
 async function verifyAdminSettingsRpc(target, anonKey, accessToken) {
-  const response = await timedFetch(`https://${target.projectRef}.supabase.co/rest/v1/rpc/get_settings_workspace_v2`, {
+  const response = await timedFetch(`https://${target.projectRef}.supabase.co/rest/v1/rpc/get_settings_workspace_v3`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -395,6 +434,72 @@ async function verifyAdminSettingsRpc(target, anonKey, accessToken) {
   return parsed.data;
 }
 
+async function verifyPhaseBSurfaces(page, target) {
+  const surfaces = [
+    ["/backoffice/pakketten", "Kledingpakketten"],
+    ["/backoffice/actiepunten", "Actiepunten"],
+    ["/backoffice/leden", "Leden"],
+    ["/backoffice/leveringen", "Leveringen"],
+    ["/backoffice/emails", "E-mailcentrum"],
+    ["/backoffice/instellingen", "Instellingen"],
+  ];
+  for (const [path, heading] of surfaces) {
+    const response = await page.goto(`${target.baseUrl}${path}`, {
+      waitUntil: "domcontentloaded",
+    });
+    if (!response?.ok()) {
+      throw new Error("PHASE_B_SURFACE_HTTP_FAILED");
+    }
+    await page.getByRole("heading", {
+      name: heading,
+      exact: true,
+    }).waitFor();
+    await assertNoAutomatedA11yViolations(
+      page,
+      `staging_${path.split("/").at(-1)}`,
+    );
+  }
+  await page.getByText("Phase-B-procespoorten", {
+    exact: true,
+  }).waitFor();
+  await page.goto(`${target.baseUrl}/backoffice/leden`);
+  await page.getByLabel("Opgeslagen ledenweergaven").waitFor();
+  await page.goto(`${target.baseUrl}/backoffice/leveringen`);
+  await page.getByText("Leveringconcept starten", {
+    exact: true,
+  }).waitFor();
+  await page.goto(`${target.baseUrl}/backoffice/emails`);
+  await page.getByRole("button", {
+    name: "Herinneringen",
+    exact: true,
+  }).click();
+  await page.getByText("Herinneringsregels", {
+    exact: true,
+  }).waitFor();
+  await page.goto(`${target.baseUrl}/leverancier/login`);
+  await page.getByRole("heading", {
+    name: "Leveranciersplanning",
+    exact: true,
+  }).waitFor();
+  const supplierCopy = await page.locator("main").innerText();
+  if (
+    !supplierCopy.includes("uitsluitend geaggregeerde aantallen")
+    || supplierCopy.includes("Geboortedatum")
+    || supplierCopy.includes("E-mailadres lid")
+  ) {
+    throw new Error("PHASE_B_SUPPLIER_PRIVACY_COPY_INVALID");
+  }
+  await assertNoAutomatedA11yViolations(
+    page,
+    "staging_supplier_login",
+  );
+  await page.goto(`${target.baseUrl}/backoffice`);
+  await page.getByRole("heading", {
+    name: "Dashboard",
+    exact: true,
+  }).waitFor();
+}
+
 async function verifyRole(page, target, role, anonKey, accessToken) {
   if (role === "uitgifte") {
     await page.goto(`${target.baseUrl}/backoffice`);
@@ -415,9 +520,18 @@ async function verifyRole(page, target, role, anonKey, accessToken) {
     if (role === "beheerder") {
       await verifyAdminSettingsRpc(target, anonKey, accessToken);
       await verifyAdminSettings(page, target.baseUrl);
+      if (target.verifyPhaseBSurfaces) {
+        await verifyPhaseBSurfaces(page, target);
+      }
     }
     if (role === "kledingcommissie" && await page.getByRole("link", { name: "Instellingen", exact: true }).count()) {
       throw new Error("COMMITTEE_SETTINGS_EXPOSED");
+    }
+    if (role === "kledingcommissie") {
+      await page.goto(`${target.baseUrl}/uitgifte`);
+      await page.waitForURL(`${target.baseUrl}/backoffice`, {
+        timeout: 15_000,
+      });
     }
   }
   await verifyMobileMenu(page, role);

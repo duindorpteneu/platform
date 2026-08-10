@@ -1,20 +1,27 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 // @ts-expect-error The production acceptance entrypoint intentionally uses plain Node.js ESM.
 import * as acceptance from "./mollie-staging-acceptance.mjs";
 
 const {
   ACCEPTANCE_CONFIRMATION,
+  POSTGRES_IMAGE,
   STAGING_SUPABASE_PROJECT_REF,
+  assertMismatchSnapshot,
+  assertPaidSnapshot,
+  assertReadinessSnapshot,
+  assertRefundSnapshot,
   choosePaidOnHostedTestPage,
   chooseRefundedOnHostedTestPage,
   createFixtureIdentity,
+  isTerminalFullRefund,
   postConcurrentReplays,
   providerRequest,
+  runFixtureSql,
   stagingParentRpc,
   validateCheckoutUrl,
   validateConfiguration,
   validateTargetConfiguration,
-  waitForStagingParentMembers,
 } = acceptance;
 
 const validEnv = {
@@ -76,6 +83,14 @@ describe("Mollie staging acceptance guards", () => {
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=prefer`,
     })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
+    expect(() => validateTargetConfiguration({
+      ...validEnv,
+      SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres`,
+    })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
+    expect(() => validateTargetConfiguration({
+      ...validEnv,
+      SUPABASE_DB_URL: `postgresql://readonly:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
+    })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TARGET_MISMATCH");
   });
 
   it("creates deterministic, fictitious and run-isolated fixture identities", () => {
@@ -84,6 +99,90 @@ describe("Mollie staging acceptance guards", () => {
     expect(createFixtureIdentity("123456789-2")).not.toEqual(first);
     expect(first.fixtureEmail).toMatch(/@example\.invalid$/);
     expect(first.paidOrderId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first.readinessArticleId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(new Set([
+      first.paidMemberId,
+      first.mismatchMemberId,
+      first.paidOrderId,
+      first.mismatchOrderId,
+      first.readinessArticleId,
+      first.readinessVariantId,
+      first.readinessOrderLineId,
+      first.readinessQrRequestId,
+    ])).toHaveProperty("size", 8);
+  });
+
+  it("runs fixture SQL in a pinned least-privilege container without a database URL in arguments", () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const spawnImpl = vi.fn().mockReturnValue({
+      status: 0,
+      stdout: '{"prepared":true}\n',
+    });
+
+    expect(runFixtureSql(
+      { dbUrl: validEnv.SUPABASE_DB_URL },
+      "prepare",
+      identity,
+      { spawnImpl },
+    )).toEqual({ prepared: true });
+
+    expect(spawnImpl).toHaveBeenCalledOnce();
+    const [executable, args, options] = spawnImpl.mock.calls[0];
+    expect(executable).toBe("docker");
+    expect(args).toContain(POSTGRES_IMAGE);
+    expect(args).toContain("--read-only");
+    expect(args).toContain("--cap-drop=ALL");
+    expect(args.join(" ")).not.toContain(validEnv.SUPABASE_DB_URL);
+    expect(args.join(" ")).not.toContain("secret@");
+    expect(options.env.TARGET_DB_URL).toBe(validEnv.SUPABASE_DB_URL);
+    expect(options.stdio).toEqual(["pipe", "pipe", "ignore"]);
+  });
+
+  it("runs the readiness proof through the isolated SQL harness", () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const spawnImpl = vi.fn().mockReturnValue({
+      status: 0,
+      stdout: '{"transactionRolledBack":true}\n',
+    });
+
+    expect(runFixtureSql(
+      { dbUrl: validEnv.SUPABASE_DB_URL },
+      "readiness",
+      identity,
+      { spawnImpl },
+    )).toEqual({ transactionRolledBack: true });
+    const [, args, options] = spawnImpl.mock.calls[0];
+    expect(args).toContain("--env");
+    expect(args).toContain("FIXTURE_READINESS_ARTICLE_ID");
+    expect(options.env.FIXTURE_READINESS_ORDER_LINE_ID).toBe(identity.readinessOrderLineId);
+  });
+
+  it("keeps the readiness inventory, allocation and QR proof rollback-only", () => {
+    const sql = readFileSync(
+      new URL("./sql/mollie-fixture-readiness.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("private.allocate_inventory_fifo_variant(");
+    expect(sql).toContain("app.register_order_qr_locator(");
+    expect(sql).toContain("'transactionRolledBack', true");
+    expect(sql.trim().endsWith("rollback;")).toBe(true);
+    expect(sql).not.toMatch(/\bcommit\s*;/i);
+  });
+
+  it("allows state reads only for an exact fixture order/member pair", () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    expect(() => runFixtureSql(
+      { dbUrl: validEnv.SUPABASE_DB_URL },
+      "state",
+      identity,
+      {
+        stateIdentity: {
+          orderId: identity.paidOrderId,
+          memberId: identity.mismatchMemberId,
+        },
+        spawnImpl: vi.fn(),
+      },
+    )).toThrow("MOLLIE_ACCEPTANCE_FIXTURE_STATE_IDENTITY_INVALID");
   });
 
   it("rejects non-Mollie and insecure checkout URLs", () => {
@@ -93,7 +192,126 @@ describe("Mollie staging acceptance guards", () => {
   });
 });
 
+describe("Mollie allocation-gated QR snapshots", () => {
+  const common = {
+    paymentEmailJobs: 1,
+    paidEvents: 1,
+    paidAudits: 1,
+    refundEvents: 0,
+    refundAudits: 0,
+    mismatchEvents: 0,
+    manualReviewAudits: 0,
+  };
+
+  it("proves paid without a hard allocation has no QR", () => {
+    expect(() => assertPaidSnapshot({
+      ...common,
+      paymentStatus: "paid",
+      reconciliationIssue: null,
+      paidPayments: 1,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).not.toThrow();
+
+    expect(() => assertPaidSnapshot({
+      ...common,
+      paymentStatus: "paid",
+      reconciliationIssue: null,
+      paidPayments: 1,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).toThrow();
+  });
+
+  it("accepts QR readiness only after one concrete hard allocation", () => {
+    expect(() => assertReadinessSnapshot({
+      paymentStatus: "paid",
+      allocatedLines: 1,
+      allocatedQuantity: 1,
+      hardAllocations: 1,
+      readyLines: 1,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: true,
+      qrUsable: true,
+      transactionRolledBack: true,
+    })).not.toThrow();
+    expect(() => assertReadinessSnapshot({
+      paymentStatus: "paid",
+      allocatedLines: 0,
+      allocatedQuantity: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 1,
+      allQr: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+      transactionRolledBack: true,
+    })).toThrow();
+  });
+
+  it("keeps mismatch and refund snapshots free of active QR access", () => {
+    expect(() => assertMismatchSnapshot({
+      ...common,
+      paymentStatus: "pending",
+      paidPayments: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      paymentEmailJobs: 0,
+      reconciliationIssue: "MISMATCH_METADATA",
+      mismatchEvents: 1,
+      manualReviewAudits: 1,
+      qrBusinessEligible: false,
+      qrUsable: false,
+    })).not.toThrow();
+    expect(() => assertRefundSnapshot({
+      ...common,
+      paymentStatus: "refunded",
+      paidPayments: 0,
+      hardAllocations: 0,
+      readyLines: 0,
+      activeQr: 0,
+      allQr: 0,
+      reconciliationIssue: null,
+      qrBusinessEligible: false,
+      qrUsable: false,
+      refundEvents: 1,
+      refundAudits: 1,
+    })).not.toThrow();
+  });
+});
+
 describe("Mollie staging acceptance provider and webhook behavior", () => {
+  it("accepts only a terminal full refund as release evidence", () => {
+    const expectedAmount = "1.00";
+    expect(isTerminalFullRefund({
+      status: "pending",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(false);
+    expect(isTerminalFullRefund({
+      status: "processing",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(false);
+    expect(isTerminalFullRefund({
+      status: "refunded",
+      amount: { currency: "EUR", value: expectedAmount },
+    }, expectedAmount)).toBe(true);
+    expect(isTerminalFullRefund({
+      status: "refunded",
+      amount: { currency: "EUR", value: "0.50" },
+    }, expectedAmount)).toBe(false);
+  });
+
   it("returns a redacted provider error without reflecting credentials or response bodies", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response("secret provider detail", { status: 500 }));
     await expect(providerRequest(
@@ -117,25 +335,13 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
     );
   });
 
-  it("waits until both parent members are visible through the hosted app schema", async () => {
-    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response("false", { status: 200 }))
-      .mockResolvedValueOnce(new Response("true", { status: 200 }));
-    const sleep = vi.fn().mockResolvedValue(undefined);
-
-    await waitForStagingParentMembers({
+  it("does not allow staging fixture RPC names through the hosted parent contract", async () => {
+    await expect(stagingParentRpc({
       projectRef: STAGING_SUPABASE_PROJECT_REF,
       serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
-    }, identity, { fetchImpl, sleep });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0][0]).toContain("/rest/v1/rpc/parent_otp_members_visible");
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({
-      p_member_ids: [identity.paidMemberId, identity.mismatchMemberId],
-      p_email: identity.fixtureEmail,
-    });
-    expect(sleep).toHaveBeenCalledWith(2_000);
+    }, "prepare_mollie_acceptance_fixture", {}, vi.fn())).rejects.toThrow(
+      "MOLLIE_ACCEPTANCE_PARENT_RPC_INVALID",
+    );
   });
 
   it("posts the same classic form webhook three times concurrently", async () => {

@@ -37,7 +37,14 @@ select throws_ok(
   'STAFF_AUTHORIZATION_REQUIRED',
   'uitgifte kan geen voorraadontvangst registreren'
 );
-select is(app.lookup_fulfilment(repeat('f', 64))->>'status', 'invalid', 'uitgifte mag alleen via de minimale QR-lookup zoeken');
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'app.lookup_fulfilment(text)',
+    'EXECUTE'
+  ),
+  'uitgifte kan de legacy bearerlookup niet meer aanroepen'
+);
 select throws_ok(
   $$select app.get_stock_overview(null)$$,
   '42501',

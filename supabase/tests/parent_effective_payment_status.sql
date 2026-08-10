@@ -13,6 +13,14 @@ insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
 values('f3000000-0000-4000-8000-000000000001', repeat('9',64), timezone('utc', now()) + interval '1 hour');
 insert into private.parent_member_links(parent_account_id, member_id)
 values('f3000000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001');
+update private.parent_portal_grants
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'f0000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where parent_account_id = 'f3000000-0000-4000-8000-000000000001'
+  and status = 'review_required';
 insert into app.payments(id, order_id, method, status, amount_cents, idempotency_key, provider_payment_id, paid_at, created_at) values
   ('f4000000-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000001', 'mollie', 'paid', 12500,
     'parent-primary-paid', 'tr_parent_primary', timezone('utc', now()), timezone('utc', now()) - interval '1 minute'),

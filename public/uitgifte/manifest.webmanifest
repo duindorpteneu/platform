@@ -1,0 +1,27 @@
+{
+  "id": "/uitgifte",
+  "name": "Duindorp SV Uitgiftescanner",
+  "short_name": "Uitgifte",
+  "description": "Online scanner voor gecontroleerde tenue-uitgifte.",
+  "lang": "nl-NL",
+  "start_url": "/uitgifte",
+  "scope": "/uitgifte",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f7fa",
+  "theme_color": "#0b2e63",
+  "icons": [
+    {
+      "src": "/uitgifte/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/uitgifte/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
