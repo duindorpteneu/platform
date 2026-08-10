@@ -56,3 +56,15 @@ where profile.role = 'beheerder';
 ## Volgende medewerkers
 
 Na deze bootstrap gebruikt de beheerder **Backoffice → Instellingen → Medewerker uitnodigen**. De uitnodigingslink komt via Supabase Auth binnen op `/staff/set-password`. De invite-sessie wordt uit het URL-fragment gelezen en direct uit de adresbalk gewist; daarna stelt de medewerker een wachtwoord van minimaal 16 tekens in en volgt de verplichte TOTP-koppeling. Rollen blijven beperkt tot `beheerder`, `kledingcommissie` en `uitgifte`.
+
+## Wachtwoord herstellen
+
+Configureer in het staging-Supabaseproject onder **Authentication → URL Configuration**:
+
+- Site URL: `https://staging-duindorp.dgwebservices.nl`;
+- Redirect URL: `https://staging-duindorp.dgwebservices.nl/staff/set-password`;
+- Redirect URL: `https://staging-duindorp.dgwebservices.nl/staff/reset-password`.
+
+Een medewerker gebruikt daarna **Medewerkerslogin → Wachtwoord vergeten?**. Het antwoord blijft voor bekende en onbekende adressen gelijk. Een bestaande geverifieerde TOTP-factor wordt vóór de wachtwoordwijziging opnieuw gevraagd; na succes worden alle opaque app-sessies, open sessie-exchanges en sessiegebonden QR-scangrants ingetrokken en moet de medewerker opnieuw inloggen. De Supabase-dashboardactie **Send password recovery** blijft als operationele fallback bruikbaar: een strikt geldig `type=recovery`-fragment wordt vanaf de Site URL direct naar dezelfde staff-resetpagina geleid.
+
+Voor het E2E-account blijft de bestaande TOTP-seed gelijk. Werk na herstel uitsluitend de GitHub Environment-secret `E2E_ADMIN_PASSWORD` bij naar het exact gekozen wachtwoord; wijzig `E2E_ADMIN_TOTP_SECRET` alleen wanneer de factor bewust opnieuw is gekoppeld. Plaats geen van beide waarden in chat, logs of workflowinputs.

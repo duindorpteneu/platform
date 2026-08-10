@@ -54,6 +54,7 @@ pnpm test:db
 pnpm test:db:upgrade:phase-b
 pnpm test:db:concurrency
 pnpm test:staff-mfa
+pnpm test:staff-password-recovery
 pnpm test:e2e
 pnpm test:portal-access-browser
 pnpm test:a11y

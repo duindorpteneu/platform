@@ -12,6 +12,11 @@ const consumedSessionSchema = z.object({
   sessionToken: z.string().regex(/^[0-9a-f]{64}$/),
   context: staffContextSchema,
 }).strict();
+const revokedSessionsSchema = z.object({
+  sessionsRevoked: z.number().int().nonnegative(),
+  exchangesConsumed: z.number().int().nonnegative(),
+  scanGrantsRevoked: z.number().int().nonnegative(),
+}).strict();
 
 async function callStaffSessionRpc(name: string, body: Record<string, string>, throwOnTransportFailure = false) {
   const env = getServerEnv();
@@ -72,4 +77,12 @@ export async function fetchStaffContext(sessionToken: string): Promise<StaffCont
 export async function revokeStaffSession(sessionToken: string) {
   const result = await callStaffSessionRpc("revoke_staff_app_session", { p_session_token: sessionToken });
   return typeof result === "number" && result > 0;
+}
+
+export async function revokeAllStaffSessionsForUser(userId: string) {
+  const result = await callStaffSessionRpc("revoke_all_staff_app_sessions_for_user", {
+    p_auth_user_id: userId,
+  }, true);
+  const parsed = revokedSessionsSchema.safeParse(result);
+  return parsed.success ? parsed.data : null;
 }

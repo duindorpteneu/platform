@@ -43,6 +43,7 @@
     "test:capacity": "node scripts/test-capacity.mjs",
     "test:log-privacy": "vitest run src/server/security/logger.test.ts src/server/security/logging-architecture.test.ts scripts/deploy/redact-logs.test.ts",
     "test:staff-mfa": "node scripts/test-staff-mfa-integration.mjs",
+    "test:staff-password-recovery": "node scripts/test-staff-password-recovery.mjs",
     "test:dashboard-browser": "node scripts/test-platform-browser.mjs",
     "security:dependencies": "pnpm audit --audit-level high",
     "security:secrets": "node scripts/check-secrets.mjs",

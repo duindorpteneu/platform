@@ -99,4 +99,6 @@ van deze namen.
 
 Laat `DYNAMIC_IMPORT_ENABLED` in beide omgevingen weg of expliciet `false` totdat de unieke key is gezet, cleanup/health groen zijn en de databaseflag `dynamic_import_v2` gecontroleerd kan worden geactiveerd. Iedere deploy vergelijkt vóór appactivatie een niet-geheime keyfingerprint met actieve uploadstaging. Sleutelrotatie of keyverwijdering wordt technisch geblokkeerd totdat `pending=0`; volg de pauze-/retentieprocedure in het operationsrunbook.
 
+Supabase Auth URL Configuration is geen GitHub-secret maar wel een harde externe configuratiebinding. Gebruik per project de eigen origin als Site URL en voeg exact `/staff/set-password` en `/staff/reset-password` op diezelfde origin aan Redirect URLs toe. Gebruik geen wildcard tussen staging en production. De applicatie stuurt nieuwe herstelverzoeken expliciet naar `/staff/reset-password` en vangt uitsluitend een strikt geldig Supabase `type=recovery`-fragment op wanneer de dashboardfallback eerst naar de Site URL gaat.
+
 `SUPABASE_ACCESS_TOKEN`, Resend-, NIKKI- en `MOLLIE_WEBHOOK_SECRET`-waarden worden niet gebruikt en horen daarom niet in dit contract. `PARENT_TOKEN_PEPPER` en de QR-keyring zijn gescheiden cryptografische domeinen. Secretwaarden verschijnen nooit in logs, manifests of documentatie.

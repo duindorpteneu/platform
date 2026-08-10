@@ -75,6 +75,8 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 
 Geen enkele geheime variabele krijgt een `NEXT_PUBLIC_`-prefix. Secrets staan niet in GitHub-workflowtekst, screenshots, tickets, logs of testbewijs. De repository bevat alleen lege voorbeelden.
 
+Hosted Supabase Auth vereist daarnaast per omgeving een exacte URL-configuratie buiten GitHub: Site URL is de eigen `APP_BASE_URL` zonder pad; Redirect URLs bevatten exact `<APP_BASE_URL>/staff/set-password` en `<APP_BASE_URL>/staff/reset-password`. Staging- en productionorigins worden nooit met één wildcard gedeeld. De app-eigen herstelrequest is leidend; de dashboardfallback wordt alleen geaccepteerd wanneer Supabase een geldig `type=recovery`-fragment levert.
+
 De deploymentnaamgeving wordt bewust vertaald naar het runtimecontract:
 `NEXT_PUBLIC_APP_URL` wordt `APP_BASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` wordt

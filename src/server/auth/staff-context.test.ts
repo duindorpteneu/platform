@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStaffSessionForUser, fetchStaffContext, revokeStaffSession, StaffSessionUnavailableError } from "@/server/auth/staff-context";
+import { createStaffSessionForUser, fetchStaffContext, revokeAllStaffSessionsForUser, revokeStaffSession, StaffSessionUnavailableError } from "@/server/auth/staff-context";
 
 const context = {
   userId: "00000000-0000-4000-8000-000000000001",
@@ -49,6 +49,21 @@ describe("staff PostgREST context", () => {
     await expect(revokeStaffSession("b".repeat(64))).resolves.toBe(true);
     expect(fetchMock.mock.calls[0]?.[0]).toEqual(new URL("https://project.supabase.co/rest/v1/rpc/create_staff_app_session_for_user"));
     expect(fetchMock.mock.calls[1]?.[0]).toEqual(new URL("https://project.supabase.co/rest/v1/rpc/revoke_staff_app_session"));
+  });
+
+  it("trekt na wachtwoordherstel alle app-sessies en scangrants van de user in", async () => {
+    const result = { sessionsRevoked: 2, exchangesConsumed: 1, scanGrantsRevoked: 3 };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(revokeAllStaffSessionsForUser(context.userId)).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://project.supabase.co/rest/v1/rpc/revoke_all_staff_app_sessions_for_user"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ p_auth_user_id: context.userId }),
+      }),
+    );
   });
 
   it("faalt gesloten bij een weigering of ongeldig antwoord", async () => {
