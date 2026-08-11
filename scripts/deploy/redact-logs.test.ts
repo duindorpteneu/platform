@@ -23,6 +23,8 @@ describe("deployment log redaction", () => {
     "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue",
     "SendGrid SG.abcdefghijklmnopqrstuvwxyz0123456789",
     "otp=918273 verification_code: 827364 code: 736251",
+    `X-Duindorp-Edge-Body-Probe-Nonce: ${"a".repeat(64)} X-Duindorp-Edge-Body-Probe-Signature=${"b".repeat(64)}`,
+    `{"x-duindorp-edge-body-probe-nonce":"${"c".repeat(64)}","x-duindorp-edge-body-probe-signature":"${"d".repeat(64)}"}`,
   ])("redacts sensitive log content without reproducing it: %s", (line) => {
     const result = redactLine(line, values);
     expect(result).toContain("[REDACTED");
@@ -35,6 +37,7 @@ describe("deployment log redaction", () => {
     expect(result).not.toContain("q2.k");
     expect(result).not.toContain("sg2.k");
     expect(result).not.toContain("918273");
+    expect(result).not.toMatch(/[a-f0-9]{64}/iu);
   });
 
   it("preserves operationally useful non-sensitive diagnostics", () => {

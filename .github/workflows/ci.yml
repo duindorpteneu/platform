@@ -64,11 +64,17 @@ jobs:
       - name: Run unit and integration tests
         run: pnpm test
 
+      - name: Prove chunked edge limits with pinned Caddy
+        run: pnpm test:edge-proxy
+
       - name: Prove application log privacy
         run: pnpm test:log-privacy
 
       - name: Build production application
         run: pnpm build
+
+      - name: Prove standalone Next proxy URL and middleware body contract
+        run: pnpm test:edge-runtime
 
   database:
     name: Supabase migration and pgTAP gates

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isFreshSendGridTimestamp, parseSendGridOperationalEvents, verifySendGridSignature } from "@/server/email/webhook";
 import { BODY_POLICIES, readBodyRequest } from "@/server/security/route-guard";
 import { validateBodyHeaders } from "@/server/security/request";
+import { handleEdgeBodyProbe } from "@/server/security/edge-body-probe";
 import { operationalLogger } from "@/server/security/logger";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
@@ -28,6 +29,8 @@ function logWebhookRejection(code: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  const edgeProbe = await handleEdgeBodyProbe(request, "sendgrid-webhook");
+  if (edgeProbe) return edgeProbe;
   const publicKey = process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY;
   if (!publicKey) return NextResponse.json({ error: "Webhook niet geconfigureerd." }, { status: 503 });
   const headers = validateBodyHeaders(request, BODY_POLICIES.sendgridWebhook);

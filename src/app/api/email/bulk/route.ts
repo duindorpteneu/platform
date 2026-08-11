@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { emailBulkRequestSchema } from "@/lib/email-contract";
 import { createEmailPreviewToken, verifyEmailPreviewToken } from "@/server/email/preview-token";
 import { assertEligibleBulkSelection, createEmailBulk, getEmailWorkspace, renderFictionalTemplatePreview } from "@/server/email/workspace";
+import { handleEdgeBodyProbe } from "@/server/security/edge-body-probe";
 import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const edgeProbe = await handleEdgeBodyProbe(request, "email-bulk");
+  if (edgeProbe) return edgeProbe;
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.emailBulk }); if (guarded) return guarded;
   const body = await readJsonRequest(request, BODY_POLICIES.emailBulk);
   if (!body.ok) return body.response;

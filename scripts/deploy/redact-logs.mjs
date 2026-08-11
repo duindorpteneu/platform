@@ -60,6 +60,10 @@ export function redactLine(line, values = process.env) {
       "$1[REDACTED_CODE]",
     )
     .replace(
+      /(\bx-duindorp-edge-body-probe-(?:nonce|signature)\b["']?\s*[:=]\s*["']?)[a-f0-9]+/giu,
+      "$1[REDACTED_PROBE_PROOF]",
+    )
+    .replace(
       /(\bcode\b["']?\s*[:=]\s*["']?)[0-9]{6}\b/giu,
       "$1[REDACTED_CODE]",
     )

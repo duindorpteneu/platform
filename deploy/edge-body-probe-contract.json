@@ -1,0 +1,26 @@
+{
+  "version": "v1",
+  "freshnessSeconds": 30,
+  "probes": [
+    {
+      "name": "standard-api",
+      "path": "/api/catalog/articles",
+      "maxBytes": 128000
+    },
+    {
+      "name": "email-bulk",
+      "path": "/api/email/bulk",
+      "maxBytes": 384000
+    },
+    {
+      "name": "sendgrid-webhook",
+      "path": "/api/webhooks/sendgrid",
+      "maxBytes": 2000000
+    },
+    {
+      "name": "sportlink-import",
+      "path": "/api/imports/uploads",
+      "maxBytes": 12000000
+    }
+  ]
+}

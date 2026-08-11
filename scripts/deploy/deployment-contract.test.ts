@@ -235,12 +235,80 @@ describe("deployment environment isolation", () => {
       path.join(repositoryRoot, "scripts/deploy/check-edge-body-limits.mjs"),
       "utf8",
     );
-    expect(deployScript).toContain('node scripts/deploy/check-edge-body-limits.mjs "$environment"');
-    expect(deployScript.indexOf('node scripts/deploy/check-edge-body-limits.mjs "$environment"'))
-      .toBeGreaterThan(deployScript.indexOf('check_with_retries "https://${expected_host}"'));
+    const caddyIntegration = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy/test-edge-body-limits-caddy.mjs"),
+      "utf8",
+    );
+    const nextIntegration = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy/test-edge-body-probe-next.mjs"),
+      "utf8",
+    );
+    const nextConfig = readFileSync(path.join(repositoryRoot, "next.config.ts"), "utf8");
+    const caddyReference = readFileSync(
+      path.join(repositoryRoot, "deploy/caddy/duindorp-tenueportaal.caddy.example"),
+      "utf8",
+    );
+    const probeContract = JSON.parse(readFileSync(
+      path.join(repositoryRoot, "deploy/edge-body-probe-contract.json"),
+      "utf8",
+    )) as { probes: { name: string; path: string; maxBytes: number }[] };
+    const edgeGate = deployScript.indexOf('node scripts/deploy/check-edge-body-limits.mjs "$environment"');
+    const internalHealth = deployScript.indexOf('check_with_retries "http://127.0.0.1:${expected_port}"');
+    const publicHealth = deployScript.indexOf('check_with_retries "https://${expected_host}"');
+    const schedulerHealth = deployScript.indexOf('check_scheduler_with_retries "$image_tag"', edgeGate);
+    const revisionPublication = deployScript.indexOf('mv -f -- "$temp_revision" "${runtime_directory}/REVISION"', edgeGate);
+    const releasePublication = deployScript.indexOf('mv -f -- "$temp_manifest" "${runtime_directory}/RELEASE_MANIFEST"', edgeGate);
+    const deactivation = deployScript.indexOf("activated=false", edgeGate);
+    expect(edgeGate).toBeGreaterThan(internalHealth);
+    expect(edgeGate).toBeGreaterThan(publicHealth);
+    expect(edgeGate).toBeLessThan(schedulerHealth);
+    expect(edgeGate).toBeLessThan(revisionPublication);
+    expect(edgeGate).toBeLessThan(releasePublication);
+    expect(edgeGate).toBeLessThan(deactivation);
+    expect(deployScript.indexOf("trap 'rollback $?' ERR")).toBeLessThan(edgeGate);
     expect(probeScript).toContain('"Content-Type": "application/octet-stream"');
     expect(probeScript).toContain('duplex: "half"');
     expect(probeScript).not.toContain("Authorization");
+    expect(probeContract.probes).toEqual([
+      { name: "standard-api", path: "/api/catalog/articles", maxBytes: 128_000 },
+      { name: "email-bulk", path: "/api/email/bulk", maxBytes: 384_000 },
+      { name: "sendgrid-webhook", path: "/api/webhooks/sendgrid", maxBytes: 2_000_000 },
+      { name: "sportlink-import", path: "/api/imports/uploads", maxBytes: 12_000_000 },
+    ]);
+    for (const limit of ["128KB", "384KB", "2MB", "12MB"]) {
+      expect(caddyReference).toContain(`max_size ${limit}`);
+    }
+    for (const route of [
+      "/api/email/bulk",
+      "/api/webhooks/sendgrid",
+      "/api/imports/uploads",
+      "/api/imports/preview",
+      "/api/imports/commit",
+    ]) expect(caddyReference).toContain(route);
+    expect(caddyReference).not.toMatch(/not path[^\n]*\/api\/catalog\/articles/);
+    expect(caddyIntegration).toContain("caddy:2.10.2@sha256:d8c17a862962def15cde69863a3a463f25a2664942eafd7bdbf050e9c3116b83");
+    expect(caddyIntegration).toContain("await assertEdgeBodyLimits");
+    expect(caddyIntegration).toContain("CADDY_TEST_RAISED_LIMIT_NOT_DETECTED");
+    expect(caddyIntegration).toContain('"--cap-drop", "ALL"');
+    expect(caddyIntegration).not.toContain("--cap-add");
+    expect(caddyIntegration).toContain('["SIGINT", 130]');
+    expect(caddyIntegration).toContain("CADDY_TEST_CLEANUP_FAILED");
+    expect(nextConfig).toContain("middlewareClientMaxBodySize: 12_000_001");
+    expect(nextIntegration).toContain('"X-Forwarded-Host": publicHost');
+    expect(nextIntegration).toContain('"Transfer-Encoding": "chunked"');
+    expect(nextIntegration).toContain('path.resolve(".next/standalone")');
+    expect(nextIntegration).toContain("NEXT_PROBE_STANDALONE_INVALID");
+    expect(nextIntegration).toContain("sportlink.maxBytes + 1");
+    expect(nextIntegration).toContain("Request body exceeded");
+    for (const workflowName of ["ci.yml", "deploy.yml"]) {
+      const workflowSource = readFileSync(
+        path.join(repositoryRoot, ".github/workflows", workflowName),
+        "utf8",
+      );
+      expect(workflowSource).toContain("pnpm test:edge-runtime");
+      expect(workflowSource.indexOf("pnpm build"))
+        .toBeLessThan(workflowSource.indexOf("pnpm test:edge-runtime"));
+    }
   });
 
   it("refreshes the service-only staff session RPC without mutating business data", () => {

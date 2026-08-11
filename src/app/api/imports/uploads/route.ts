@@ -14,6 +14,7 @@ import {
   sportlinkUploadMetadata,
 } from "@/server/imports/sportlink";
 import { normalizeCorrelationId } from "@/server/security/correlation";
+import { handleEdgeBodyProbe } from "@/server/security/edge-body-probe";
 import {
   BODY_POLICIES,
   guardBrowserMutation,
@@ -47,6 +48,8 @@ function importError(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const edgeProbe = await handleEdgeBodyProbe(request, "sportlink-import");
+  if (edgeProbe) return edgeProbe;
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.sportlinkCsv });
   if (guarded) return guarded;
   try {
