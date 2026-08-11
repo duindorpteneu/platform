@@ -373,3 +373,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - De enige mislukte stap was de aansluitende attestcreatie. Het al geüploade deployresultaat had een geldige GitHub artifact-ID en een kale 64-hex `artifact-digest`; het script wees die semantisch geldige SHA-256 af vóór attestupload. Cleanup is daardoor niet gestart.
 - De gerichte regressiematrix telt 80/80 groene tests over stagingattest, stagingdeployverificatie en promotiebewijs. De nieuwe test bewijst dat kale upload-artifactuitvoer canoniek als `sha256:<hex>` wordt opgeslagen en tegen zowel kale als geprefixte verwachtingen wordt geverifieerd; korte of anders gevormde digests blijven geweigerd.
 - De volledige lokale herstelgate is groen: ESLint, TypeScript, production build, 195 Vitestbestanden/1.146 tests, actionlint, secretscan, dependency-audit zonder bekende kwetsbaarheden en lint van alle 137 forward-only migrations.
+
+## Cleanup self-hosted Node-runtime — 2026-08-11
+
+- Exacte main-CI `31532871940` en stagingdeploy `31532871841` zijn groen op `27a4d275c436092b731530837142aaef9e2dd917`; het nieuwe result-bound deployattest is aangemaakt en geüpload.
+- Cleanup-dry-run `31535542508` passeerde het secrets-vrije trusted-main-/artifact-/attestbewijs en de stagingrunnerboundary. De eerstvolgende stap stopte vóór databaseconnectie met exit `127` op `node scripts/staging/validate-target.mjs`; apply werd door de modusconditie overgeslagen en er is geen data gemuteerd.
+- De regressietest leest de echte workflow, splitst dry-run en apply en eist in beide jobs runnerboundary → commit-gepinde setup-node → Node 22 → targetvalidator. Hosted exact-SHA CI en een nieuwe staging-dry-run blijven verplicht.
+- De lokale herstelgate is groen: actionlint, ESLint, TypeScript, production build, 195 Vitestbestanden/1.147 tests, secretscan, dependency-audit zonder bekende kwetsbaarheden en lint van alle 137 forward-only migrations. Een onafhankelijke read-only review vond geen blocker.

@@ -125,4 +125,23 @@ describe("staging domain cleanup contract", () => {
     expect(workflow).toContain("ref: ${{ needs.preflight.outputs.release_sha }}");
     expect(workflow).not.toContain("production");
   });
+
+  it("installeert Node 22 in beide runnerjobs vóór de eerste Node-aanroep", () => {
+    const dryRun = workflow.slice(
+      workflow.indexOf("  dry-run:"),
+      workflow.indexOf("  apply:"),
+    );
+    const applyJob = workflow.slice(workflow.indexOf("  apply:"));
+    for (const job of [dryRun, applyJob]) {
+      const boundary = job.indexOf("bash scripts/deploy/assert-runner-boundary.sh staging");
+      const setup = job.indexOf(
+        "uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+      );
+      const nodeCall = job.indexOf("node scripts/staging/validate-target.mjs");
+      expect(boundary).toBeGreaterThan(0);
+      expect(setup).toBeGreaterThan(boundary);
+      expect(job.slice(setup, nodeCall)).toContain("node-version: 22");
+      expect(nodeCall).toBeGreaterThan(setup);
+    }
+  });
 });
