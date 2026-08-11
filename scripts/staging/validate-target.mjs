@@ -6,6 +6,7 @@ export const PRODUCTION_PROJECT_REF = "wobcbufmmputydtzemyu";
 export const RESTORE_CONFIRMATION = "STAGING-RESTORE";
 export const CLEANUP_DRY_RUN_CONFIRMATION = "STAGING-CLEANUP-DRY-RUN";
 export const CLEANUP_APPLY_CONFIRMATION = "STAGING-CLEANUP-APPLY";
+const acceptedDatabaseQueryParameters = new Set(["connect_timeout", "sslmode"]);
 
 function required(values, name) {
   const value = values[name]?.trim();
@@ -48,8 +49,30 @@ function validateStagingTarget(values, confirmationContract, requireExactProject
   if (!parsedDatabaseUrl.username || !parsedDatabaseUrl.password) {
     throw new Error("De database-URL mist credentials");
   }
+  const databaseHostnameLabels = parsedDatabaseUrl.hostname.split(".");
+  if (databaseHostnameLabels.length < 2 || databaseHostnameLabels.some(
+    (label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label),
+  )) {
+    throw new Error("De database-URL bevat geen enkele geldige DNS-host");
+  }
   if (parsedDatabaseUrl.pathname !== "/postgres") {
     throw new Error("De database-URL wijst niet naar de stagingdatabase");
+  }
+  const databaseQueryParameters = [...new Set(parsedDatabaseUrl.searchParams.keys())];
+  if (databaseQueryParameters.some(
+    (parameter) => !acceptedDatabaseQueryParameters.has(parameter),
+  )) {
+    throw new Error("De database-URL bevat een niet-toegestane databaseparameter");
+  }
+  if (databaseQueryParameters.some(
+    (parameter) => parsedDatabaseUrl.searchParams.getAll(parameter).length > 1,
+  )) {
+    throw new Error("De database-URL bevat een dubbele databaseparameter");
+  }
+  const connectTimeout = parsedDatabaseUrl.searchParams.get("connect_timeout");
+  if (connectTimeout !== null
+    && (!/^[1-9][0-9]{0,2}$/u.test(connectTimeout) || Number(connectTimeout) > 120)) {
+    throw new Error("De database-URL bevat een ongeldige connectietimeout");
   }
   if (parsedDatabaseUrl.searchParams.get("sslmode") === "disable") {
     throw new Error("TLS mag niet zijn uitgeschakeld voor de stagingdatabase");

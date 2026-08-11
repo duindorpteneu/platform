@@ -67,7 +67,6 @@ jobs:
     env:
       RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
       ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - name: Checkout exact live release
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,6 +83,11 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+
+      - name: Enforce explicit database TLS without logging credentials
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/staging/require-database-tls.mjs
 
       - name: Validate exact staging target, main ancestry and live release
         run: |
@@ -149,9 +153,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate exact staging target, main ancestry and live release
+      - name: Enforce explicit database TLS without logging credentials
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/staging/require-database-tls.mjs
+
+      - name: Validate exact staging target, main ancestry and live release
         run: |
           set -Eeuo pipefail
           node scripts/staging/validate-target.mjs
@@ -169,7 +176,6 @@ jobs:
 
       - name: Prepare and restore-verify encrypted backup without deleting data
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           STAGING_CLEANUP_BACKUP_PASSPHRASE: ${{ secrets.STAGING_CLEANUP_BACKUP_PASSPHRASE }}
           CLEANUP_PHASE: prepare
           CLEANUP_RUN_ID: ${{ steps.cleanup.outputs.run_id }}
@@ -226,7 +232,6 @@ jobs:
 
       - name: Recheck backup-bound state and atomically clean the fixed allowlist
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CLEANUP_PHASE: apply
           CLEANUP_RUN_ID: ${{ steps.cleanup.outputs.run_id }}
           BACKUP_ARTIFACT_NAME: ${{ steps.cleanup.outputs.artifact_name }}

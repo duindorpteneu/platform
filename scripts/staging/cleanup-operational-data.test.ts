@@ -126,7 +126,7 @@ describe("staging domain cleanup contract", () => {
     expect(workflow).not.toContain("production");
   });
 
-  it("installeert Node 22 in beide runnerjobs vóór de eerste Node-aanroep", () => {
+  it("installeert Node 22 en dwingt database-TLS af vóór doelvalidatie in beide runnerjobs", () => {
     const dryRun = workflow.slice(
       workflow.indexOf("  dry-run:"),
       workflow.indexOf("  apply:"),
@@ -137,11 +137,15 @@ describe("staging domain cleanup contract", () => {
       const setup = job.indexOf(
         "uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
       );
+      const tls = job.indexOf("node scripts/staging/require-database-tls.mjs");
       const nodeCall = job.indexOf("node scripts/staging/validate-target.mjs");
       expect(boundary).toBeGreaterThan(0);
       expect(setup).toBeGreaterThan(boundary);
-      expect(job.slice(setup, nodeCall)).toContain("node-version: 22");
-      expect(nodeCall).toBeGreaterThan(setup);
+      expect(job.slice(setup, tls)).toContain("node-version: 22");
+      expect(tls).toBeGreaterThan(setup);
+      expect(nodeCall).toBeGreaterThan(tls);
     }
+    expect(workflow.match(/SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu))
+      .toHaveLength(2);
   });
 });
