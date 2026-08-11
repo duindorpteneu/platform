@@ -163,12 +163,19 @@ describe("deployment environment isolation", () => {
       path.join(repositoryRoot, "supabase/migrations/20260803244000_canonical_published_branding.sql"),
       "utf8",
     );
+    const releaseRefreshMigration = readFileSync(
+      path.join(repositoryRoot, "supabase/migrations/20260811130000_refresh_postgrest_release_contract.sql"),
+      "utf8",
+    );
     const deployScript = readFileSync(path.join(repositoryRoot, "scripts/deploy-vps.sh"), "utf8");
     const contractScript = readFileSync(path.join(repositoryRoot, "scripts/deploy/check-postgrest-rpcs.mjs"), "utf8");
     expect(baselineRefreshMigration).not.toMatch(
       /\b(?:insert|update|delete|truncate)\b/i,
     );
     expect(refreshMigration).toContain("notify pgrst, 'reload schema'");
+    expect(
+      releaseRefreshMigration.replace(/^--.*$/gm, "").trim(),
+    ).toBe("notify pgrst, 'reload schema';");
     expect(refreshMigration).toContain("get_settings_rpc_contract_version");
     expect(refreshMigration).toContain("'get_settings_workspace_v3'");
     expect(refreshMigration).toContain("'update_settings_v3'");
@@ -177,9 +184,10 @@ describe("deployment environment isolation", () => {
       /grant execute on function app\.get_settings_rpc_contract_version\(\)\s+to service_role/,
     );
     expect(contractScript).toContain("/rest/v1/rpc/get_settings_rpc_contract_version");
-    expect(contractScript).toContain("/rest/v1/rpc/create_staff_app_session_for_user");
-    expect(contractScript).toContain("/rest/v1/rpc/get_staff_app_session");
-    expect(contractScript).toContain("/rest/v1/rpc/revoke_staff_app_session");
+    expect(contractScript).toContain('"create_staff_app_session_for_user"');
+    expect(contractScript).toContain('"get_staff_app_session"');
+    expect(contractScript).toContain('"revoke_staff_app_session"');
+    expect(contractScript).toContain('"revoke_all_staff_app_sessions_for_user"');
     expect(contractScript).toContain('"list_order_qr_identity_candidates"');
     expect(contractScript).toContain('"get_parent_package_workspace_v5"');
     expect(contractScript).toContain('"get_operational_health_v12"');
@@ -199,8 +207,10 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain('"get_mollie_acceptance_payment_state"');
     expect(contractScript).toContain('"cleanup_mollie_acceptance_fixture"');
     expect(contractScript).toContain('"parent_otp_members_visible"');
-    expect(contractScript).toContain('response.status !== 404 || code !== "PGRST202"');
-    expect(contractScript).toContain('safeRemoteCode(result?.code) !== "42501"');
+    expect(contractScript).toContain('result.status !== 404 || code !== "PGRST202"');
+    expect(contractScript).toContain("p_excluded_item_ids: []");
+    expect(contractScript).not.toContain("p_selected_item_ids");
+    expect(contractScript).toContain('safeRemoteCode(result.body?.code) !== "42501"');
     expect(contractScript).not.toContain("get_settings_workspace_v2");
     expect(deployScript).toContain("DUINDORP_RUNTIME_PROBE_NONCE");
     expect(deployScript).toContain("Actieve runtime bevat niet de verwachte PARENT_TOKEN_PEPPER");
@@ -574,6 +584,29 @@ describe("fail-closed release chain", () => {
       '-f "$compose_file" up -d --no-build app',
     );
     expect(deployScript).not.toContain("ALLOW_LEGACY_HEALTH");
+  });
+
+  it("never starts the schema-incompatible pre-Phase-B staging release", () => {
+    const deployScript = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy-vps.sh"),
+      "utf8",
+    );
+    expect(deployScript).toContain(
+      'incompatible_staging_rollback_revision="a846c059bce3d7e794504acca57a4771dfdb536d"',
+    );
+    expect(deployScript).toContain("previous_app_compatible=false");
+    expect(deployScript).toContain(
+      "De schema-incompatibele oude stagingapp draait nog",
+    );
+    expect(deployScript).toContain(
+      "de schema-incompatibele oude stagingapp wordt niet gestart",
+    );
+    expect(deployScript).toContain(
+      '-f "$compose_file" stop app scheduler',
+    );
+    expect(deployScript).toContain(
+      '&& "$previous_app_compatible" == true',
+    );
   });
 
   it("authenticates and verifies the durable production backup redownload", () => {

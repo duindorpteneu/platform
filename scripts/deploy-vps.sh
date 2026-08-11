@@ -4,6 +4,7 @@ umask 077
 
 readonly repository_image="duindorpteneu-app"
 readonly compose_file="deploy/compose.vps.yml"
+readonly incompatible_staging_rollback_revision="a846c059bce3d7e794504acca57a4771dfdb536d"
 
 source scripts/deploy/failure-guard.sh
 source scripts/deploy/assert-runner-boundary.sh
@@ -140,7 +141,7 @@ deploy_environment() {
   grep -F "published: \"${expected_port}\"" "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde hostpoort."
   grep -F 'target: 3000' "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde containerpoort."
 
-  local previous_revision="" previous_image="" previous_digest="" previous_config_digest="" previous_artifact_digest="" previous_health_contract="artifact-v2" runtime_backup="${runtime_directory}/.env.runtime.previous" legacy_runtime_backup="" runtime_existed=false
+  local previous_revision="" previous_image="" previous_digest="" previous_config_digest="" previous_artifact_digest="" previous_health_contract="artifact-v2" previous_app_compatible=true runtime_backup="${runtime_directory}/.env.runtime.previous" legacy_runtime_backup="" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
   [[ -f "${runtime_directory}/REVISION" ]] && previous_revision="$(tr -d '\r\n' < "${runtime_directory}/REVISION")"
   if valid_sha "$previous_revision"; then
@@ -165,6 +166,15 @@ deploy_environment() {
     )"
     [[ "$previous_loaded_digest" == "$previous_digest" || "$previous_loaded_digest" == "$previous_config_digest" ]] \
       || die "Vorige release-image wijkt af van het herstelmanifest."
+    if [[ "$environment" == staging \
+      && "$previous_revision" == "$incompatible_staging_rollback_revision" ]]
+    then
+      previous_app_compatible=false
+      [[ -z "$(
+        APP_IMAGE="$previous_image" docker compose -p "$compose_project" \
+          -f "$compose_file" ps --status running -q app scheduler
+      )" ]] || die "De schema-incompatibele oude stagingapp draait nog; migratie en activatie zijn geblokkeerd."
+    fi
     if [[ "$previous_revision" == \
       "a79c8d843d75e90810ccceb228538c6368d2198b" ]]
     then
@@ -296,9 +306,22 @@ deploy_environment() {
       rm -f -- "$RUNTIME_ENV_FILE" || rollback_failed=true
     fi
     if [[ "$activated" == true ]]; then
-      [[ -n "$previous_image" ]] || rollback_failed=true
-      echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
-      if [[ "$rollback_failed" == false ]]; then
+      if [[ "$previous_app_compatible" == false ]]; then
+        echo "Applicatiehealth faalde; de schema-incompatibele oude stagingapp wordt niet gestart. De kandidaat wordt fail-closed gestopt en databasemigraties worden niet teruggedraaid." >&2
+        APP_IMAGE="$image_tag" docker compose -p "$compose_project" \
+          -f "$compose_file" stop app scheduler \
+          || rollback_failed=true
+        [[ -z "$(
+          APP_IMAGE="$image_tag" docker compose -p "$compose_project" \
+            -f "$compose_file" ps --status running -q app scheduler
+        )" ]] || rollback_failed=true
+      else
+        [[ -n "$previous_image" ]] || rollback_failed=true
+        echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
+      fi
+      if [[ "$rollback_failed" == false \
+        && "$previous_app_compatible" == true ]]
+      then
         if [[ "$previous_health_contract" == \
           "legacy-v1-exact-four-fields" ]]
         then
@@ -315,7 +338,9 @@ deploy_environment() {
             || rollback_failed=true
         fi
       fi
-      if [[ "$rollback_failed" == false ]]; then
+      if [[ "$rollback_failed" == false \
+        && "$previous_app_compatible" == true ]]
+      then
         check_previous_with_retries \
           "http://127.0.0.1:${expected_port}" \
           || rollback_failed=true
