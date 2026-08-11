@@ -1,3 +1,11 @@
+import { pathToFileURL } from "node:url";
+import {
+  classifyPostgrestProbeError,
+  createPostgrestHttpError,
+  PostgrestProbeError,
+  safeRemoteCode,
+} from "./postgrest-diagnostics.mjs";
+
 const attempts = 15;
 const retryDelayMs = 2_000;
 const expectedVersion = "20260803244000";
@@ -6,10 +14,6 @@ function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} ontbreekt voor de PostgREST-contractcontrole.`);
   return value;
-}
-
-function safeRemoteCode(value) {
-  return typeof value === "string" && /^[A-Z0-9_]{2,32}$/.test(value) ? value : "UNKNOWN";
 }
 
 async function loadContractVersion(url, serviceRoleKey) {
@@ -34,9 +38,14 @@ async function loadContractVersion(url, serviceRoleKey) {
       } catch {
         // Never include an untrusted response body or credentials in deploy output.
       }
-      throw new Error(`HTTP_${response.status}_${code}`);
+      throw createPostgrestHttpError("VERSION", response.status, code);
     }
-    const contract = await response.json();
+    let contract;
+    try {
+      contract = await response.json();
+    } catch {
+      throw new PostgrestProbeError("RESPONSE_INVALID");
+    }
     return contract && typeof contract === "object" ? contract : {};
   } finally {
     clearTimeout(timeout);
@@ -44,97 +53,83 @@ async function loadContractVersion(url, serviceRoleKey) {
 }
 
 async function verifyStaffSessionContract(url, serviceRoleKey) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await fetch(new URL("/rest/v1/rpc/create_staff_app_session_for_user", url), {
-      method: "POST",
-      headers: {
-        "Content-Profile": "app",
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({ p_auth_user_id: null }),
-      signal: controller.signal,
-    });
-    const result = await response.json().catch(() => null);
-    if (response.status !== 403 || safeRemoteCode(result?.code) !== "42501") {
-      throw new Error(`STAFF_SESSION_HTTP_${response.status}_${safeRemoteCode(result?.code)}`);
-    }
+  const session = await callRpc(
+    url,
+    serviceRoleKey,
+    "create_staff_app_session_for_user",
+    { p_auth_user_id: null },
+  );
+  if (session.status !== 403 || safeRemoteCode(session.body?.code) !== "42501") {
+    throw createPostgrestHttpError("STAFF_SESSION", session.status, session.body?.code);
+  }
 
-    const invalidToken = "0".repeat(64);
-    const contextResponse = await fetch(new URL("/rest/v1/rpc/get_staff_app_session", url), {
-      method: "POST",
-      headers: {
-        "Content-Profile": "app",
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({ p_session_token: invalidToken }),
-      signal: controller.signal,
-    });
-    const context = await contextResponse.json().catch(() => "INVALID");
-    if (!contextResponse.ok || context !== null) throw new Error(`STAFF_CONTEXT_HTTP_${contextResponse.status}`);
+  const invalidToken = "0".repeat(64);
+  const context = await callRpc(
+    url,
+    serviceRoleKey,
+    "get_staff_app_session",
+    { p_session_token: invalidToken },
+  );
+  if (context.status !== 200 || context.body !== null) {
+    throw createPostgrestHttpError("STAFF_CONTEXT", context.status, context.body?.code);
+  }
 
-    const revokeResponse = await fetch(new URL("/rest/v1/rpc/revoke_staff_app_session", url), {
-      method: "POST",
-      headers: {
-        "Content-Profile": "app",
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({ p_session_token: invalidToken }),
-      signal: controller.signal,
-    });
-    const revoked = await revokeResponse.json().catch(() => "INVALID");
-    if (!revokeResponse.ok || revoked !== 0) throw new Error(`STAFF_REVOKE_HTTP_${revokeResponse.status}`);
-  } finally {
-    clearTimeout(timeout);
+  const revoked = await callRpc(
+    url,
+    serviceRoleKey,
+    "revoke_staff_app_session",
+    { p_session_token: invalidToken },
+  );
+  if (revoked.status !== 200 || revoked.body !== 0) {
+    throw createPostgrestHttpError("STAFF_REVOKE", revoked.status, revoked.body?.code);
+  }
+
+  const recoveryRevocation = await callRpc(
+    url,
+    serviceRoleKey,
+    "revoke_all_staff_app_sessions_for_user",
+    { p_auth_user_id: null },
+  );
+  if (recoveryRevocation.status !== 200 || recoveryRevocation.body !== null) {
+    throw createPostgrestHttpError(
+      "STAFF_RECOVERY_REVOKE",
+      recoveryRevocation.status,
+      recoveryRevocation.body?.code,
+    );
   }
 }
 
 async function verifyAcceptanceFixtureContractAbsent(url, serviceRoleKey) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const identityPayload = {
-      p_paid_member_id: null,
-      p_mismatch_member_id: null,
-      p_paid_order_id: null,
-      p_mismatch_order_id: null,
-      p_paid_relation: "FORBIDDEN",
-      p_mismatch_relation: "FORBIDDEN",
-      p_fixture_email: "forbidden@example.invalid",
-    };
-    const forbiddenContracts = [
-      ["prepare_mollie_acceptance_fixture", identityPayload],
-      ["get_mollie_acceptance_payment_state", { p_order_id: null, p_member_id: null }],
-      ["cleanup_mollie_acceptance_fixture", identityPayload],
-      ["parent_otp_members_visible", { p_member_ids: [], p_email: "forbidden@example.invalid" }],
-    ];
+  const identityPayload = {
+    p_paid_member_id: null,
+    p_mismatch_member_id: null,
+    p_paid_order_id: null,
+    p_mismatch_order_id: null,
+    p_paid_relation: "FORBIDDEN",
+    p_mismatch_relation: "FORBIDDEN",
+    p_fixture_email: "forbidden@example.invalid",
+  };
+  const forbiddenContracts = [
+    ["prepare_mollie_acceptance_fixture", identityPayload, "ACCEPTANCE_PREPARE"],
+    [
+      "get_mollie_acceptance_payment_state",
+      { p_order_id: null, p_member_id: null },
+      "ACCEPTANCE_STATE",
+    ],
+    ["cleanup_mollie_acceptance_fixture", identityPayload, "ACCEPTANCE_CLEANUP"],
+    [
+      "parent_otp_members_visible",
+      { p_member_ids: [], p_email: "forbidden@example.invalid" },
+      "ACCEPTANCE_PARENT_OTP",
+    ],
+  ];
 
-    for (const [rpcName, payload] of forbiddenContracts) {
-      const response = await fetch(new URL(`/rest/v1/rpc/${rpcName}`, url), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      const result = await response.json().catch(() => null);
-      const code = safeRemoteCode(result?.code);
-      if (response.status !== 404 || code !== "PGRST202") {
-        throw new Error(`ACCEPTANCE_FIXTURE_RPC_VISIBLE_${response.status}_${code}`);
-      }
+  for (const [rpcName, payload, scope] of forbiddenContracts) {
+    const result = await callRpc(url, serviceRoleKey, rpcName, payload, "public");
+    const code = safeRemoteCode(result.body?.code);
+    if (result.status !== 404 || code !== "PGRST202") {
+      throw createPostgrestHttpError(scope, result.status, result.body?.code);
     }
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -164,10 +159,13 @@ async function callRpc(
         signal: controller.signal,
       },
     );
-    return {
-      body: await response.json().catch(() => null),
-      status: response.status,
-    };
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      throw new PostgrestProbeError("RESPONSE_INVALID");
+    }
+    return { body, status: response.status };
   } finally {
     clearTimeout(timeout);
   }
@@ -184,7 +182,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
     candidates.status !== 200
     || !Array.isArray(candidates.body?.candidates)
   ) {
-    throw new Error("QR_CANDIDATES_CONTRACT_INVALID");
+    throw createPostgrestHttpError("QR_CANDIDATES", candidates.status, candidates.body?.code);
   }
 
   const parentWorkspace = await callRpc(
@@ -198,7 +196,11 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
     parentWorkspace.status !== 403
     || safeRemoteCode(parentWorkspace.body?.code) !== "42501"
   ) {
-    throw new Error("PARENT_WORKSPACE_V5_CONTRACT_INVALID");
+    throw createPostgrestHttpError(
+      "PARENT_WORKSPACE_V5",
+      parentWorkspace.status,
+      parentWorkspace.body?.code,
+    );
   }
 
   const health = await callRpc(
@@ -218,7 +220,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
     || typeof health.body.qrControl.keyMismatchActiveLocators !== "number"
     || typeof health.body.qrControl.keyMismatchOpenGrants !== "number"
   ) {
-    throw new Error("HEALTH_V12_CONTRACT_INVALID");
+    throw createPostgrestHttpError("HEALTH_V12", health.status, health.body?.code);
   }
 
   const rejectedContracts = [
@@ -234,6 +236,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
         p_request_id: null,
       },
       "22023",
+      "QR_REGISTER",
     ],
     [
       "exchange_order_qr_locator_v2",
@@ -246,6 +249,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
         p_staff_session_hash: "0".repeat(64),
       },
       "42501",
+      "QR_EXCHANGE_V2",
     ],
     [
       "commit_fulfilment_v3",
@@ -258,14 +262,16 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
         p_staff_session_hash: "0".repeat(64),
       },
       "42501",
+      "FULFILMENT_COMMIT_V3",
     ],
     [
       "expire_qr_scan_grants",
       { p_limit: 0 },
       "22023",
+      "QR_EXPIRE_GRANTS",
     ],
   ];
-  for (const [rpcName, payload, expectedCode] of rejectedContracts) {
+  for (const [rpcName, payload, expectedCode, scope] of rejectedContracts) {
     const result = await callRpc(
       url,
       serviceRoleKey,
@@ -276,25 +282,25 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
       ![400, 403].includes(result.status)
       || safeRemoteCode(result.body?.code) !== expectedCode
     ) {
-      throw new Error(`QR_RPC_CONTRACT_INVALID_${rpcName.toUpperCase()}`);
+      throw createPostgrestHttpError(scope, result.status, result.body?.code);
     }
   }
 }
 
 async function verifyStaffOnlyManagementContracts(url, serviceRoleKey) {
   const staffOnlyContracts = [
-    ["get_release_feature_controls_v1", {}],
+    ["get_release_feature_controls_v1", {}, "RELEASE_FEATURES_GET"],
     ["activate_release_feature_v1", {
       p_key: "dynamic_import_v2",
       p_expected_revision: "0".repeat(64),
       p_reason: "contract probe",
       p_correlation_id: null,
-    }],
+    }, "RELEASE_FEATURES_ACTIVATE"],
     ["pause_release_feature_v1", {
       p_key: "dynamic_import_v2",
       p_reason: "contract probe",
       p_correlation_id: null,
-    }],
+    }, "RELEASE_FEATURES_PAUSE"],
     ["get_action_item_workspace_v2", {
       p_season_id: null,
       p_status: null,
@@ -303,85 +309,85 @@ async function verifyStaffOnlyManagementContracts(url, serviceRoleKey) {
       p_only_unassigned: false,
       p_offset: 0,
       p_limit: 1,
-    }],
+    }, "ACTION_ITEMS_GET"],
     ["assign_action_item", {
       p_action_item_id: null,
       p_expected_revision: 0,
       p_owner_user_id: null,
       p_correlation_id: null,
-    }],
+    }, "ACTION_ITEMS_ASSIGN"],
     ["start_action_item", {
       p_action_item_id: null,
       p_expected_revision: 0,
       p_correlation_id: null,
-    }],
+    }, "ACTION_ITEMS_START"],
     ["resolve_action_item_v3", {
       p_action_item_id: null,
       p_expected_revision: 0,
       p_reason: "contract probe",
       p_correlation_id: null,
-    }],
+    }, "ACTION_ITEMS_RESOLVE"],
     ["dismiss_action_item", {
       p_action_item_id: null,
       p_expected_revision: 0,
       p_reason: "contract probe",
       p_correlation_id: null,
-    }],
+    }, "ACTION_ITEMS_DISMISS"],
     ["prepare_mail_test_delivery_v1", {
       p_request_id: null,
       p_template_key: "LOGIN_OTP",
       p_expected_content_hash: "0".repeat(64),
       p_correlation_id: null,
-    }],
+    }, "MAIL_TEST_PREPARE"],
     ["finalize_mail_test_delivery_v2", {
       p_delivery_id: null,
       p_outcome: "delivery_uncertain",
       p_provider_http_message_id: null,
       p_correlation_id: null,
-    }],
+    }, "MAIL_TEST_FINALIZE"],
     ["preflight_package_change_v1", {
       p_order_id: null,
       p_target_revision_id: null,
       p_reason: "contract probe",
       p_request_id: null,
       p_correlation_id: null,
-    }],
+    }, "PACKAGE_CHANGE_PREFLIGHT"],
     ["apply_package_change_v1", {
       p_request_id: null,
       p_expected_revision: "0".repeat(64),
       p_confirmation: "SWITCH_PACKAGE",
       p_correlation_id: null,
-    }],
+    }, "PACKAGE_CHANGE_APPLY"],
     ["get_member_saved_views", {
       p_season_id: null,
-    }],
+    }, "SAVED_VIEWS_GET"],
     ["save_member_saved_view", {
       p_view_id: null,
       p_season_id: null,
       p_name: "contract probe",
       p_schema_version: 1,
       p_filters: {},
-    }],
+    }, "SAVED_VIEWS_SAVE"],
     ["delete_member_saved_view", {
       p_view_id: null,
       p_season_id: null,
-    }],
+    }, "SAVED_VIEWS_DELETE"],
     ["apply_member_saved_view", {
       p_view_id: null,
       p_season_id: null,
-    }],
+    }, "SAVED_VIEWS_APPLY"],
     ["get_inventory_delivery_notification_proposal_v1", {
       p_delivery_draft_id: null,
-    }],
+    }, "DELIVERY_NOTIFICATION_GET"],
     ["confirm_inventory_delivery_notification_proposal_v1", {
       p_proposal_id: null,
       p_expected_revision: "0".repeat(64),
-      p_selected_item_ids: [],
+      p_excluded_item_ids: [],
       p_request_id: null,
       p_correlation_id: null,
-    }],
+    }, "DELIVERY_NOTIFICATION_CONFIRM"],
   ];
-  for (const [rpcName, payload] of staffOnlyContracts) {
+  for (const [rpcName, payload, scope] of staffOnlyContracts) {
     const result = await callRpc(
       url,
       serviceRoleKey,
@@ -392,19 +398,20 @@ async function verifyStaffOnlyManagementContracts(url, serviceRoleKey) {
       ![401, 403].includes(result.status)
       || safeRemoteCode(result.body?.code) !== "42501"
     ) {
-      throw new Error(
-        `STAFF_ONLY_RPC_CONTRACT_INVALID_${rpcName.toUpperCase()}`,
-      );
+      throw createPostgrestHttpError(scope, result.status, result.body?.code);
     }
   }
 }
 
-async function main() {
-  const url = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
-  const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
+export async function checkPostgrestContracts({
+  url = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL"),
+  serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
+  maxAttempts = attempts,
+  delayMs = retryDelayMs,
+} = {}) {
   let lastCode = "NOT_VISIBLE";
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const contract = await loadContractVersion(url, serviceRoleKey);
       if (contract.version === expectedVersion && contract.ready === true) {
@@ -419,15 +426,15 @@ async function main() {
       }
       lastCode = contract.version === expectedVersion ? "RPC_PRIVILEGES_INVALID" : "VERSION_NOT_VISIBLE";
     } catch (error) {
-      lastCode = error instanceof Error && /^[A-Z0-9_]{2,64}$/.test(error.message)
-        ? error.message
-        : "REQUEST_FAILED";
+      lastCode = classifyPostgrestProbeError(error);
     }
 
-    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    if (attempt < maxAttempts) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  throw new Error(`PostgREST-contract faalde na ${attempts} pogingen (${lastCode}).`);
+  throw new Error(`PostgREST-contract faalde na ${maxAttempts} pogingen (${lastCode}).`);
 }
 
-await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await checkPostgrestContracts();
+}

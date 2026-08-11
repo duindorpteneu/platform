@@ -158,3 +158,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
   productionpreflight moet dit op de kandidaatcommit nog machineleesbaar
   bevestigen.
 - Production blijft NO-GO totdat de gedeelde VPS aantoonbaar afzonderlijke Linux-user/rootless-runnerboundaries voor Duindorp staging, Duindorp production en Castivo heeft.
+
+## Staging PostgREST-contractherstel — 2026-08-11
+
+- Deployrun `31441758899`, poging 2, passeerde op release-SHA `93b0c27da5cb8ceff677897c5a0cd4dfa456945c` de geïsoleerde runnerboundary, runtimepreflight, 136-migratielint, dry-run en toepassing van alle 77 openstaande forward migrations. De fout ontstond daarna vóór runtimewrite en vóór containeractivatie in de PostgREST-contractchecker.
+- De exacte blocker was repository-intern: de checker stuurde `p_selected_item_ids`, terwijl `app.confirm_inventory_delivery_notification_proposal_v1` uitsluitend `p_excluded_item_ids uuid[]` accepteert. De resulterende `404/PGRST202` werd daarna door de 64-tekenlimiet gemaskeerd als `REQUEST_FAILED`.
+- De checker gebruikt nu de echte signature, vaste secretsafe contractcodes en afzonderlijke categorieën voor timeout, DNS, TLS en connectie. Een lokale HTTP-contractintegratietest doorloopt alle RPC-groepen en controleert de exacte requestbody.
+- Forward migration `20260811130000_refresh_postgrest_release_contract.sql` ververst uitsluitend de schema-cache na de later toegevoegde password-recovery-RPC. Een gegevensvrije service-roleprobe met null-ID bewijst voortaan dat die RPC zichtbaar is zonder sessies of audit te muteren. De bestaande contractversie, schema-allowlist en grants veranderen niet.
+- De oude stagingimage `a846c05` is niet veilig compatibel met het nieuwe schema: Phase-B-migraties hebben legacy QR-/uitgifte-RPC-rechten bewust ingetrokken. Zij wordt niet automatisch gestart; alleen een volledig groen gebouwde kandidaat mag staging activeren.

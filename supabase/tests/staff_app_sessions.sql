@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(20);
 
 insert into app.staff_profiles(auth_user_id, display_name, role, active)
 values ('f5000000-0000-4000-8000-000000000001', 'Staff sessietest', 'beheerder', true);
@@ -70,6 +70,52 @@ values(
   repeat('d', 64),
   'f5000000-0000-4000-8000-000000000001',
   timezone('utc', now()) + interval '2 minutes'
+);
+create temp table null_recovery_probe_snapshot as
+select jsonb_build_object(
+  'staffSessions', coalesce((
+    select jsonb_agg(to_jsonb(session) order by session.token_hash)
+    from private.staff_sessions session
+  ), '[]'::jsonb),
+  'staffSessionExchanges', coalesce((
+    select jsonb_agg(to_jsonb(exchange) order by exchange.token_hash)
+    from private.staff_session_exchanges exchange
+  ), '[]'::jsonb),
+  'qrScanGrants', coalesce((
+    select jsonb_agg(to_jsonb(grant_row) order by grant_row.grant_hash)
+    from private.qr_scan_grants grant_row
+  ), '[]'::jsonb),
+  'auditLogs', coalesce((
+    select jsonb_agg(to_jsonb(audit) order by audit.id)
+    from app.audit_logs audit
+  ), '[]'::jsonb)
+) as snapshot;
+select is(
+  app.revoke_all_staff_app_sessions_for_user(null),
+  null::jsonb,
+  'de gegevensvrije deployprobe met null retourneert null'
+);
+select is(
+  jsonb_build_object(
+    'staffSessions', coalesce((
+      select jsonb_agg(to_jsonb(session) order by session.token_hash)
+      from private.staff_sessions session
+    ), '[]'::jsonb),
+    'staffSessionExchanges', coalesce((
+      select jsonb_agg(to_jsonb(exchange) order by exchange.token_hash)
+      from private.staff_session_exchanges exchange
+    ), '[]'::jsonb),
+    'qrScanGrants', coalesce((
+      select jsonb_agg(to_jsonb(grant_row) order by grant_row.grant_hash)
+      from private.qr_scan_grants grant_row
+    ), '[]'::jsonb),
+    'auditLogs', coalesce((
+      select jsonb_agg(to_jsonb(audit) order by audit.id)
+      from app.audit_logs audit
+    ), '[]'::jsonb)
+  ),
+  (select snapshot from null_recovery_probe_snapshot),
+  'de gegevensvrije deployprobe wijzigt geen sessie, exchange, scangrant of auditrij'
 );
 create temp table recovery_result as
 select app.revoke_all_staff_app_sessions_for_user('f5000000-0000-4000-8000-000000000001') as payload;
