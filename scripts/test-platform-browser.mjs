@@ -157,21 +157,29 @@ if (!generatedSource.includes(legacyEmailEditorCheck)) {
   throw new Error("De legacy e-mailbrowsercontrole kon niet veilig worden vervangen.");
 }
 generatedSource = generatedSource.replace(legacyEmailEditorCheck, mailV2EditorCheck);
+const authReadinessNeedle = "const existing = await admin.auth.admin.listUsers();";
+if (!generatedSource.includes(authReadinessNeedle)) {
+  throw new Error("De Auth-readinessinjectie kon niet veilig worden geplaatst.");
+}
 generatedSource = generatedSource.replace(
-  '  process.stdout.write("Dashboard-browsertest: tijdelijke fixture aanmaken…\\n");',
-  `  let authReady = false;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  authReadinessNeedle,
+  `let existing;
+  let authFailureCategory = "transport-of-provider";
+  const authReadyDeadline = Date.now() + 120_000;
+  while (Date.now() < authReadyDeadline) {
     const probe = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
     if (!probe.error) {
-      authReady = true;
+      existing = probe;
       break;
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    authFailureCategory = Number.isInteger(probe.error.status)
+      ? \`http-\${probe.error.status}\`
+      : "transport-of-provider";
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  if (!authReady) {
-    throw new Error("Lokale Supabase Auth werd niet tijdig gezond na de schone reset.");
-  }
-  process.stdout.write("Dashboard-browsertest: tijdelijke fixture aanmaken…\\n");`,
+  if (!existing) {
+    throw new Error(\`Lokale Supabase Auth werd niet tijdig gezond na de schone reset (\${authFailureCategory}).\`);
+  }`,
 );
 const legacySettingsMutation = `  await page.getByLabel("Contactmail").fill("kleding@duindorpsv.nl");
   await page.getByLabel("Verenigingsadres", { exact: true }).fill("Duinlaan 1");

@@ -102,6 +102,12 @@ describe("validateStagingCleanupTarget", () => {
     { CLEANUP_MODE: "apply", SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst", SUPABASE_DB_URL: "postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co:5432/postgres?sslmode=require" },
     { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres` },
     { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://wrong:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require&host=%2Ftmp` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require&hostaddr=203.0.113.10` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require&service=production` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require&sslmode=verify-full` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres.${STAGING_PROJECT_REF}:secret@evil.invalid,aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require` },
+    { CLEANUP_MODE: "apply", SUPABASE_DB_URL: `postgresql://postgres.${STAGING_PROJECT_REF}:secret@evil.invalid%2Caws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require` },
     { CLEANUP_MODE: "erase", CONFIRM_TARGET: CLEANUP_APPLY_CONFIRMATION },
   ])("weigert een cleanupcontract dat niet exact overeenkomt", (override) => {
     expect(() => validateStagingCleanupTarget({
