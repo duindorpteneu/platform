@@ -27,14 +27,15 @@ zijn.
 | `QR_TOKEN_PREVIOUS_PEPPER_VERSION` | nee | nee | geheel getal 1–9999, anders dan current | tijdelijk rotatievenster | alleen samen met previous pepper |
 | `SENDGRID_FROM_NAME` | ja | nee | exact `Kledingcommissie Duindorp SV` | SendGrid | staging correct; production ontbreekt |
 | `SENDGRID_FROM_EMAIL` | ja | aanwezig, niet herbevestigd | exact `kleding@duindorpsv.nl`, geverifieerd | SendGrid | staging correct; production blijft geblokkeerd |
-| `SENDGRID_API_BASE_URL` | EU | EU | `https://api.eu.sendgrid.com` | SendGrid | expliciete EU-regional subuser |
+| `SENDGRID_API_BASE_URL` | ja | EU | exact globale of EU-host | SendGrid | stagingwaarde aanwezig; live key/hostgate bepaalt geldigheid |
 | `SENDGRID_REPLY_TO_EMAIL` | ja | aanwezig, niet herbevestigd | exact `kleding@duindorpsv.nl` | SendGrid | staging correct; production blijft geblokkeerd |
 | `SENDGRID_WEBHOOK_ID` | `fd290462-…` | `84500cb8-…` | UUID, omgevingsuniek | provider-smoke | production blijft ongevalideerd en uit |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | ja | nee | geldige P-256 public key | webhookvalidatie | staging via de exacte signed-webhookconfiguratie opgehaald; production blijft uit |
-| `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` | nee | nee | 64 lowercase hex; vooraf gecontroleerde SHA-256 van `username:user_id` | provider-smoke | verplicht vóór staging-webhookmutatie of Mail Send |
-| `E2E_MAILBOX_IMAP_HOST` | nee | nee | geldige TLS-IMAP-host | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_PORT` | nee | nee | exact `993` | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_MAILBOX` | nee | nee | veilige mailboxnaam, standaard `INBOX` | inboxacceptatie | staging ontbreekt |
+| `SENDGRID_API_KEY_FINGERPRINT` | ja | nee | 64 lowercase hex; SHA-256 van exact de Mail Send-key | runtime/provider-smoke | naam aanwezig; live constant-time keygate moet inhoud bewijzen |
+| `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` | ja | nee | 64 lowercase hex; vooraf gecontroleerde SHA-256 van `username:user_id` | provider-smoke | naam aanwezig; live accountgate moet inhoud bewijzen |
+| `E2E_MAILBOX_IMAP_HOST` | ja | nee | geldige TLS-IMAP-host | inboxacceptatie | naam aanwezig; live TLS/IMAP-gate moet inhoud bewijzen |
+| `E2E_MAILBOX_IMAP_PORT` | ja | nee | exact `993` | inboxacceptatie | naam aanwezig; live gate moet inhoud bewijzen |
+| `E2E_MAILBOX_IMAP_MAILBOX` | ja | nee | veilige mailboxnaam, standaard `INBOX` | inboxacceptatie | naam aanwezig; live gate moet inhoud bewijzen |
 
 ## Secrets
 
@@ -49,13 +50,16 @@ zijn.
 | `QR_TOKEN_PREVIOUS_PEPPER` | nee | nee | andere canonieke 32-byte base64url-key | tijdelijk rotatievenster | optioneel en alleen samen met previous versie |
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
 | `IMPORT_STAGING_ENCRYPTION_KEY` | ja | nee | 32 random bytes, canoniek 43 tekens base64url zonder padding | AES-256-GCM raw-importstaging | staging aanwezig; production ontbreekt |
-| `OPERATIONS_HEARTBEAT_URL` | nee | nee | geheime `https://` dead-man-switch-URL zonder URL-userinfo | onafhankelijke schedulerbewaking | verplicht voor productiondeploy; staging optioneel maar aanbevolen |
+| `OPERATIONS_HEARTBEAT_URL` | ja | nee | geheime `https://` dead-man-switch-URL zonder URL-userinfo | onafhankelijke schedulerbewaking | stagingnaam aanwezig maar alarmproef ontbreekt; production ontbreekt |
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
-| `SENDGRID_ADMIN_API_KEY` | nee | niet van toepassing | dedicated stagingkey met uitsluitend user/webhook read-write | provider-smoke | verplicht vóór webhookconfiguratie |
+| `SENDGRID_ADMIN_API_KEY` | ja | niet van toepassing | exact `user.username.read` plus Event Webhook settings read/update | provider-smoke | naam aanwezig; live scope/accountgate moet inhoud bewijzen |
 | `SENDGRID_SMOKE_RECIPIENT` | ja | nee | dedicated beheerde testinbox | provider-smoke | waarde niet uitgelezen; uitsluitend handmatige staging-smoke |
-| `E2E_MAILBOX_IMAP_USER` | nee | niet van toepassing | dedicated testinboxgebruiker | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_PASSWORD` | nee | niet van toepassing | unieke app-password/credential | inboxacceptatie | staging ontbreekt |
+| `E2E_ADMIN_EMAIL` | nee | niet van toepassing | bestaande geïsoleerde stagingbeheerder | AAL2-provider-smoke | staging ontbreekt |
+| `E2E_ADMIN_PASSWORD` | nee | niet van toepassing | uniek sterk wachtwoord | AAL2-provider-smoke | staging ontbreekt |
+| `E2E_ADMIN_TOTP_SECRET` | nee | niet van toepassing | base32 van exact één geverifieerde factor | AAL2-provider-smoke | staging ontbreekt |
+| `E2E_MAILBOX_IMAP_USER` | ja | niet van toepassing | dedicated testinboxgebruiker | inboxacceptatie | naam aanwezig; live gate moet inhoud bewijzen |
+| `E2E_MAILBOX_IMAP_PASSWORD` | ja | niet van toepassing | unieke app-password/credential | inboxacceptatie | naam aanwezig; live gate moet inhoud bewijzen |
 | `STAGING_CLEANUP_BACKUP_PASSPHRASE` | ja | niet van toepassing | unieke, hoog-entropische passphrase van minimaal 32 tekens | uitsluitend client-side encryptie/decryptie van de tijdelijke pre-wipeback-up | staging aanwezig; nooit als productionsecret gebruiken |
 | `PRODUCTION_BACKUP_PASSPHRASE` | niet van toepassing | nee | unieke hoog-entropische passphrase van minimaal 32 tekens | encrypted herstelpunt vóór productiemigratie | ontbreekt; harde promotieblocker |
 
