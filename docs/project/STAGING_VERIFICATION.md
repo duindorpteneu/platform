@@ -15,7 +15,7 @@ Deze verificatie gebruikt alleen fictieve gegevens en provider-testmodi. Elk sce
 - [ ] Staging en production zijn aantoonbaar gescheiden volgens [ENVIRONMENT_MATRIX.md](ENVIRONMENT_MATRIX.md).
 - [ ] Alle migraties zijn schoon gereplayed en de productieachtige Phase-B-upgrade/reconciliatie is groen. Er is geen businessseed voor leden, producten, maten of pakketten.
 - [ ] HTTPS, HSTS, CSP, secure cookies en no-store voor gevoelige responses zijn actief.
-- [ ] De actieve Caddy 2.10+-configuratie bevat de route-specifieke request-bodycaps; de deploy-eindprobe heeft alle vier chunked routegroepen met proxy-`413` bewezen.
+- [ ] De actieve Caddy 2.10+-configuratie bevat de route-specifieke request-bodycaps; de deploy-eindprobe bewijst voor alle vier groepen exact-grens als gemarkeerde applicatie-`204` en grens+1 als markerloze proxy-`413`.
 - [ ] Eén fictief account per staffrol heeft TOTP/AAL2; er is ook een geblokkeerd account.
 - [ ] Zelfopruimende `example.invalid`-acceptatiedata kan run-uniek worden gemaakt voor gedeeld account, betaald/onbetaald, nalevering en dubbele uitgifte. De gebruiker beheert de echte stagingproducten, maten en pakketten zelf.
 - [ ] Mollie staat in testmode en webhook gebruikt publiek HTTPS.

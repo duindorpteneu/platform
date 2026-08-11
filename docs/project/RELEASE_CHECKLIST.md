@@ -46,7 +46,7 @@ Bewijs lokale gate: `___________________________________________________________
 - [ ] Staging en production hebben verschillende apphosts, Supabase-projecten, Auth-tenants en secrets.
 - [ ] Staging bevat uitsluitend fictieve `example.invalid`-gegevens of aantoonbaar geanonimiseerde data.
 - [ ] HTTPS, HSTS, CSP, veilige cookies en securityheaders zijn actief.
-- [ ] Caddy 2.10+ heeft de vier niet-overlappende bodylimietmatchers actief; de automatische publieke chunked proxyprobe geeft voor iedere routegroep `413`.
+- [ ] Caddy 2.10+ heeft de vier niet-overlappende bodylimietmatchers actief; per routegroep bereikt exact de decimale grens de HMAC-no-opbranch met gemarkeerde `204` en geeft grens+1 uitsluitend een markerloze proxy-`413`.
 - [ ] Providers starten uit: `MOLLIE_ENABLED=false` en `EMAIL_ENABLED=false`.
 - [ ] Stagingsecretstore is gevuld; geen secret staat in Git, CI-output of deploymentlog.
 - [ ] Publieke `/api/health` en bearer-beveiligde `/api/internal/health` zijn gemonitord.

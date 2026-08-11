@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  experimental: {
+    // Middleware clones request bodies before route handlers. This exact ceiling
+    // preserves the largest signed edge probe; Caddy and route policies remain
+    // the authoritative, lower product limits.
+    middlewareClientMaxBodySize: 12_000_001,
+  },
   async headers() {
     const production = process.env.NODE_ENV === "production";
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

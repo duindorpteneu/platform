@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { catalogArticleRequestSchema, catalogMutationResponseSchema } from "@/lib/catalog-order-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getSupabaseServerClient } from "@/server/supabase/server";
+import { handleEdgeBodyProbe } from "@/server/security/edge-body-probe";
 import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const edgeProbe = await handleEdgeBodyProbe(request, "standard-api");
+  if (edgeProbe) return edgeProbe;
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonStandard }); if (guarded) return guarded;
   try {
     await requireStaffRole(["beheerder", "kledingcommissie"]);
