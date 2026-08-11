@@ -80,6 +80,11 @@ jobs:
       - name: Prove isolated staging runner boundary
         run: bash scripts/deploy/assert-runner-boundary.sh staging
 
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - name: Validate exact staging target, main ancestry and live release
         run: |
           set -Eeuo pipefail
@@ -138,6 +143,11 @@ jobs:
 
       - name: Prove isolated staging runner boundary
         run: bash scripts/deploy/assert-runner-boundary.sh staging
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
 
       - name: Validate exact staging target, main ancestry and live release
         env:
