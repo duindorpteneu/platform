@@ -121,6 +121,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De stagingcleanup uploadt nu eerst de encrypted, netwerkloos herstelgeteste back-up plus PII-vrije prepared-state als immutable GitHub artifact. Alleen na succesvolle upload gebruikt apply het artifact-ID, de checksum en een opnieuw berekende statedigest; iedere tussentijdse drift blokkeert vóór `TRUNCATE`.
 
 ## In progress
+- De losse SendGrid-fingerprintgenerator bleek niet aan de actuele bewezen stagingrelease gebonden, injecteerde beide keys job-wide en hardcodeerde de globale API-host. De vervangende verificatieflow gebruikt eerst de secrets-vrije trusted stagingpreflight, checkt ook publiek exact de live SHA/digest, beperkt secrets tot één stap, volgt de expliciete globale/EU-configuratie en logt geen fingerprint of provideridentiteit. Hij bewijst fail-closed dat de appkey exact `mail.send` heeft en de adminkey exact username-read plus Event Webhook read/update. Dezelfde-accountbinding is bewust geen onbewezen preflightclaim: die volgt pas uit de volledige appsend, inboxontvangst en het met de gecontroleerde adminkey geverifieerde signed webhookevent.
 - De mislukte post-merge deployrun `31434321788` is herleid tot het te brede Debian 12 Node-runtime-image, niet tot een mislukte PR-merge. De runtime is vervangen door een digest-gepinde Debian 13 distroless Node 22-basis zonder shell/package manager. Het volledige lokale kandidaatimage draait als uid 65532, ondersteunt app, scheduler en Sharp, en meldt met Trivy 0.70.0 exact 0 HIGH/0 CRITICAL. De strict releasegate is niet versoepeld; hosted CI, immutable imagebouw en stagingdeploy op de herstelmerge-SHA blijven de afsluitende externe bewijzen.
 - Medewerkerwachtwoordherstel is als aparte Supabase Auth-flow toegevoegd. De app-eigen request is anti-enumererend en rate-limited, invitation/recoveryfragmenten blijven typegescheiden, bestaande TOTP wordt vóór update geverifieerd en alle opaque app-sessies, exchanges en QR-scangrants worden service-only ingetrokken. Een zelfopruimende echte Mailpit/Playwrightflow bewijst ook de Supabase-dashboardfallback, oud/nieuw wachtwoord, MFA-behoud en sessie-intrekking.
 - Phase B slices door pakketkeuze en pakketbrede maatbevestiging zijn lokaal afgerond: reproduceerbare baseline, canonaddendum, security-/releasefundering, expandmigratie, upgrade-reconciliatie, pakketrevisies, beheerdergestuurde lid-seizoengrants, dynamische import en het pakket-first ouder-/beheerproces.
@@ -151,10 +152,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 ## Blockers
 - Geen lokale codeblocker.
-- Extern ontbreekt `OPERATIONS_HEARTBEAT_URL` als uniek staging- en productionsecret. Productionpreflight blokkeert bewust zonder heartbeat.
+- De staging-heartbeatsecretnaam is aanwezig, maar gemiste-ping/alarm/herstel is nog niet live bewezen. Production mist zijn eigen unieke heartbeat en blijft bewust geblokkeerd.
 - SendGrid Mail Send retourneert nog HTTP 401; OTP/inbox/delivery en providerfault-herstel kunnen daardoor niet live worden afgetekend.
-- Staging mist nog de dedicated `SENDGRID_ADMIN_API_KEY`, de gecontroleerde
-  `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` en de TLS-IMAP-testinboxconfiguratie.
+- Staging heeft de provider-, fingerprint-, webhook-, heartbeat- en TLS-IMAP-configuratienamen. Alleen de drie E2E-beheerdersecrets voor echte AAL2-login ontbreken nog; waarden zijn niet uitgelezen of gelogd.
 - `main` is nu strikt beschermd en production heeft één verplichte reviewer;
   de environment is met self-reviewblokkade bijgewerkt. De gehoste
   productionpreflight moet dit op de kandidaatcommit nog machineleesbaar

@@ -1,53 +1,70 @@
-name: Generate SendGrid fingerprints
+name: Verify SendGrid fingerprints
 
 on:
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte 40-teken SHA die momenteel op staging staat
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run die exact dit artifact heeft geplaatst
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-duindorpteneu-staging
+  cancel-in-progress: false
 
 jobs:
-  fingerprints:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
+  verify:
+    name: Verify keys, account and configured fingerprints
+    needs: preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     environment: staging
-
-    env:
-      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-      SENDGRID_ADMIN_API_KEY: ${{ secrets.SENDGRID_ADMIN_API_KEY }}
-
     steps:
-      - name: Generate fingerprints
-        shell: bash
+      - name: Checkout exact live release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Verify exact checkout and SendGrid bindings without printing fingerprints
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+          STAGING_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL }}
+          SENDGRID_API_KEY_FINGERPRINT: ${{ vars.SENDGRID_API_KEY_FINGERPRINT }}
+          SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT: ${{ vars.SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_ADMIN_API_KEY: ${{ secrets.SENDGRID_ADMIN_API_KEY }}
         run: |
-          set -euo pipefail
-
-          # 1. Fingerprint van de daadwerkelijke Mail Send API key
-          SENDGRID_API_KEY_FINGERPRINT="$(
-            printf '%s' "$SENDGRID_API_KEY" \
-            | sha256sum \
-            | awk '{print $1}'
-          )"
-
-          # 2. Account ophalen via de beperkte admin API key
-          ACCOUNT_JSON="$(
-            curl -fsS \
-              -H "Authorization: Bearer $SENDGRID_ADMIN_API_KEY" \
-              https://api.sendgrid.com/v3/user/username
-          )"
-
-          ACCOUNT_IDENTITY="$(
-            printf '%s' "$ACCOUNT_JSON" \
-            | jq -r '"\(.username):\(.user_id)"'
-          )"
-
-          SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT="$(
-            printf '%s' "$ACCOUNT_IDENTITY" \
-            | sha256sum \
-            | awk '{print $1}'
-          )"
-
-          echo ""
-          echo "=============================================="
-          echo "SENDGRID_API_KEY_FINGERPRINT"
-          echo "$SENDGRID_API_KEY_FINGERPRINT"
-          echo ""
-          echo "SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT"
-          echo "$SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT"
-          echo "=============================================="
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_APP_URL}" staging "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+          node scripts/providers/verify-sendgrid-fingerprints.mjs

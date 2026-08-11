@@ -52,7 +52,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `EMAIL_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
 | `SENDGRID_API_KEY` | Hoog geheim, server-only | Leeg | Unieke minimaal bevoegde Mail Send-key |
 | `SENDGRID_API_KEY_FINGERPRINT` | Niet-geheime runtimebinding | Leeg | SHA-256 van exact de omgevingsspecifieke Mail Send-key; de applicatie vergelijkt alleen in constant-time en publiceert de waarde niet |
-| `SENDGRID_ADMIN_API_KEY` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; afzonderlijke minimaal bevoegde key voor webhookconfiguratie |
+| `SENDGRID_ADMIN_API_KEY` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; exact `user.username.read`, `user.webhooks.event.settings.read` en `user.webhooks.event.settings.update` |
 | `SENDGRID_API_BASE_URL` | Configuratie | `https://api.sendgrid.com` | Gebruik `https://api.eu.sendgrid.com` uitsluitend voor een EU-regional subuser |
 | `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` | Niet-geheime accountbinding | Leeg | Alleen staging; SHA-256 van de gecontroleerde `username:user_id`, buiten workflowlogs vastgesteld |
 | `SENDGRID_FROM_NAME` | Configuratie | `Kledingcommissie Duindorp SV` | Exact gelijk aan de gepubliceerde afzendernaam |
@@ -94,17 +94,12 @@ webhook-ID en de goedgekeurde afzendernaam/-adressen staan als variables. De
 testinboxpoort is `993` en de mailboxnaam `INBOX`. Providers en dynamische
 import blijven standaard uit.
 
-Nog ontbrekend in staging:
-
-- `OPERATIONS_HEARTBEAT_URL` met een echte alert-eigenaar en bewezen gemiste
-  ping plus herstel;
-- `SENDGRID_ADMIN_API_KEY`, `SENDGRID_API_KEY_FINGERPRINT` en
-  `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` voor een dedicated stagingaccount of
-  subuser en een accountgebonden webhook-/Mail Send-acceptatie;
-- `E2E_MAILBOX_IMAP_HOST`, `E2E_MAILBOX_IMAP_USER`,
-  `E2E_MAILBOX_IMAP_PASSWORD`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` en
-  `E2E_ADMIN_TOTP_SECRET` voor machine-verifieerbare AAL2-testmail en
-  inboxbezorging.
+Aanwezigheid is op 11 augustus 2026 uitsluitend op naam gecontroleerd, zonder
+waarden te lezen of loggen. Staging heeft heartbeat, SendGrid-app/admin,
+fingerprints, webhook en TLS-IMAP-configuratie. Nog ontbrekend zijn
+`E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` en `E2E_ADMIN_TOTP_SECRET` voor de
+machine-verifieerbare AAL2-login van de echte testmailacceptatie. Een aanwezige
+naam bewijst geen geldigheid; de gebonden workflows moeten dat live aantonen.
 
 Production bevat nu ook unieke, zonder output gegenereerde
 `QR_TOKEN_PEPPER`, `IMPORT_STAGING_ENCRYPTION_KEY` en
