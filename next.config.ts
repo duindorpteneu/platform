@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     // Middleware clones request bodies before route handlers. This exact ceiling
-    // preserves the largest signed edge probe; Caddy and route policies remain
-    // the authoritative, lower product limits.
+    // preserves the largest signed edge probe; the immutable runtime gateway,
+    // optional host Caddy and route policies keep their lower limits.
     middlewareClientMaxBodySize: 12_000_001,
   },
   async headers() {

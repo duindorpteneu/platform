@@ -14,14 +14,14 @@
 		max_size 2MB
 	}
 
-	@email_bulk path /api/email/bulk
+	@email_bulk path /api/email/bulk /api/email/v2/campaigns
 	request_body @email_bulk {
 		max_size 384KB
 	}
 
 	@standard_api {
 		path /api/*
-		not path /api/imports/uploads /api/imports/preview /api/imports/commit /api/webhooks/sendgrid /api/email/bulk
+		not path /api/imports/uploads /api/imports/preview /api/imports/commit /api/webhooks/sendgrid /api/email/bulk /api/email/v2/campaigns
 	}
 	request_body @standard_api {
 		max_size 128KB
