@@ -25,6 +25,21 @@ describe("staging attestation", () => {
     expect(verifyStagingAttestation(value, expected)).toEqual(value);
   });
 
+  it("normaliseert de kale digest van GitHub upload-artifact canoniek", () => {
+    const rawDigest = "d".repeat(64);
+    const value = buildStagingAttestation({
+      ...expected,
+      resultArtifactDigest: rawDigest,
+      runAttempt: "1",
+      createdAt: "2026-08-03T20:00:00Z",
+    });
+    expect(value.result_artifact_digest).toBe(`sha256:${rawDigest}`);
+    expect(verifyStagingAttestation(value, {
+      ...expected,
+      resultArtifactDigest: rawDigest,
+    })).toEqual(value);
+  });
+
   it.each([
     { kind: "unknown" },
     { releaseSha: "short" },
