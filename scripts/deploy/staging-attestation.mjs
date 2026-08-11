@@ -38,6 +38,12 @@ function validDigest(value) {
   return typeof value === "string" && /^sha256:[a-f0-9]{64}$/u.test(value);
 }
 
+function canonicalArtifactDigest(value) {
+  if (typeof value !== "string") return null;
+  const hex = value.startsWith("sha256:") ? value.slice(7) : value;
+  return /^[a-f0-9]{64}$/u.test(hex) ? `sha256:${hex}` : null;
+}
+
 function validRepository(value) {
   return typeof value === "string"
     && /^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,99})\/[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,99})$/u.test(value);
@@ -67,7 +73,8 @@ export function buildStagingAttestation({
   if (!positiveInteger(resultArtifactId)) {
     throw new Error("Resultaatartifact-ID is ongeldig");
   }
-  if (!validDigest(resultArtifactDigest)) {
+  const canonicalResultArtifactDigest = canonicalArtifactDigest(resultArtifactDigest);
+  if (!canonicalResultArtifactDigest) {
     throw new Error("Resultaatartifactdigest is ongeldig");
   }
   if (!validDigest(resultSha256)) throw new Error("Resultaatdigest is ongeldig");
@@ -90,7 +97,7 @@ export function buildStagingAttestation({
     release_sha: releaseSha,
     artifact_digest: artifactDigest,
     result_artifact_id: positiveInteger(resultArtifactId),
-    result_artifact_digest: resultArtifactDigest,
+    result_artifact_digest: canonicalResultArtifactDigest,
     result_sha256: resultSha256,
     repository,
     workflow_run_id: parsedRunId,
@@ -133,7 +140,7 @@ export function verifyStagingAttestation(value, expected) {
     || canonical.result_artifact_id
       !== positiveInteger(expected.resultArtifactId)
     || canonical.result_artifact_digest
-      !== expected.resultArtifactDigest) {
+      !== canonicalArtifactDigest(expected.resultArtifactDigest)) {
     throw new Error("Attestation hoort niet bij de gevraagde release-run");
   }
   if (
@@ -216,7 +223,7 @@ async function main() {
     process.stdout.write("Stagingattestation hoort bij exact de gevraagde release-run.\n");
     return;
   }
-  throw new Error("Gebruik staging-attestation.mjs create|verify <attestation-pad> <resultaat-pad> <kind> <sha> <run-id> <staging-run-id> <sha256:digest> <resultaatartifact-id> <sha256:resultaatartifactdigest> [repository]");
+  throw new Error("Gebruik staging-attestation.mjs create|verify <attestation-pad> <resultaat-pad> <kind> <sha> <run-id> <staging-run-id> <sha256:digest> <resultaatartifact-id> <[sha256:]resultaatartifactdigest> [repository]");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
