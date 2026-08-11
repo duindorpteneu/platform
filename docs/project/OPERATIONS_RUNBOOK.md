@@ -39,22 +39,35 @@ Leg incidenttijd, omgeving, commit-SHA, correlation-id, niet-PII foutcode en eig
 
 ### Reverse-proxy bodylimieten
 
-De beheerde Caddy moet versie 2.10 of nieuwer zijn en de niet-overlappende
-`request_body`-matchers uit `deploy/caddy/duindorp-tenueportaal.caddy.example`
-actief hebben voor beide omgevingen. Valideer de hostconfig vóór een reload.
-De applicatielimieten blijven zelfstandig leidend; Caddy is een tweede grens
-vóór Next.js.
+Het immutable app-image luistert op containerpoort `3000` met
+`scripts/runtime/body-limit-gateway.mjs`. Deze minimale Node-reverse-proxy
+gebruikt geïsoleerde routegroeppools met samen maximaal `37632000` bytes,
+begrenst tijd en fragmentatie en stuurt een body
+pas na volledige validatie door naar Next.js op uitsluitend
+`127.0.0.1:3001`. Dezelfde routegroepen en decimale caps uit
+`deploy/edge-body-probe-contract.json` gelden in staging en productie:
+standaard-API `128000`, bulkmail `384000`, SendGrid-webhook `2000000` en
+Sportlink-import `12000000` bytes. De fijnmazigere routepolicy blijft daarna
+zelfstandig parser-, tijd- en fragmentatiegrenzen afdwingen.
+
+De Caddy 2.10+-configuratie in
+`deploy/caddy/duindorp-tenueportaal.caddy.example` is een optionele aanvullende
+hostgrens. Repositoryworkflows lezen of wijzigen de gedeelde host-Caddy niet.
+Wanneer hostbeheer de referentie afzonderlijk toepast, moet het die eerst
+valideren en dezelfde niet-overlappende routegroepen behouden.
 
 Iedere staging- en productiondeployment voert na de publieke healthcheck
-`scripts/deploy/check-edge-body-limits.mjs` uit. Caddy 2.10 handhaaft
-`request_body` tijdens het lezen; een upstream die al op headers antwoordt kan
-dus geen chunked limiet bewijzen. Daarom verstuurt de gate per routegroep twee
+`scripts/deploy/check-edge-body-limits.mjs` uit. De immutable runtimegateway
+moet de cap altijd handhaven; een eventuele Caddygrens mag eerder afwijzen.
+Caddy 2.10 handhaaft `request_body` tijdens het lezen en een upstream die al op
+headers antwoordt kan daarom geen chunked limiet bewijzen. De gate verstuurt
+per routegroep twee
 side-effectvrije verzoeken naar het bestaande pad. Een kortlevend,
 route-/host-/omgeving-/release-/bytegebonden HMAC-bewijs, afgeleid van
 `CRON_SECRET`, laat uitsluitend de no-op applicatiebranch de body streamend
 weggooien. Het secret zelf wordt niet verstuurd.
 
-Exact de decimale Caddygrens (`128000`, `384000`, `2000000` of `12000000`
+Exact de decimale gatewaygrens (`128000`, `384000`, `2000000` of `12000000`
 bytes) moet `204` met `x-duindorp-edge-body-probe-result:
 application-reached` geven. Grens plus één moet `413` zonder die marker geven.
 De applicatiebranch retourneert zelf nooit `413`, raakt geen auth, parser,
@@ -64,8 +77,8 @@ canoniseert met de publieke `APP_BASE_URL` en eist dat `Host`, de enkelvoudige
 `X-Forwarded-Host` en `X-Forwarded-Proto` daarmee overeenkomen; de interne
 Next-runtime-URL is alleen gezaghebbend voor pad en query. Next' middlewareclone
 is exact begrensd op `12000001` bytes, zodat ook de grootste controlebody niet
-wordt afgekapt; Caddy en de routepolicy blijven de lagere productgrenzen
-handhaven. Alleen deze combinatie is groen. De probe logt uitsluitend
+wordt afgekapt; de runtimegateway, optionele Caddy en routepolicy blijven
+onafhankelijke grenzen. Alleen deze combinatie is groen. De probe logt uitsluitend
 routegroep, fase en status; logredactie wist nonce en handtekening defensief.
 
 ### Schedulers

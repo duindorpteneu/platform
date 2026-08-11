@@ -30,7 +30,9 @@ COPY --from=builder --chown=65532:65532 /app/node_modules/.pnpm/@img+sharp-linux
 COPY --from=builder --chown=65532:65532 /app/.next/static ./.next/static
 COPY --from=builder --chown=65532:65532 /app/public ./public
 COPY --from=builder --chown=65532:65532 /app/scripts/operations/scheduler.mjs ./operations-scheduler.mjs
+COPY --from=builder --chown=65532:65532 /app/scripts/runtime/body-limit-gateway.mjs ./scripts/runtime/body-limit-gateway.mjs
+COPY --from=builder --chown=65532:65532 /app/deploy/edge-body-probe-contract.json ./deploy/edge-body-probe-contract.json
 USER 65532:65532
 EXPOSE 3000
 ENTRYPOINT ["/nodejs/bin/node"]
-CMD ["server.js"]
+CMD ["scripts/runtime/body-limit-gateway.mjs"]

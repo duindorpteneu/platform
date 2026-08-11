@@ -119,7 +119,13 @@ describe("deployment environment isolation", () => {
     );
     expect(runtimeStage).toContain("USER 65532:65532");
     expect(runtimeStage).toContain('ENTRYPOINT ["/nodejs/bin/node"]');
-    expect(runtimeStage).toContain('CMD ["server.js"]');
+    expect(runtimeStage).toContain('CMD ["scripts/runtime/body-limit-gateway.mjs"]');
+    expect(runtimeStage).toContain(
+      "/app/scripts/runtime/body-limit-gateway.mjs ./scripts/runtime/body-limit-gateway.mjs",
+    );
+    expect(runtimeStage).toContain(
+      "/app/deploy/edge-body-probe-contract.json ./deploy/edge-body-probe-contract.json",
+    );
     expect(runtimeStage).toContain("@img+sharp-libvips-linux-x64@1.3.0");
     expect(runtimeStage).not.toMatch(/^RUN\s/m);
     expect(runtimeStage).not.toMatch(
@@ -243,6 +249,14 @@ describe("deployment environment isolation", () => {
       path.join(repositoryRoot, "scripts/deploy/test-edge-body-probe-next.mjs"),
       "utf8",
     );
+    const runtimeGateway = readFileSync(
+      path.join(repositoryRoot, "scripts/runtime/body-limit-gateway.mjs"),
+      "utf8",
+    );
+    const runtimeGatewayIntegration = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy/test-runtime-body-gateway.mjs"),
+      "utf8",
+    );
     const nextConfig = readFileSync(path.join(repositoryRoot, "next.config.ts"), "utf8");
     const caddyReference = readFileSync(
       path.join(repositoryRoot, "deploy/caddy/duindorp-tenueportaal.caddy.example"),
@@ -280,6 +294,7 @@ describe("deployment environment isolation", () => {
     }
     for (const route of [
       "/api/email/bulk",
+      "/api/email/v2/campaigns",
       "/api/webhooks/sendgrid",
       "/api/imports/uploads",
       "/api/imports/preview",
@@ -300,6 +315,11 @@ describe("deployment environment isolation", () => {
     expect(nextIntegration).toContain("NEXT_PROBE_STANDALONE_INVALID");
     expect(nextIntegration).toContain("sportlink.maxBytes + 1");
     expect(nextIntegration).toContain("Request body exceeded");
+    expect(runtimeGateway).toContain("createBodyLimitGateway");
+    expect(runtimeGateway).toContain('upstreamHost: rawOptions.upstreamHost ?? "127.0.0.1"');
+    expect(runtimeGateway).toContain('pathname === "/api/email/v2/campaigns"');
+    expect(runtimeGatewayIntegration).toContain("await assertEdgeBodyLimits");
+    expect(runtimeGatewayIntegration).toContain("body_limit_gateway_started");
     for (const workflowName of ["ci.yml", "deploy.yml"]) {
       const workflowSource = readFileSync(
         path.join(repositoryRoot, ".github/workflows", workflowName),
