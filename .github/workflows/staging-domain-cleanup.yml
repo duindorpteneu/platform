@@ -209,12 +209,25 @@ jobs:
           download_directory="${RUNNER_TEMP}/staging-cleanup-redownload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "${download_directory}"
           chmod 700 "${download_directory}"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKUP_ARTIFACT_ID}/zip" \
-            > "${download_directory}/artifact.zip"
-          unzip -q "${download_directory}/artifact.zip" \
+          artifact_zip="${download_directory}/artifact.zip"
+          downloaded=false
+          for attempt in 1 2 3 4 5 6; do
+            if gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKUP_ARTIFACT_ID}/zip" \
+              > "${artifact_zip}"
+            then
+              downloaded=true
+              break
+            fi
+            if [[ "${attempt}" -lt 6 ]]; then
+              printf 'Backupartifact is nog niet downloadbaar; begrensde poging %s/6 volgt.\n' "$((attempt + 1))"
+              sleep "$((attempt * 2))"
+            fi
+          done
+          [[ "${downloaded}" == "true" && -s "${artifact_zip}" ]]
+          unzip -q "${artifact_zip}" \
             -d "${download_directory}/artifact"
           downloaded_backup="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.dump.gpg"
           downloaded_state="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.prepared.json"
