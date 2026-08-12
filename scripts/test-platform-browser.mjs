@@ -131,7 +131,46 @@ const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "1
       : "onbekende fout";
     throw new Error(\`Mail-v2-preview gaf HTTP \${mailPreviewResponse.status()}: \${previewFailureCode}; vorm \${JSON.stringify(previewRequestShape)}\`);
   }
-  await page.locator('iframe[title="Preview Inlogcode"]').waitFor({ state: "visible", timeout: 10_000 });
+  const mailPreviewFinished = await mailPreviewResponse.finished();
+  if (mailPreviewFinished) {
+    throw new Error("Mail-v2-previewresponse werd niet volledig ontvangen.");
+  }
+  const mailPreviewPayload = await mailPreviewResponse.json();
+  for (const key of ["subject", "preheader", "html", "text"]) {
+    if (typeof mailPreviewPayload?.[key] !== "string") {
+      throw new Error(\`Mail-v2-preview mist veilig veld \${key}.\`);
+    }
+  }
+  const mailPreviewSection = page.locator("section").filter({
+    hasText: "Fictieve preview",
+  }).last();
+  await mailPreviewSection.getByText("Fictieve preview", { exact: true }).waitFor({
+    state: "visible",
+    timeout: 30_000,
+  });
+  const desktopPreviewMode = mailPreviewSection.locator(
+    '[role="group"][aria-label="Previewmodus"] button[aria-label="Desktop"]',
+  );
+  await desktopPreviewMode.waitFor({ state: "visible", timeout: 10_000 });
+  await desktopPreviewMode.click();
+  if (await desktopPreviewMode.getAttribute("aria-pressed") !== "true") {
+    throw new Error("Mail-v2-preview kon niet aantoonbaar naar desktopmodus schakelen.");
+  }
+  const mailPreviewFrame = mailPreviewSection.locator("iframe");
+  await mailPreviewFrame.waitFor({
+    state: "attached",
+    timeout: 10_000,
+  });
+  if (await mailPreviewFrame.getAttribute("title") !== "Preview Inlogcode") {
+    throw new Error("Mail-v2-preview heeft niet de verwachte veilige frametitel.");
+  }
+  if (await mailPreviewFrame.getAttribute("srcdoc") !== mailPreviewPayload.html) {
+    throw new Error("Mail-v2-preview rendert niet exact de gevalideerde server-HTML.");
+  }
+  await mailPreviewFrame.waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
   await page.getByRole("button", { name: "Branding", exact: true }).click();
   await page.getByRole("heading", { name: "Afzender, contact en afhalen" }).waitFor({
     state: "visible",

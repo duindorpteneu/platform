@@ -19,4 +19,32 @@ describe("platform browser Supabase readiness", () => {
     expect(source).toContain("Number.isInteger(probe.error.status)");
     expect(source).not.toContain("attempt < 120");
   });
+
+  it("wacht eventgebonden op de Mail-v2-preview zonder retry", () => {
+    expect(source).toContain(
+      "const mailPreviewFinished = await mailPreviewResponse.finished();",
+    );
+    expect(source).toContain(
+      'for (const key of ["subject", "preheader", "html", "text"])',
+    );
+    expect(source).toContain(
+      'const mailPreviewSection = page.locator("section").filter',
+    );
+    expect(source).toContain(
+      'mailPreviewSection.getByText("Fictieve preview", { exact: true }).waitFor',
+    );
+    expect(source).toContain('timeout: 30_000');
+    expect(source).toContain(
+      "'[role=\"group\"][aria-label=\"Previewmodus\"] button[aria-label=\"Desktop\"]'",
+    );
+    expect(source).toContain(
+      'await desktopPreviewMode.getAttribute("aria-pressed") !== "true"',
+    );
+    expect(source).toContain(
+      'await mailPreviewFrame.getAttribute("srcdoc") !== mailPreviewPayload.html',
+    );
+    expect(source.match(
+      /page\.getByRole\("button", \{ name: "Preview", exact: true \}\)\.click\(\)/gu,
+    )).toHaveLength(1);
+  });
 });

@@ -15,7 +15,7 @@ import {
   ListOrdered,
   Rows3,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type {
   MailProtectedNodeKey,
   MailShortcodeKey,
@@ -153,14 +153,12 @@ export function MailV2Editor({
   disabled?: boolean;
   onChange: (document: MailTipTapDocument) => void;
 }) {
-  const contentRef = useRef(content);
-  contentRef.current = content;
-
   const editor = useEditor({
     immediatelyRender: false,
     editable: !disabled,
     extensions: [
       StarterKit.configure({
+        link: false,
         heading: { levels: [2, 3] },
         code: false,
         codeBlock: false,
@@ -189,11 +187,12 @@ export function MailV2Editor({
 
   useEffect(() => {
     if (!editor) return;
-    editor.commands.setContent(contentRef.current, { emitUpdate: false });
-  }, [editor, revisionKey]);
+    if (JSON.stringify(editor.getJSON()) === JSON.stringify(content)) return;
+    editor.commands.setContent(content, { emitUpdate: false });
+  }, [content, editor, revisionKey]);
 
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    editor?.setEditable(!disabled, false);
   }, [disabled, editor]);
 
   function setLink() {

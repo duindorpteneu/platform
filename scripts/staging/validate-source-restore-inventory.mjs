@@ -38,6 +38,48 @@ const REQUIRED_ROLE_NAMES = [
   "supabase_storage_admin",
 ];
 const OPTIONAL_ROLE_NAMES = ["supabase_functions_admin"];
+const ALLOWED_ROLE_MEMBERSHIPS = new Map([
+  ["anon", []],
+  ["authenticated", []],
+  ["authenticator", ["anon", "authenticated", "service_role"]],
+  ["dashboard_user", []],
+  ["postgres", [
+    "anon",
+    "authenticated",
+    "authenticator",
+    "pg_create_subscription",
+    "pg_monitor",
+    "pg_read_all_data",
+    "pg_signal_backend",
+    "service_role",
+    "supabase_functions_admin",
+    "supabase_privileged_role",
+    "supabase_realtime_admin",
+  ]],
+  ["service_role", []],
+  ["supabase_admin", []],
+  ["supabase_auth_admin", []],
+  ["supabase_functions_admin", []],
+  ["supabase_read_only_user", ["pg_monitor", "pg_read_all_data"]],
+  ["supabase_replication_admin", []],
+  ["supabase_storage_admin", ["authenticator"]],
+]);
+const REQUIRED_ROLE_MEMBERSHIPS = new Map([
+  ["authenticator", ["anon", "authenticated", "service_role"]],
+  ["postgres", [
+    "anon",
+    "authenticated",
+    "authenticator",
+    "pg_create_subscription",
+    "pg_monitor",
+    "pg_read_all_data",
+    "pg_signal_backend",
+    "service_role",
+    "supabase_privileged_role",
+  ]],
+  ["supabase_read_only_user", ["pg_monitor", "pg_read_all_data"]],
+  ["supabase_storage_admin", ["authenticator"]],
+]);
 const ROLE_KEYS = [
   "bypassRls",
   "connectionLimit",
@@ -125,21 +167,41 @@ function validRoleContract(roles) {
     && uniqueRoleNames.size === roles.length
     && REQUIRED_ROLE_NAMES.every((name) => uniqueRoleNames.has(name))
     && roleNames.every((name) => allowedRoleNames.has(name))
-    && roles.every((role) =>
-      exactKeys(role, ROLE_KEYS)
-      && typeof role.name === "string"
-      && typeof role.superuser === "boolean"
-      && typeof role.inherit === "boolean"
-      && typeof role.createRole === "boolean"
-      && typeof role.createDatabase === "boolean"
-      && typeof role.login === "boolean"
-      && typeof role.replication === "boolean"
-      && typeof role.bypassRls === "boolean"
-      && Number.isSafeInteger(role.connectionLimit)
-      && role.connectionLimit >= -1
-      && Array.isArray(role.memberships)
-      && role.memberships.every((membership) =>
-        typeof membership === "string"))
+    && roles.every((role) => {
+      const allowedMemberships = new Set(
+        ALLOWED_ROLE_MEMBERSHIPS.get(role?.name) ?? [],
+      );
+      const requiredMemberships = new Set(
+        REQUIRED_ROLE_MEMBERSHIPS.get(role?.name) ?? [],
+      );
+      const memberships = role?.memberships;
+      return (
+        exactKeys(role, ROLE_KEYS)
+        && typeof role.name === "string"
+        && typeof role.superuser === "boolean"
+        && typeof role.inherit === "boolean"
+        && typeof role.createRole === "boolean"
+        && typeof role.createDatabase === "boolean"
+        && typeof role.login === "boolean"
+        && typeof role.replication === "boolean"
+        && typeof role.bypassRls === "boolean"
+        && Number.isSafeInteger(role.connectionLimit)
+        && role.connectionLimit >= -1
+        && Array.isArray(memberships)
+        && new Set(memberships).size === memberships.length
+        && [...requiredMemberships].every((membership) =>
+          memberships.includes(membership))
+        && memberships.every((membership) =>
+          typeof membership === "string"
+          && allowedMemberships.has(membership))
+      );
+    })
+    && (
+      roles.some((role) => role.name === "supabase_functions_admin")
+      === roles.some((role) =>
+        role.name === "postgres"
+        && role.memberships.includes("supabase_functions_admin"))
+    )
   );
 }
 
@@ -232,6 +294,13 @@ export function sourceHasSupabaseFunctionsAdmin(source) {
     role.name === "supabase_functions_admin");
 }
 
+export function sourceHasPostgresRealtimeAdminMembership(source) {
+  validateInventory(source);
+  return source.roles.some((role) =>
+    role.name === "postgres"
+    && role.memberships.includes("supabase_realtime_admin"));
+}
+
 async function repositoryMigrations(repositoryRoot) {
   return (await readdir(path.join(repositoryRoot, "supabase/migrations")))
     .filter((name) => /^\d{14}_.+\.sql$/u.test(name))
@@ -318,6 +387,20 @@ async function main() {
     const source = JSON.parse(await readFile(sourcePath, "utf8"));
     process.stdout.write(
       sourceHasSupabaseFunctionsAdmin(source) ? "true\n" : "false\n",
+    );
+    return;
+  }
+  if (process.argv[2] === "--print-postgres-realtime-admin-membership") {
+    const sourcePath = process.argv[3];
+    if (!sourcePath || process.argv.length !== 4) {
+      throw new Error(
+        "Gebruik validate-source-restore-inventory.mjs "
+        + "--print-postgres-realtime-admin-membership <source.json>",
+      );
+    }
+    const source = JSON.parse(await readFile(sourcePath, "utf8"));
+    process.stdout.write(
+      sourceHasPostgresRealtimeAdminMembership(source) ? "true\n" : "false\n",
     );
     return;
   }

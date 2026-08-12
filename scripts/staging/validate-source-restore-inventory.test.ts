@@ -2,7 +2,13 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error Deployment helper is intentionally plain ESM.
-import { sourceHasSupabaseFunctionsAdmin, validateSourceRestoreInventory } from "./validate-source-restore-inventory.mjs";
+import * as restoreInventory from "./validate-source-restore-inventory.mjs";
+
+const {
+  sourceHasPostgresRealtimeAdminMembership,
+  sourceHasSupabaseFunctionsAdmin,
+  validateSourceRestoreInventory,
+} = restoreInventory;
 
 const requiredRoleNames = [
   "anon",
@@ -18,7 +24,24 @@ const requiredRoleNames = [
   "supabase_storage_admin",
 ];
 
-function role(name: string) {
+const requiredMemberships = new Map([
+  ["authenticator", ["anon", "authenticated", "service_role"]],
+  ["postgres", [
+    "anon",
+    "authenticated",
+    "authenticator",
+    "pg_create_subscription",
+    "pg_monitor",
+    "pg_read_all_data",
+    "pg_signal_backend",
+    "service_role",
+    "supabase_privileged_role",
+  ]],
+  ["supabase_read_only_user", ["pg_monitor", "pg_read_all_data"]],
+  ["supabase_storage_admin", ["authenticator"]],
+]);
+
+function role(name: string, memberships = requiredMemberships.get(name) ?? []) {
   return {
     name,
     superuser: false,
@@ -29,14 +52,22 @@ function role(name: string) {
     replication: false,
     bypassRls: false,
     connectionLimit: -1,
-    memberships: [],
+    memberships,
   };
 }
 
 function inventory(
   migrations: string[],
   includeSupabaseFunctionsAdmin = false,
+  includePostgresRealtimeAdminMembership = false,
 ) {
+  const postgresMemberships = [
+    ...(requiredMemberships.get("postgres") ?? []),
+    ...(includeSupabaseFunctionsAdmin ? ["supabase_functions_admin"] : []),
+    ...(includePostgresRealtimeAdminMembership
+      ? ["supabase_realtime_admin"]
+      : []),
+  ].sort();
   return {
     contractVersion: 2,
     postgresMajor: 17,
@@ -70,7 +101,8 @@ function inventory(
     triggers: [],
     defaultAcls: [],
     roles: [
-      ...requiredRoleNames.map(role),
+      ...requiredRoleNames.map((name) =>
+        role(name, name === "postgres" ? postgresMemberships : undefined)),
       ...(includeSupabaseFunctionsAdmin
         ? [role("supabase_functions_admin")]
         : []),
@@ -91,17 +123,29 @@ function inventory(
 }
 
 describe("source/restore inventory", () => {
-  it.each([false, true])(
-    "accepteert een exacte huidige restore met Functions-rol=%s",
-    async (includeSupabaseFunctionsAdmin) => {
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "accepteert exact met Functions-rol=%s en realtime-membership=%s",
+    async (
+      includeSupabaseFunctionsAdmin,
+      includePostgresRealtimeAdminMembership,
+    ) => {
       const current = inventory((await readdir(
         path.join(process.cwd(), "supabase/migrations"),
       ))
         .filter((name) => /^\d{14}_.+\.sql$/u.test(name))
         .map((name) => name.slice(0, 14))
-        .sort(), includeSupabaseFunctionsAdmin);
+        .sort(),
+      includeSupabaseFunctionsAdmin,
+      includePostgresRealtimeAdminMembership);
       expect(sourceHasSupabaseFunctionsAdmin(current))
         .toBe(includeSupabaseFunctionsAdmin);
+      expect(sourceHasPostgresRealtimeAdminMembership(current))
+        .toBe(includePostgresRealtimeAdminMembership);
       await expect(validateSourceRestoreInventory({
         source: current,
         restored: structuredClone(current),
@@ -128,6 +172,27 @@ describe("source/restore inventory", () => {
       ...roles,
       role("authenticated"),
     ]],
+    ["onbekend lidmaatschap", (roles: ReturnType<typeof role>[]) =>
+      roles.map((item) => item.name === "postgres"
+        ? { ...item, memberships: [...item.memberships, "onbekend"] }
+        : item)],
+    ["bekend lidmaatschap op verkeerde rol", (
+      roles: ReturnType<typeof role>[],
+    ) => roles.map((item) => item.name === "authenticated"
+      ? { ...item, memberships: ["pg_monitor"] }
+      : item)],
+    ["dubbel lidmaatschap", (roles: ReturnType<typeof role>[]) =>
+      roles.map((item) => item.name === "postgres"
+        ? { ...item, memberships: [...item.memberships, "pg_monitor"] }
+        : item)],
+    ["ontbrekend kernlidmaatschap", (roles: ReturnType<typeof role>[]) =>
+      roles.map((item) => item.name === "postgres"
+        ? {
+            ...item,
+            memberships: item.memberships.filter((name) =>
+              name !== "pg_monitor"),
+          }
+        : item)],
   ])("weigert een %s", async (_label, mutateRoles) => {
     const source = inventory(["20260718000100"]);
     source.roles = mutateRoles(source.roles);
@@ -140,6 +205,17 @@ describe("source/restore inventory", () => {
       mode: "source",
       repositoryRoot: process.cwd(),
     })).rejects.toThrow("ongeldig contract");
+  });
+
+  it("weigert een Functions-rol zonder exact postgres-lidmaatschap", () => {
+    const source = inventory(["20260718000100"], true);
+    const postgres = source.roles.find(({ name }) => name === "postgres");
+    if (!postgres) throw new Error("postgres-testrol ontbreekt");
+    postgres.memberships = postgres.memberships.filter((membership) =>
+      membership !== "supabase_functions_admin");
+    expect(() => sourceHasSupabaseFunctionsAdmin(source)).toThrow(
+      "ongeldig contract",
+    );
   });
 
   it("weigert datadrift, ACL-drift en identiteitsdrift", async () => {
@@ -175,6 +251,17 @@ describe("source/restore inventory", () => {
         repositoryRoot: process.cwd(),
       })).rejects.toThrow();
     }
+  });
+
+  it("weigert exact de concrete postgres-membershiprestoredrift", async () => {
+    const source = inventory(["20260718000100"], false, false);
+    const restored = inventory(["20260718000100"], false, true);
+    await expect(validateSourceRestoreInventory({
+      source,
+      restored,
+      mode: "source",
+      repositoryRoot: process.cwd(),
+    })).rejects.toThrow("postgres:memberships");
   });
 
   it("weigert een bronmigratie die geen kandidaatprefix is", async () => {

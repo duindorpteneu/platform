@@ -80,7 +80,13 @@ describe("staging domain cleanup contract", () => {
     expect(shell).toContain("inventory_sha256");
     expect(shell).toContain("--print-functions-admin-presence");
     expect(shell).toContain(
+      "--print-postgres-realtime-admin-membership",
+    );
+    expect(shell).toContain(
       '--set=include_supabase_functions_admin="${include_supabase_functions_admin}"',
+    );
+    expect(shell).toContain(
+      '--set=include_postgres_realtime_admin_membership="${include_postgres_realtime_admin_membership}"',
     );
   });
 
@@ -88,7 +94,10 @@ describe("staging domain cleanup contract", () => {
     expect(restoreRoles).toContain(
       "\\if :{?include_supabase_functions_admin}",
     );
-    expect(restoreRoles).toContain("\\quit 3");
+    expect(restoreRoles).toContain(
+      "raise exception 'include_supabase_functions_admin ontbreekt'",
+    );
+    expect(restoreRoles).not.toContain("\\quit");
     expect(restoreRoles.match(
       /\\if :include_supabase_functions_admin/gu,
     )).toHaveLength(3);
@@ -99,6 +108,43 @@ describe("staging domain cleanup contract", () => {
       const derive = runner.indexOf("--print-functions-admin-presence");
       const prepare = runner.indexOf(
         '--set=include_supabase_functions_admin="${include_supabase_functions_admin}"',
+      );
+      expect(derive).toBeGreaterThan(0);
+      expect(prepare).toBeGreaterThan(derive);
+    }
+  });
+
+  it("spiegelt het optionele postgres/realtime-lidmaatschap exact", () => {
+    expect(restoreRoles).toContain(
+      "\\if :{?include_postgres_realtime_admin_membership}",
+    );
+    expect(restoreRoles).toContain(
+      "raise exception 'include_postgres_realtime_admin_membership ontbreekt'",
+    );
+    expect(restoreRoles).toContain(
+      "\\if :include_postgres_realtime_admin_membership",
+    );
+    expect(restoreRoles).not.toMatch(
+      /supabase_privileged_role,\n\s+supabase_realtime_admin/u,
+    );
+    expect(restoreRoles.match(
+      /grant supabase_realtime_admin to postgres;/gu,
+    )).toHaveLength(1);
+    const conditional = restoreRoles.indexOf(
+      "\\if :include_postgres_realtime_admin_membership",
+    );
+    const grant = restoreRoles.indexOf(
+      "grant supabase_realtime_admin to postgres;",
+    );
+    const conditionalEnd = restoreRoles.indexOf("\\endif", conditional);
+    expect(grant).toBeGreaterThan(conditional);
+    expect(grant).toBeLessThan(conditionalEnd);
+    for (const runner of [shell, restoreDrill]) {
+      const derive = runner.indexOf(
+        "--print-postgres-realtime-admin-membership",
+      );
+      const prepare = runner.indexOf(
+        '--set=include_postgres_realtime_admin_membership="${include_postgres_realtime_admin_membership}"',
       );
       expect(derive).toBeGreaterThan(0);
       expect(prepare).toBeGreaterThan(derive);
