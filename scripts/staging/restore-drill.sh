@@ -138,6 +138,12 @@ include_supabase_functions_admin="$(
 )"
 [[ "${include_supabase_functions_admin}" == true \
     || "${include_supabase_functions_admin}" == false ]]
+include_postgres_realtime_admin_membership="$(
+  node scripts/staging/validate-source-restore-inventory.mjs \
+    --print-postgres-realtime-admin-membership "${source_inventory_path}"
+)"
+[[ "${include_postgres_realtime_admin_membership}" == true \
+    || "${include_postgres_realtime_admin_membership}" == false ]]
 
 restore_input_path="${dump_path}"
 encrypted_checksum=""
@@ -196,6 +202,7 @@ docker exec "${container_name}" \
 docker exec --interactive "${container_name}" \
   psql --no-psqlrc --set=ON_ERROR_STOP=1 \
   --set=include_supabase_functions_admin="${include_supabase_functions_admin}" \
+  --set=include_postgres_realtime_admin_membership="${include_postgres_realtime_admin_membership}" \
   --username supabase_admin \
   --dbname restore_drill \
   < scripts/staging/prepare-restore-roles.sql

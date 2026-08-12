@@ -2,8 +2,20 @@
 
 \if :{?include_supabase_functions_admin}
 \else
-  \echo 'include_supabase_functions_admin ontbreekt'
-  \quit 3
+  do $$
+  begin
+    raise exception 'include_supabase_functions_admin ontbreekt';
+  end;
+  $$;
+\endif
+
+\if :{?include_postgres_realtime_admin_membership}
+\else
+  do $$
+  begin
+    raise exception 'include_postgres_realtime_admin_membership ontbreekt';
+  end;
+  $$;
 \endif
 
 do $$
@@ -99,9 +111,11 @@ grant
   pg_read_all_data,
   pg_signal_backend,
   service_role,
-  supabase_privileged_role,
-  supabase_realtime_admin
+  supabase_privileged_role
 to postgres;
+\if :include_postgres_realtime_admin_membership
+  grant supabase_realtime_admin to postgres;
+\endif
 \if :include_supabase_functions_admin
   grant supabase_functions_admin to postgres;
 \endif

@@ -253,6 +253,13 @@ if [[ "${CLEANUP_PHASE}" == prepare ]]; then
   [[ "${include_supabase_functions_admin}" == true \
       || "${include_supabase_functions_admin}" == false ]] \
     || die "De optionele herstelrolstatus is ongeldig."
+  include_postgres_realtime_admin_membership="$(
+    node scripts/staging/validate-source-restore-inventory.mjs \
+      --print-postgres-realtime-admin-membership "${source_inventory_path}"
+  )"
+  [[ "${include_postgres_realtime_admin_membership}" == true \
+      || "${include_postgres_realtime_admin_membership}" == false ]] \
+    || die "Het optionele postgres-rollenlidmaatschap is ongeldig."
 
   run_preflight "${second_preflight_path}"
   state_digest_before="$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.state_digest)' "${preflight_path}")"
@@ -297,6 +304,7 @@ if [[ "${CLEANUP_PHASE}" == prepare ]]; then
   docker exec --interactive "${restore_container}" psql --no-psqlrc \
     --set=ON_ERROR_STOP=1 \
     --set=include_supabase_functions_admin="${include_supabase_functions_admin}" \
+    --set=include_postgres_realtime_admin_membership="${include_postgres_realtime_admin_membership}" \
     --username supabase_admin --dbname restore_cleanup \
     < scripts/staging/prepare-restore-roles.sql
   docker exec --interactive "${restore_container}" pg_restore \
