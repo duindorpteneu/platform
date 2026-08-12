@@ -132,6 +132,12 @@ source_major="$(node -e '
 [[ -s "${source_inventory_path}" ]]
 [[ "$(stat -c '%a' "${dump_path}")" == "600" ]]
 [[ "$(stat -c '%a' "${source_inventory_path}")" == "600" ]]
+include_supabase_functions_admin="$(
+  node scripts/staging/validate-source-restore-inventory.mjs \
+    --print-functions-admin-presence "${source_inventory_path}"
+)"
+[[ "${include_supabase_functions_admin}" == true \
+    || "${include_supabase_functions_admin}" == false ]]
 
 restore_input_path="${dump_path}"
 encrypted_checksum=""
@@ -188,7 +194,9 @@ docker exec "${container_name}" \
   --username supabase_admin --dbname restore_drill \
   --command='drop schema if exists public cascade;'
 docker exec --interactive "${container_name}" \
-  psql --no-psqlrc --set=ON_ERROR_STOP=1 --username supabase_admin \
+  psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+  --set=include_supabase_functions_admin="${include_supabase_functions_admin}" \
+  --username supabase_admin \
   --dbname restore_drill \
   < scripts/staging/prepare-restore-roles.sql
 

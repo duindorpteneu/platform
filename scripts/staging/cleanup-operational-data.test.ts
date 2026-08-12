@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 const contract = readFileSync(new URL("./sql/operational-cleanup-contract.sql", import.meta.url), "utf8");
 const apply = readFileSync(new URL("./sql/operational-cleanup-apply.sql", import.meta.url), "utf8");
 const shell = readFileSync(new URL("./cleanup-operational-data.sh", import.meta.url), "utf8");
+const restoreDrill = readFileSync(new URL("./restore-drill.sh", import.meta.url), "utf8");
+const restoreRoles = readFileSync(new URL("./prepare-restore-roles.sql", import.meta.url), "utf8");
 const workflow = readFileSync(new URL("../../.github/workflows/staging-domain-cleanup.yml", import.meta.url), "utf8");
 
 describe("staging domain cleanup contract", () => {
@@ -63,7 +65,7 @@ describe("staging domain cleanup contract", () => {
     const decrypt = shell.indexOf("--decrypt --output");
     const isolated = shell.indexOf("--network none");
     const restore = shell.indexOf("pg_restore");
-    const exactInventory = shell.indexOf(
+    const exactInventory = shell.lastIndexOf(
       "validate-source-restore-inventory.mjs",
     );
     const applySql = shell.indexOf("operational-cleanup-apply.sql");
@@ -76,6 +78,31 @@ describe("staging domain cleanup contract", () => {
     expect(shell).toContain("create-source-snapshot-backup.sh");
     expect(shell).toContain("source-restore-inventory.sql");
     expect(shell).toContain("inventory_sha256");
+    expect(shell).toContain("--print-functions-admin-presence");
+    expect(shell).toContain(
+      '--set=include_supabase_functions_admin="${include_supabase_functions_admin}"',
+    );
+  });
+
+  it("spiegelt de optionele Functions-herstelrol vanuit de gevalideerde bron", () => {
+    expect(restoreRoles).toContain(
+      "\\if :{?include_supabase_functions_admin}",
+    );
+    expect(restoreRoles).toContain("\\quit 3");
+    expect(restoreRoles.match(
+      /\\if :include_supabase_functions_admin/gu,
+    )).toHaveLength(3);
+    expect(restoreRoles).not.toMatch(
+      /service_role,\n\s+supabase_functions_admin,/u,
+    );
+    for (const runner of [shell, restoreDrill]) {
+      const derive = runner.indexOf("--print-functions-admin-presence");
+      const prepare = runner.indexOf(
+        '--set=include_supabase_functions_admin="${include_supabase_functions_admin}"',
+      );
+      expect(derive).toBeGreaterThan(0);
+      expect(prepare).toBeGreaterThan(derive);
+    }
   });
 
   it("controleert de werkelijk actieve runtime zonder secrets te sourcen", () => {

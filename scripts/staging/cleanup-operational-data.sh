@@ -246,6 +246,13 @@ if [[ "${CLEANUP_PHASE}" == prepare ]]; then
   ' "${source_inventory_path}")"
   [[ "${source_major}" == 17 ]] \
     || die "De brondatabase draait niet op PostgreSQL 17."
+  include_supabase_functions_admin="$(
+    node scripts/staging/validate-source-restore-inventory.mjs \
+      --print-functions-admin-presence "${source_inventory_path}"
+  )"
+  [[ "${include_supabase_functions_admin}" == true \
+      || "${include_supabase_functions_admin}" == false ]] \
+    || die "De optionele herstelrolstatus is ongeldig."
 
   run_preflight "${second_preflight_path}"
   state_digest_before="$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.state_digest)' "${preflight_path}")"
@@ -288,7 +295,9 @@ if [[ "${CLEANUP_PHASE}" == prepare ]]; then
     --username supabase_admin --dbname restore_cleanup \
     --command='drop schema if exists public cascade;'
   docker exec --interactive "${restore_container}" psql --no-psqlrc \
-    --set=ON_ERROR_STOP=1 --username supabase_admin --dbname restore_cleanup \
+    --set=ON_ERROR_STOP=1 \
+    --set=include_supabase_functions_admin="${include_supabase_functions_admin}" \
+    --username supabase_admin --dbname restore_cleanup \
     < scripts/staging/prepare-restore-roles.sql
   docker exec --interactive "${restore_container}" pg_restore \
     --exit-on-error --disable-triggers \

@@ -24,6 +24,33 @@ const TOP_LEVEL_KEYS = [
   "views",
 ];
 
+const REQUIRED_ROLE_NAMES = [
+  "anon",
+  "authenticated",
+  "authenticator",
+  "dashboard_user",
+  "postgres",
+  "service_role",
+  "supabase_admin",
+  "supabase_auth_admin",
+  "supabase_read_only_user",
+  "supabase_replication_admin",
+  "supabase_storage_admin",
+];
+const OPTIONAL_ROLE_NAMES = ["supabase_functions_admin"];
+const ROLE_KEYS = [
+  "bypassRls",
+  "connectionLimit",
+  "createDatabase",
+  "createRole",
+  "inherit",
+  "login",
+  "memberships",
+  "name",
+  "replication",
+  "superuser",
+];
+
 function exactKeys(value, keys) {
   return value
     && typeof value === "object"
@@ -84,6 +111,38 @@ function safeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function validRoleContract(roles) {
+  if (!Array.isArray(roles)) return false;
+  const allowedRoleNames = new Set([
+    ...REQUIRED_ROLE_NAMES,
+    ...OPTIONAL_ROLE_NAMES,
+  ]);
+  const roleNames = roles.map((role) => role?.name);
+  const uniqueRoleNames = new Set(roleNames);
+  return (
+    roles.length >= REQUIRED_ROLE_NAMES.length
+    && roles.length <= allowedRoleNames.size
+    && uniqueRoleNames.size === roles.length
+    && REQUIRED_ROLE_NAMES.every((name) => uniqueRoleNames.has(name))
+    && roleNames.every((name) => allowedRoleNames.has(name))
+    && roles.every((role) =>
+      exactKeys(role, ROLE_KEYS)
+      && typeof role.name === "string"
+      && typeof role.superuser === "boolean"
+      && typeof role.inherit === "boolean"
+      && typeof role.createRole === "boolean"
+      && typeof role.createDatabase === "boolean"
+      && typeof role.login === "boolean"
+      && typeof role.replication === "boolean"
+      && typeof role.bypassRls === "boolean"
+      && Number.isSafeInteger(role.connectionLimit)
+      && role.connectionLimit >= -1
+      && Array.isArray(role.memberships)
+      && role.memberships.every((membership) =>
+        typeof membership === "string"))
+  );
+}
+
 function validateInventory(value) {
   if (
     !exactKeys(value, TOP_LEVEL_KEYS)
@@ -103,7 +162,7 @@ function validateInventory(value) {
     || !Array.isArray(value.functions)
     || !Array.isArray(value.triggers)
     || !Array.isArray(value.defaultAcls)
-    || !Array.isArray(value.roles)
+    || !validRoleContract(value.roles)
     || !exactKeys(value.identities, [
       "adminCount",
       "authUserCount",
@@ -161,16 +220,16 @@ function validateInventory(value) {
     || value.functions.some((procedure) =>
       typeof procedure?.identity !== "string"
       || !/^[a-f0-9]{64}$/u.test(procedure.definitionSha256))
-    || value.roles.length !== 12
-    || value.roles.some((role) =>
-      typeof role?.name !== "string"
-      || typeof role.superuser !== "boolean"
-      || typeof role.bypassRls !== "boolean"
-      || !Array.isArray(role.memberships))
   ) {
     throw new Error("Source/restore-inventory heeft een ongeldig contract");
   }
   return value;
+}
+
+export function sourceHasSupabaseFunctionsAdmin(source) {
+  validateInventory(source);
+  return source.roles.some((role) =>
+    role.name === "supabase_functions_admin");
 }
 
 async function repositoryMigrations(repositoryRoot) {
@@ -248,6 +307,20 @@ export async function validateSourceRestoreInventory({
 }
 
 async function main() {
+  if (process.argv[2] === "--print-functions-admin-presence") {
+    const sourcePath = process.argv[3];
+    if (!sourcePath || process.argv.length !== 4) {
+      throw new Error(
+        "Gebruik validate-source-restore-inventory.mjs "
+        + "--print-functions-admin-presence <source.json>",
+      );
+    }
+    const source = JSON.parse(await readFile(sourcePath, "utf8"));
+    process.stdout.write(
+      sourceHasSupabaseFunctionsAdmin(source) ? "true\n" : "false\n",
+    );
+    return;
+  }
   const [sourcePath, restoredPath, mode, outputPath] =
     process.argv.slice(2);
   if (!sourcePath || !restoredPath || !mode || !outputPath) {
