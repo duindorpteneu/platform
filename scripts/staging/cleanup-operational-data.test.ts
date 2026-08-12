@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -186,6 +187,9 @@ describe("staging domain cleanup contract", () => {
     expect(redownloadBlock).toContain("for attempt in 1 2 3 4 5 6; do");
     expect(redownloadBlock).toContain('sleep "$((attempt * 2))"');
     expect(redownloadBlock).toContain(
+      '> "${artifact_zip}" \\\n              && [[ -s "${artifact_zip}" ]]',
+    );
+    expect(redownloadBlock).toContain(
       '[[ "${downloaded}" == "true" && -s "${artifact_zip}" ]]',
     );
     expect(redownloadBlock.indexOf("for attempt in 1 2 3 4 5 6; do"))
@@ -194,6 +198,55 @@ describe("staging domain cleanup contract", () => {
     expect(workflow).toContain(
       "staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}",
     );
+  });
+
+  it("herprobeert ook een lege succesvolle artifactdownload en faalt daarna begrensd", () => {
+    const start = workflow.indexOf("          downloaded=false");
+    const end = workflow.indexOf('          unzip -q "${artifact_zip}"', start);
+    const retryBlock = workflow
+      .slice(start, end)
+      .split("\n")
+      .map((line) => line.replace(/^ {10}/u, ""))
+      .join("\n");
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+
+    const runRetryBlock = (emptyResponses: number) => spawnSync(
+      "bash",
+      ["-c", `
+        set -Eeuo pipefail
+        gh_calls=0
+        gh() {
+          gh_calls=$((gh_calls + 1))
+          if [[ "\${gh_calls}" -gt "\${EMPTY_RESPONSES}" ]]; then
+            printf 'verified-artifact-bytes'
+          fi
+        }
+        sleep() { :; }
+        artifact_zip="\${TMPDIR}/cleanup-artifact-\${BASHPID}.zip"
+        trap 'rm -f -- "\${artifact_zip}"' EXIT
+        BACKUP_ARTIFACT_ID=123
+        GITHUB_REPOSITORY=duindorpteneu/platform
+        ${retryBlock}
+        printf '\nretry-calls=%s\n' "\${gh_calls}"
+      `],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          EMPTY_RESPONSES: String(emptyResponses),
+          TMPDIR: process.env.TMPDIR ?? "/tmp",
+        },
+      },
+    );
+
+    const eventuallyAvailable = runRetryBlock(1);
+    expect(eventuallyAvailable.status).toBe(0);
+    expect(eventuallyAvailable.stdout).toContain("retry-calls=2");
+
+    const alwaysEmpty = runRetryBlock(6);
+    expect(alwaysEmpty.status).not.toBe(0);
+    expect(alwaysEmpty.stdout).not.toContain("retry-calls=");
   });
 
   it("draait dry-run en apply alleen op de stagingrunner en serialiseert met deploy", () => {

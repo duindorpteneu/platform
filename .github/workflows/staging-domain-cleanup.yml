@@ -216,7 +216,8 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKUP_ARTIFACT_ID}/zip" \
-              > "${artifact_zip}"
+              > "${artifact_zip}" \
+              && [[ -s "${artifact_zip}" ]]
             then
               downloaded=true
               break
