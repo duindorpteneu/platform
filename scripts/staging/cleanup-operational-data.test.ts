@@ -182,6 +182,14 @@ describe("staging domain cleanup contract", () => {
     expect(workflow).toContain("BACKUP_ARTIFACT_ID: ${{ steps.backup-upload.outputs.artifact-id }}");
     expect(workflow).toContain(".prepared.json");
     expect(workflow).toContain("actions/artifacts/${BACKUP_ARTIFACT_ID}/zip");
+    const redownloadBlock = workflow.slice(redownload, applyPhase);
+    expect(redownloadBlock).toContain("for attempt in 1 2 3 4 5 6; do");
+    expect(redownloadBlock).toContain('sleep "$((attempt * 2))"');
+    expect(redownloadBlock).toContain(
+      '[[ "${downloaded}" == "true" && -s "${artifact_zip}" ]]',
+    );
+    expect(redownloadBlock.indexOf("for attempt in 1 2 3 4 5 6; do"))
+      .toBeLessThan(redownloadBlock.indexOf('unzip -q "${artifact_zip}"'));
     expect(workflow).toContain("cmp --silent");
     expect(workflow).toContain(
       "staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}",
