@@ -197,6 +197,7 @@ jobs:
           retention-days: 30
 
       - name: Re-download and byte-verify the durable backup artifact
+        id: backup-verification
         env:
           GH_TOKEN: ${{ github.token }}
           BACKUP_ARTIFACT_ID: ${{ steps.backup-upload.outputs.artifact-id }}
@@ -211,6 +212,7 @@ jobs:
           chmod 700 "${download_directory}"
           artifact_zip="${download_directory}/artifact.zip"
           downloaded=false
+          accepted_directory=""
           for attempt in 1 2 3 4 5 6; do
             candidate_directory="${download_directory}/candidate-${attempt}"
             mkdir -p "${candidate_directory}"
@@ -239,7 +241,7 @@ jobs:
                 "${downloaded_state}" \
                 "${RUNNER_TEMP}/${BACKUP_ARTIFACT_NAME}.prepared.json"
             then
-              mv -- "${candidate_directory}" "${download_directory}/artifact"
+              accepted_directory="${candidate_directory}"
               downloaded=true
               break
             fi
@@ -249,19 +251,8 @@ jobs:
             fi
           done
           [[ "${downloaded}" == "true" ]]
-          downloaded_backup="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.dump.gpg"
-          downloaded_state="${download_directory}/artifact/${BACKUP_ARTIFACT_NAME}.prepared.json"
-          [[ -f "${downloaded_backup}" && ! -L "${downloaded_backup}" ]]
-          [[ -f "${downloaded_state}" && ! -L "${downloaded_state}" ]]
-          [[ "$(
-            sha256sum "${downloaded_backup}" | cut -d' ' -f1
-          )" == "$(
-            sha256sum "${RUNNER_TEMP}/${BACKUP_ARTIFACT_NAME}.dump.gpg" \
-              | cut -d' ' -f1
-          )" ]]
-          cmp --silent \
-            "${downloaded_state}" \
-            "${RUNNER_TEMP}/${BACKUP_ARTIFACT_NAME}.prepared.json"
+          [[ -n "${accepted_directory}" ]]
+          printf 'artifact_directory=%s\n' "${accepted_directory}" >> "${GITHUB_OUTPUT}"
 
       - name: Recheck backup-bound state and atomically clean the fixed allowlist
         env:
@@ -269,8 +260,8 @@ jobs:
           CLEANUP_RUN_ID: ${{ steps.cleanup.outputs.run_id }}
           BACKUP_ARTIFACT_NAME: ${{ steps.cleanup.outputs.artifact_name }}
           BACKUP_ARTIFACT_ID: ${{ steps.backup-upload.outputs.artifact-id }}
-          BACKUP_ARTIFACT_PATH: ${{ runner.temp }}/staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}/artifact/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
-          CLEANUP_PREPARED_STATE_PATH: ${{ runner.temp }}/staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}/artifact/${{ steps.cleanup.outputs.artifact_name }}.prepared.json
+          BACKUP_ARTIFACT_PATH: ${{ steps.backup-verification.outputs.artifact_directory }}/${{ steps.cleanup.outputs.artifact_name }}.dump.gpg
+          CLEANUP_PREPARED_STATE_PATH: ${{ steps.backup-verification.outputs.artifact_directory }}/${{ steps.cleanup.outputs.artifact_name }}.prepared.json
           CLEANUP_EVIDENCE_PATH: ${{ runner.temp }}/staging-domain-cleanup-apply.json
         run: bash scripts/staging/cleanup-operational-data.sh
 

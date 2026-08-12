@@ -206,16 +206,18 @@ describe("staging domain cleanup contract", () => {
     expect(compare).toBeGreaterThan(hash);
     expect(accepted).toBeGreaterThan(compare);
     expect(redownloadBlock).toContain('[[ "${downloaded}" == "true" ]]');
-    expect(workflow).toContain("cmp --silent");
-    expect(workflow).toContain(
-      "staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}",
+    expect(redownloadBlock).toContain(
+      "printf 'artifact_directory=%s\\n' \"${accepted_directory}\" >> \"${GITHUB_OUTPUT}\"",
     );
+    expect(redownloadBlock).not.toContain('mv -- "${candidate_directory}"');
+    expect(workflow).toContain("cmp --silent");
+    expect(workflow).toContain("steps.backup-verification.outputs.artifact_directory");
   });
 
   it("herprobeert tot de artifactbytes exact overeenkomen en faalt daarna begrensd", () => {
     const start = workflow.indexOf("          downloaded=false");
     const end = workflow.indexOf(
-      '          downloaded_backup="${download_directory}/artifact/',
+      "\n\n      - name: Recheck backup-bound state",
       start,
     );
     const retryBlock = workflow
@@ -276,6 +278,7 @@ describe("staging domain cleanup contract", () => {
         test_directory="$(mktemp -d "\${TMPDIR}/cleanup-artifact-\${BASHPID}.XXXXXX")"
         trap 'rm -rf -- "\${test_directory}"' EXIT
         RUNNER_TEMP="\${test_directory}"
+        GITHUB_OUTPUT="\${test_directory}/github-output"
         download_directory="\${test_directory}/download"
         mkdir -p "\${download_directory}"
         artifact_zip="\${download_directory}/artifact.zip"
@@ -285,6 +288,16 @@ describe("staging domain cleanup contract", () => {
         printf 'source-backup' > "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.dump.gpg"
         printf 'source-state' > "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.prepared.json"
         ${retryBlock}
+        accepted_output="$(sed -n 's/^artifact_directory=//p' "\${GITHUB_OUTPUT}")"
+        [[ "\${accepted_output}" == "\${accepted_directory}" ]]
+        [[ -f "\${accepted_output}/\${BACKUP_ARTIFACT_NAME}.dump.gpg" ]]
+        [[ -f "\${accepted_output}/\${BACKUP_ARTIFACT_NAME}.prepared.json" ]]
+        cmp --silent \
+          "\${accepted_output}/\${BACKUP_ARTIFACT_NAME}.dump.gpg" \
+          "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.dump.gpg"
+        cmp --silent \
+          "\${accepted_output}/\${BACKUP_ARTIFACT_NAME}.prepared.json" \
+          "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.prepared.json"
         printf '\nretry-calls=%s\n' "\${gh_calls}"
       `],
       {
