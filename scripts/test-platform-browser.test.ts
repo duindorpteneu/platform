@@ -35,10 +35,13 @@ describe("platform browser Supabase readiness", () => {
     );
     expect(source).toContain('timeout: 30_000');
     expect(source).toContain(
-      "mailPreviewSection.locator('iframe[title=\"Preview Inlogcode\"]').waitFor",
+      "'[role=\"group\"][aria-label=\"Previewmodus\"] button[aria-label=\"Desktop\"]'",
     );
-    expect(source).not.toContain(
-      'page.getByRole("button", { name: "Desktop", exact: true }).click()',
+    expect(source).toContain(
+      'await desktopPreviewMode.getAttribute("aria-pressed") !== "true"',
+    );
+    expect(source).toContain(
+      'await mailPreviewFrame.getAttribute("srcdoc") !== mailPreviewPayload.html',
     );
     expect(source.match(
       /page\.getByRole\("button", \{ name: "Preview", exact: true \}\)\.click\(\)/gu,

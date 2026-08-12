@@ -148,7 +148,26 @@ const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "1
     state: "visible",
     timeout: 30_000,
   });
-  await mailPreviewSection.locator('iframe[title="Preview Inlogcode"]').waitFor({
+  const desktopPreviewMode = mailPreviewSection.locator(
+    '[role="group"][aria-label="Previewmodus"] button[aria-label="Desktop"]',
+  );
+  await desktopPreviewMode.waitFor({ state: "visible", timeout: 10_000 });
+  await desktopPreviewMode.click();
+  if (await desktopPreviewMode.getAttribute("aria-pressed") !== "true") {
+    throw new Error("Mail-v2-preview kon niet aantoonbaar naar desktopmodus schakelen.");
+  }
+  const mailPreviewFrame = mailPreviewSection.locator("iframe");
+  await mailPreviewFrame.waitFor({
+    state: "attached",
+    timeout: 10_000,
+  });
+  if (await mailPreviewFrame.getAttribute("title") !== "Preview Inlogcode") {
+    throw new Error("Mail-v2-preview heeft niet de verwachte veilige frametitel.");
+  }
+  if (await mailPreviewFrame.getAttribute("srcdoc") !== mailPreviewPayload.html) {
+    throw new Error("Mail-v2-preview rendert niet exact de gevalideerde server-HTML.");
+  }
+  await mailPreviewFrame.waitFor({
     state: "visible",
     timeout: 10_000,
   });
