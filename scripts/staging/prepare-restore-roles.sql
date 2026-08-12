@@ -1,5 +1,11 @@
 \set ON_ERROR_STOP on
 
+\if :{?include_supabase_functions_admin}
+\else
+  \echo 'include_supabase_functions_admin ontbreekt'
+  \quit 3
+\endif
+
 do $$
 declare
   role_name text;
@@ -11,7 +17,6 @@ begin
     'authenticator',
     'supabase_admin',
     'supabase_auth_admin',
-    'supabase_functions_admin',
     'supabase_privileged_role',
     'supabase_read_only_user',
     'supabase_realtime_admin',
@@ -30,6 +35,20 @@ begin
   end loop;
 end;
 $$;
+
+\if :include_supabase_functions_admin
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_roles
+    where rolname = 'supabase_functions_admin'
+  ) then
+    create role supabase_functions_admin nologin;
+  end if;
+end;
+$$;
+\endif
 
 alter role anon
   nosuperuser inherit nocreaterole nocreatedb nologin
@@ -55,9 +74,11 @@ alter role supabase_admin
 alter role supabase_auth_admin
   nosuperuser noinherit createrole nocreatedb login
   noreplication nobypassrls connection limit -1;
-alter role supabase_functions_admin
-  nosuperuser noinherit createrole nocreatedb login
-  noreplication nobypassrls connection limit -1;
+\if :include_supabase_functions_admin
+  alter role supabase_functions_admin
+    nosuperuser noinherit createrole nocreatedb login
+    noreplication nobypassrls connection limit -1;
+\endif
 alter role supabase_read_only_user
   nosuperuser inherit nocreaterole nocreatedb login
   noreplication bypassrls connection limit -1;
@@ -78,10 +99,12 @@ grant
   pg_read_all_data,
   pg_signal_backend,
   service_role,
-  supabase_functions_admin,
   supabase_privileged_role,
   supabase_realtime_admin
 to postgres;
+\if :include_supabase_functions_admin
+  grant supabase_functions_admin to postgres;
+\endif
 grant pg_monitor, pg_read_all_data to supabase_read_only_user;
 grant authenticator to supabase_storage_admin;
 

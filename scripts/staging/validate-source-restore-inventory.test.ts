@@ -2,9 +2,41 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error Deployment helper is intentionally plain ESM.
-import { validateSourceRestoreInventory } from "./validate-source-restore-inventory.mjs";
+import { sourceHasSupabaseFunctionsAdmin, validateSourceRestoreInventory } from "./validate-source-restore-inventory.mjs";
 
-function inventory(migrations: string[]) {
+const requiredRoleNames = [
+  "anon",
+  "authenticated",
+  "authenticator",
+  "dashboard_user",
+  "postgres",
+  "service_role",
+  "supabase_admin",
+  "supabase_auth_admin",
+  "supabase_read_only_user",
+  "supabase_replication_admin",
+  "supabase_storage_admin",
+];
+
+function role(name: string) {
+  return {
+    name,
+    superuser: false,
+    inherit: true,
+    createRole: false,
+    createDatabase: false,
+    login: false,
+    replication: false,
+    bypassRls: false,
+    connectionLimit: -1,
+    memberships: [],
+  };
+}
+
+function inventory(
+  migrations: string[],
+  includeSupabaseFunctionsAdmin = false,
+) {
   return {
     contractVersion: 2,
     postgresMajor: 17,
@@ -37,12 +69,12 @@ function inventory(migrations: string[]) {
     functions: [],
     triggers: [],
     defaultAcls: [],
-    roles: Array.from({ length: 12 }, (_, index) => ({
-      name: `role-${index}`,
-      superuser: false,
-      bypassRls: false,
-      memberships: [],
-    })),
+    roles: [
+      ...requiredRoleNames.map(role),
+      ...(includeSupabaseFunctionsAdmin
+        ? [role("supabase_functions_admin")]
+        : []),
+    ],
     identities: {
       authUserCount: 1,
       authUserIdHmac: "a".repeat(64),
@@ -59,25 +91,55 @@ function inventory(migrations: string[]) {
 }
 
 describe("source/restore inventory", () => {
-  it("accepteert een exacte huidige restore", async () => {
-    const current = inventory((await readdir(
-      path.join(process.cwd(), "supabase/migrations"),
-    ))
-      .filter((name) => /^\d{14}_.+\.sql$/u.test(name))
-      .map((name) => name.slice(0, 14))
-      .sort());
+  it.each([false, true])(
+    "accepteert een exacte huidige restore met Functions-rol=%s",
+    async (includeSupabaseFunctionsAdmin) => {
+      const current = inventory((await readdir(
+        path.join(process.cwd(), "supabase/migrations"),
+      ))
+        .filter((name) => /^\d{14}_.+\.sql$/u.test(name))
+        .map((name) => name.slice(0, 14))
+        .sort(), includeSupabaseFunctionsAdmin);
+      expect(sourceHasSupabaseFunctionsAdmin(current))
+        .toBe(includeSupabaseFunctionsAdmin);
+      await expect(validateSourceRestoreInventory({
+        source: current,
+        restored: structuredClone(current),
+        mode: "current",
+        repositoryRoot: process.cwd(),
+      })).resolves.toMatchObject({
+        result: "passed",
+        contract_mode: "current",
+        owner_acl_rls_exact: true,
+        data_hmac_exact: true,
+        schema_definition_exact: true,
+      });
+    },
+  );
+
+  it.each([
+    ["ontbrekende kernrol", (roles: ReturnType<typeof role>[]) =>
+      roles.filter(({ name }) => name !== "authenticated")],
+    ["onbekende rol", (roles: ReturnType<typeof role>[]) => [
+      ...roles,
+      role("onbekend"),
+    ]],
+    ["dubbele rol", (roles: ReturnType<typeof role>[]) => [
+      ...roles,
+      role("authenticated"),
+    ]],
+  ])("weigert een %s", async (_label, mutateRoles) => {
+    const source = inventory(["20260718000100"]);
+    source.roles = mutateRoles(source.roles);
+    expect(() => sourceHasSupabaseFunctionsAdmin(source)).toThrow(
+      "ongeldig contract",
+    );
     await expect(validateSourceRestoreInventory({
-      source: current,
-      restored: structuredClone(current),
-      mode: "current",
+      source,
+      restored: structuredClone(source),
+      mode: "source",
       repositoryRoot: process.cwd(),
-    })).resolves.toMatchObject({
-      result: "passed",
-      contract_mode: "current",
-      owner_acl_rls_exact: true,
-      data_hmac_exact: true,
-      schema_definition_exact: true,
-    });
+    })).rejects.toThrow("ongeldig contract");
   });
 
   it("weigert datadrift, ACL-drift en identiteitsdrift", async () => {
