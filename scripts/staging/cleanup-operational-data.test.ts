@@ -187,7 +187,7 @@ describe("staging domain cleanup contract", () => {
     expect(redownloadBlock).toContain("for attempt in 1 2 3 4 5 6; do");
     expect(redownloadBlock).toContain('sleep "$((attempt * 2))"');
     expect(redownloadBlock).toContain(
-      '> "${artifact_zip}" \\\n              && [[ -s "${artifact_zip}" ]]',
+      '> "${artifact_zip}" \\\n              && [[ -s "${artifact_zip}" ]] \\\n              && unzip -tq "${artifact_zip}" >/dev/null',
     );
     expect(redownloadBlock).toContain(
       '[[ "${downloaded}" == "true" && -s "${artifact_zip}" ]]',
@@ -200,7 +200,7 @@ describe("staging domain cleanup contract", () => {
     );
   });
 
-  it("herprobeert ook een lege succesvolle artifactdownload en faalt daarna begrensd", () => {
+  it("herprobeert lege en ongeldige artifactdownloads en faalt daarna begrensd", () => {
     const start = workflow.indexOf("          downloaded=false");
     const end = workflow.indexOf('          unzip -q "${artifact_zip}"', start);
     const retryBlock = workflow
@@ -211,16 +211,25 @@ describe("staging domain cleanup contract", () => {
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
 
-    const runRetryBlock = (emptyResponses: number) => spawnSync(
+    const runRetryBlock = (
+      responseMode: "empty" | "invalid",
+      unavailableResponses: number,
+    ) => spawnSync(
       "bash",
       ["-c", `
         set -Eeuo pipefail
         gh_calls=0
         gh() {
           gh_calls=$((gh_calls + 1))
-          if [[ "\${gh_calls}" -gt "\${EMPTY_RESPONSES}" ]]; then
-            printf 'verified-artifact-bytes'
+          if [[ "\${gh_calls}" -gt "\${UNAVAILABLE_RESPONSES}" ]]; then
+            printf 'valid-zip-marker'
+          elif [[ "\${RESPONSE_MODE}" == "invalid" ]]; then
+            printf 'not-a-zip'
           fi
+        }
+        unzip() {
+          [[ "$1" == "-tq" ]]
+          [[ "$(cat "$2")" == "valid-zip-marker" ]]
         }
         sleep() { :; }
         artifact_zip="\${TMPDIR}/cleanup-artifact-\${BASHPID}.zip"
@@ -234,19 +243,28 @@ describe("staging domain cleanup contract", () => {
         encoding: "utf8",
         env: {
           ...process.env,
-          EMPTY_RESPONSES: String(emptyResponses),
+          RESPONSE_MODE: responseMode,
+          UNAVAILABLE_RESPONSES: String(unavailableResponses),
           TMPDIR: process.env.TMPDIR ?? "/tmp",
         },
       },
     );
 
-    const eventuallyAvailable = runRetryBlock(1);
-    expect(eventuallyAvailable.status).toBe(0);
-    expect(eventuallyAvailable.stdout).toContain("retry-calls=2");
+    const eventuallyNonEmpty = runRetryBlock("empty", 1);
+    expect(eventuallyNonEmpty.status).toBe(0);
+    expect(eventuallyNonEmpty.stdout).toContain("retry-calls=2");
 
-    const alwaysEmpty = runRetryBlock(6);
+    const eventuallyValid = runRetryBlock("invalid", 1);
+    expect(eventuallyValid.status).toBe(0);
+    expect(eventuallyValid.stdout).toContain("retry-calls=2");
+
+    const alwaysEmpty = runRetryBlock("empty", 6);
     expect(alwaysEmpty.status).not.toBe(0);
     expect(alwaysEmpty.stdout).not.toContain("retry-calls=");
+
+    const alwaysInvalid = runRetryBlock("invalid", 6);
+    expect(alwaysInvalid.status).not.toBe(0);
+    expect(alwaysInvalid.stdout).not.toContain("retry-calls=");
   });
 
   it("draait dry-run en apply alleen op de stagingrunner en serialiseert met deploy", () => {
