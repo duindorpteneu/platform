@@ -190,19 +190,34 @@ describe("staging domain cleanup contract", () => {
       '> "${artifact_zip}" \\\n              && [[ -s "${artifact_zip}" ]] \\\n              && unzip -tq "${artifact_zip}" >/dev/null',
     );
     expect(redownloadBlock).toContain(
-      '[[ "${downloaded}" == "true" && -s "${artifact_zip}" ]]',
+      'candidate_directory="${download_directory}/candidate-${attempt}"',
     );
-    expect(redownloadBlock.indexOf("for attempt in 1 2 3 4 5 6; do"))
-      .toBeLessThan(redownloadBlock.indexOf('unzip -q "${artifact_zip}"'));
+    const retry = redownloadBlock.indexOf("for attempt in 1 2 3 4 5 6; do");
+    const extract = redownloadBlock.indexOf('unzip -q "${artifact_zip}"');
+    const inventory = redownloadBlock.indexOf(
+      'find "${candidate_directory}" -mindepth 1 -maxdepth 1',
+    );
+    const hash = redownloadBlock.indexOf('sha256sum "${downloaded_backup}"');
+    const compare = redownloadBlock.indexOf("cmp --silent");
+    const accepted = redownloadBlock.indexOf("downloaded=true");
+    expect(extract).toBeGreaterThan(retry);
+    expect(inventory).toBeGreaterThan(extract);
+    expect(hash).toBeGreaterThan(inventory);
+    expect(compare).toBeGreaterThan(hash);
+    expect(accepted).toBeGreaterThan(compare);
+    expect(redownloadBlock).toContain('[[ "${downloaded}" == "true" ]]');
     expect(workflow).toContain("cmp --silent");
     expect(workflow).toContain(
       "staging-cleanup-redownload-${{ github.run_id }}-${{ github.run_attempt }}",
     );
   });
 
-  it("herprobeert lege en ongeldige artifactdownloads en faalt daarna begrensd", () => {
+  it("herprobeert tot de artifactbytes exact overeenkomen en faalt daarna begrensd", () => {
     const start = workflow.indexOf("          downloaded=false");
-    const end = workflow.indexOf('          unzip -q "${artifact_zip}"', start);
+    const end = workflow.indexOf(
+      '          downloaded_backup="${download_directory}/artifact/',
+      start,
+    );
     const retryBlock = workflow
       .slice(start, end)
       .split("\n")
@@ -212,7 +227,7 @@ describe("staging domain cleanup contract", () => {
     expect(end).toBeGreaterThan(start);
 
     const runRetryBlock = (
-      responseMode: "empty" | "invalid",
+      responseMode: "empty" | "extra" | "invalid" | "mismatch" | "state-mismatch",
       unavailableResponses: number,
     ) => spawnSync(
       "bash",
@@ -225,17 +240,50 @@ describe("staging domain cleanup contract", () => {
             printf 'valid-zip-marker'
           elif [[ "\${RESPONSE_MODE}" == "invalid" ]]; then
             printf 'not-a-zip'
+          elif [[ "\${RESPONSE_MODE}" == "mismatch" ]]; then
+            printf 'mismatched-zip-marker'
+          elif [[ "\${RESPONSE_MODE}" == "extra" ]]; then
+            printf 'extra-entry-zip-marker'
+          elif [[ "\${RESPONSE_MODE}" == "state-mismatch" ]]; then
+            printf 'state-mismatch-zip-marker'
           fi
         }
         unzip() {
-          [[ "$1" == "-tq" ]]
-          [[ "$(cat "$2")" == "valid-zip-marker" ]]
+          if [[ "$1" == "-tq" ]]; then
+            [[ "$(cat "$2")" == "valid-zip-marker" \
+              || "$(cat "$2")" == "mismatched-zip-marker" \
+              || "$(cat "$2")" == "extra-entry-zip-marker" \
+              || "$(cat "$2")" == "state-mismatch-zip-marker" ]]
+            return
+          fi
+          [[ "$1" == "-q" && "$3" == "-d" ]]
+          mkdir -p "$4"
+          if [[ "$(cat "$2")" == "mismatched-zip-marker" ]]; then
+            printf 'mismatched-backup' > "$4/\${BACKUP_ARTIFACT_NAME}.dump.gpg"
+          else
+            printf 'source-backup' > "$4/\${BACKUP_ARTIFACT_NAME}.dump.gpg"
+          fi
+          if [[ "$(cat "$2")" == "state-mismatch-zip-marker" ]]; then
+            printf 'mismatched-state' > "$4/\${BACKUP_ARTIFACT_NAME}.prepared.json"
+          else
+            printf 'source-state' > "$4/\${BACKUP_ARTIFACT_NAME}.prepared.json"
+          fi
+          if [[ "$(cat "$2")" == "extra-entry-zip-marker" ]]; then
+            printf 'unexpected' > "$4/unexpected.txt"
+          fi
         }
         sleep() { :; }
-        artifact_zip="\${TMPDIR}/cleanup-artifact-\${BASHPID}.zip"
-        trap 'rm -f -- "\${artifact_zip}"' EXIT
+        test_directory="$(mktemp -d "\${TMPDIR}/cleanup-artifact-\${BASHPID}.XXXXXX")"
+        trap 'rm -rf -- "\${test_directory}"' EXIT
+        RUNNER_TEMP="\${test_directory}"
+        download_directory="\${test_directory}/download"
+        mkdir -p "\${download_directory}"
+        artifact_zip="\${download_directory}/artifact.zip"
         BACKUP_ARTIFACT_ID=123
+        BACKUP_ARTIFACT_NAME=staging-test-backup
         GITHUB_REPOSITORY=duindorpteneu/platform
+        printf 'source-backup' > "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.dump.gpg"
+        printf 'source-state' > "\${RUNNER_TEMP}/\${BACKUP_ARTIFACT_NAME}.prepared.json"
         ${retryBlock}
         printf '\nretry-calls=%s\n' "\${gh_calls}"
       `],
@@ -258,6 +306,18 @@ describe("staging domain cleanup contract", () => {
     expect(eventuallyValid.status).toBe(0);
     expect(eventuallyValid.stdout).toContain("retry-calls=2");
 
+    const eventuallyMatching = runRetryBlock("mismatch", 1);
+    expect(eventuallyMatching.status).toBe(0);
+    expect(eventuallyMatching.stdout).toContain("retry-calls=2");
+
+    const eventuallyExactInventory = runRetryBlock("extra", 1);
+    expect(eventuallyExactInventory.status).toBe(0);
+    expect(eventuallyExactInventory.stdout).toContain("retry-calls=2");
+
+    const eventuallyMatchingState = runRetryBlock("state-mismatch", 1);
+    expect(eventuallyMatchingState.status).toBe(0);
+    expect(eventuallyMatchingState.stdout).toContain("retry-calls=2");
+
     const alwaysEmpty = runRetryBlock("empty", 6);
     expect(alwaysEmpty.status).not.toBe(0);
     expect(alwaysEmpty.stdout).not.toContain("retry-calls=");
@@ -265,6 +325,18 @@ describe("staging domain cleanup contract", () => {
     const alwaysInvalid = runRetryBlock("invalid", 6);
     expect(alwaysInvalid.status).not.toBe(0);
     expect(alwaysInvalid.stdout).not.toContain("retry-calls=");
+
+    const alwaysMismatched = runRetryBlock("mismatch", 6);
+    expect(alwaysMismatched.status).not.toBe(0);
+    expect(alwaysMismatched.stdout).not.toContain("retry-calls=");
+
+    const alwaysExtra = runRetryBlock("extra", 6);
+    expect(alwaysExtra.status).not.toBe(0);
+    expect(alwaysExtra.stdout).not.toContain("retry-calls=");
+
+    const alwaysMismatchedState = runRetryBlock("state-mismatch", 6);
+    expect(alwaysMismatchedState.status).not.toBe(0);
+    expect(alwaysMismatchedState.stdout).not.toContain("retry-calls=");
   });
 
   it("draait dry-run en apply alleen op de stagingrunner en serialiseert met deploy", () => {
