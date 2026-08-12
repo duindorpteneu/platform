@@ -141,12 +141,14 @@ const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "1
       throw new Error(\`Mail-v2-preview mist veilig veld \${key}.\`);
     }
   }
-  await page.getByText("Fictieve preview", { exact: true }).waitFor({
+  const mailPreviewSection = page.locator("section").filter({
+    hasText: "Fictieve preview",
+  }).last();
+  await mailPreviewSection.getByText("Fictieve preview", { exact: true }).waitFor({
     state: "visible",
     timeout: 30_000,
   });
-  await page.getByRole("button", { name: "Desktop", exact: true }).click();
-  await page.locator('iframe[title="Preview Inlogcode"]').waitFor({
+  await mailPreviewSection.locator('iframe[title="Preview Inlogcode"]').waitFor({
     state: "visible",
     timeout: 10_000,
   });

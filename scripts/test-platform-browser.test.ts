@@ -28,10 +28,16 @@ describe("platform browser Supabase readiness", () => {
       'for (const key of ["subject", "preheader", "html", "text"])',
     );
     expect(source).toContain(
-      'page.getByText("Fictieve preview", { exact: true }).waitFor',
+      'const mailPreviewSection = page.locator("section").filter',
+    );
+    expect(source).toContain(
+      'mailPreviewSection.getByText("Fictieve preview", { exact: true }).waitFor',
     );
     expect(source).toContain('timeout: 30_000');
     expect(source).toContain(
+      "mailPreviewSection.locator('iframe[title=\"Preview Inlogcode\"]').waitFor",
+    );
+    expect(source).not.toContain(
       'page.getByRole("button", { name: "Desktop", exact: true }).click()',
     );
     expect(source.match(
