@@ -131,7 +131,25 @@ const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "1
       : "onbekende fout";
     throw new Error(\`Mail-v2-preview gaf HTTP \${mailPreviewResponse.status()}: \${previewFailureCode}; vorm \${JSON.stringify(previewRequestShape)}\`);
   }
-  await page.locator('iframe[title="Preview Inlogcode"]').waitFor({ state: "visible", timeout: 10_000 });
+  const mailPreviewFinished = await mailPreviewResponse.finished();
+  if (mailPreviewFinished) {
+    throw new Error("Mail-v2-previewresponse werd niet volledig ontvangen.");
+  }
+  const mailPreviewPayload = await mailPreviewResponse.json();
+  for (const key of ["subject", "preheader", "html", "text"]) {
+    if (typeof mailPreviewPayload?.[key] !== "string") {
+      throw new Error(\`Mail-v2-preview mist veilig veld \${key}.\`);
+    }
+  }
+  await page.getByText("Fictieve preview", { exact: true }).waitFor({
+    state: "visible",
+    timeout: 30_000,
+  });
+  await page.getByRole("button", { name: "Desktop", exact: true }).click();
+  await page.locator('iframe[title="Preview Inlogcode"]').waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
   await page.getByRole("button", { name: "Branding", exact: true }).click();
   await page.getByRole("heading", { name: "Afzender, contact en afhalen" }).waitFor({
     state: "visible",

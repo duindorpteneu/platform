@@ -19,4 +19,23 @@ describe("platform browser Supabase readiness", () => {
     expect(source).toContain("Number.isInteger(probe.error.status)");
     expect(source).not.toContain("attempt < 120");
   });
+
+  it("wacht eventgebonden op de Mail-v2-preview zonder retry", () => {
+    expect(source).toContain(
+      "const mailPreviewFinished = await mailPreviewResponse.finished();",
+    );
+    expect(source).toContain(
+      'for (const key of ["subject", "preheader", "html", "text"])',
+    );
+    expect(source).toContain(
+      'page.getByText("Fictieve preview", { exact: true }).waitFor',
+    );
+    expect(source).toContain('timeout: 30_000');
+    expect(source).toContain(
+      'page.getByRole("button", { name: "Desktop", exact: true }).click()',
+    );
+    expect(source.match(
+      /page\.getByRole\("button", \{ name: "Preview", exact: true \}\)\.click\(\)/gu,
+    )).toHaveLength(1);
+  });
 });
