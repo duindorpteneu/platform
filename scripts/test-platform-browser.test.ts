@@ -10,6 +10,10 @@ const dynamicImportSource = readFileSync(
   path.join(import.meta.dirname, "test-dynamic-import-browser.mjs"),
   "utf8",
 );
+const parentAccessSource = readFileSync(
+  path.join(import.meta.dirname, "test-parent-access-browser.mjs"),
+  "utf8",
+);
 
 describe("platform browser Supabase readiness", () => {
   it("pollt de echte Auth-API tot een begrensde 120-seconden-deadline", () => {
@@ -22,6 +26,14 @@ describe("platform browser Supabase readiness", () => {
     expect(source).toContain("existing = probe;");
     expect(source).toContain("Number.isInteger(probe.error.status)");
     expect(source).not.toContain("attempt < 120");
+  });
+
+  it("herschept de volledige disposable Supabase-stack rond de browsermatrix", () => {
+    expect(source).toContain("function recreateLocalSupabaseStack()");
+    expect(source).toContain('["stop", "--no-backup"]');
+    expect(source).toContain('["start"]');
+    expect(source.match(/recreateLocalSupabaseStack\(\)/gu)).toHaveLength(3);
+    expect(source).not.toContain('spawnSync("pnpm", ["db:reset"]');
   });
 
   it("wacht eventgebonden op de Mail-v2-preview zonder retry", () => {
@@ -80,6 +92,21 @@ describe("platform browser Supabase readiness", () => {
     expect(dynamicImportSource).toContain("await context.addCookies(browserAuthCookies)");
     expect(dynamicImportSource).toContain('fetch("/api/staff-auth/session"');
     expect(dynamicImportSource).not.toContain(
+      'await page.waitForURL(`${baseUrl}/staff/mfa`)',
+    );
+  });
+
+  it("maakt de portaaltoegang-browserflow via echte AAL2 deterministisch", () => {
+    expect(parentAccessSource).toContain(
+      'import { createBrowserClient } from "@supabase/ssr";',
+    );
+    expect(parentAccessSource).toContain("const localAuthCookies = new Map()");
+    expect(parentAccessSource).toContain("localMfaClient.auth.signInWithPassword");
+    expect(parentAccessSource).toContain("localMfaClient.auth.mfa.enroll");
+    expect(parentAccessSource).toContain("challengeAndVerify");
+    expect(parentAccessSource).toContain("await context.addCookies(browserAuthCookies)");
+    expect(parentAccessSource).toContain('fetch("/api/staff-auth/session"');
+    expect(parentAccessSource).not.toContain(
       'await page.waitForURL(`${baseUrl}/staff/mfa`)',
     );
   });
