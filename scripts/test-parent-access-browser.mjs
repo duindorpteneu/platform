@@ -525,9 +525,29 @@ try {
   ) {
     throw new Error("PARENT_ACCESS_BROWSER_APP_SESSION_FAILED");
   }
-  await localMfaClient.auth.signOut({ scope: "local" });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/backoffice`);
   await page.waitForURL(`${baseUrl}/backoffice`);
+
+  for (const [path, heading, label] of [
+    ["/backoffice/pakketten", "Kledingpakketten", "packages"],
+    ["/backoffice/actiepunten", "Actiepunten", "action_items"],
+    ["/backoffice/leden", "Leden", "members"],
+    ["/backoffice/leveringen", "Leveringen", "deliveries"],
+    ["/backoffice/emails", "E-mailcentrum", "email"],
+  ]) {
+    const response = await page.goto(`${baseUrl}${path}`, {
+      waitUntil: "domcontentloaded",
+    });
+    assert.equal(response?.ok(), true, `${label}: HTTP niet groen`);
+    await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+    await assertNoAutomatedA11yViolations(
+      page,
+      `parent_access_phase_b_${label}`,
+    );
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await localMfaClient.auth.signOut({ scope: "local" });
 
   await page.goto(`${baseUrl}/backoffice/portaaltoegang`);
   await page

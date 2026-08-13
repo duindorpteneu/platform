@@ -80,6 +80,12 @@ describe("platform browser Supabase readiness", () => {
     expect(source).toContain(
       "De lokale interactieve MFA-flow kon niet veilig worden vervangen.",
     );
+    expect(source).toContain(
+      'assertNoAutomatedA11yViolations(page, "deliveries_mobile")',
+    );
+    expect(source).toContain(
+      'assertNoAutomatedA11yViolations(page, "settings_mobile")',
+    );
   });
 
   it("maakt ook de dynamische-importbrowserflow via echte AAL2 deterministisch", () => {
@@ -108,6 +114,12 @@ describe("platform browser Supabase readiness", () => {
     expect(parentAccessSource).toContain('fetch("/api/staff-auth/session"');
     expect(parentAccessSource).not.toContain(
       'await page.waitForURL(`${baseUrl}/staff/mfa`)',
+    );
+    expect(parentAccessSource).toContain(
+      "await page.setViewportSize({ width: 390, height: 844 })",
+    );
+    expect(parentAccessSource).toContain(
+      "parent_access_phase_b_${label}",
     );
   });
 });

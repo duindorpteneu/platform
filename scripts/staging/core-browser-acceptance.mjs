@@ -462,70 +462,181 @@ async function verifyAdminSettingsRpc(target, anonKey, accessToken) {
   return parsed.data;
 }
 
-async function verifyPhaseBSurfaces(page, target) {
-  const surfaces = [
-    ["/backoffice/pakketten", "Kledingpakketten"],
-    ["/backoffice/actiepunten", "Actiepunten"],
-    ["/backoffice/leden", "Leden"],
-    ["/backoffice/leveringen", "Leveringen"],
-    ["/backoffice/emails", "E-mailcentrum"],
-    ["/backoffice/instellingen", "Instellingen"],
-  ];
-  for (const [path, heading] of surfaces) {
-    const response = await page.goto(`${target.baseUrl}${path}`, {
+export function safeA11yFailureSummary(error) {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(
+    /^A11Y_[A-Z0-9_]+_([a-z0-9-]+):(minor|moderate|serious|critical|unknown):([0-9]+):/u,
+  );
+  if (!match) return null;
+  return `${match[1]}:${match[2]}:${match[3]}`;
+}
+
+export function stablePhaseBFailureCode(error, fallback) {
+  return error instanceof Error && /^PHASE_B_[A-Z0-9_]+$/u.test(error.message)
+    ? error.message
+    : fallback;
+}
+
+async function verifyPhaseBSurface(page, target, surface) {
+  process.stdout.write(`Phase-B-oppervlak ${surface.label}: controleren…\n`);
+  let response;
+  try {
+    response = await page.goto(`${target.baseUrl}${surface.path}`, {
       waitUntil: "domcontentloaded",
     });
-    if (!response?.ok()) {
-      throw new Error("PHASE_B_SURFACE_HTTP_FAILED");
-    }
+  } catch {
+    throw new Error(`PHASE_B_${surface.code}_NAVIGATION_FAILED`);
+  }
+  if (!response?.ok()) {
+    process.stdout.write(
+      `Phase-B-oppervlak ${surface.label}: HTTP ${response?.status() ?? 0}.\n`,
+    );
+    throw new Error(`PHASE_B_${surface.code}_HTTP_FAILED`);
+  }
+  try {
     await page.getByRole("heading", {
-      name: heading,
+      name: surface.heading,
       exact: true,
     }).waitFor();
+  } catch {
+    throw new Error(`PHASE_B_${surface.code}_HEADING_FAILED`);
+  }
+  try {
     await assertNoAutomatedA11yViolations(
       page,
-      `staging_${path.split("/").at(-1)}`,
+      `staging_${surface.label}`,
+    );
+  } catch (error) {
+    const summary = safeA11yFailureSummary(error);
+    if (summary) {
+      process.stdout.write(
+        `Phase-B-oppervlak ${surface.label}: a11y ${summary}.\n`,
+      );
+    }
+    throw new Error(
+      summary
+        ? `PHASE_B_${surface.code}_A11Y_FAILED`
+        : `PHASE_B_${surface.code}_A11Y_EXECUTION_FAILED`,
     );
   }
-  await page.getByText("Phase-B-procespoorten", {
-    exact: true,
-  }).waitFor();
-  await page.goto(`${target.baseUrl}/backoffice/leden`);
-  await page.getByLabel("Opgeslagen ledenweergaven").waitFor();
-  await page.goto(`${target.baseUrl}/backoffice/leveringen`);
-  await page.getByText("Leveringconcept starten", {
-    exact: true,
-  }).waitFor();
-  await page.goto(`${target.baseUrl}/backoffice/emails`);
-  await page.getByRole("button", {
-    name: "Herinneringen",
-    exact: true,
-  }).click();
-  await page.getByText("Herinneringsregels", {
-    exact: true,
-  }).waitFor();
-  await page.goto(`${target.baseUrl}/leverancier/login`);
-  await page.getByRole("heading", {
-    name: "Leveranciersplanning",
-    exact: true,
-  }).waitFor();
-  const supplierCopy = await page.locator("main").innerText();
-  if (
-    !supplierCopy.includes("uitsluitend geaggregeerde aantallen")
-    || supplierCopy.includes("Geboortedatum")
-    || supplierCopy.includes("E-mailadres lid")
-  ) {
-    throw new Error("PHASE_B_SUPPLIER_PRIVACY_COPY_INVALID");
+  process.stdout.write(`Phase-B-oppervlak ${surface.label}: geslaagd.\n`);
+}
+
+async function verifyPhaseBExpectation(label, code, operation) {
+  process.stdout.write(`Phase-B-contract ${label}: controleren…\n`);
+  try {
+    await operation();
+  } catch (error) {
+    const summary = safeA11yFailureSummary(error);
+    if (summary) {
+      process.stdout.write(`Phase-B-contract ${label}: a11y ${summary}.\n`);
+    }
+    throw new Error(stablePhaseBFailureCode(error, code));
   }
-  await assertNoAutomatedA11yViolations(
-    page,
-    "staging_supplier_login",
+  process.stdout.write(`Phase-B-contract ${label}: geslaagd.\n`);
+}
+
+async function verifyPhaseBSurfaces(page, target) {
+  const surfaces = [
+    { code: "PACKAGES", label: "pakketten", path: "/backoffice/pakketten", heading: "Kledingpakketten" },
+    { code: "ACTION_ITEMS", label: "actiepunten", path: "/backoffice/actiepunten", heading: "Actiepunten" },
+    { code: "MEMBERS", label: "leden", path: "/backoffice/leden", heading: "Leden" },
+    { code: "DELIVERIES", label: "leveringen", path: "/backoffice/leveringen", heading: "Leveringen" },
+    { code: "EMAIL", label: "emails", path: "/backoffice/emails", heading: "E-mailcentrum" },
+    { code: "SETTINGS", label: "instellingen", path: "/backoffice/instellingen", heading: "Instellingen" },
+  ];
+  for (const surface of surfaces) {
+    await verifyPhaseBSurface(page, target, surface);
+  }
+  await verifyPhaseBExpectation(
+    "releasepoorten",
+    "PHASE_B_RELEASE_CONTROLS_FAILED",
+    async () => {
+      await page.getByText("Phase-B-procespoorten", {
+        exact: true,
+      }).waitFor();
+    },
   );
-  await page.goto(`${target.baseUrl}/backoffice`);
-  await page.getByRole("heading", {
-    name: "Dashboard",
-    exact: true,
-  }).waitFor();
+  await verifyPhaseBExpectation(
+    "opgeslagen-ledenweergaven",
+    "PHASE_B_SAVED_MEMBER_VIEWS_FAILED",
+    async () => {
+      await page.goto(`${target.baseUrl}/backoffice/leden`);
+      await page.getByLabel("Opgeslagen ledenweergaven").waitFor();
+    },
+  );
+  await verifyPhaseBExpectation(
+    "leveringconcept",
+    "PHASE_B_DELIVERY_DRAFT_FAILED",
+    async () => {
+      await page.goto(`${target.baseUrl}/backoffice/leveringen`);
+      await page.getByText("Leveringconcept starten", {
+        exact: true,
+      }).waitFor();
+    },
+  );
+  await verifyPhaseBExpectation(
+    "herinneringsregels",
+    "PHASE_B_REMINDER_RULES_FAILED",
+    async () => {
+      await page.goto(`${target.baseUrl}/backoffice/emails`);
+      await page.getByRole("button", {
+        name: "Herinneringen",
+        exact: true,
+      }).click();
+      await page.getByText("Herinneringsregels", {
+        exact: true,
+      }).waitFor();
+    },
+  );
+  await verifyPhaseBExpectation(
+    "leveranciersprivacy",
+    "PHASE_B_SUPPLIER_PRIVACY_FAILED",
+    async () => {
+      await page.goto(`${target.baseUrl}/leverancier/login`);
+      await page.getByRole("heading", {
+        name: "Leveranciersplanning",
+        exact: true,
+      }).waitFor();
+      const supplierCopy = await page.locator("main").innerText();
+      if (
+        !supplierCopy.includes("uitsluitend geaggregeerde aantallen")
+        || supplierCopy.includes("Geboortedatum")
+        || supplierCopy.includes("E-mailadres lid")
+      ) {
+        throw new Error("PHASE_B_SUPPLIER_PRIVACY_COPY_INVALID");
+      }
+      try {
+        await assertNoAutomatedA11yViolations(
+          page,
+          "staging_supplier_login",
+        );
+      } catch (error) {
+        const summary = safeA11yFailureSummary(error);
+        if (summary) {
+          process.stdout.write(
+            `Phase-B-contract leveranciersprivacy: a11y ${summary}.\n`,
+          );
+        }
+        throw new Error(
+          summary
+            ? "PHASE_B_SUPPLIER_A11Y_FAILED"
+            : "PHASE_B_SUPPLIER_A11Y_EXECUTION_FAILED",
+        );
+      }
+    },
+  );
+  await verifyPhaseBExpectation(
+    "dashboard-terugkeer",
+    "PHASE_B_DASHBOARD_RETURN_FAILED",
+    async () => {
+      await page.goto(`${target.baseUrl}/backoffice`);
+      await page.getByRole("heading", {
+        name: "Dashboard",
+        exact: true,
+      }).waitFor();
+    },
+  );
 }
 
 async function verifyRole(page, target, role, anonKey, accessToken) {
