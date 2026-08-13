@@ -9,7 +9,7 @@ import {
   vi,
 } from "vitest";
 // @ts-expect-error The provider acceptance entrypoint is intentionally plain Node.js ESM.
-import { runSendGridAcceptance, validateSendGridAcceptanceConfig, waitForInboxMessage, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
+import { cleanupSendGridAcceptanceFixture, runSendGridAcceptance, validateSendGridAcceptanceConfig, waitForInboxMessage, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
 
 const correlation =
   "12345678-1234-4123-8123-123456789abc";
@@ -54,11 +54,13 @@ const values = {
     "https://staging-duindorp.dgwebservices.nl",
   RELEASE_SHA: "a".repeat(40),
   NEXT_PUBLIC_SUPABASE_URL:
-    "https://abcdefghijklmnopqrst.supabase.co",
+    "https://dxbdjtbyghsovlrdcwcr.supabase.co",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key".repeat(8),
-  E2E_ADMIN_EMAIL: "admin@example.invalid",
-  E2E_ADMIN_PASSWORD: "correct-horse-battery",
-  E2E_ADMIN_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+  SUPABASE_SERVICE_ROLE_KEY: "service-role-key".repeat(4),
+  SUPABASE_DB_URL:
+    "postgresql://postgres:secret@db.dxbdjtbyghsovlrdcwcr.supabase.co:5432/postgres?sslmode=require",
+  SUPABASE_PROJECT_REF: "dxbdjtbyghsovlrdcwcr",
+  SENDGRID_ACCEPTANCE_RUN_ID: "123456-1",
   E2E_MAILBOX_IMAP_HOST: "imap.example.invalid",
   E2E_MAILBOX_IMAP_PORT: "993",
   E2E_MAILBOX_IMAP_USER: "acceptance",
@@ -83,6 +85,17 @@ const webhookSettings = {
   click: false,
   account_status_change: false,
 };
+
+function acceptanceUserId(runMarker = "123456-1") {
+  const bytes = createHash("sha256")
+    .update(`duindorp-sendgrid-acceptance:${runMarker}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 function response(
   status: number,
@@ -134,6 +147,9 @@ function acceptanceClient() {
   });
   return {
     auth: {
+      signOut: vi.fn().mockResolvedValue({
+        error: null,
+      }),
       signInWithPassword: vi.fn().mockResolvedValue({
         data: {
           session: { access_token: "aal1-token" },
@@ -144,17 +160,19 @@ function acceptanceClient() {
         getAuthenticatorAssuranceLevel: vi.fn()
           .mockResolvedValue({
             data: {
-              currentLevel: "aal1",
+              currentLevel: "aal2",
               nextLevel: "aal2",
             },
             error: null,
           }),
         listFactors: vi.fn().mockResolvedValue({
+          data: { totp: [] },
+          error: null,
+        }),
+        enroll: vi.fn().mockResolvedValue({
           data: {
-            totp: [{
-              id: "factor-1",
-              status: "verified",
-            }],
+            id: "factor-1",
+            totp: { secret: "JBSWY3DPEHPK3PXP" },
           },
           error: null,
         }),
@@ -175,6 +193,55 @@ function acceptanceClient() {
   };
 }
 
+function acceptanceAdmin(runMarker = "123456-1") {
+  const fixtureUser = {
+    id: acceptanceUserId(runMarker),
+    email: `staging-sendgrid-${runMarker}@example.invalid`,
+    app_metadata: {
+      duindorp_acceptance:
+        "duindorp-sendgrid-acceptance-v1",
+    },
+  };
+  const getUserById = vi.fn()
+    .mockResolvedValueOnce({
+      data: { user: null },
+      error: { status: 404 },
+    })
+    .mockResolvedValue({
+      data: { user: fixtureUser },
+      error: null,
+    });
+  const listUsers = vi.fn()
+    .mockResolvedValueOnce({
+      data: { users: [] },
+      error: null,
+    })
+    .mockResolvedValue({
+      data: { users: [fixtureUser] },
+      error: null,
+    });
+  return {
+    auth: {
+      admin: {
+        getUserById,
+        listUsers,
+        createUser: vi.fn().mockResolvedValue({
+          data: { user: fixtureUser },
+          error: null,
+        }),
+        signOut: vi.fn().mockResolvedValue({
+          data: null,
+          error: null,
+        }),
+        deleteUser: vi.fn().mockResolvedValue({
+          data: {},
+          error: null,
+        }),
+      },
+    },
+  };
+}
+
 describe("SendGrid staging acceptance", () => {
   it("vereist keyseparatie, exacte clubafzender en het vaste stagingorigin", () => {
     expect(validateSendGridAcceptanceConfig(values))
@@ -183,6 +250,13 @@ describe("SendGrid staging acceptance", () => {
         imapPort: 993,
         releaseSha: "a".repeat(40),
       });
+    expect(validateSendGridAcceptanceConfig({
+      ...values,
+      SUPABASE_DB_URL: values.SUPABASE_DB_URL.replace(
+        "?sslmode=require",
+        "",
+      ),
+    }).databaseUrl).toContain("sslmode=require");
     for (const override of [
       {
         SENDGRID_ADMIN_API_KEY:
@@ -206,6 +280,10 @@ describe("SendGrid staging acceptance", () => {
       },
       {
         E2E_MAILBOX_IMAP_HOST: "127.0.0.1",
+      },
+      {
+        SUPABASE_DB_URL:
+          "postgresql://postgres:secret@db.wobcbufmmputydtzemyu.supabase.co:5432/postgres?sslmode=require",
       },
     ]) {
       expect(() => validateSendGridAcceptanceConfig({
@@ -271,18 +349,25 @@ describe("SendGrid staging acceptance", () => {
       logout,
     };
     const client = acceptanceClient();
+    const admin = acceptanceAdmin();
+    const spawnSync = vi.fn().mockReturnValue({ status: 0 });
 
     await expect(runSendGridAcceptance(values, {
       randomUUID: () => correlation,
       fetchImpl,
       createClient: () => client,
+      createAdminClient: () => admin,
       createImapClient: () => imap,
+      spawnSync,
+      randomBytes: () => Buffer.alloc(32, 7),
       attempts: 1,
       now: () => 1_785_680_000_000,
     })).resolves.toMatchObject({
       release_sha: "a".repeat(40),
       checks: {
         app_request_idempotency: true,
+        ephemeral_admin_cleanup: true,
+        ephemeral_admin_mfa: true,
         inbox_delivery: true,
         signed_delivery_event: true,
       },
@@ -307,6 +392,15 @@ describe("SendGrid staging acceptance", () => {
       factorId: "factor-1",
       code: expect.stringMatching(/^\d{6}$/),
     });
+    expect(client.auth.mfa.enroll).toHaveBeenCalledWith({
+      factorType: "totp",
+      friendlyName: "SendGrid staging acceptance",
+    });
+    expect(spawnSync).toHaveBeenCalledTimes(3);
+    expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(
+      acceptanceUserId(),
+      false,
+    );
     expect(client.rpc).toHaveBeenCalledWith(
       "get_mail_test_delivery_status_v2",
       { p_delivery_id: deliveryId },
@@ -344,6 +438,110 @@ describe("SendGrid staging acceptance", () => {
       "SENDGRID_APP_KEY_SCOPE_NOT_MINIMAL",
     );
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("deactiveert fail-closed en weigert een authfixture zonder marker", async () => {
+    const admin = acceptanceAdmin();
+    admin.auth.admin.listUsers = vi.fn().mockResolvedValue({
+      data: { users: [] },
+      error: null,
+    });
+    admin.auth.admin.getUserById = vi.fn()
+      .mockResolvedValue({
+        data: {
+          user: {
+            id: acceptanceUserId(),
+            email: "human@example.invalid",
+            app_metadata: {},
+          },
+        },
+        error: null,
+      });
+    const spawnSync = vi.fn().mockReturnValue({ status: 0 });
+    await expect(cleanupSendGridAcceptanceFixture(values, {
+      createAdminClient: () => admin,
+      spawnSync,
+    })).rejects.toThrow(
+      "SENDGRID_ACCEPTANCE_FIXTURE_CLEANUP_FAILED",
+    );
+    expect(spawnSync).toHaveBeenCalledOnce();
+    expect(spawnSync.mock.calls[0]?.[2]?.input).toContain(
+      "profile.automation_kind = 'sendgrid_acceptance'",
+    );
+    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("schoont databaseprofielen ook wanneer Auth tijdelijk onbereikbaar is", async () => {
+    const admin = acceptanceAdmin();
+    admin.auth.admin.listUsers = vi.fn().mockResolvedValue({
+      data: { users: [] },
+      error: { status: 503 },
+    });
+    admin.auth.admin.getUserById = vi.fn().mockResolvedValue({
+      data: { user: null },
+      error: { status: 503 },
+    });
+    const spawnSync = vi.fn().mockReturnValue({ status: 0 });
+
+    await expect(cleanupSendGridAcceptanceFixture(values, {
+      createAdminClient: () => admin,
+      spawnSync,
+    })).rejects.toThrow(
+      "SENDGRID_ACCEPTANCE_FIXTURE_CLEANUP_FAILED",
+    );
+
+    expect(spawnSync).toHaveBeenCalledOnce();
+    const cleanupSql = spawnSync.mock.calls[0]?.[2]?.input;
+    expect(cleanupSql).toContain(
+      "profile.automation_kind = 'sendgrid_acceptance'",
+    );
+    expect(cleanupSql).toContain("and active;");
+    expect(cleanupSql).toContain("do $assertion$");
+    expect(cleanupSql.indexOf("for target in")).toBeLessThan(
+      cleanupSql.indexOf("do $assertion$"),
+    );
+    expect(cleanupSql).not.toContain(
+      "and profile.active\n    for update",
+    );
+    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("verwijdert Auth best-effort wanneer databasecleanup of global sign-out faalt", async () => {
+    const admin = acceptanceAdmin();
+    admin.auth.admin.listUsers = vi.fn().mockResolvedValue({
+      data: {
+        users: [{
+          id: acceptanceUserId(),
+          email: "staging-sendgrid-123456-1@example.invalid",
+          app_metadata: {
+            duindorp_acceptance:
+              "duindorp-sendgrid-acceptance-v1",
+          },
+        }],
+      },
+      error: null,
+    });
+    admin.auth.admin.signOut.mockResolvedValue({
+      data: null,
+      error: { status: 500 },
+    });
+    await expect(cleanupSendGridAcceptanceFixture(values, {
+      accessToken: "ephemeral-aal2-token",
+      createAdminClient: () => admin,
+      spawnSync: vi.fn().mockReturnValue({ status: 1 }),
+    })).rejects.toThrow(
+      "SENDGRID_ACCEPTANCE_FIXTURE_CLEANUP_FAILED",
+    );
+    expect(admin.auth.admin.signOut).toHaveBeenCalledOnce();
+    expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(
+      acceptanceUserId(),
+      false,
+    );
+  });
+
+  it("gebruikt per run een andere Auth-identiteit", () => {
+    expect(acceptanceUserId("123456-1"))
+      .not.toBe(acceptanceUserId("123456-2"));
   });
 
   it("faalt gesloten bij dubbele inboxcorrelatie of timeout", async () => {

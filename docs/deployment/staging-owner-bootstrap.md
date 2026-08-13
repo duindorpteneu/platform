@@ -67,4 +67,8 @@ Configureer in het staging-Supabaseproject onder **Authentication → URL Config
 
 Een medewerker gebruikt daarna **Medewerkerslogin → Wachtwoord vergeten?**. Het antwoord blijft voor bekende en onbekende adressen gelijk. Een bestaande geverifieerde TOTP-factor wordt vóór de wachtwoordwijziging opnieuw gevraagd; na succes worden alle opaque app-sessies, open sessie-exchanges en sessiegebonden QR-scangrants ingetrokken en moet de medewerker opnieuw inloggen. De Supabase-dashboardactie **Send password recovery** blijft als operationele fallback bruikbaar: een strikt geldig `type=recovery`-fragment wordt vanaf de Site URL direct naar dezelfde staff-resetpagina geleid.
 
-Voor het E2E-account blijft de bestaande TOTP-seed gelijk. Werk na herstel uitsluitend de GitHub Environment-secret `E2E_ADMIN_PASSWORD` bij naar het exact gekozen wachtwoord; wijzig `E2E_ADMIN_TOTP_SECRET` alleen wanneer de factor bewust opnieuw is gekoppeld. Plaats geen van beide waarden in chat, logs of workflowinputs.
+De geautomatiseerde SendGrid-acceptatie gebruikt geen menselijke medewerker of
+duurzame loginsecret. De workflow maakt zelf een gemarkeerde fictieve
+stagingbeheerder met een vers willekeurig wachtwoord en een nieuwe TOTP-factor,
+en deactiveert en verwijdert die Auth-user altijd na de test. Het account van de
+stagingeigenaar staat volledig los van deze acceptatiefixture.

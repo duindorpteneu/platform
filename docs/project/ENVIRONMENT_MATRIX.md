@@ -66,9 +66,6 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `E2E_MAILBOX_IMAP_MAILBOX` | Acceptatieconfiguratie | `INBOX` | Alleen staging; standaard `INBOX` |
 | `E2E_MAILBOX_IMAP_USER` | PII, acceptatie-only secret | Leeg | Alleen staging; nooit in workflowoutput |
 | `E2E_MAILBOX_IMAP_PASSWORD` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; unieke app-password/credential |
-| `E2E_ADMIN_EMAIL` | PII, acceptatie-only secret | Leeg | Alleen staging; bestaande geïsoleerde beheerder voor de echte AAL2-testmailflow |
-| `E2E_ADMIN_PASSWORD` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; uniek wachtwoord van de geïsoleerde E2E-beheerder |
-| `E2E_ADMIN_TOTP_SECRET` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; base32-secret van exact één geverifieerde TOTP-factor, nooit gelogd |
 | `STAGING_CLEANUP_BACKUP_PASSPHRASE` | Hoog geheim, cleanup-only | Leeg | Alleen staging; minimaal 32 tekens en los van appkeys |
 | `PRODUCTION_BACKUP_PASSPHRASE` | Hoog geheim, promotion-only | Leeg | Alleen production; minimaal 32 tekens, versleutelt het herstelpunt dat vóór iedere migratie duurzaam wordt geüpload |
 | `RELEASE_ARTIFACT_DIGEST` | Niet geheim, deployment-generated | Leeg | Exacte SHA-256 van het getransporteerde image-archief; komt uit het gesigneerde manifest en wordt nooit handmatig ingesteld |
@@ -84,27 +81,24 @@ De deploymentnaamgeving wordt bewust vertaald naar het runtimecontract:
 `SUPABASE_SERVICE_ROLE_KEY` wordt `SUPABASE_SECRET_KEY`. De workflow
 controleert beide namen zonder waarden te tonen.
 
-## Actuele GitHub-aanwezigheid (2026-08-07, alleen namen gelezen)
+## Actuele GitHub-aanwezigheid (2026-08-13, alleen namen gelezen)
 
 De environments zijn opnieuw rechtstreeks via de GitHub-API geïnventariseerd;
 secretwaarden zijn niet gelezen. Staging bevat de Supabase-, server-action-,
 parent-, QR-, cron-, import-, Mollie-, Mail Send- en recoverable-cleanupsecrets.
 Project-ref, lokale JWKS, QR-versie, 24-uurs importretentie, webhook-public-key,
 webhook-ID en de goedgekeurde afzendernaam/-adressen staan als variables. De
-testinboxpoort is `993` en de mailboxnaam `INBOX`. Providers en dynamische
-import blijven standaard uit.
+testinboxpoort is `993` en de mailboxnaam `INBOX`. Ook de heartbeat, gescheiden
+SendGrid-beheerkey, key- en accountfingerprints en testinboxconfiguratie zijn
+op naam aanwezig. Providers en dynamische import blijven standaard uit.
 
-Nog ontbrekend in staging:
-
-- `OPERATIONS_HEARTBEAT_URL` met een echte alert-eigenaar en bewezen gemiste
-  ping plus herstel;
-- `SENDGRID_ADMIN_API_KEY`, `SENDGRID_API_KEY_FINGERPRINT` en
-  `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` voor een dedicated stagingaccount of
-  subuser en een accountgebonden webhook-/Mail Send-acceptatie;
-- `E2E_MAILBOX_IMAP_HOST`, `E2E_MAILBOX_IMAP_USER`,
-  `E2E_MAILBOX_IMAP_PASSWORD`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` en
-  `E2E_ADMIN_TOTP_SECRET` voor machine-verifieerbare AAL2-testmail en
-  inboxbezorging.
+De SendGrid-acceptatie gebruikt geen duurzaam E2E-medewerkeraccount meer. De
+workflow maakt op staging per run een gemarkeerde fictieve Auth-user en uniek,
+niet-persoonsgebonden auditprofiel met een willekeurig process-local wachtwoord
+en nieuwe TOTP-factor. Het profiel wordt na afloop gedeactiveerd, alle
+app-sessies worden ingetrokken en de Auth-user wordt verwijderd; immutable
+testmailbewijs kan zo veilig naar de inactieve actor blijven verwijzen. Daardoor zijn
+geen `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` of `E2E_ADMIN_TOTP_SECRET` nodig.
 
 Production bevat nu ook unieke, zonder output gegenereerde
 `QR_TOKEN_PEPPER`, `IMPORT_STAGING_ENCRYPTION_KEY` en

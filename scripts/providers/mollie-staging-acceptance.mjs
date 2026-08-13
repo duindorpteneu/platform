@@ -4,6 +4,7 @@ import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { requireExplicitDatabaseTls } from "../staging/require-database-tls.mjs";
 
 export const STAGING_APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
 export const STAGING_SUPABASE_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
@@ -18,6 +19,7 @@ const runMarkerPattern = /^[0-9]{1,20}-[0-9]{1,6}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const fixtureRelationPattern = /^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-[PM]$/;
 const fixtureEmailPattern = /^mollie-acceptance\+[0-9]{1,20}a[0-9]{1,6}@example\.invalid$/;
+const acceptedDatabaseParameters = new Set(["connect_timeout", "sslmode"]);
 const fixtureSqlDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "sql");
 const fixtureSqlFiles = Object.freeze({
   prepare: "mollie-fixture-prepare.sql",
@@ -41,6 +43,18 @@ function assertDbTarget(dbUrlValue, projectRef) {
     fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
   }
   if (!dbUrl.password || dbUrl.pathname !== "/postgres") fail("MOLLIE_ACCEPTANCE_DATABASE_URL_INVALID");
+  const queryParameters = [...new Set(dbUrl.searchParams.keys())];
+  if (queryParameters.some((parameter) => !acceptedDatabaseParameters.has(parameter))) {
+    fail("MOLLIE_ACCEPTANCE_DATABASE_PARAMETERS_INVALID");
+  }
+  if (queryParameters.some((parameter) => dbUrl.searchParams.getAll(parameter).length !== 1)) {
+    fail("MOLLIE_ACCEPTANCE_DATABASE_PARAMETERS_INVALID");
+  }
+  const connectTimeout = dbUrl.searchParams.get("connect_timeout");
+  if (connectTimeout !== null
+    && (!/^[1-9][0-9]{0,2}$/u.test(connectTimeout) || Number(connectTimeout) > 120)) {
+    fail("MOLLIE_ACCEPTANCE_DATABASE_PARAMETERS_INVALID");
+  }
   const sslMode = dbUrl.searchParams.get("sslmode");
   if (!sslMode || !["require", "verify-ca", "verify-full"].includes(sslMode)) {
     fail("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
@@ -63,11 +77,14 @@ export function validateTargetConfiguration(env) {
     fail("MOLLIE_ACCEPTANCE_PROJECT_REF_MISMATCH");
   }
   if (!runMarkerPattern.test(env.MOLLIE_ACCEPTANCE_RUN_ID ?? "")) fail("MOLLIE_ACCEPTANCE_RUN_ID_INVALID");
-  assertDbTarget(env.SUPABASE_DB_URL ?? "", STAGING_SUPABASE_PROJECT_REF);
+  const dbUrl = requireExplicitDatabaseTls(
+    env.SUPABASE_DB_URL ?? "",
+  );
+  assertDbTarget(dbUrl, STAGING_SUPABASE_PROJECT_REF);
   return {
     appBaseUrl: STAGING_APP_BASE_URL,
     projectRef: STAGING_SUPABASE_PROJECT_REF,
-    dbUrl: env.SUPABASE_DB_URL,
+    dbUrl,
     runMarker: env.MOLLIE_ACCEPTANCE_RUN_ID,
   };
 }

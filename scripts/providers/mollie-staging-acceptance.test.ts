@@ -38,12 +38,44 @@ const validEnv = {
 };
 
 describe("Mollie staging acceptance guards", () => {
+  it("beperkt de databasecredential tot acceptatie en cleanup", () => {
+    const workflow = readFileSync(
+      new URL("../../.github/workflows/staging-mollie-acceptance.yml", import.meta.url),
+      "utf8",
+    );
+    const acceptanceStep = workflow.indexOf("node scripts/providers/mollie-staging-acceptance.mjs\n");
+    const cleanupStep = workflow.indexOf(
+      "node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only",
+    );
+
+    expect(acceptanceStep).toBeGreaterThan(0);
+    expect(cleanupStep).toBeGreaterThan(acceptanceStep);
+    expect(workflow.slice(acceptanceStep, cleanupStep)).toContain("if: always()");
+    const secretBindings = [
+      ...workflow.matchAll(/SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu),
+    ];
+    expect(secretBindings).toHaveLength(2);
+    expect(workflow).not.toContain(
+      "node scripts/staging/require-database-tls.mjs",
+    );
+    expect(workflow.slice(0, workflow.indexOf("    steps:"))).not.toContain(
+      "SUPABASE_DB_URL",
+    );
+  });
+
   it("accepts only the exact staging target, revision, test key and expected profile", () => {
     expect(validateConfiguration(validEnv)).toMatchObject({
       appBaseUrl: validEnv.APP_BASE_URL,
       releaseSha: validEnv.RELEASE_SHA,
       profileId: validEnv.MOLLIE_PROFILE_ID,
     });
+    expect(validateConfiguration({
+      ...validEnv,
+      SUPABASE_DB_URL: validEnv.SUPABASE_DB_URL.replace(
+        "?sslmode=require",
+        "",
+      ),
+    }).dbUrl).toContain("sslmode=require");
 
     expect(() => validateConfiguration({ ...validEnv, APP_BASE_URL: "https://duindorp.dgwebservices.nl" }))
       .toThrow("MOLLIE_ACCEPTANCE_STAGING_HOST_REQUIRED");
@@ -78,19 +110,31 @@ describe("Mollie staging acceptance guards", () => {
     expect(() => validateTargetConfiguration({
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=disable`,
-    })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
+    })).toThrow();
     expect(() => validateTargetConfiguration({
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=prefer`,
-    })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
-    expect(() => validateTargetConfiguration({
+    })).toThrow();
+    expect(validateTargetConfiguration({
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres`,
-    })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TLS_REQUIRED");
+    }).dbUrl).toContain("sslmode=require");
     expect(() => validateTargetConfiguration({
       ...validEnv,
       SUPABASE_DB_URL: `postgresql://readonly:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
     })).toThrow("MOLLIE_ACCEPTANCE_DATABASE_TARGET_MISMATCH");
+    for (const parameters of [
+      "sslmode=require&host=evil.invalid",
+      "sslmode=require&hostaddr=203.0.113.10",
+      "sslmode=require&service=production",
+      "sslmode=require&sslmode=verify-full",
+      "sslmode=require&connect_timeout=121",
+    ]) {
+      expect(() => validateTargetConfiguration({
+        ...validEnv,
+        SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?${parameters}`,
+      })).toThrow();
+    }
   });
 
   it("creates deterministic, fictitious and run-isolated fixture identities", () => {
