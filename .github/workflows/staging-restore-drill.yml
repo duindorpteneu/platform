@@ -60,6 +60,11 @@ jobs:
           clean: true
           persist-credentials: false
 
+      - name: Enforce explicit database TLS without logging credentials
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/staging/require-database-tls.mjs
+
       - name: Validate staging target, ref, SHA and confirmation
         shell: bash
         run: |

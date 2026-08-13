@@ -40,6 +40,17 @@ describe("validateStagingRestoreTarget", () => {
     expect(workflow).not.toContain("POSTGRES_IMAGE: public.ecr.aws/supabase/postgres:17.6.1.143\n");
   });
 
+  it("dwingt database-TLS af voordat het stagingdoel wordt gevalideerd", () => {
+    const workflow = readFileSync(new URL("../../.github/workflows/staging-restore-drill.yml", import.meta.url), "utf8");
+    const tls = workflow.indexOf("node scripts/staging/require-database-tls.mjs");
+    const validation = workflow.indexOf("node scripts/staging/validate-target.mjs");
+
+    expect(tls).toBeGreaterThan(0);
+    expect(validation).toBeGreaterThan(tls);
+    expect(workflow.match(/SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu))
+      .toHaveLength(2);
+  });
+
   it("accepteert alleen het vaste stagingdoel met overeenkomende directe database", () => {
     expect(validateStagingRestoreTarget(values())).toMatchObject({
       environment: "staging",
