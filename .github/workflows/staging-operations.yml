@@ -65,10 +65,17 @@ jobs:
           clean: true
           persist-credentials: false
 
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - name: Verify trusted checkout and live SHA
         run: |
           set -Eeuo pipefail
-          bash scripts/deploy/assert-runner-boundary.sh staging
           [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
           node scripts/deploy/check-http.mjs \
             "${APP_BASE_URL}" staging "${RELEASE_SHA}" \

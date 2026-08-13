@@ -68,4 +68,30 @@ describe("self-hosted runner isolation contract", () => {
       if (secretIndex >= 0) expect(boundaryIndex).toBeLessThan(secretIndex);
     }
   });
+
+  it("installs pinned Node after the boundary and before staging runner scripts", () => {
+    for (const [relativePath, protectedCommand] of [
+      [
+        ".github/workflows/staging-operations.yml",
+        "node scripts/deploy/check-http.mjs",
+      ],
+      [
+        ".github/workflows/staging-rollback-drill.yml",
+        "run: bash scripts/staging/application-rollback-drill.sh",
+      ],
+    ]) {
+      const source = file(relativePath);
+      const boundaryIndex = source.indexOf(
+        "bash scripts/deploy/assert-runner-boundary.sh staging",
+      );
+      const nodeIndex = source.indexOf(
+        "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+      );
+      const commandIndex = source.indexOf(protectedCommand);
+      expect(boundaryIndex).toBeGreaterThan(0);
+      expect(nodeIndex).toBeGreaterThan(boundaryIndex);
+      expect(commandIndex).toBeGreaterThan(nodeIndex);
+      expect(source).toContain("node-version: 22");
+    }
+  });
 });
