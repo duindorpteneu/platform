@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { databaseTargetFromEnvironment, targetFromEnvironment } from "./core-browser-acceptance.mjs";
+import {
+  databaseTargetFromEnvironment,
+  safeA11yFailureSummary,
+  stablePhaseBFailureCode,
+  targetFromEnvironment,
+} from "./core-browser-acceptance.mjs";
 
 const valid = {
   STAGING_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
@@ -117,5 +122,40 @@ describe("staging core target", () => {
     expect(source).toContain(
       "uitsluitend geaggregeerde aantallen",
     );
+    for (const codeTemplate of [
+      "PHASE_B_${surface.code}_NAVIGATION_FAILED",
+      "PHASE_B_${surface.code}_HTTP_FAILED",
+      "PHASE_B_${surface.code}_HEADING_FAILED",
+      "PHASE_B_${surface.code}_A11Y_FAILED",
+      "PHASE_B_${surface.code}_A11Y_EXECUTION_FAILED",
+    ]) {
+      expect(source).toContain(codeTemplate);
+    }
+    for (const code of [
+      "PHASE_B_RELEASE_CONTROLS_FAILED",
+      "PHASE_B_SUPPLIER_PRIVACY_FAILED",
+      "PHASE_B_DASHBOARD_RETURN_FAILED",
+    ]) {
+      expect(source).toContain(code);
+    }
+  });
+
+  it("reduceert een a11y-fout tot een PII-vrije regel, impact en telling", () => {
+    expect(safeA11yFailureSummary(new Error(
+      "A11Y_STAGING_PAKKETTEN_color-contrast:serious:2:div:implicit:no-aria:fixture-member-name",
+    ))).toBe("color-contrast:serious:2");
+    expect(safeA11yFailureSummary(new Error("persoonlijke inhoud"))).toBeNull();
+    expect(safeA11yFailureSummary("geen error-object")).toBeNull();
+  });
+
+  it("behoudt een bekende Phase-B-foutcode en maskeert overige fouten", () => {
+    expect(stablePhaseBFailureCode(
+      new Error("PHASE_B_SUPPLIER_PRIVACY_COPY_INVALID"),
+      "PHASE_B_SUPPLIER_PRIVACY_FAILED",
+    )).toBe("PHASE_B_SUPPLIER_PRIVACY_COPY_INVALID");
+    expect(stablePhaseBFailureCode(
+      new Error("mogelijke persoonlijke inhoud"),
+      "PHASE_B_SUPPLIER_PRIVACY_FAILED",
+    )).toBe("PHASE_B_SUPPLIER_PRIVACY_FAILED");
   });
 });

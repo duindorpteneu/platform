@@ -744,6 +744,7 @@ const scannerPwaReview = `async function verifyStockAndIssuanceSurfaces(page, sc
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-deliveries-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await assertNoAutomatedA11yViolations(page, "deliveries_mobile");
   const scannerResponse = await page.goto(\`\${baseUrl}/uitgifte\`);
   if (!scannerResponse?.ok()) throw new Error("Scannerpagina kon niet online worden geopend.");
   await page.getByRole("heading", { name: "Uitgifte", exact: true }).waitFor({ timeout: 5_000 });
@@ -838,6 +839,11 @@ for (const [needle, replacement] of [
     [
       "  await verifyReleaseHardening(page, local.DB_URL, screenshotDir);",
       '  await assertNoAutomatedA11yViolations(page, "settings_and_audit");',
+      '  await page.goto(`${baseUrl}/backoffice/instellingen`);',
+      '  await page.getByRole("heading", { name: "Instellingen", exact: true }).waitFor({ state: "visible", timeout: 5_000 });',
+      "  await page.setViewportSize({ width: 390, height: 844 });",
+      '  await assertNoAutomatedA11yViolations(page, "settings_mobile");',
+      "  await page.setViewportSize({ width: 1440, height: 1000 });",
     ].join("\n"),
   ],
 ]) {
