@@ -33,6 +33,7 @@ const parentCleanupAfter = [
 let generatedSource = `${
   'import { assertKeyboardFocusVisible, assertNoAutomatedA11yViolations, assertReducedMotionHonored } '
   + 'from "../scripts/browser-a11y.mjs";\n'
+  + 'import { createBrowserClient } from "@supabase/ssr";\n'
 }${source.slice(0, startIndex)}${source.slice(endIndex)}`
   .replace(parentCleanupBefore, parentCleanupAfter)
   .replace(
@@ -219,6 +220,117 @@ generatedSource = generatedSource.replace(
   if (!existing) {
     throw new Error(\`Lokale Supabase Auth werd niet tijdig gezond na de schone reset (\${authFailureCategory}).\`);
   }`,
+);
+const interactiveStaffLogin = `  await page.goto(\`\${baseUrl}/backoffice\`);
+  await page.waitForURL(\`\${baseUrl}/staff/login\`);
+  await page.getByLabel("E-mailadres").fill(email);
+  await page.getByLabel("Wachtwoord").fill(password);
+  await page.getByRole("button", { name: "Inloggen" }).click();
+  await page.waitForURL(\`\${baseUrl}/staff/mfa\`);
+  const secret = (await page.locator("p.font-mono").textContent())?.trim();
+  if (!secret) throw new Error("De MFA-handmatige sleutel is niet zichtbaar.");
+  await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
+  await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
+  try {
+    await page.waitForURL(\`\${baseUrl}/backoffice\`);
+  } catch (error) {
+    const route = new URL(page.url()).pathname;
+    const alert = await page.getByRole("alert").textContent({ timeout: 1_000 }).catch(() => "");
+    process.stderr.write(\`Dashboard-browsertest: MFA-landingdiagnose route=\${route} alert=\${alert ? "aanwezig" : "afwezig"} sync=\${staffSessionSyncStatus}.\\n\`);
+    throw error;
+  }`;
+const directAal2StaffLogin = `  const localAuthCookies = new Map();
+  const localMfaClient = createBrowserClient(local.API_URL, local.ANON_KEY, {
+    isSingleton: false,
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    cookies: {
+      getAll: () => [...localAuthCookies.entries()].map(([name, cookie]) => ({
+        name,
+        value: cookie.value,
+      })),
+      setAll: (cookies) => {
+        for (const cookie of cookies) {
+          if (!cookie.value || cookie.options?.maxAge === 0) {
+            localAuthCookies.delete(cookie.name);
+          } else {
+            localAuthCookies.set(cookie.name, cookie);
+          }
+        }
+      },
+    },
+  });
+  const localSignIn = await localMfaClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (localSignIn.error || !localSignIn.data.session) {
+    throw new Error("Lokale AAL2-browsertest kon niet inloggen.");
+  }
+  const localEnrollment = await localMfaClient.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: "Phase-B lokale browsertest",
+    issuer: "Duindorp SV",
+  });
+  if (localEnrollment.error || !localEnrollment.data) {
+    throw new Error("Lokale AAL2-browsertest kon MFA niet instellen.");
+  }
+  const localVerification = await localMfaClient.auth.mfa.challengeAndVerify({
+    factorId: localEnrollment.data.id,
+    code: currentTotp(localEnrollment.data.totp.secret),
+  });
+  if (localVerification.error) {
+    throw new Error("Lokale AAL2-browsertest kon MFA niet bevestigen.");
+  }
+  const localSession = await localMfaClient.auth.getSession();
+  const localAccessToken = localSession.data.session?.access_token;
+  if (localSession.error || !localAccessToken) {
+    throw new Error("Lokale AAL2-browsertest mist een bevestigde sessie.");
+  }
+  const browserAuthCookies = [...localAuthCookies.values()].map((cookie) => ({
+    name: cookie.name,
+    value: cookie.value,
+    url: baseUrl,
+    sameSite: "Lax",
+  }));
+  if (browserAuthCookies.length === 0) {
+    throw new Error("Lokale AAL2-browsertest mist de Supabase-sessiecookie.");
+  }
+  await page.context().addCookies(browserAuthCookies);
+  await page.goto(\`\${baseUrl}/staff/login\`);
+  const localAppSession = await page.evaluate(async (accessToken) => {
+    const response = await fetch("/api/staff-auth/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Duindorp-CSRF": "same-origin",
+      },
+      body: JSON.stringify({ accessToken }),
+    });
+    const payload = await response.json().catch(() => null);
+    return {
+      status: response.status,
+      landingPath: payload?.landingPath ?? null,
+    };
+  }, localAccessToken);
+  staffSessionSyncStatus = \`http-\${localAppSession.status}\`;
+  if (
+    localAppSession.status !== 200
+    || localAppSession.landingPath !== "/backoffice"
+  ) {
+    throw new Error("Lokale AAL2-browsertest kon de appsessie niet starten.");
+  }
+  await localMfaClient.auth.signOut({ scope: "local" });
+  await page.goto(\`\${baseUrl}/backoffice\`);
+  await page.waitForURL(\`\${baseUrl}/backoffice\`);`;
+if (!generatedSource.includes(interactiveStaffLogin)) {
+  throw new Error("De lokale interactieve MFA-flow kon niet veilig worden vervangen.");
+}
+generatedSource = generatedSource.replace(
+  interactiveStaffLogin,
+  directAal2StaffLogin,
 );
 const legacySettingsMutation = `  await page.getByLabel("Contactmail").fill("kleding@duindorpsv.nl");
   await page.getByLabel("Verenigingsadres", { exact: true }).fill("Duinlaan 1");

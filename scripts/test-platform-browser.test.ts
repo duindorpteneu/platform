@@ -6,6 +6,10 @@ const source = readFileSync(
   path.join(import.meta.dirname, "test-platform-browser.mjs"),
   "utf8",
 );
+const dynamicImportSource = readFileSync(
+  path.join(import.meta.dirname, "test-dynamic-import-browser.mjs"),
+  "utf8",
+);
 
 describe("platform browser Supabase readiness", () => {
   it("pollt de echte Auth-API tot een begrensde 120-seconden-deadline", () => {
@@ -46,5 +50,37 @@ describe("platform browser Supabase readiness", () => {
     expect(source.match(
       /page\.getByRole\("button", \{ name: "Preview", exact: true \}\)\.click\(\)/gu,
     )).toHaveLength(1);
+  });
+
+  it("maakt de lokale a11y-flow via echte Supabase AAL2 deterministisch", () => {
+    expect(source).toContain("const interactiveStaffLogin");
+    expect(source).toContain("const directAal2StaffLogin");
+    expect(source).toContain(
+      'import { createBrowserClient } from "@supabase/ssr";',
+    );
+    expect(source).toContain("const localAuthCookies = new Map()");
+    expect(source).toContain("createBrowserClient(local.API_URL, local.ANON_KEY");
+    expect(source).toContain("localMfaClient.auth.signInWithPassword");
+    expect(source).toContain("localMfaClient.auth.mfa.enroll");
+    expect(source).toContain("challengeAndVerify");
+    expect(source).toContain("await page.context().addCookies(browserAuthCookies)");
+    expect(source).toContain('fetch("/api/staff-auth/session"');
+    expect(source).toContain(
+      "De lokale interactieve MFA-flow kon niet veilig worden vervangen.",
+    );
+  });
+
+  it("maakt ook de dynamische-importbrowserflow via echte AAL2 deterministisch", () => {
+    expect(dynamicImportSource).toContain(
+      'import { createBrowserClient } from "@supabase/ssr";',
+    );
+    expect(dynamicImportSource).toContain("localMfaClient.auth.signInWithPassword");
+    expect(dynamicImportSource).toContain("localMfaClient.auth.mfa.enroll");
+    expect(dynamicImportSource).toContain("challengeAndVerify");
+    expect(dynamicImportSource).toContain("await context.addCookies(browserAuthCookies)");
+    expect(dynamicImportSource).toContain('fetch("/api/staff-auth/session"');
+    expect(dynamicImportSource).not.toContain(
+      'await page.waitForURL(`${baseUrl}/staff/mfa`)',
+    );
   });
 });

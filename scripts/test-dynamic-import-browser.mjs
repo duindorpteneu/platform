@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import net from "node:net";
 import { chromium } from "@playwright/test";
+import { createBrowserClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import {
   assertKeyboardFocusVisible,
@@ -351,16 +352,89 @@ try {
     viewport: { width: 1440, height: 1000 },
   });
   const page = await context.newPage();
-  await page.goto(`${baseUrl}/backoffice/leden/importeren`);
-  await page.waitForURL(`${baseUrl}/staff/login`);
-  await page.getByLabel("E-mailadres").fill(email);
-  await page.getByLabel("Wachtwoord").fill(password);
-  await page.getByRole("button", { name: "Inloggen" }).click();
-  await page.waitForURL(`${baseUrl}/staff/mfa`);
-  const secret = (await page.locator("p.font-mono").textContent())?.trim();
-  if (!secret) throw new Error("De MFA-sleutel ontbreekt in de importtest.");
-  await page.getByLabel("Zescijferige verificatiecode").fill(currentTotp(secret));
-  await page.getByRole("button", { name: "Beveiligde sessie starten" }).click();
+  const localAuthCookies = new Map();
+  const localMfaClient = createBrowserClient(local.API_URL, local.ANON_KEY, {
+    isSingleton: false,
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    cookies: {
+      getAll: () => [...localAuthCookies.entries()].map(([name, cookie]) => ({
+        name,
+        value: cookie.value,
+      })),
+      setAll: (cookies) => {
+        for (const cookie of cookies) {
+          if (!cookie.value || cookie.options?.maxAge === 0) {
+            localAuthCookies.delete(cookie.name);
+          } else {
+            localAuthCookies.set(cookie.name, cookie);
+          }
+        }
+      },
+    },
+  });
+  const localSignIn = await localMfaClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (localSignIn.error || !localSignIn.data.session) {
+    throw new Error("De importbrowsertest kon niet lokaal inloggen.");
+  }
+  const localEnrollment = await localMfaClient.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: "Dynamische import browsertest",
+    issuer: "Duindorp SV",
+  });
+  if (localEnrollment.error || !localEnrollment.data) {
+    throw new Error("De importbrowsertest kon MFA niet instellen.");
+  }
+  const localVerification = await localMfaClient.auth.mfa.challengeAndVerify({
+    factorId: localEnrollment.data.id,
+    code: currentTotp(localEnrollment.data.totp.secret),
+  });
+  if (localVerification.error) {
+    throw new Error("De importbrowsertest kon MFA niet bevestigen.");
+  }
+  const localSession = await localMfaClient.auth.getSession();
+  const localAccessToken = localSession.data.session?.access_token;
+  if (localSession.error || !localAccessToken) {
+    throw new Error("De importbrowsertest mist een bevestigde AAL2-sessie.");
+  }
+  const browserAuthCookies = [...localAuthCookies.values()].map((cookie) => ({
+    name: cookie.name,
+    value: cookie.value,
+    url: baseUrl,
+    sameSite: "Lax",
+  }));
+  if (browserAuthCookies.length === 0) {
+    throw new Error("De importbrowsertest mist de Supabase-sessiecookie.");
+  }
+  await context.addCookies(browserAuthCookies);
+  await page.goto(`${baseUrl}/staff/login`);
+  const localAppSession = await page.evaluate(async (accessToken) => {
+    const response = await fetch("/api/staff-auth/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Duindorp-CSRF": "same-origin",
+      },
+      body: JSON.stringify({ accessToken }),
+    });
+    const payload = await response.json().catch(() => null);
+    return {
+      status: response.status,
+      landingPath: payload?.landingPath ?? null,
+    };
+  }, localAccessToken);
+  if (
+    localAppSession.status !== 200
+    || localAppSession.landingPath !== "/backoffice"
+  ) {
+    throw new Error("De importbrowsertest kon de appsessie niet starten.");
+  }
+  await page.goto(`${baseUrl}/backoffice`);
   await page.waitForURL(`${baseUrl}/backoffice`);
 
   await page.goto(`${baseUrl}/backoffice/leden/importeren`);
