@@ -42,6 +42,17 @@ describe("staging application rollback drill", () => {
     expect(workflow).toContain("group: deploy-duindorpteneu-staging");
     expect(workflow).toContain("staging-attestation-rollback-");
     expect(workflow).toContain("needs.preflight.outputs.artifact_digest");
+    const boundary = workflow.indexOf(
+      "bash scripts/deploy/assert-runner-boundary.sh staging",
+    );
+    const node = workflow.indexOf(
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+    );
+    const rollback = workflow.indexOf(
+      "run: bash scripts/staging/application-rollback-drill.sh",
+    );
+    expect(node).toBeGreaterThan(boundary);
+    expect(rollback).toBeGreaterThan(node);
   });
 
   it("allows only the signed one-time legacy health bridge", () => {
