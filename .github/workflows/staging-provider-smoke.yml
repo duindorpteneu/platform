@@ -137,7 +137,7 @@ jobs:
     if: inputs.provider == 'sendgrid'
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     environment: staging
     permissions:
       actions: read
@@ -154,6 +154,8 @@ jobs:
       SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}
       STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SENDGRID_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       E2E_MAILBOX_IMAP_HOST: ${{ vars.E2E_MAILBOX_IMAP_HOST }}
       E2E_MAILBOX_IMAP_PORT: ${{ vars.E2E_MAILBOX_IMAP_PORT || '993' }}
       E2E_MAILBOX_IMAP_MAILBOX: ${{ vars.E2E_MAILBOX_IMAP_MAILBOX || 'INBOX' }}
@@ -199,13 +201,24 @@ jobs:
           SENDGRID_ADMIN_API_KEY: ${{ secrets.SENDGRID_ADMIN_API_KEY }}
           SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-          E2E_ADMIN_TOTP_SECRET: ${{ secrets.E2E_ADMIN_TOTP_SECRET }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           E2E_MAILBOX_IMAP_USER: ${{ secrets.E2E_MAILBOX_IMAP_USER }}
           E2E_MAILBOX_IMAP_PASSWORD: ${{ secrets.E2E_MAILBOX_IMAP_PASSWORD }}
           SENDGRID_ACCEPTANCE_OBSERVATION_PATH: ${{ runner.temp }}/sendgrid-acceptance-observation.json
-        run: node scripts/providers/sendgrid-staging-acceptance.mjs
+        run: >-
+          timeout --signal=TERM --kill-after=15s 8m
+          node scripts/providers/sendgrid-staging-acceptance.mjs
+
+      - name: Always deactivate and remove SendGrid acceptance auth fixture
+        if: always()
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CLEANUP_ONLY: "1"
+        run: >-
+          timeout --signal=TERM --kill-after=15s 3m
+          node scripts/providers/sendgrid-staging-acceptance.mjs
 
       - name: Verify final internal health after provider evidence
         env:

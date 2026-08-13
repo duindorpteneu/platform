@@ -7,6 +7,7 @@ import { settingsWorkspaceSchema } from "../../src/lib/settings-audit-contract.t
 import {
   assertNoAutomatedA11yViolations,
 } from "../browser-a11y.mjs";
+import { requireExplicitDatabaseTls } from "./require-database-tls.mjs";
 
 const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
@@ -79,15 +80,42 @@ export function targetFromEnvironment(environment = process.env) {
 }
 
 export function databaseTargetFromEnvironment(environment = process.env) {
-  const databaseUrl = envRequired(environment, "SUPABASE_DB_URL");
+  const databaseUrl = requireExplicitDatabaseTls(
+    envRequired(environment, "SUPABASE_DB_URL"),
+  );
   let parsed;
   try {
     parsed = new URL(databaseUrl);
   } catch {
     throw new Error("STAGING_DATABASE_TARGET_INVALID");
   }
-  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) throw new Error("STAGING_DATABASE_TARGET_INVALID");
-  if (!`${parsed.hostname}|${decodeURIComponent(parsed.username)}`.includes(STAGING_REF)) {
+  const parameters = [...new Set(parsed.searchParams.keys())];
+  const connectTimeout = parsed.searchParams.get("connect_timeout");
+  const directTarget = parsed.hostname === `db.${STAGING_REF}.supabase.co`
+    && decodeURIComponent(parsed.username) === "postgres"
+    && (parsed.port === "" || parsed.port === "5432");
+  const poolerTarget = parsed.hostname.endsWith(".pooler.supabase.com")
+    && decodeURIComponent(parsed.username) === `postgres.${STAGING_REF}`
+    && ["5432", "6543"].includes(parsed.port);
+  if (
+    !["postgres:", "postgresql:"].includes(parsed.protocol)
+    || !parsed.password
+    || parsed.pathname !== "/postgres"
+    || (!directTarget && !poolerTarget)
+    || parameters.some(
+      (parameter) => !["connect_timeout", "sslmode"].includes(parameter),
+    )
+    || parameters.some(
+      (parameter) => parsed.searchParams.getAll(parameter).length !== 1,
+    )
+    || !["require", "verify-ca", "verify-full"].includes(
+      parsed.searchParams.get("sslmode"),
+    )
+    || (connectTimeout !== null && (
+      !/^[1-9][0-9]{0,2}$/u.test(connectTimeout)
+      || Number(connectTimeout) > 120
+    ))
+  ) {
     throw new Error("STAGING_DATABASE_TARGET_INVALID");
   }
   return databaseUrl;

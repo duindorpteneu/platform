@@ -34,9 +34,43 @@ describe("staging core target", () => {
   });
 
   it("accepts only a PostgreSQL URL bound to the staging project", () => {
-    expect(databaseTargetFromEnvironment({ SUPABASE_DB_URL: "postgresql://postgres.dxbdjtbyghsovlrdcwcr:secret@pooler.supabase.com:6543/postgres" })).toContain(STAGING_REF);
-    expect(() => databaseTargetFromEnvironment({ SUPABASE_DB_URL: "postgresql://postgres.production:secret@pooler.supabase.com:6543/postgres" })).toThrow("STAGING_DATABASE_TARGET_INVALID");
-    expect(() => databaseTargetFromEnvironment({ SUPABASE_DB_URL: "https://dxbdjtbyghsovlrdcwcr.supabase.co" })).toThrow("STAGING_DATABASE_TARGET_INVALID");
+    expect(databaseTargetFromEnvironment({
+      SUPABASE_DB_URL: `postgresql://postgres.${STAGING_REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require`,
+    })).toContain(STAGING_REF);
+    for (const databaseUrl of [
+      "postgresql://postgres.production:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require",
+      `postgresql://postgres.${STAGING_REF}:secret@pooler.supabase.com:6543/postgres?sslmode=require`,
+      `postgresql://postgres.${STAGING_REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=disable`,
+      `postgresql://postgres.${STAGING_REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require&host=evil.invalid`,
+      `postgresql://postgres.${STAGING_REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require&sslmode=verify-full`,
+      "https://dxbdjtbyghsovlrdcwcr.supabase.co",
+    ]) {
+      expect(() => databaseTargetFromEnvironment({
+        SUPABASE_DB_URL: databaseUrl,
+      })).toThrow();
+    }
+  });
+
+  it("beperkt de databasecredential tot core en Phase-B fixturestappen", () => {
+    for (const workflowName of [
+      "staging-core-acceptance.yml",
+      "staging-phase-b-acceptance.yml",
+    ]) {
+      const workflow = readFileSync(
+        new URL(`../../.github/workflows/${workflowName}`, import.meta.url),
+        "utf8",
+      );
+      const fixture = workflow.indexOf(
+        "node scripts/staging/core-browser-acceptance.mjs",
+      );
+      expect(fixture).toBeGreaterThan(0);
+      expect(workflow).not.toContain(
+        "node scripts/staging/require-database-tls.mjs",
+      );
+      expect(workflow.match(
+        /SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu,
+      )).toHaveLength(2);
+    }
   });
 
   it("houdt container-stdin open zodat psql de profielmutatie werkelijk uitvoert", () => {

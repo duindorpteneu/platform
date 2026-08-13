@@ -572,10 +572,15 @@ describe("fail-closed release chain", () => {
     const finalHealth = provider.indexOf(
       "Verify final internal health after provider evidence",
     );
+    const fixtureCleanup = provider.indexOf(
+      "Always deactivate and remove SendGrid acceptance auth fixture",
+    );
     const result = provider.indexOf(
       "Create exact SendGrid provider result",
     );
     expect(harness).toBeGreaterThan(-1);
+    expect(fixtureCleanup).toBeGreaterThan(harness);
+    expect(finalHealth).toBeGreaterThan(fixtureCleanup);
     expect(finalHealth).toBeGreaterThan(harness);
     expect(result).toBeGreaterThan(finalHealth);
     expect(provider).toContain(
@@ -587,6 +592,28 @@ describe("fail-closed release chain", () => {
     expect(provider).toContain(
       '"${ARTIFACT_DIGEST}" "${EVIDENCE_PATH}"',
     );
+    expect(provider).not.toContain(
+      "node scripts/staging/require-database-tls.mjs",
+    );
+    expect(provider).toContain(
+      "SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+    );
+    expect(provider).toContain('CLEANUP_ONLY: "1"');
+    expect(provider).toMatch(
+      /- name: Always deactivate and remove SendGrid acceptance auth fixture\n\s+if: always\(\)/u,
+    );
+    expect(provider).toContain(
+      "timeout --signal=TERM --kill-after=15s 8m",
+    );
+    expect(provider).toContain(
+      "timeout --signal=TERM --kill-after=15s 3m",
+    );
+    expect(provider.match(
+      /SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu,
+    )).toHaveLength(2);
+    expect(provider).not.toContain("E2E_ADMIN_EMAIL");
+    expect(provider).not.toContain("E2E_ADMIN_PASSWORD");
+    expect(provider).not.toContain("E2E_ADMIN_TOTP_SECRET");
     expect(workflow("ci.yml")).toContain(
       "pnpm test:db:branding-concurrency",
     );
