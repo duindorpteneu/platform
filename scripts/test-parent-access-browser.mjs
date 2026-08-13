@@ -171,6 +171,20 @@ function fixtureSql(userId) {
   return `
     insert into app.staff_profiles(auth_user_id, display_name, role)
     values ('${userId}'::uuid, '${staffDisplayName}', 'beheerder');
+    insert into app.audit_logs(
+      actor_user_id,
+      action,
+      entity_type,
+      metadata
+    ) values (
+      '${userId}'::uuid,
+      'acceptance.privacy_uuid_canary',
+      'acceptance_test',
+      jsonb_build_object(
+        'opaqueId',
+        'ada00000-0000-4000-8000-000000000000'
+      )
+    );
     insert into app.seasons(
       id,
       name,
@@ -726,9 +740,25 @@ try {
           limit 1
         ), 'missing')
         || ':' ||
-        (select count(*) from app.audit_logs
-          where actor_user_id = '${userId}'::uuid
-            and metadata::text ~* '(parent-access-browser|Ada|Ben|2014-01-02)');
+        (select count(*)
+          from app.audit_logs audit
+          where audit.actor_user_id = '${userId}'::uuid
+            and exists (
+              select 1
+              from jsonb_path_query(
+                audit.metadata,
+                'strict $.** ? (@.type() == "string")'
+              ) leaked(value)
+              where (leaked.value #>> '{}')
+                  ~ '(^|[^[:alnum:]])(Ada|Ben)([^[:alnum:]]|$)'
+                or lower(leaked.value #>> '{}') like any(array[
+                  '%2014-01-02%',
+                  '%2012-03-04%',
+                  '%parent-access-browser@example.invalid%',
+                  '%parent-access-browser-staff@example.invalid%',
+                  '%parent-access-browser-pepper-2026-with-safe-length%'
+                ])
+            ));
     `,
   );
   assert.equal(databaseState, "1:1:1:1:false:0");
