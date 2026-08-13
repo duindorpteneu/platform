@@ -28,6 +28,14 @@ describe("platform browser Supabase readiness", () => {
     expect(source).not.toContain("attempt < 120");
   });
 
+  it("herschept de volledige disposable Supabase-stack rond de browsermatrix", () => {
+    expect(source).toContain("function recreateLocalSupabaseStack()");
+    expect(source).toContain('["stop", "--no-backup"]');
+    expect(source).toContain('["start"]');
+    expect(source.match(/recreateLocalSupabaseStack\(\)/gu)).toHaveLength(3);
+    expect(source).not.toContain('spawnSync("pnpm", ["db:reset"]');
+  });
+
   it("wacht eventgebonden op de Mail-v2-preview zonder retry", () => {
     expect(source).toContain(
       "const mailPreviewFinished = await mailPreviewResponse.finished();",

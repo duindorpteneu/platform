@@ -865,19 +865,35 @@ function run(script, extraEnv = {}) {
   }
 }
 
-function resetLocalDatabase() {
-  const result = spawnSync("pnpm", ["db:reset"], {
+function runLocalSupabase(args, failureMessage) {
+  const result = spawnSync(process.execPath, [
+    path.resolve("scripts/run-supabase.mjs"),
+    ...args,
+  ], {
     cwd: process.cwd(),
     env: process.env,
-    stdio: "inherit",
+    // De CLI schrijft ook vaste lokale demo-keys naar stdout. Houd alleen
+    // voortgang en fouten op stderr zichtbaar in test- en CI-logs.
+    stdio: ["ignore", "ignore", "inherit"],
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(`Lokale testdatabase resetten mislukte met status ${result.status}.`);
+    throw new Error(`${failureMessage} mislukte met status ${result.status}.`);
   }
 }
 
-resetLocalDatabase();
+function recreateLocalSupabaseStack() {
+  runLocalSupabase(
+    ["stop", "--no-backup"],
+    "Projectlokale Supabase-stack stoppen",
+  );
+  runLocalSupabase(
+    ["start"],
+    "Projectlokale Supabase-stack schoon starten",
+  );
+}
+
+recreateLocalSupabaseStack();
 try {
   const qrPepper = Buffer.alloc(32, 11).toString("base64url");
   run(generatedPath, {
@@ -894,5 +910,5 @@ try {
   });
 } finally {
   await rm(generatedPath, { force: true });
-  resetLocalDatabase();
+  recreateLocalSupabaseStack();
 }
