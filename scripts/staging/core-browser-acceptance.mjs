@@ -631,10 +631,13 @@ async function verifyPhaseBSurfaces(page, target) {
     "PHASE_B_DASHBOARD_RETURN_FAILED",
     async () => {
       await page.goto(`${target.baseUrl}/backoffice`);
-      await page.getByRole("heading", {
-        name: "Dashboard",
+      await page.waitForURL(`${target.baseUrl}/backoffice`, {
+        timeout: 15_000,
+      });
+      await page.getByText("Operationeel dashboard", {
         exact: true,
       }).waitFor();
+      await page.getByRole("heading", { level: 1 }).waitFor();
     },
   );
 }
