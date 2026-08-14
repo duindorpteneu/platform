@@ -642,11 +642,43 @@ async function verifyPhaseBSurfaces(page, target) {
   );
 }
 
+export async function verifyIssuanceLanding(page, target) {
+  try {
+    await page.waitForURL(`${target.baseUrl}/uitgifte`, { timeout: 15_000 });
+    await page.getByRole("heading", { name: "Uitgifte", exact: true }).waitFor();
+  } catch {
+    throw new Error("ISSUANCE_LANDING_FAILED");
+  }
+}
+
+export async function verifyIssuanceBackofficeBoundary(page, target) {
+  try {
+    const response = await page.goto(`${target.baseUrl}/backoffice`, {
+      waitUntil: "domcontentloaded",
+    });
+    if (!response?.ok()) throw new Error("ISSUANCE_BOUNDARY_HTTP_FAILED");
+    await page.waitForURL(`${target.baseUrl}/uitgifte`, { timeout: 15_000 });
+    await page.getByRole("heading", { name: "Uitgifte", exact: true }).waitFor();
+  } catch (error) {
+    if (error instanceof Error && error.message === "ISSUANCE_BOUNDARY_HTTP_FAILED") {
+      throw error;
+    }
+    throw new Error("ISSUANCE_BOUNDARY_NAVIGATION_FAILED");
+  }
+}
+
 async function verifyRole(page, target, role, anonKey, accessToken) {
   if (role === "uitgifte") {
-    await page.goto(`${target.baseUrl}/backoffice`);
-    await page.waitForURL(`${target.baseUrl}/uitgifte`, { timeout: 15_000 });
-    await page.getByRole("heading", { name: "Uitgifte" }).waitFor();
+    // The successful MFA submit already navigates issuance staff to the scanner.
+    // Let that navigation settle before separately proving the backoffice boundary.
+    await verifyIssuanceLanding(page, target);
+    const sessionStatus = await page.evaluate(async () => (
+      await fetch("/api/staff-auth/session", {
+        headers: { accept: "application/json" },
+      })
+    ).status);
+    if (sessionStatus !== 200) throw new Error("ISSUANCE_APP_SESSION_NOT_AVAILABLE");
+    await verifyIssuanceBackofficeBoundary(page, target);
   } else {
     try {
       await page.waitForURL(`${target.baseUrl}/backoffice`, { timeout: 15_000 });

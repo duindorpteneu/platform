@@ -5,6 +5,8 @@ import {
   safeA11yFailureSummary,
   stablePhaseBFailureCode,
   targetFromEnvironment,
+  verifyIssuanceBackofficeBoundary,
+  verifyIssuanceLanding,
 } from "./core-browser-acceptance.mjs";
 
 const valid = {
@@ -166,5 +168,49 @@ describe("staging core target", () => {
       new Error("mogelijke persoonlijke inhoud"),
       "PHASE_B_SUPPLIER_PRIVACY_FAILED",
     )).toBe("PHASE_B_SUPPLIER_PRIVACY_FAILED");
+  });
+
+  it("laat de MFA-scannerlanding aflopen voordat de backoffice-rolgrens wordt beproefd", async () => {
+    const events = [];
+    const page = {
+      waitForURL: async (url) => { events.push(`wait:${url}`); },
+      getByRole: () => ({
+        waitFor: async () => { events.push("heading:Uitgifte"); },
+      }),
+      goto: async (url) => {
+        events.push(`goto:${url}`);
+        return { ok: () => true };
+      },
+    };
+    const target = { baseUrl: valid.STAGING_BASE_URL };
+
+    await verifyIssuanceLanding(page, target);
+    await verifyIssuanceBackofficeBoundary(page, target);
+
+    expect(events).toEqual([
+      `wait:${valid.STAGING_BASE_URL}/uitgifte`,
+      "heading:Uitgifte",
+      `goto:${valid.STAGING_BASE_URL}/backoffice`,
+      `wait:${valid.STAGING_BASE_URL}/uitgifte`,
+      "heading:Uitgifte",
+    ]);
+  });
+
+  it("geeft PII-vrije stabiele foutcodes voor scannerlanding en rolgrens", async () => {
+    const failingLanding = {
+      waitForURL: async () => { throw new Error("persoonlijke browserfout"); },
+    };
+    await expect(verifyIssuanceLanding(
+      failingLanding,
+      { baseUrl: valid.STAGING_BASE_URL },
+    )).rejects.toThrow("ISSUANCE_LANDING_FAILED");
+
+    const rejectedBoundary = {
+      goto: async () => ({ ok: () => false }),
+    };
+    await expect(verifyIssuanceBackofficeBoundary(
+      rejectedBoundary,
+      { baseUrl: valid.STAGING_BASE_URL },
+    )).rejects.toThrow("ISSUANCE_BOUNDARY_HTTP_FAILED");
   });
 });

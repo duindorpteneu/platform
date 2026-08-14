@@ -426,3 +426,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - Gerichte regressie: `pnpm vitest run scripts/providers/mollie-staging-acceptance.test.ts` is groen met 26/26 tests. De nieuwe gevallen bewijzen terminal succes na meerdere niet-terminale polls en expliciete timeout op blijvend `pending`; gedeeltelijke of niet-terminale refunds blijven ongeldig.
 - Hosted eindbewijs vereist opnieuw exacte main-SHA, immutable stagingdigest en een groene `staging-mollie-acceptance.yml` binnen de vaste twintigminutengrens. Production is niet benaderd.
 - Volledige lokale kandidaatgate: `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm security:secrets`, `pnpm security:migrations`, `pnpm security:dependencies`, `pnpm test` en `pnpm build` zijn groen. Resultaat: 138 migrations, 198 testbestanden/1.218 tests en geen bekende dependencykwetsbaarheden.
+
+## Core uitgiftenavigatie — 2026-08-14
+
+- Hosted observatie: core-run `31791864580` valideerde exact main/deployattest, beheerder-MFA/settings/mobiel, kledingcommissie-MFA/rolgrens/mobiel en uitgifte-MFA plus app-sessie. De uitgifteflow stopte direct daarna generiek; `always()`-cleanup verwijderde alle tijdelijke fixtures.
+- De regressie legt de vereiste volgorde vast: automatische `/uitgifte`-landing en heading, daarna pas `goto(/backoffice)`, server-side redirect terug naar `/uitgifte` en opnieuw de scannerheading. Afzonderlijke tests eisen stabiele foutcodes voor landing en HTTP-/navigatieboundary.
+- Exact-main CI, immutable stagingdeploy en een nieuwe coreacceptatie blijven vereist. Production is niet benaderd.
+- Volledige lokale kandidaatgate: `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm security:secrets`, `pnpm security:migrations`, `pnpm security:dependencies`, `pnpm test` en `pnpm build` zijn groen. Resultaat: 138 migrations, 198 testbestanden/1.220 tests en geen bekende dependencykwetsbaarheden.
