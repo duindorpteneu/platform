@@ -135,6 +135,7 @@ export function createFixtureIdentity(runMarker) {
     mismatchOrderId: uuidFromMarker(runMarker, "mismatch-order"),
     parentAccountId: uuidFromMarker(runMarker, "parent-account"),
     parentSessionId: uuidFromMarker(runMarker, "parent-session"),
+    grantActorId: uuidFromMarker(runMarker, "grant-actor"),
     wrongMetadataPaymentId: uuidFromMarker(runMarker, "wrong-metadata-payment"),
     readinessArticleId: uuidFromMarker(runMarker, "readiness-article"),
     readinessVariantId: uuidFromMarker(runMarker, "readiness-variant"),
@@ -155,6 +156,9 @@ function validateFixtureIdentity(identity) {
     || !uuidPattern.test(identity.readinessVariantId ?? "")
     || !uuidPattern.test(identity.readinessOrderLineId ?? "")
     || !uuidPattern.test(identity.readinessQrRequestId ?? "")
+    || !uuidPattern.test(identity.parentAccountId ?? "")
+    || !uuidPattern.test(identity.parentSessionId ?? "")
+    || !uuidPattern.test(identity.grantActorId ?? "")
     || identity.paidMemberId === identity.mismatchMemberId
     || identity.paidOrderId === identity.mismatchOrderId
     || new Set([
@@ -166,7 +170,10 @@ function validateFixtureIdentity(identity) {
       identity.readinessVariantId,
       identity.readinessOrderLineId,
       identity.readinessQrRequestId,
-    ]).size !== 8
+      identity.parentAccountId,
+      identity.parentSessionId,
+      identity.grantActorId,
+    ]).size !== 11
     || !fixtureRelationPattern.test(identity.paidRelation ?? "")
     || !fixtureRelationPattern.test(identity.mismatchRelation ?? "")
     || !identity.paidRelation.endsWith("-P")
@@ -188,6 +195,8 @@ function fixtureEnvironment(config, identity, stateIdentity) {
     FIXTURE_READINESS_VARIANT_ID: identity.readinessVariantId,
     FIXTURE_READINESS_ORDER_LINE_ID: identity.readinessOrderLineId,
     FIXTURE_READINESS_QR_REQUEST_ID: identity.readinessQrRequestId,
+    FIXTURE_PARENT_ACCOUNT_ID: identity.parentAccountId,
+    FIXTURE_GRANT_ACTOR_ID: identity.grantActorId,
     FIXTURE_PAID_RELATION: identity.paidRelation,
     FIXTURE_MISMATCH_RELATION: identity.mismatchRelation,
     FIXTURE_EMAIL: identity.fixtureEmail,
@@ -206,6 +215,8 @@ const fixtureSqlCommand = [
   "--set=readiness_variant_id=\"$FIXTURE_READINESS_VARIANT_ID\"",
   "--set=readiness_order_line_id=\"$FIXTURE_READINESS_ORDER_LINE_ID\"",
   "--set=readiness_qr_request_id=\"$FIXTURE_READINESS_QR_REQUEST_ID\"",
+  "--set=parent_account_id=\"$FIXTURE_PARENT_ACCOUNT_ID\"",
+  "--set=grant_actor_id=\"$FIXTURE_GRANT_ACTOR_ID\"",
   "--set=paid_relation=\"$FIXTURE_PAID_RELATION\"",
   "--set=mismatch_relation=\"$FIXTURE_MISMATCH_RELATION\"",
   "--set=fixture_email=\"$FIXTURE_EMAIL\"",
@@ -244,6 +255,8 @@ export function runFixtureSql(config, action, identity, dependencies = {}) {
       "--env", "FIXTURE_READINESS_VARIANT_ID",
       "--env", "FIXTURE_READINESS_ORDER_LINE_ID",
       "--env", "FIXTURE_READINESS_QR_REQUEST_ID",
+      "--env", "FIXTURE_PARENT_ACCOUNT_ID",
+      "--env", "FIXTURE_GRANT_ACTOR_ID",
       "--env", "FIXTURE_PAID_RELATION",
       "--env", "FIXTURE_MISMATCH_RELATION",
       "--env", "FIXTURE_EMAIL",
@@ -338,7 +351,7 @@ const stagingParentRpcNames = new Set([
   "create_parent_otp",
   "consume_parent_otp",
   "create_parent_session",
-  "link_parent_member",
+  "get_parent_members",
 ]);
 
 function safeRemoteCode(value) {
@@ -372,18 +385,25 @@ export async function stagingParentRpc(config, rpcName, payload, fetchImpl = fet
   return parseJsonResponseText(text, "MOLLIE_ACCEPTANCE_PARENT_RPC_RESPONSE_INVALID");
 }
 
-async function createParentAuthFixture(config, identity, parentTokenHash, fetchImpl) {
+export async function createParentAuthFixture(
+  config,
+  identity,
+  parentTokenHash,
+  fetchImpl,
+  parentRpc = stagingParentRpc,
+) {
   const code = randomInt(100000, 1000000).toString();
   const codeHash = createHmac("sha256", config.pepper).update(code).digest("hex");
-  const parentAccountId = await stagingParentRpc(config, "create_parent_otp", {
+  const parentAccountId = await parentRpc(config, "create_parent_otp", {
     p_email: identity.fixtureEmail,
     p_code_hash: codeHash,
     p_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
   }, fetchImpl);
-  if (!uuidPattern.test(parentAccountId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_OTP_CREATE_INVALID");
-  identity.parentAccountId = parentAccountId;
+  if (!uuidPattern.test(parentAccountId ?? "") || parentAccountId !== identity.parentAccountId) {
+    fail("MOLLIE_ACCEPTANCE_PARENT_OTP_CREATE_INVALID");
+  }
 
-  const consumed = await stagingParentRpc(config, "consume_parent_otp", {
+  const consumed = await parentRpc(config, "consume_parent_otp", {
     p_email: identity.fixtureEmail,
     p_code_hash: codeHash,
   }, fetchImpl);
@@ -391,21 +411,22 @@ async function createParentAuthFixture(config, identity, parentTokenHash, fetchI
     fail("MOLLIE_ACCEPTANCE_PARENT_OTP_CONSUME_INVALID");
   }
 
-  const parentSessionId = await stagingParentRpc(config, "create_parent_session", {
+  const parentSessionId = await parentRpc(config, "create_parent_session", {
     p_parent_account_id: parentAccountId,
     p_token_hash: parentTokenHash,
     p_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
   }, fetchImpl);
   if (!uuidPattern.test(parentSessionId ?? "")) fail("MOLLIE_ACCEPTANCE_PARENT_SESSION_CREATE_INVALID");
 
-  for (const memberId of [identity.paidMemberId, identity.mismatchMemberId]) {
-    const linked = await stagingParentRpc(config, "link_parent_member", {
-      p_token_hash: parentTokenHash,
-      p_member_id: memberId,
-    }, fetchImpl);
-    if (!uuidPattern.test(linked?.linkId ?? "") || linked?.memberId !== memberId) {
-      fail("MOLLIE_ACCEPTANCE_PARENT_LINK_INVALID");
-    }
+  const visibleMembers = await parentRpc(config, "get_parent_members", {
+    p_token_hash: parentTokenHash,
+  }, fetchImpl);
+  const expectedMemberIds = new Set([identity.paidMemberId, identity.mismatchMemberId]);
+  if (!Array.isArray(visibleMembers)
+    || visibleMembers.length !== expectedMemberIds.size
+    || visibleMembers.some((member) => !expectedMemberIds.has(member?.member_id))
+    || new Set(visibleMembers.map((member) => member.member_id)).size !== expectedMemberIds.size) {
+    fail("MOLLIE_ACCEPTANCE_PARENT_ACCESS_INVALID");
   }
   return { parentAccountId, parentSessionId };
 }

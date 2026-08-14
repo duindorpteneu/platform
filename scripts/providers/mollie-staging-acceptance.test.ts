@@ -13,6 +13,7 @@ const {
   assertRefundSnapshot,
   choosePaidOnHostedTestPage,
   chooseRefundedOnHostedTestPage,
+  createParentAuthFixture,
   createFixtureIdentity,
   isTerminalFullRefund,
   postConcurrentReplays,
@@ -153,7 +154,10 @@ describe("Mollie staging acceptance guards", () => {
       first.readinessVariantId,
       first.readinessOrderLineId,
       first.readinessQrRequestId,
-    ])).toHaveProperty("size", 8);
+      first.parentAccountId,
+      first.parentSessionId,
+      first.grantActorId,
+    ])).toHaveProperty("size", 11);
   });
 
   it("runs fixture SQL in a pinned least-privilege container without a database URL in arguments", () => {
@@ -199,6 +203,28 @@ describe("Mollie staging acceptance guards", () => {
     expect(args).toContain("--env");
     expect(args).toContain("FIXTURE_READINESS_ARTICLE_ID");
     expect(options.env.FIXTURE_READINESS_ORDER_LINE_ID).toBe(identity.readinessOrderLineId);
+  });
+
+  it("provisions and owns exactly two temporary season-bound parent grants", () => {
+    const prepareSql = readFileSync(
+      new URL("./sql/mollie-fixture-prepare.sql", import.meta.url),
+      "utf8",
+    );
+    const cleanupSql = readFileSync(
+      new URL("./sql/mollie-fixture-cleanup.sql", import.meta.url),
+      "utf8",
+    );
+
+    expect(prepareSql).toContain("insert into private.parent_portal_grants(");
+    expect(prepareSql).toContain("grant_row.status = 'active'");
+    expect(prepareSql).toContain("grant_row.source = 'administrator'");
+    expect(prepareSql).toContain("grant_row.granted_by = fixture_input.grant_actor_id");
+    expect(prepareSql).toContain("grant_row.legacy_link_id is null");
+    expect(prepareSql).toContain("values(fixture_input.parent_account_id, fixture_input.fixture_email)");
+    expect(cleanupSql).toContain("delete from private.parent_portal_grants grant_row");
+    expect(cleanupSql).toContain("grant_row.granted_by = fixture_input.grant_actor_id");
+    expect(cleanupSql).toContain("member_season.season_id = fixture_season_id");
+    expect(cleanupSql).toContain("MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION");
   });
 
   it("keeps the readiness inventory, allocation and QR proof rollback-only", () => {
@@ -336,6 +362,81 @@ describe("Mollie allocation-gated QR snapshots", () => {
 });
 
 describe("Mollie staging acceptance provider and webhook behavior", () => {
+  it("uses explicit season grants and never the removed parent self-link flow", async () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const parentRpc = vi.fn().mockImplementation(async (
+      _config: unknown,
+      rpcName: string,
+    ) => {
+      switch (rpcName) {
+        case "create_parent_otp":
+          return identity.parentAccountId;
+        case "consume_parent_otp":
+          return { status: "verified", parentAccountId: identity.parentAccountId };
+        case "create_parent_session":
+          return identity.parentSessionId;
+        case "get_parent_members":
+          return [
+            { member_id: identity.paidMemberId },
+            { member_id: identity.mismatchMemberId },
+          ];
+        default:
+          throw new Error(`unexpected RPC ${rpcName}`);
+      }
+    });
+
+    await expect(createParentAuthFixture(
+      {
+        pepper: validEnv.PARENT_TOKEN_PEPPER,
+        projectRef: STAGING_SUPABASE_PROJECT_REF,
+        serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
+      },
+      identity,
+      "a".repeat(64),
+      vi.fn(),
+      parentRpc,
+    )).resolves.toEqual({
+      parentAccountId: identity.parentAccountId,
+      parentSessionId: identity.parentSessionId,
+    });
+    expect(parentRpc.mock.calls.map((call) => call[1])).toEqual([
+      "create_parent_otp",
+      "consume_parent_otp",
+      "create_parent_session",
+      "get_parent_members",
+    ]);
+  });
+
+  it("fails closed when the season-grant projection exposes another member", async () => {
+    const identity = createFixtureIdentity(validEnv.MOLLIE_ACCEPTANCE_RUN_ID);
+    const parentRpc = vi.fn().mockImplementation(async (
+      _config: unknown,
+      rpcName: string,
+    ) => {
+      if (rpcName === "create_parent_otp") return identity.parentAccountId;
+      if (rpcName === "consume_parent_otp") {
+        return { status: "verified", parentAccountId: identity.parentAccountId };
+      }
+      if (rpcName === "create_parent_session") return identity.parentSessionId;
+      return [
+        { member_id: identity.paidMemberId },
+        { member_id: "a9990000-0000-4000-8000-000000000099" },
+      ];
+    });
+
+    await expect(createParentAuthFixture(
+      {
+        pepper: validEnv.PARENT_TOKEN_PEPPER,
+        projectRef: STAGING_SUPABASE_PROJECT_REF,
+        serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
+      },
+      identity,
+      "a".repeat(64),
+      vi.fn(),
+      parentRpc,
+    )).rejects.toThrow("MOLLIE_ACCEPTANCE_PARENT_ACCESS_INVALID");
+  });
+
   it("accepts only a terminal full refund as release evidence", () => {
     const expectedAmount = "1.00";
     expect(isTerminalFullRefund({
@@ -384,6 +485,15 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
       projectRef: STAGING_SUPABASE_PROJECT_REF,
       serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
     }, "prepare_mollie_acceptance_fixture", {}, vi.fn())).rejects.toThrow(
+      "MOLLIE_ACCEPTANCE_PARENT_RPC_INVALID",
+    );
+  });
+
+  it("does not allow the removed parent self-link RPC", async () => {
+    await expect(stagingParentRpc({
+      projectRef: STAGING_SUPABASE_PROJECT_REF,
+      serviceRoleKey: validEnv.SUPABASE_SERVICE_ROLE_KEY,
+    }, "link_parent_member", {}, vi.fn())).rejects.toThrow(
       "MOLLIE_ACCEPTANCE_PARENT_RPC_INVALID",
     );
   });
