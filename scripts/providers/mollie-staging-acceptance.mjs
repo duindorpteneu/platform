@@ -10,6 +10,7 @@ export const STAGING_APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
 export const STAGING_SUPABASE_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
 export const MOLLIE_API_BASE_URL = "https://api.mollie.com";
 export const ACCEPTANCE_CONFIRMATION = "STAGING-MOLLIE-TESTMODE";
+export const PROVIDER_REFUND_TIMEOUT_MS = 5 * 60_000;
 export const POSTGRES_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 
 const releaseShaPattern = /^[a-f0-9]{40}$/;
@@ -750,10 +751,11 @@ async function waitForProvider(config, providerPaymentId, predicate, dependencie
   fail("MOLLIE_ACCEPTANCE_PROVIDER_STATE_TIMEOUT");
 }
 
-async function waitForProviderRefund(config, providerPaymentId, predicate, dependencies) {
-  const deadline = Date.now() + 60_000;
+export async function waitForProviderRefund(config, providerPaymentId, predicate, dependencies) {
+  const now = dependencies.now ?? Date.now;
+  const deadline = now() + PROVIDER_REFUND_TIMEOUT_MS;
   const observedStatuses = new Set();
-  while (Date.now() < deadline) {
+  while (now() < deadline) {
     const response = await providerRequest(
       config,
       `/v2/payments/${providerPaymentId}/refunds?limit=250`,

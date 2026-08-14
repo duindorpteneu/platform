@@ -6,6 +6,7 @@ import * as acceptance from "./mollie-staging-acceptance.mjs";
 const {
   ACCEPTANCE_CONFIRMATION,
   POSTGRES_IMAGE,
+  PROVIDER_REFUND_TIMEOUT_MS,
   STAGING_SUPABASE_PROJECT_REF,
   assertMismatchSnapshot,
   assertPaidSnapshot,
@@ -23,6 +24,7 @@ const {
   validateCheckoutUrl,
   validateConfiguration,
   validateTargetConfiguration,
+  waitForProviderRefund,
 } = acceptance;
 
 const validEnv = {
@@ -455,6 +457,70 @@ describe("Mollie staging acceptance provider and webhook behavior", () => {
       status: "refunded",
       amount: { currency: "EUR", value: "0.50" },
     }, expectedAmount)).toBe(false);
+  });
+
+  it("allows bounded Mollie refund eventual consistency before accepting terminal evidence", async () => {
+    expect(PROVIDER_REFUND_TIMEOUT_MS).toBe(5 * 60_000);
+    let now = 0;
+    let providerCalls = 0;
+    const fetchImpl = vi.fn().mockImplementation(async () => {
+      providerCalls += 1;
+      const status = providerCalls < 3 ? "pending" : "refunded";
+      return new Response(JSON.stringify({
+        _embedded: {
+          refunds: [{
+            id: "re_Acceptance123",
+            paymentId: "tr_Acceptance123",
+            status,
+            amount: { currency: "EUR", value: "1.00" },
+          }],
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const sleep = vi.fn().mockImplementation(async (milliseconds: number) => {
+      now += milliseconds;
+    });
+
+    await expect(waitForProviderRefund(
+      { apiKey: validEnv.MOLLIE_API_KEY },
+      "tr_Acceptance123",
+      (refund: { status?: string }) => refund.status === "refunded",
+      { fetchImpl, sleep, now: () => now },
+    )).resolves.toMatchObject({ status: "refunded" });
+    expect(providerCalls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("remains fail-closed when Mollie never returns terminal refund evidence", async () => {
+    let now = 0;
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      _embedded: {
+        refunds: [{
+          id: "re_Acceptance123",
+          paymentId: "tr_Acceptance123",
+          status: "pending",
+          amount: { currency: "EUR", value: "1.00" },
+        }],
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    await expect(waitForProviderRefund(
+      { apiKey: validEnv.MOLLIE_API_KEY },
+      "tr_Acceptance123",
+      (refund: { status?: string }) => refund.status === "refunded",
+      {
+        fetchImpl,
+        sleep: async () => { now += PROVIDER_REFUND_TIMEOUT_MS; },
+        now: () => now,
+      },
+    )).rejects.toThrow("MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT_PENDING");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("returns a redacted provider error without reflecting credentials or response bodies", async () => {
