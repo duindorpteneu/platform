@@ -223,3 +223,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De acceptance blijft uitsluitend een volledige EUR-refund met providerstatus `refunded` accepteren. Alleen het begrensde pollvenster wordt naar vijf minuten verruimd; de twintigminutengrens van de geïsoleerde stagingworkflow blijft intact. `queued`, `pending`, `processing`, `canceled`, `failed`, gedeeltelijke refunds, providerfouten en time-outs blijven fail-closed.
 - Gerichte regressies bewijzen zowel vertraagde terminale consistentie als een expliciete `MOLLIE_ACCEPTANCE_PROVIDER_REFUND_TIMEOUT_PENDING` wanneer het terminale bewijs uitblijft. Exact-main CI, een nieuw immutable stagingartifact en de volledige live releaseketen volgen; production is niet benaderd.
 - De volledige lokale kandidaatgate is groen: ESLint, TypeScript, actionlint, secretscan, 138 forward-only migrations, dependency-audit zonder bekende kwetsbaarheden, 198 Vitestbestanden/1.218 tests en production build.
+
+## Staging core uitgiftelanding — 2026-08-14
+
+- Main-SHA `34954071aa6bb70a8aa15d27bf4c8354a044f75c` en immutable deployrun `31789783801` zijn volledig groen. Core-run `31791864580` bewees beheerder en kledingcommissie volledig, plus voor uitgifte een geldige MFA-providerresponse en app-sessie; de browseracceptatie stopte daarna door twee concurrerende navigaties in het harnas.
+- Na de geldige MFA-submit navigeert de uitgifterol al automatisch naar `/uitgifte`. Het harnas wacht nu eerst op de volledige scannerlanding en bewijst daarna afzonderlijk dat `/backoffice` server-side terug naar `/uitgifte` leidt. De opaque appsessie wordt ook voor de uitgifterol expliciet met HTTP 200 gecontroleerd.
+- Landing-, sessie- en boundaryfouten hebben afzonderlijke PII-vrije codes; fixturecleanup bleef in de mislukte hosted run groen. Een nieuwe exacte main-CI/deploy/coreketen blijft vereist; production is niet benaderd.
+- De volledige lokale kandidaatgate is groen: ESLint, TypeScript, actionlint, secretscan, 138 forward-only migrations, dependency-audit zonder bekende kwetsbaarheden, 198 Vitestbestanden/1.220 tests en production build.
