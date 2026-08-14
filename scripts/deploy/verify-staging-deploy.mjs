@@ -87,15 +87,21 @@ export function validateStagingDeployEvidence(
   ) {
     throw new Error("De stagingdeployjoblijst is onvolledig");
   }
+  const jobs = new Map();
   for (const name of requiredJobs) {
     const matches = jobsResponse.jobs.filter((job) => job?.name === name);
     if (
       matches.length !== 1
       || matches[0].status !== "completed"
       || matches[0].conclusion !== "success"
+      || Number.isNaN(new Date(matches[0].started_at).valueOf())
+      || Number.isNaN(new Date(matches[0].completed_at).valueOf())
+      || new Date(matches[0].started_at).valueOf()
+        > new Date(matches[0].completed_at).valueOf()
     ) {
       throw new Error(`Verplichte stagingdeployjob is niet groen: ${name}`);
     }
+    jobs.set(name, matches[0]);
   }
   if (
     !Array.isArray(artifactsResponse?.artifacts)
@@ -103,16 +109,36 @@ export function validateStagingDeployEvidence(
   ) {
     throw new Error("De stagingdeployartifactlijst is onvolledig");
   }
-  const expectedNames = [
-    `release-image-${releaseSha}`,
-    `staging-release-${releaseSha}`,
-    `staging-result-deploy-${run.id}-${run.run_attempt}`,
-    `staging-attestation-deploy-${run.id}`,
+  const expectedArtifacts = [
+    {
+      name: `release-image-${releaseSha}`,
+      job: jobs.get("Build immutable release image"),
+    },
+    {
+      name: `staging-release-${releaseSha}`,
+      job: jobs.get("Deploy and verify staging"),
+    },
+    {
+      name: `staging-result-deploy-${run.id}-${run.run_attempt}`,
+      job: jobs.get("Deploy and verify staging"),
+    },
+    {
+      name: `staging-attestation-deploy-${run.id}`,
+      job: jobs.get("Deploy and verify staging"),
+    },
   ];
   const artifacts = {};
-  for (const name of expectedNames) {
+  for (const { name, job } of expectedArtifacts) {
+    const jobStartedAt = new Date(job.started_at).valueOf();
+    const jobCompletedAt = new Date(job.completed_at).valueOf();
     const matches = artifactsResponse.artifacts.filter(
-      (artifact) => artifact?.name === name,
+      (artifact) => {
+        const artifactCreatedAt = new Date(artifact?.created_at).valueOf();
+        return artifact?.name === name
+          && !Number.isNaN(artifactCreatedAt)
+          && artifactCreatedAt >= jobStartedAt
+          && artifactCreatedAt <= jobCompletedAt;
+      },
     );
     if (
       matches.length !== 1

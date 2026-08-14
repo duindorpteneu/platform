@@ -227,4 +227,55 @@ if [[ "$state" != "$expected" ]]; then
   exit 1
 fi
 
-echo "Voorraadconcurrency geslaagd: één stuk, één journaalevent en exact de oudste FIFO-regel."
+run_refresh() {
+  local source_type="$1"
+  local source_id="$2"
+  "${psql_cmd[@]}" -c "
+    select private.refresh_inventory_variant_actions(
+      'f2100000-0000-4000-8000-000000000001',
+      'f2300000-0000-4000-8000-000000000001',
+      '${source_type}',
+      '${source_id}'
+    );
+  "
+}
+
+run_refresh \
+  inventory_delivery \
+  f2500000-0000-4000-8000-000000000001 \
+  >"${test_tmp_dir}/refresh-1.log" 2>&1 &
+first_refresh_pid=$!
+run_refresh \
+  mollie_acceptance \
+  f2500000-0000-4000-8000-000000000002 \
+  >"${test_tmp_dir}/refresh-2.log" 2>&1 &
+second_refresh_pid=$!
+set +e
+wait "$first_refresh_pid"
+first_refresh_status=$?
+wait "$second_refresh_pid"
+second_refresh_status=$?
+set -e
+if (( first_refresh_status != 0 || second_refresh_status != 0 )); then
+  sed -n '1,80p' "${test_tmp_dir}/refresh-1.log" >&2
+  sed -n '1,80p' "${test_tmp_dir}/refresh-2.log" >&2
+  echo "Gelijktijdige voorraadactieverversing met verschillende bronnen faalde." >&2
+  exit 1
+fi
+
+action_state="$("${psql_cmd[@]}" -c "
+  select concat_ws(':', count(*), min(source_type), min(source_id::text))
+  from app.action_items
+  where season_id = 'f2100000-0000-4000-8000-000000000001'
+    and object_type = 'article_variant'
+    and object_id = 'f2300000-0000-4000-8000-000000000001'
+    and type = 'out_of_stock'
+    and status in ('open', 'in_progress')
+")"
+expected_action_state="1:article_variant:f2300000-0000-4000-8000-000000000001"
+if [[ "$action_state" != "$expected_action_state" ]]; then
+  echo "Onstabiele voorraadactie-identiteit: $action_state" >&2
+  exit 1
+fi
+
+echo "Voorraadconcurrency geslaagd: één stuk, één journaalevent, exact de oudste FIFO-regel en één stabiele tekortepisode."

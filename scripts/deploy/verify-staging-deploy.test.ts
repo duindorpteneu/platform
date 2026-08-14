@@ -4,6 +4,7 @@ import { validateStagingDeployEvidence, validateStagingDeployRun, validateStagin
 
 const releaseSha = "a".repeat(40);
 const repository = "duindorpteneu/platform";
+const now = Date.now();
 const expected = {
   runId: 123,
   workflowId: 456,
@@ -20,20 +21,27 @@ const run = {
   run_attempt: 1,
   status: "completed",
   conclusion: "success",
-  created_at: new Date(Date.now() - 60_000).toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: new Date(now - 60_000).toISOString(),
+  updated_at: new Date(now).toISOString(),
   head_repository: { full_name: repository },
 };
+const jobWindows = [
+  [now - 55_000, now - 50_000],
+  [now - 49_000, now - 30_000],
+  [now - 29_000, now - 5_000],
+] as const;
 const jobs = {
   total_count: 3,
   jobs: [
     "Preflight and quality gates",
     "Build immutable release image",
     "Deploy and verify staging",
-  ].map((name) => ({
+  ].map((name, index) => ({
     name,
     status: "completed",
     conclusion: "success",
+    started_at: new Date(jobWindows[index][0]).toISOString(),
+    completed_at: new Date(jobWindows[index][1]).toISOString(),
   })),
 };
 const artifacts = {
@@ -48,6 +56,7 @@ const artifacts = {
     name,
     expired: false,
     digest: `sha256:${String(index + 1).repeat(64)}`,
+    created_at: new Date(index === 0 ? now - 40_000 : now - 10_000).toISOString(),
   })),
 };
 const manifest = {
@@ -115,6 +124,47 @@ describe("validateStagingDeployEvidence", () => {
     ).resultArtifact.name).toContain("staging-result-deploy");
   });
 
+  it("bewaart oudere rerun-artifacts maar bindt bewijs aan de actuele jobvensters", () => {
+    const staleArtifacts = artifacts.artifacts
+      .filter((artifact) => [
+        `staging-release-${releaseSha}`,
+        `staging-attestation-deploy-${run.id}`,
+      ].includes(artifact.name))
+      .map((artifact, index) => ({
+        ...artifact,
+        id: 100 + index,
+        created_at: new Date(now - 120_000).toISOString(),
+      }));
+    const rerunArtifacts = {
+      total_count: artifacts.artifacts.length + staleArtifacts.length,
+      artifacts: [...artifacts.artifacts, ...staleArtifacts],
+    };
+
+    expect(validateStagingDeployEvidence(
+      run,
+      jobs,
+      rerunArtifacts,
+      releaseSha,
+    ).resultArtifact.id).toBe(3);
+  });
+
+  it("weigert twee gelijknamige artifacts binnen dezelfde actuele job", () => {
+    const duplicate = {
+      ...artifacts.artifacts[1],
+      id: 99,
+      digest: `sha256:${"f".repeat(64)}`,
+    };
+    expect(() => validateStagingDeployEvidence(
+      run,
+      jobs,
+      {
+        total_count: artifacts.artifacts.length + 1,
+        artifacts: [...artifacts.artifacts, duplicate],
+      },
+      releaseSha,
+    )).toThrow();
+  });
+
   it.each([
     [jobs, { ...artifacts, total_count: 5 }],
     [{
@@ -127,6 +177,12 @@ describe("validateStagingDeployEvidence", () => {
       ...artifacts,
       artifacts: artifacts.artifacts.map((artifact, index) => index === 2
         ? { ...artifact, digest: "sha256:short" }
+        : artifact),
+    }],
+    [jobs, {
+      ...artifacts,
+      artifacts: artifacts.artifacts.map((artifact, index) => index === 1
+        ? { ...artifact, created_at: new Date(now - 120_000).toISOString() }
         : artifact),
     }],
   ])("weigert onvolledige of niet-groene evidence", (

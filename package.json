@@ -29,6 +29,7 @@
     "test:db:payment-concurrency": "bash scripts/test-payment-concurrency.sh",
     "test:db:refund-concurrency": "bash scripts/test-manual-refund-concurrency.sh",
     "test:db:inventory-concurrency": "bash scripts/test-inventory-concurrency.sh",
+    "test:db:inventory-action-upgrade": "bash scripts/test-inventory-action-source-upgrade.sh",
     "test:db:delivery-notification-concurrency": "bash scripts/test-delivery-notification-concurrency.sh",
     "test:db:mail-projection-concurrency": "bash scripts/test-mail-projection-concurrency.sh",
     "test:db:mail-supersession-concurrency": "bash scripts/test-mail-supersession-concurrency.sh",
