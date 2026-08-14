@@ -130,6 +130,19 @@ if [[ "$("${psql_cmd[@]}" -c "select active_season_id::text || '|' || mollie_ena
   echo "Mollie-fixture heeft globale instellingen gewijzigd." >&2
   exit 1
 fi
+fixture_email_job_id="$(
+  "${psql_cmd[@]}" -c "select private.enqueue_order_email('a9200000-0000-4000-8000-000000000001'::uuid, 'payment_received', 'mollie-fixture-cleanup-attempt-12345a1')"
+)"
+if [[ ! "$fixture_email_job_id" =~ ^[0-9a-f-]{36}$ ]]; then
+  echo "Mollie-fixture kon geen synthetische mailjob voorbereiden." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" -c "select app.claim_email_jobs_v4('a9900000-0000-4000-8000-000000000001'::uuid, 1)" >/dev/null
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.email_delivery_attempts where email_job_id = '$fixture_email_job_id'::uuid")" != "1" ]]; then
+  echo "Mollie-fixture maakte geen scheduler delivery-attempt voor de cleanupregressie." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" -c "insert into app.action_items(type, season_id, object_type, object_id, source_type, source_id, dedupe_key, severity, reason_code) values ('paid_without_stock', '$previous_active'::uuid, 'member_order', 'a9200000-0000-4000-8000-000000000001'::uuid, 'mollie_acceptance', 'a9200000-0000-4000-8000-000000000001'::uuid, repeat('a', 64), 'warning', 'mollie_acceptance.synthetic')" >/dev/null
 if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$cleanup_sql")" != '{"cleaned": true}' ]]; then
   echo "Mollie-fixture cleanup gaf geen geldig resultaat." >&2
   exit 1
@@ -152,6 +165,14 @@ if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_accounts where
 fi
 if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_portal_grants where granted_by = 'a9800000-0000-4000-8000-000000000001'::uuid")" != "0" ]]; then
   echo "Mollie-fixture cleanup liet grants achter." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.email_delivery_attempts where email_job_id = '$fixture_email_job_id'::uuid")" != "0" ]]; then
+  echo "Mollie-fixture cleanup liet een delivery-attempt achter." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.action_items where object_id = 'a9200000-0000-4000-8000-000000000001'::uuid or source_id = 'a9200000-0000-4000-8000-000000000001'::uuid")" != "0" ]]; then
+  echo "Mollie-fixture cleanup liet een synthetisch actiepunt achter." >&2
   exit 1
 fi
 if [[ "$("${psql_cmd[@]}" -c "select to_regclass('private.mollie_acceptance_fixtures') is null")" != "t" ]]; then

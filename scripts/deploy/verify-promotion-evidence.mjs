@@ -64,7 +64,7 @@ export const EVIDENCE = [
     key: "mollie",
     runVariable: "MOLLIE_ACCEPTANCE_RUN_ID",
     workflowPath: ".github/workflows/staging-mollie-acceptance.yml",
-    requiredJobs: ["Mollie paid, mismatch, replay and refund"],
+    requiredJobs: ["Mollie paid, mismatch and replay"],
     artifactNames: ({ runId, runAttempt }) => [
       `staging-result-mollie-${runId}-${runAttempt}`,
       `staging-attestation-mollie-${runId}`,

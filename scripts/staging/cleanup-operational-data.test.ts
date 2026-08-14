@@ -89,6 +89,21 @@ describe("staging domain cleanup contract", () => {
     expect(shell).toContain(
       '--set=include_postgres_realtime_admin_membership="${include_postgres_realtime_admin_membership}"',
     );
+    const sourceInventoryInit = restoreDrill.indexOf(
+      ': > "${source_inventory_path}"',
+    );
+    const sourceDumpInit = restoreDrill.indexOf(
+      ': > "${restore_work_dir}/source.dump"',
+    );
+    const snapshotContainer = restoreDrill.indexOf(
+      "create-source-snapshot-backup.sh",
+    );
+    expect(sourceInventoryInit).toBeGreaterThan(0);
+    expect(sourceDumpInit).toBeGreaterThan(sourceInventoryInit);
+    expect(snapshotContainer).toBeGreaterThan(sourceDumpInit);
+    expect(restoreDrill).toContain(
+      'chmod 0600 "${source_inventory_path}" "${restore_work_dir}/source.dump"',
+    );
   });
 
   it("spiegelt de optionele Functions-herstelrol vanuit de gevalideerde bron", () => {

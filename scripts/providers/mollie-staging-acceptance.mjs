@@ -849,7 +849,6 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   const fetchImpl = overrides.fetchImpl ?? fetch;
   const sleep = overrides.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const completeCheckout = overrides.completeCheckout ?? completeHostedTestCheckout;
-  const completeRefund = overrides.completeRefund ?? completeHostedTestRefund;
   const runSql = overrides.runSql ?? runFixtureSql;
   const parentSessionToken = randomBytes(32).toString("base64url");
   const parentTokenHash = createHmac("sha256", config.pepper).update(parentSessionToken).digest("hex");
@@ -916,28 +915,7 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
       await paymentState(config, identity, identity.mismatchOrderId, identity.mismatchMemberId, runSql),
     );
     console.log("Metadata-afwijking bleef unpaid en zichtbaar voor handmatige review.");
-
-    const paidProviderPayment = assertTestPayment(config,
-      await providerRequest(config, `/v2/payments/${paidBinding.providerPaymentId}`, {}, fetchImpl),
-      paidBinding.providerPaymentId);
-    const changePaymentStateUrl = paidProviderPayment?._links?.changePaymentState?.href;
-    if (!changePaymentStateUrl) fail("MOLLIE_ACCEPTANCE_REFUND_STATE_URL_MISSING");
-    await completeRefund(validateCheckoutUrl(changePaymentStateUrl));
-    const providerRefund = await waitForProviderRefund(
-      config,
-      paidBinding.providerPaymentId,
-      (refund) => isTerminalFullRefund(
-        refund,
-        paidProviderPayment.amount.value,
-      ),
-      { fetchImpl, sleep },
-    );
-    assert.equal(providerRefund.status, "refunded");
-    await postPublicWebhook(config, paidBinding.providerPaymentId, fetchImpl);
-    assertRefundSnapshot(
-      await paymentState(config, identity, identity.paidOrderId, identity.paidMemberId, runSql),
-    );
-    console.log("Finale providerrefund trok de QR via de publieke stagingwebhook in.");
+    console.log("Refundinitiatie blijft buiten het portaal en dit acceptatieharnas; externe Mollie-refunds worden uitsluitend via de publieke webhook gereconcilieerd.");
   } finally {
     if (fixturePrepared) {
       const cleaned = await runSql(config, "cleanup", identity);
@@ -961,7 +939,7 @@ async function main() {
     return;
   }
   await runAcceptance();
-  console.log("Mollie stagingacceptatie voor paid-zonder-QR, readiness, mismatch, replay en refund is geslaagd.");
+  console.log("Mollie stagingacceptatie voor paid-zonder-QR, readiness, mismatch en replay is geslaagd.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

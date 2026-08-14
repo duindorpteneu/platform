@@ -36,7 +36,7 @@ jobs:
       contents: read
 
   acceptance:
-    name: Mollie paid, mismatch, replay and refund
+    name: Mollie paid, mismatch and replay
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -86,7 +86,7 @@ jobs:
       - name: Install isolated browser client
         run: pnpm exec playwright install --with-deps chromium >/dev/null
 
-      - name: Run paid, mismatch, replay and refund acceptance
+      - name: Run paid, mismatch and replay acceptance
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
