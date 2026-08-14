@@ -39,8 +39,11 @@ describe("self-hosted runner isolation contract", () => {
   it("makes every mutating shell entrypoint reassert the same boundary", () => {
     for (const [relativePath, environment] of [
       ["scripts/deploy-vps.sh", '"$environment"'],
+      ["scripts/deploy/capture-legacy-release.sh", "production"],
+      ["scripts/staging/adopt-legacy-release.sh", "staging"],
       ["scripts/staging/cleanup-operational-data.sh", "staging"],
       ["scripts/staging/application-rollback-drill.sh", "staging"],
+      ["scripts/staging/production-rollback-target.sh", "staging"],
     ]) {
       const source = file(relativePath);
       expect(source).toContain("source scripts/deploy/assert-runner-boundary.sh");

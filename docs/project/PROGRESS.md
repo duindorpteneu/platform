@@ -245,3 +245,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Restore maakt de twee door de snapshotcontainer beschreven bind-mountbestanden vooraf runner-owned mode `0600`, zodat de host de broninventaris en dump kan verifiëren zonder ruimere rechten.
 - De geroteerde SendGrid-key is geldig en aan de juiste stagingfingerprint gebonden, maar de provider meldde nog te brede scopes. De bestaande stagingworkflow is vervangen door een expliciet bevestigde, account- en keygebonden restrictie naar uitsluitend `mail.send`; exact inbox-/signed-eventbewijs volgt na main-merge en hardening.
 - Lokale kandidaatgate: ESLint, TypeScript, actionlint, 198 Vitestbestanden/1.227 tests, 54 pgTAP-bestanden/1.757 assertions, echte Mollie-fixture-SQL met scheduler-race, production build, dependency-audit, secretscan en 139 forward-only migrationchecks zijn groen. Production is niet benaderd of gewijzigd.
+
+## Legacy-adoptie Node-bootstrap — 2026-08-15
+
+- Read-only legacy-adoptierun `31822891227` passeerde trusted-main, onafhankelijke productionapproval en de geïsoleerde productionrunnerboundary, maar stopte vóór imagecapture omdat de minimale runner geen globale `node` heeft. Cleanup is groen; productionruntime en -image zijn niet gewijzigd.
+- Productioncapture, stagingadoptie en de twee latere rollbacktargetsynchronisaties installeren nu na hun eigen runnerboundary en vóór ieder Node-afhankelijk script dezelfde commit-gepinde Node 22-setup als de overige self-hosted releasejobs. De cleanup-only route blijft vroeg en Node-vrij.
+- Workflowregressies bewaken exact boundary → pinned setup-node → Node 22 → capture/adoptie/synchronisatiescript. Exact-main CI, immutable stagingdeploy en de eenmalige hosted adoptie blijven vereist.

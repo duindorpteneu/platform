@@ -450,3 +450,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:db:mollie-fixture` — groen tegen de echte lokale PostgreSQL-schemaopbouw. De test prepareert twee fictieve orders, enqueue't en claimt een echte mailjob zodat immutable attempt/outcome-state bestaat, maakt een synthetisch actiepunt, voert cleanup uit en bewijst daarna idempotent nul leden, orders, grants, attempts en actiepunten.
 - `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm build`, `pnpm security:dependencies`, `pnpm security:secrets` en `pnpm security:migrations` — groen; geen bekende dependencykwetsbaarheid en 139 bestaande forward-only migrations ongewijzigd geldig.
 - Hosted SendGrid-run `31813739541` bewees na synchronisatie van de keyfingerprint dat key en account correct binden; de provider stopte vervolgens terecht op een te brede runtime-scopelijst vóór mailverzending. De veilige scope-restrictie en daaropvolgende inbox-/signed-eventtest vereisen de nieuwe main-SHA. Er zijn geen secretwaarden of persoonsgegevens vastgelegd en production is niet benaderd.
+
+## Legacy-adoptie Node-bootstrap — 2026-08-15
+
+- Hosted run `31822891227`: trusted-mainpreflight, eenmalige-historiecontrole, productionapproval en productionrunnerboundary groen. De capture stopte vóór `docker save` met de PII-vrije fout `Vereist commando ontbreekt: node`; de always-cleanup slaagde en production bleef runtime-ongewijzigd.
+- De gerichte workflowtests vereisen voor productioncapture, stagingadoptie en beide rollbacktargetsynchronisaties een commit-gepinde `actions/setup-node`, Node 22 en de volgorde runnerboundary → Node-bootstrap → Node-afhankelijk script.
+- Hosted eindbewijs vereist na merge een nieuwe immutable exact-main stagingdeploy, gevolgd door de eenmalige legacy-adoptie en gewone artifactgebonden rollbackdrill.

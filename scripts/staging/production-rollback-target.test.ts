@@ -29,4 +29,35 @@ describe("durable production rollback target", () => {
     expect(promotion).toContain("sync-production-rollback-target");
     expect(promotion).toContain("group: deploy-duindorpteneu-production");
   });
+
+  it("bootstraps pinned Node after the boundary for capture and commit", () => {
+    const captureStart = promotion.indexOf("  stage-production-rollback-target:");
+    const deployStart = promotion.indexOf("  deploy-production:");
+    const syncStart = promotion.indexOf("  sync-production-rollback-target:");
+    const cleanupStart = promotion.indexOf(
+      "  cleanup-pending-production-rollback-target:",
+    );
+    const capture = promotion.slice(captureStart, deployStart);
+    const sync = promotion.slice(syncStart, cleanupStart);
+    const setupNode =
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+
+    expect(captureStart).toBeGreaterThan(-1);
+    expect(deployStart).toBeGreaterThan(captureStart);
+    expect(syncStart).toBeGreaterThan(deployStart);
+    expect(cleanupStart).toBeGreaterThan(syncStart);
+    for (const [source, command] of [
+      [capture, "production-rollback-target.sh capture"],
+      [sync, "production-rollback-target.sh commit"],
+    ] as const) {
+      const boundaryIndex = source.indexOf(
+        "assert-runner-boundary.sh staging",
+      );
+      const nodeIndex = source.indexOf(setupNode);
+      expect(boundaryIndex).toBeGreaterThan(-1);
+      expect(nodeIndex).toBeGreaterThan(boundaryIndex);
+      expect(source.indexOf(command)).toBeGreaterThan(nodeIndex);
+      expect(source).toContain("node-version: 22");
+    }
+  });
 });

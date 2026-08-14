@@ -29,6 +29,33 @@ describe("protected one-time legacy adoption workflow", () => {
     expect(workflow).not.toContain("secrets.");
   });
 
+  it("bootstraps pinned Node 22 after each runner boundary", () => {
+    const captureStart = workflow.indexOf("  capture-production:");
+    const adoptionStart = workflow.indexOf("  adopt-staging:");
+    const capture = workflow.slice(captureStart, adoptionStart);
+    const adoption = workflow.slice(adoptionStart);
+    const setupNode =
+      "uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+
+    expect(captureStart).toBeGreaterThan(-1);
+    expect(adoptionStart).toBeGreaterThan(captureStart);
+    for (const source of [capture, adoption]) {
+      expect(source.match(/- name: Install Node\.js/gu)).toHaveLength(1);
+      expect(source).toContain(setupNode);
+      expect(source).toContain("node-version: 22");
+    }
+    expect(capture.indexOf("assert-runner-boundary.sh production"))
+      .toBeLessThan(capture.indexOf(setupNode));
+    expect(capture.indexOf(setupNode)).toBeLessThan(
+      capture.indexOf("capture-legacy-release.sh"),
+    );
+    expect(adoption.indexOf("assert-runner-boundary.sh staging"))
+      .toBeLessThan(adoption.indexOf(setupNode));
+    expect(adoption.indexOf(setupNode)).toBeLessThan(
+      adoption.indexOf("adopt-legacy-release.sh"),
+    );
+  });
+
   it("signs both capture and final minimal adoption evidence", () => {
     expect(workflow.match(/\bcosign sign-blob\b/gu)).toHaveLength(2);
     expect(workflow).toContain(
