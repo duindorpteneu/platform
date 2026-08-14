@@ -138,6 +138,15 @@ describe("staging core target", () => {
     ]) {
       expect(source).toContain(code);
     }
+    expect(source).toContain(
+      'await page.waitForURL(`${target.baseUrl}/backoffice`',
+    );
+    expect(source).toContain(
+      'await page.getByText("Operationeel dashboard"',
+    );
+    expect(source).toContain(
+      'await page.getByRole("heading", { level: 1 }).waitFor();',
+    );
   });
 
   it("reduceert een a11y-fout tot een PII-vrije regel, impact en telling", () => {
