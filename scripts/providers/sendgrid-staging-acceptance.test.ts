@@ -2,6 +2,7 @@ import {
   createHash,
   generateKeyPairSync,
 } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   describe,
   expect,
@@ -243,6 +244,22 @@ function acceptanceAdmin(runMarker = "123456-1") {
 }
 
 describe("SendGrid staging acceptance", () => {
+  it("hardt de gebonden staging-key alleen na expliciete bevestiging", () => {
+    const workflow = readFileSync(
+      new URL("../../.github/workflows/sendgrid-fingerprints.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(workflow).toContain("RESTRICT-STAGING-MAIL-SEND");
+    expect(workflow).toContain("/v3/api_keys/${api_key_id}");
+    expect(workflow).toContain("'{name: $name, scopes: [\"mail.send\"]}'");
+    expect(workflow).toContain(".scopes == [\"mail.send\"]");
+    expect(workflow).toContain("SENDGRID_API_KEY_FINGERPRINT");
+    expect(workflow).toContain("SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT");
+    expect(workflow).not.toContain("echo \"$SENDGRID_API_KEY\"");
+    expect(workflow).not.toContain("echo \"$SENDGRID_ADMIN_API_KEY\"");
+  });
+
   it("vereist keyseparatie, exacte clubafzender en het vaste stagingorigin", () => {
     expect(validateSendGridAcceptanceConfig(values))
       .toMatchObject({

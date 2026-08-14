@@ -90,6 +90,9 @@ umask 077
 chmod 0700 "${restore_work_dir}"
 : > "${dump_path}"
 chmod 0600 "${dump_path}"
+: > "${source_inventory_path}"
+: > "${restore_work_dir}/source.dump"
+chmod 0600 "${source_inventory_path}" "${restore_work_dir}/source.dump"
 openssl rand -hex 32 > "${inventory_key_path}"
 chmod 0600 "${inventory_key_path}"
 

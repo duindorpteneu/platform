@@ -66,6 +66,30 @@ describe("Mollie staging acceptance guards", () => {
     );
   });
 
+  it("initieert geen refund vanuit het portaalacceptatieharnas", () => {
+    const source = readFileSync(
+      new URL("./mollie-staging-acceptance.mjs", import.meta.url),
+      "utf8",
+    );
+    const runAcceptance = source.slice(
+      source.indexOf("export async function runAcceptance"),
+      source.indexOf("export async function cleanupAcceptance"),
+    );
+    const workflow = readFileSync(
+      new URL("../../.github/workflows/staging-mollie-acceptance.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(runAcceptance).not.toContain("completeRefund");
+    expect(runAcceptance).not.toContain("waitForProviderRefund");
+    expect(runAcceptance).not.toContain("changePaymentState");
+    expect(runAcceptance).toContain(
+      "Refundinitiatie blijft buiten het portaal en dit acceptatieharnas",
+    );
+    expect(workflow).toContain("Mollie paid, mismatch and replay");
+    expect(workflow).not.toContain("mismatch, replay and refund");
+  });
+
   it("accepts only the exact staging target, revision, test key and expected profile", () => {
     expect(validateConfiguration(validEnv)).toMatchObject({
       appBaseUrl: validEnv.APP_BASE_URL,
@@ -227,6 +251,18 @@ describe("Mollie staging acceptance guards", () => {
     expect(cleanupSql).toContain("grant_row.granted_by = fixture_input.grant_actor_id");
     expect(cleanupSql).toContain("member_season.season_id = fixture_season_id");
     expect(cleanupSql).toContain("MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION");
+    expect(cleanupSql).toContain("fixture_email_job_ids uuid[]");
+    expect(cleanupSql).toContain("fixture_delivery_attempt_ids uuid[]");
+    expect(cleanupSql).toContain(
+      "disable trigger email_delivery_attempts_immutable",
+    );
+    expect(cleanupSql).toContain(
+      "enable trigger email_delivery_attempts_immutable",
+    );
+    expect(cleanupSql).toContain("delete from app.action_items item");
+    expect(cleanupSql).toContain(
+      "attempt.email_job_id = any(fixture_email_job_ids)",
+    );
   });
 
   it("keeps the readiness inventory, allocation and QR proof rollback-only", () => {

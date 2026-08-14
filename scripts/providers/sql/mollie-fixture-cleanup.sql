@@ -44,6 +44,8 @@ declare
   fixture_marker_exists boolean;
   fixture_season_id uuid;
   fixture_marker text;
+  fixture_email_job_ids uuid[];
+  fixture_delivery_attempt_ids uuid[];
 begin
   select * into strict fixture_input from mollie_acceptance_input;
   fixture_marker := regexp_replace(
@@ -260,13 +262,79 @@ begin
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
   end if;
 
-  delete from app.email_events event
-  where event.email_job_id in (
-    select job.id from private.email_jobs job
-    where job.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
+  select coalesce(array_agg(job.id), '{}'::uuid[])
+  into fixture_email_job_ids
+  from private.email_jobs job
+  where job.order_id in (
+    fixture_input.paid_order_id,
+    fixture_input.mismatch_order_id
   );
+
+  select coalesce(array_agg(attempt.id), '{}'::uuid[])
+  into fixture_delivery_attempt_ids
+  from private.email_delivery_attempts attempt
+  where attempt.email_job_id = any(fixture_email_job_ids);
+
+  delete from app.email_events event
+  where event.email_job_id = any(fixture_email_job_ids);
+  update private.email_jobs job
+  set current_delivery_attempt_id = null
+  where job.id = any(fixture_email_job_ids);
+
+  alter table private.email_delivery_attempt_provider_messages
+    disable trigger email_delivery_attempt_provider_messages_immutable;
+  alter table private.email_delivery_attempt_outcomes
+    disable trigger email_delivery_attempt_outcomes_immutable;
+  alter table private.email_delivery_attempts
+    disable trigger email_delivery_attempts_immutable;
+  alter table private.email_provider_event_quarantine
+    disable trigger email_provider_event_quarantine_immutable;
+  delete from private.email_delivery_attempt_provider_messages binding
+  where binding.delivery_attempt_id = any(fixture_delivery_attempt_ids);
+  delete from private.email_delivery_attempt_outcomes outcome
+  where outcome.delivery_attempt_id = any(fixture_delivery_attempt_ids);
+  delete from private.email_provider_event_quarantine quarantine
+  where quarantine.email_job_id = any(fixture_email_job_ids)
+    or quarantine.delivery_attempt_id = any(fixture_delivery_attempt_ids);
+  delete from private.email_delivery_attempts attempt
+  where attempt.id = any(fixture_delivery_attempt_ids)
+    and attempt.email_job_id = any(fixture_email_job_ids);
+  alter table private.email_provider_event_quarantine
+    enable trigger email_provider_event_quarantine_immutable;
+  alter table private.email_delivery_attempts
+    enable trigger email_delivery_attempts_immutable;
+  alter table private.email_delivery_attempt_outcomes
+    enable trigger email_delivery_attempt_outcomes_immutable;
+  alter table private.email_delivery_attempt_provider_messages
+    enable trigger email_delivery_attempt_provider_messages_immutable;
+
   delete from private.email_jobs job
-  where job.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id);
+  where job.id = any(fixture_email_job_ids)
+    and job.order_id in (
+      fixture_input.paid_order_id,
+      fixture_input.mismatch_order_id
+    );
+  delete from app.action_items item
+  where item.object_id = any(array[
+      fixture_input.paid_member_id,
+      fixture_input.mismatch_member_id,
+      fixture_input.paid_order_id,
+      fixture_input.mismatch_order_id,
+      fixture_input.readiness_article_id,
+      fixture_input.readiness_variant_id,
+      fixture_input.readiness_order_line_id,
+      fixture_input.readiness_qr_request_id
+    ]::uuid[])
+    or item.source_id = any(array[
+      fixture_input.paid_member_id,
+      fixture_input.mismatch_member_id,
+      fixture_input.paid_order_id,
+      fixture_input.mismatch_order_id,
+      fixture_input.readiness_article_id,
+      fixture_input.readiness_variant_id,
+      fixture_input.readiness_order_line_id,
+      fixture_input.readiness_qr_request_id
+    ]::uuid[]);
   delete from private.payment_events event
   where event.payment_id in (
     select payment.id from app.payments payment
@@ -441,6 +509,51 @@ begin
   ) or exists (
     select 1 from app.order_lines line
     where line.id = fixture_input.readiness_order_line_id
+  ) or exists (
+    select 1
+    from private.email_jobs job
+    where job.id = any(fixture_email_job_ids)
+  ) or exists (
+    select 1
+    from private.email_delivery_attempts attempt
+    where attempt.id = any(fixture_delivery_attempt_ids)
+       or attempt.email_job_id = any(fixture_email_job_ids)
+  ) or exists (
+    select 1
+    from private.email_delivery_attempt_outcomes outcome
+    where outcome.delivery_attempt_id = any(fixture_delivery_attempt_ids)
+  ) or exists (
+    select 1
+    from private.email_delivery_attempt_provider_messages binding
+    where binding.delivery_attempt_id = any(fixture_delivery_attempt_ids)
+  ) or exists (
+    select 1
+    from private.email_provider_event_quarantine quarantine
+    where quarantine.email_job_id = any(fixture_email_job_ids)
+       or quarantine.delivery_attempt_id = any(fixture_delivery_attempt_ids)
+  ) or exists (
+    select 1
+    from app.action_items item
+    where item.object_id = any(array[
+        fixture_input.paid_member_id,
+        fixture_input.mismatch_member_id,
+        fixture_input.paid_order_id,
+        fixture_input.mismatch_order_id,
+        fixture_input.readiness_article_id,
+        fixture_input.readiness_variant_id,
+        fixture_input.readiness_order_line_id,
+        fixture_input.readiness_qr_request_id
+      ]::uuid[])
+       or item.source_id = any(array[
+        fixture_input.paid_member_id,
+        fixture_input.mismatch_member_id,
+        fixture_input.paid_order_id,
+        fixture_input.mismatch_order_id,
+        fixture_input.readiness_article_id,
+        fixture_input.readiness_variant_id,
+        fixture_input.readiness_order_line_id,
+        fixture_input.readiness_qr_request_id
+      ]::uuid[])
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_INCOMPLETE' using errcode = '23514';
   end if;
