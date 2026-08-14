@@ -419,3 +419,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - De regressie gebruikt geen legacy `link_parent_member`. Prepare maakt exact één deterministisch `example.invalid`-account en twee actieve, seizoensgebonden grants met een run-unieke synthetische actor. De hosted service-RPC's bewijzen daarna OTP, sessie en uitsluitend de twee verwachte fixtureleden.
 - De SQL-integratietest bewijst idempotente prepare, nul globale configuratiemutatie, nul legacylinks, exact twee grants in het actieve seizoen, collisionblokkade vóór mutatie bij een afwijkende actor en nul account-/grantresten na cleanup.
 - Lokale uitslag: 24/24 gerichte tests; 1.216/1.216 volledige Vitesttests; SQL-fixture groen; ESLint, TypeScript, secretscan, 138-migratielint en production build groen.
+
+## Mollie begrensde refundconsistentie — 2026-08-14
+
+- Live observatie: stagingacceptatie `31768226017` passeerde betaalcreatie, hosted testbetaling, oudertoegang, betaald-zonder-QR, transactioneel teruggedraaide voorraad/allocatie/QR-readiness, drie concurrente webhookreplays en metadata-mismatch. De Molliepagina bevestigde de volledige refund; de API bleef binnen zestig seconden `pending`, waarna cleanup de fictieve fixture verwijderde en de databaseprovidergate weer gesloten is.
+- Gerichte regressie: `pnpm vitest run scripts/providers/mollie-staging-acceptance.test.ts` is groen met 26/26 tests. De nieuwe gevallen bewijzen terminal succes na meerdere niet-terminale polls en expliciete timeout op blijvend `pending`; gedeeltelijke of niet-terminale refunds blijven ongeldig.
+- Hosted eindbewijs vereist opnieuw exacte main-SHA, immutable stagingdigest en een groene `staging-mollie-acceptance.yml` binnen de vaste twintigminutengrens. Production is niet benaderd.
+- Volledige lokale kandidaatgate: `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm security:secrets`, `pnpm security:migrations`, `pnpm security:dependencies`, `pnpm test` en `pnpm build` zijn groen. Resultaat: 138 migrations, 198 testbestanden/1.218 tests en geen bekende dependencykwetsbaarheden.
