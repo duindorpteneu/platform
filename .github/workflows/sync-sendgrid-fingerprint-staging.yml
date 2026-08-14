@@ -1,0 +1,112 @@
+name: Sync staging SendGrid fingerprint
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sync-staging-sendgrid-fingerprint
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync SendGrid fingerprint
+    runs-on: ubuntu-latest
+
+    environment:
+      name: staging
+      deployment: false
+
+    env:
+      TARGET_ENVIRONMENT: staging
+      TARGET_VARIABLE: SENDGRID_API_KEY_FINGERPRINT
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      GH_TOKEN: ${{ secrets.ENVIRONMENT_ADMIN_TOKEN }}
+
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${SENDGRID_API_KEY:-}" ]]; then
+            echo "::error::SENDGRID_API_KEY ontbreekt in environment staging."
+            exit 1
+          fi
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::ENVIRONMENT_ADMIN_TOKEN ontbreekt."
+            exit 1
+          fi
+
+      - name: Calculate SendGrid fingerprint
+        id: fingerprint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          fingerprint="$(
+            printf '%s' "${SENDGRID_API_KEY}" |
+            sha256sum |
+            awk '{print $1}'
+          )"
+
+          if [[ ! "${fingerprint}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::Berekende fingerprint is geen geldige SHA-256."
+            exit 1
+          fi
+
+          # Niet noodzakelijk geheim, maar voorkomt onnodige verspreiding in logs.
+          echo "::add-mask::${fingerprint}"
+
+          echo "value=${fingerprint}" >> "${GITHUB_OUTPUT}"
+
+          echo "SHA-256 fingerprint succesvol berekend."
+
+      - name: Update staging environment variable
+        shell: bash
+        env:
+          FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
+        run: |
+          set -Eeuo pipefail
+
+          gh variable set "${TARGET_VARIABLE}" \
+            --env "${TARGET_ENVIRONMENT}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "${FINGERPRINT}"
+
+          echo "Environment-variable ${TARGET_VARIABLE} is bijgewerkt voor ${TARGET_ENVIRONMENT}."
+
+      - name: Verify stored fingerprint
+        shell: bash
+        env:
+          EXPECTED_FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
+        run: |
+          set -Eeuo pipefail
+
+          stored="$(
+            gh variable get "${TARGET_VARIABLE}" \
+              --env "${TARGET_ENVIRONMENT}" \
+              --repo "${GITHUB_REPOSITORY}"
+          )"
+
+          if [[ "${stored}" != "${EXPECTED_FINGERPRINT}" ]]; then
+            echo "::error::Opgeslagen fingerprint wijkt af van de berekende fingerprint."
+            exit 1
+          fi
+
+          echo "Fingerprint-verificatie geslaagd."
+
+      - name: Summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## SendGrid fingerprint"
+            echo
+            echo "✅ \`${TARGET_VARIABLE}\` is gesynchroniseerd."
+            echo
+            echo "- Environment: \`${TARGET_ENVIRONMENT}\`"
+            echo "- Bron: \`SENDGRID_API_KEY\`"
+            echo "- Algoritme: \`SHA-256\`"
+            echo "- API-key zelf is niet gelogd."
+          } >> "${GITHUB_STEP_SUMMARY}"
