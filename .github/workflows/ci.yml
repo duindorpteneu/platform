@@ -111,6 +111,9 @@ jobs:
       - name: Run legacy Phase B upgrade reconciliation
         run: pnpm test:db:upgrade:phase-b
 
+      - name: Run inventory action-source upgrade reconciliation
+        run: pnpm test:db:inventory-action-upgrade
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 

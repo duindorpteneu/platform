@@ -109,12 +109,19 @@ describe("promotion evidence freshness", () => {
 });
 
 describe("promotion jobs and artifacts", () => {
-  const job = { name: "Exact gate", status: "completed", conclusion: "success" };
+  const job = {
+    name: "Exact gate",
+    status: "completed",
+    conclusion: "success",
+    started_at: "2026-08-03T20:00:00Z",
+    completed_at: "2026-08-03T20:10:00Z",
+  };
   const artifact = {
     id: 123,
     name: "exact-artifact",
     expired: false,
     digest: `sha256:${"b".repeat(64)}`,
+    created_at: "2026-08-03T20:05:00Z",
   };
 
   it("vereist iedere benoemde job exact eenmaal groen", () => {
@@ -131,6 +138,27 @@ describe("promotion jobs and artifacts", () => {
 
   it("vereist ieder benoemd artifact exact eenmaal, niet verlopen en met veilige identiteit", () => {
     expect(validateArtifacts([artifact], ["exact-artifact"])).toBe(true);
+  });
+
+  it("negeert historische rerun-artifacts buiten de actuele job", () => {
+    expect(validateArtifacts([
+      {
+        ...artifact,
+        id: 122,
+        created_at: "2026-08-03T19:55:00Z",
+      },
+      artifact,
+    ], ["exact-artifact"], job)).toBe(true);
+  });
+
+  it("weigert ontbrekend of dubbel bewijs binnen de actuele job", () => {
+    expect(() => validateArtifacts([
+      { ...artifact, id: 122 },
+      artifact,
+    ], ["exact-artifact"], job)).toThrow();
+    expect(() => validateArtifacts([
+      { ...artifact, created_at: "2026-08-03T19:55:00Z" },
+    ], ["exact-artifact"], job)).toThrow();
   });
 
   it.each([

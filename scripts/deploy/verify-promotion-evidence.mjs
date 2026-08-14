@@ -213,10 +213,26 @@ export function validateRequiredJobs(jobs, requiredNames) {
   return true;
 }
 
-export function validateArtifacts(artifacts, requiredNames) {
+function artifactIsFromJob(artifact, job) {
+  if (!job) return true;
+  const artifactCreatedAt = timestamp(
+    artifact?.created_at,
+    "Releaseartifact created_at",
+  );
+  const jobStartedAt = timestamp(job?.started_at, "Workflowjob started_at");
+  const jobCompletedAt = timestamp(job?.completed_at, "Workflowjob completed_at");
+  if (jobStartedAt > jobCompletedAt) {
+    throw new Error("Workflowjob heeft een ongeldig tijdvenster");
+  }
+  return artifactCreatedAt >= jobStartedAt
+    && artifactCreatedAt <= jobCompletedAt;
+}
+
+export function validateArtifacts(artifacts, requiredNames, job = null) {
   if (!Array.isArray(artifacts)) throw new Error("Workflowartifactlijst is ongeldig");
   for (const requiredName of requiredNames) {
-    const matches = artifacts.filter((artifact) => artifact?.name === requiredName);
+    const matches = artifacts.filter((artifact) =>
+      artifact?.name === requiredName && artifactIsFromJob(artifact, job));
     if (matches.length !== 1
       || matches[0].expired !== false
       || !Number.isSafeInteger(matches[0].id)
@@ -227,6 +243,11 @@ export function validateArtifacts(artifacts, requiredNames) {
     }
   }
   return true;
+}
+
+function findArtifactFromJob(artifacts, name, job) {
+  return artifacts.find((artifact) =>
+    artifact?.name === name && artifactIsFromJob(artifact, job));
 }
 
 export function validateProductionProtection(environment) {
@@ -350,6 +371,9 @@ async function main() {
       throw new Error("Workflowjoblijst is onvolledig of niet gepagineerd");
     }
     validateRequiredJobs(jobResponse.jobs, contract.requiredJobs);
+    const jobsByName = new Map(
+      jobResponse.jobs.map((job) => [job?.name, job]),
+    );
     const artifactResponse = await fetchJson(
       token,
       repository,
@@ -366,22 +390,44 @@ async function main() {
       runId,
       runAttempt: run.run_attempt,
     });
-    validateArtifacts(
-      artifactResponse.artifacts,
-      artifactNames,
-    );
+    let evidenceJob;
+    if (contract.key === "deploy") {
+      const buildJob = jobsByName.get("Build immutable release image");
+      evidenceJob = jobsByName.get("Deploy and verify staging");
+      validateArtifacts(
+        artifactResponse.artifacts,
+        artifactNames.slice(0, 1),
+        buildJob,
+      );
+      validateArtifacts(
+        artifactResponse.artifacts,
+        artifactNames.slice(1),
+        evidenceJob,
+      );
+    } else {
+      evidenceJob = jobsByName.get(contract.requiredJobs[0]);
+      validateArtifacts(
+        artifactResponse.artifacts,
+        artifactNames,
+        evidenceJob,
+      );
+    }
     const resultArtifactName =
       `staging-result-${contract.kind}-${runId}-${run.run_attempt}`;
-    const resultArtifact = artifactResponse.artifacts.find(
-      (artifact) => artifact?.name === resultArtifactName,
+    const resultArtifact = findArtifactFromJob(
+      artifactResponse.artifacts,
+      resultArtifactName,
+      evidenceJob,
     );
     if (!resultArtifact) {
       throw new Error(`Resultaatartifact ontbreekt: ${resultArtifactName}`);
     }
     const attestationArtifactName =
       `staging-attestation-${contract.kind}-${runId}`;
-    const attestationArtifact = artifactResponse.artifacts.find(
-      (artifact) => artifact?.name === attestationArtifactName,
+    const attestationArtifact = findArtifactFromJob(
+      artifactResponse.artifacts,
+      attestationArtifactName,
+      evidenceJob,
     );
     if (!attestationArtifact) {
       throw new Error(
