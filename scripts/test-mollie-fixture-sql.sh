@@ -17,6 +17,8 @@ fixture_args=(
   -v readiness_variant_id=a9400000-0000-4000-8000-000000000001
   -v readiness_order_line_id=a9500000-0000-4000-8000-000000000001
   -v readiness_qr_request_id=a9600000-0000-4000-8000-000000000001
+  -v parent_account_id=a9700000-0000-4000-8000-000000000001
+  -v grant_actor_id=a9800000-0000-4000-8000-000000000001
   -v paid_relation=MOLLIE-12345a1-P
   -v mismatch_relation=MOLLIE-12345a1-M
   -v fixture_email=mollie-acceptance+12345a1@example.invalid
@@ -94,6 +96,14 @@ if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.member_orders where id in
   echo "Mollie-fixture bevat niet exact twee begrensde orders." >&2
   exit 1
 fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_portal_grants grant_row join app.member_seasons member_season on member_season.id = grant_row.member_season_id join private.parent_accounts account on account.id = grant_row.parent_account_id where account.id = 'a9700000-0000-4000-8000-000000000001'::uuid and account.email_normalized = 'mollie-acceptance+12345a1@example.invalid' and member_season.member_id in ('a9100000-0000-4000-8000-000000000001','a9100000-0000-4000-8000-000000000002') and member_season.season_id = '$previous_active'::uuid and grant_row.status = 'active' and grant_row.source = 'administrator' and grant_row.granted_by = 'a9800000-0000-4000-8000-000000000001'::uuid and grant_row.legacy_link_id is null")" != "2" ]]; then
+  echo "Mollie-fixture bevat niet exact twee expliciete ouderportaalgrants." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_member_links where parent_account_id = 'a9700000-0000-4000-8000-000000000001'::uuid")" != "0" ]]; then
+  echo "Mollie-fixture maakte ten onrechte een legacy-ouderkoppeling." >&2
+  exit 1
+fi
 if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$prepare_sql")" != '{"prepared": true}' ]]; then
   echo "Mollie-fixture prepare is niet idempotent." >&2
   exit 1
@@ -102,6 +112,20 @@ if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$state_sql")" != "null" ]]; th
   echo "Mollie-fixture state is vóór checkout niet leeg." >&2
   exit 1
 fi
+"${psql_cmd[@]}" -c "update private.parent_portal_grants set granted_by = 'a9800000-0000-4000-8000-000000000099'::uuid where parent_account_id = 'a9700000-0000-4000-8000-000000000001'::uuid" >/dev/null
+set +e
+"${psql_cmd[@]}" "${fixture_args[@]}" < "$cleanup_sql" >/dev/null 2>&1
+actor_collision_cleanup_status=$?
+set -e
+if [[ "$actor_collision_cleanup_status" -eq 0 ]]; then
+  echo "Mollie-fixture cleanup accepteerde een afwijkende fixtureactor." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.members where id in ('a9100000-0000-4000-8000-000000000001','a9100000-0000-4000-8000-000000000002')")" != "2" ]]; then
+  echo "Mollie-fixture cleanup muteerde vóór de actorownership-preflight." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" -c "update private.parent_portal_grants set granted_by = 'a9800000-0000-4000-8000-000000000001'::uuid where parent_account_id = 'a9700000-0000-4000-8000-000000000001'::uuid" >/dev/null
 if [[ "$("${psql_cmd[@]}" -c "select active_season_id::text || '|' || mollie_enabled::text from app.app_settings where id = true")" != "$settings_before" ]]; then
   echo "Mollie-fixture heeft globale instellingen gewijzigd." >&2
   exit 1
@@ -120,6 +144,14 @@ if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.members where id in ('a91
 fi
 if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.member_orders where id in ('a9200000-0000-4000-8000-000000000001','a9200000-0000-4000-8000-000000000002')")" != "0" ]]; then
   echo "Mollie-fixture cleanup liet orders achter." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_accounts where email_normalized = 'mollie-acceptance+12345a1@example.invalid'")" != "0" ]]; then
+  echo "Mollie-fixture cleanup liet oudertoegang achter." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.parent_portal_grants where granted_by = 'a9800000-0000-4000-8000-000000000001'::uuid")" != "0" ]]; then
+  echo "Mollie-fixture cleanup liet grants achter." >&2
   exit 1
 fi
 if [[ "$("${psql_cmd[@]}" -c "select to_regclass('private.mollie_acceptance_fixtures') is null")" != "t" ]]; then

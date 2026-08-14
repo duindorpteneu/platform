@@ -15,6 +15,8 @@ create temporary table mollie_acceptance_input (
   readiness_variant_id uuid not null,
   readiness_order_line_id uuid not null,
   readiness_qr_request_id uuid not null,
+  parent_account_id uuid not null,
+  grant_actor_id uuid not null,
   paid_relation text not null,
   mismatch_relation text not null,
   fixture_email text not null
@@ -29,6 +31,8 @@ insert into mollie_acceptance_input values (
   :'readiness_variant_id'::uuid,
   :'readiness_order_line_id'::uuid,
   :'readiness_qr_request_id'::uuid,
+  :'parent_account_id'::uuid,
+  :'grant_actor_id'::uuid,
   :'paid_relation',
   :'mismatch_relation',
   :'fixture_email'
@@ -38,6 +42,7 @@ do $fixture$
 declare
   fixture_input mollie_acceptance_input%rowtype;
   fixture_marker_exists boolean;
+  fixture_season_id uuid;
   fixture_marker text;
 begin
   select * into strict fixture_input from mollie_acceptance_input;
@@ -46,6 +51,11 @@ begin
     '^MOLLIE-(.+)-P$',
     '\1'
   );
+
+  select orders.season_id into fixture_season_id
+  from app.member_orders orders
+  where orders.id = fixture_input.paid_order_id
+    and orders.member_id = fixture_input.paid_member_id;
 
   if fixture_input.paid_member_id = fixture_input.mismatch_member_id
     or fixture_input.paid_order_id = fixture_input.mismatch_order_id
@@ -57,7 +67,9 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
-      fixture_input.readiness_qr_request_id
+      fixture_input.readiness_qr_request_id,
+      fixture_input.parent_account_id,
+      fixture_input.grant_actor_id
     ]) <> (
       select count(distinct identifier)
       from unnest(array[
@@ -68,7 +80,9 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
-        fixture_input.readiness_qr_request_id
+        fixture_input.readiness_qr_request_id,
+        fixture_input.parent_account_id,
+        fixture_input.grant_actor_id
       ]) identifier
     )
     or fixture_input.paid_relation !~ '^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-P$'
@@ -108,7 +122,8 @@ begin
   if not fixture_marker_exists then
     if exists (
       select 1 from private.parent_accounts account
-      where account.email_normalized = fixture_input.fixture_email
+      where account.id = fixture_input.parent_account_id
+        or account.email_normalized = fixture_input.fixture_email
     ) then
       raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
     end if;
@@ -203,6 +218,34 @@ begin
         and size_choice.selection_status = 'confirmed'
         and size_choice.confirmed_at is not null
     )
+    and (
+      select count(*)
+      from private.parent_accounts account
+      join private.parent_portal_grants grant_row
+        on grant_row.parent_account_id = account.id
+       and grant_row.email_normalized = account.email_normalized
+      join app.member_seasons member_season
+        on member_season.id = grant_row.member_season_id
+      where account.email_normalized = fixture_input.fixture_email
+        and account.id = fixture_input.parent_account_id
+        and member_season.member_id in (
+          fixture_input.paid_member_id,
+          fixture_input.mismatch_member_id
+        )
+        and member_season.season_id = fixture_season_id
+        and grant_row.status = 'active'
+        and grant_row.source = 'administrator'
+        and grant_row.granted_by = fixture_input.grant_actor_id
+        and grant_row.legacy_link_id is null
+    ) = 2
+    and (
+      select count(*)
+      from private.parent_portal_grants grant_row
+      join private.parent_accounts account
+        on account.id = grant_row.parent_account_id
+      where account.email_normalized = fixture_input.fixture_email
+        and account.id = fixture_input.parent_account_id
+    ) = 2
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
   end if;
@@ -211,8 +254,8 @@ begin
     select 1
     from private.parent_accounts account
     join private.parent_member_links link on link.parent_account_id = account.id
-    where account.email_normalized = fixture_input.fixture_email
-      and link.member_id not in (fixture_input.paid_member_id, fixture_input.mismatch_member_id)
+    where account.id = fixture_input.parent_account_id
+      and account.email_normalized = fixture_input.fixture_email
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
   end if;
@@ -283,15 +326,39 @@ begin
   delete from private.parent_member_links link
   where link.parent_account_id in (
     select account.id from private.parent_accounts account
-    where account.email_normalized = fixture_input.fixture_email
+    where account.id = fixture_input.parent_account_id
+      and account.email_normalized = fixture_input.fixture_email
   );
   delete from private.parent_sessions session
   where session.parent_account_id in (
     select account.id from private.parent_accounts account
-    where account.email_normalized = fixture_input.fixture_email
+    where account.id = fixture_input.parent_account_id
+      and account.email_normalized = fixture_input.fixture_email
   );
+  delete from private.parent_portal_grants grant_row
+  where grant_row.parent_account_id in (
+      select account.id
+      from private.parent_accounts account
+      where account.id = fixture_input.parent_account_id
+        and account.email_normalized = fixture_input.fixture_email
+    )
+    and grant_row.member_season_id in (
+      select member_season.id
+      from app.member_seasons member_season
+      where member_season.member_id in (
+        fixture_input.paid_member_id,
+        fixture_input.mismatch_member_id
+      )
+        and member_season.season_id = fixture_season_id
+    )
+    and grant_row.email_normalized = fixture_input.fixture_email
+    and grant_row.status = 'active'
+    and grant_row.source = 'administrator'
+    and grant_row.granted_by = fixture_input.grant_actor_id
+    and grant_row.legacy_link_id is null;
   delete from private.parent_accounts account
-  where account.email_normalized = fixture_input.fixture_email;
+  where account.id = fixture_input.parent_account_id
+    and account.email_normalized = fixture_input.fixture_email;
   delete from private.rate_limit_events event
   where event.scope in ('otp_request', 'otp_verify')
     and event.key_hash = encode(extensions.digest(fixture_input.fixture_email, 'sha256'), 'hex');
@@ -339,7 +406,32 @@ begin
     where orders.id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
   ) or exists (
     select 1 from private.parent_accounts account
-    where account.email_normalized = fixture_input.fixture_email
+    where account.id = fixture_input.parent_account_id
+      or account.email_normalized = fixture_input.fixture_email
+  ) or exists (
+    select 1
+    from private.parent_portal_grants grant_row
+    where grant_row.granted_by = fixture_input.grant_actor_id
+  ) or exists (
+    select 1
+    from private.parent_sessions session
+    where session.parent_account_id = fixture_input.parent_account_id
+  ) or exists (
+    select 1
+    from private.parent_otp_challenges challenge
+    where challenge.parent_account_id = fixture_input.parent_account_id
+  ) or exists (
+    select 1
+    from private.parent_member_links link
+    where link.parent_account_id = fixture_input.parent_account_id
+  ) or exists (
+    select 1
+    from private.rate_limit_events event
+    where event.scope in ('otp_request', 'otp_verify')
+      and event.key_hash = encode(
+        extensions.digest(fixture_input.fixture_email, 'sha256'),
+        'hex'
+      )
   ) or exists (
     select 1 from app.articles article
     where article.id = fixture_input.readiness_article_id

@@ -15,6 +15,8 @@ create temporary table mollie_acceptance_input (
   readiness_variant_id uuid not null,
   readiness_order_line_id uuid not null,
   readiness_qr_request_id uuid not null,
+  parent_account_id uuid not null,
+  grant_actor_id uuid not null,
   paid_relation text not null,
   mismatch_relation text not null,
   fixture_email text not null
@@ -29,6 +31,8 @@ insert into mollie_acceptance_input values (
   :'readiness_variant_id'::uuid,
   :'readiness_order_line_id'::uuid,
   :'readiness_qr_request_id'::uuid,
+  :'parent_account_id'::uuid,
+  :'grant_actor_id'::uuid,
   :'paid_relation',
   :'mismatch_relation',
   :'fixture_email'
@@ -39,6 +43,7 @@ declare
   fixture_input mollie_acceptance_input%rowtype;
   fixture_season_id uuid;
   fixture_member_season_id uuid;
+  fixture_mismatch_member_season_id uuid;
   fixture_marker text;
 begin
   select * into strict fixture_input from mollie_acceptance_input;
@@ -58,7 +63,9 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
-      fixture_input.readiness_qr_request_id
+      fixture_input.readiness_qr_request_id,
+      fixture_input.parent_account_id,
+      fixture_input.grant_actor_id
     ]) <> (
       select count(distinct identifier)
       from unnest(array[
@@ -69,7 +76,9 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
-        fixture_input.readiness_qr_request_id
+        fixture_input.readiness_qr_request_id,
+        fixture_input.parent_account_id,
+        fixture_input.grant_actor_id
       ]) identifier
     )
     or fixture_input.paid_relation !~ '^MOLLIE-[0-9]{1,20}a[0-9]{1,6}-P$'
@@ -155,7 +164,34 @@ begin
         and size_choice.article_variant_id = fixture_input.readiness_variant_id
         and size_choice.selection_status = 'confirmed'
         and size_choice.confirmed_at is not null
+    ) and (
+      select count(*)
+      from private.parent_accounts account
+      join private.parent_portal_grants grant_row
+        on grant_row.parent_account_id = account.id
+       and grant_row.email_normalized = account.email_normalized
+      join app.member_seasons member_season
+        on member_season.id = grant_row.member_season_id
+      where account.email_normalized = fixture_input.fixture_email
+        and account.id = fixture_input.parent_account_id
+        and member_season.member_id in (
+          fixture_input.paid_member_id,
+          fixture_input.mismatch_member_id
+        )
+        and member_season.season_id = fixture_season_id
+        and grant_row.status = 'active'
+        and grant_row.source = 'administrator'
+        and grant_row.granted_by = fixture_input.grant_actor_id
+        and grant_row.legacy_link_id is null
+    ) = 2 and (
+      select count(*)
+      from private.parent_portal_grants grant_row
+      join private.parent_accounts account
+        on account.id = grant_row.parent_account_id
+      where account.email_normalized = fixture_input.fixture_email
+        and account.id = fixture_input.parent_account_id
     )
+      = 2
   then
     return;
   end if;
@@ -182,6 +218,15 @@ begin
   ) or exists (
     select 1 from app.order_lines line
     where line.id = fixture_input.readiness_order_line_id
+  ) or exists (
+    select 1
+    from private.parent_accounts account
+    where account.id = fixture_input.parent_account_id
+      or account.email_normalized = fixture_input.fixture_email
+  ) or exists (
+    select 1
+    from private.parent_portal_grants grant_row
+    where grant_row.granted_by = fixture_input.grant_actor_id
   ) then
     raise exception 'MOLLIE_ACCEPTANCE_FIXTURE_EXISTS' using errcode = '23505';
   end if;
@@ -217,6 +262,42 @@ begin
   from app.member_seasons member_season
   where member_season.member_id = fixture_input.paid_member_id
     and member_season.season_id = fixture_season_id;
+
+  select member_season.id into strict fixture_mismatch_member_season_id
+  from app.member_seasons member_season
+  where member_season.member_id = fixture_input.mismatch_member_id
+    and member_season.season_id = fixture_season_id;
+
+  insert into private.parent_accounts(id, email_normalized)
+  values(fixture_input.parent_account_id, fixture_input.fixture_email);
+
+  insert into private.parent_portal_grants(
+    member_season_id,
+    email_normalized,
+    parent_account_id,
+    status,
+    source,
+    granted_by,
+    granted_at
+  ) values
+    (
+      fixture_member_season_id,
+      fixture_input.fixture_email,
+      fixture_input.parent_account_id,
+      'active',
+      'administrator',
+      fixture_input.grant_actor_id,
+      timezone('utc', now())
+    ),
+    (
+      fixture_mismatch_member_season_id,
+      fixture_input.fixture_email,
+      fixture_input.parent_account_id,
+      'active',
+      'administrator',
+      fixture_input.grant_actor_id,
+      timezone('utc', now())
+    );
 
   insert into app.articles(id, name, code, icon_type, sort_order, active)
   values (
