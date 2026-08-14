@@ -256,6 +256,14 @@ jobs:
           clean: true
           persist-credentials: false
 
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - name: Capture run-bound candidate runtime and manifest
         env:
           RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
@@ -696,6 +704,14 @@ jobs:
           fetch-depth: 0
           clean: true
           persist-credentials: false
+
+      - name: Prove isolated staging runner boundary
+        run: bash scripts/deploy/assert-runner-boundary.sh staging
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
 
       - name: Atomically commit the durable production rollback target
         env:
