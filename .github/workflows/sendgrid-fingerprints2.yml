@@ -1,0 +1,53 @@
+name: Generate SendGrid fingerprints
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fingerprints:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    env:
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      SENDGRID_ADMIN_API_KEY: ${{ secrets.SENDGRID_ADMIN_API_KEY }}
+
+    steps:
+      - name: Generate fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1. Fingerprint van de daadwerkelijke Mail Send API key
+          SENDGRID_API_KEY_FINGERPRINT="$(
+            printf '%s' "$SENDGRID_API_KEY" \
+            | sha256sum \
+            | awk '{print $1}'
+          )"
+
+          # 2. Account ophalen via de beperkte admin API key
+          ACCOUNT_JSON="$(
+            curl -fsS \
+              -H "Authorization: Bearer $SENDGRID_ADMIN_API_KEY" \
+              https://api.sendgrid.com/v3/user/username
+          )"
+
+          ACCOUNT_IDENTITY="$(
+            printf '%s' "$ACCOUNT_JSON" \
+            | jq -r '"\(.username):\(.user_id)"'
+          )"
+
+          SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT="$(
+            printf '%s' "$ACCOUNT_IDENTITY" \
+            | sha256sum \
+            | awk '{print $1}'
+          )"
+
+          echo ""
+          echo "=============================================="
+          echo "SENDGRID_API_KEY_FINGERPRINT"
+          echo "$SENDGRID_API_KEY_FINGERPRINT"
+          echo ""
+          echo "SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT"
+          echo "$SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT"
+          echo "=============================================="
