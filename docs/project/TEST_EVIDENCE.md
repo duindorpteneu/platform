@@ -456,3 +456,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Hosted run `31822891227`: trusted-mainpreflight, eenmalige-historiecontrole, productionapproval en productionrunnerboundary groen. De capture stopte vóór `docker save` met de PII-vrije fout `Vereist commando ontbreekt: node`; de always-cleanup slaagde en production bleef runtime-ongewijzigd.
 - De gerichte workflowtests vereisen voor productioncapture, stagingadoptie en beide rollbacktargetsynchronisaties een commit-gepinde `actions/setup-node`, Node 22 en de volgorde runnerboundary → Node-bootstrap → Node-afhankelijk script.
 - Hosted eindbewijs vereist na merge een nieuwe immutable exact-main stagingdeploy, gevolgd door de eenmalige legacy-adoptie en gewone artifactgebonden rollbackdrill.
+
+## Functionele SendGrid-scopegate — 2026-08-15
+
+- Hosted provider-run `31854323207` valideerde de exacte main-SHA, stagingdigest, key-/accountbinding en cleanup, maar stopte vóór verzending op de voormalige exacte-één-scoperegel. Hardeningrun `31854410712` bond dezelfde key en account en stopte zonder mutatie op provider-HTTP 403 bij de keyupdate.
+- De gerichte regressie bewijst dat `mail.send` naast aanvullende scopes doorloopt naar de volledige MFA-, appdelivery-, inbox- en signed-eventflow, terwijl een key zonder `mail.send` vóór verzending wordt geweigerd. De losse scopeworkflow bevat geen `PUT` of API-keyendpoint meer.
+- `pnpm exec vitest run scripts/providers/sendgrid-staging-acceptance.test.ts scripts/providers/sendgrid-acceptance-evidence.test.ts` — groen: 17 tests.
+- Volledige lokale gate — groen: 198 Vitestbestanden/1.229 tests, ESLint, TypeScript, actionlint, secretscan, 139 forward-only migrations, dependency-audit zonder bekende kwetsbaarheden en production build. Exact Node 22-, main-, immutable staging-, inbox- en signed-eventbewijs volgt via GitHub Actions.
+- Legacy-adoptierun `31854456980` stopte na groene trusted-main-, historie-, runner-, Node- en Cosignstappen op `Productionappcontainer ontbreekt`. Publieke read-only probes op `/` en `/api/health` gaven gelijktijdig HTTP 502; cleanup slaagde en productie werd niet gewijzigd.
