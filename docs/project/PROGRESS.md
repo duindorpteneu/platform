@@ -263,3 +263,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Exact-main deployrun `31859488625` plaatste SHA `0885f1eae2ce4a220067d2aabc586595c54b26ef` groen op staging. Provider-runs `31860835400` en `31860997813` stopten vóór mailverzending met `SENDGRID_WEBHOOK_SIGNING_INVALID`; fixturecleanup bleef groen.
 - De staging-only configuratierun `31860942511` valideerde de webhook, eventselectie en signing bij SendGrid en leverde dezelfde publieke verificatiesleutel voor de environmenthandoff. De provider bleef daarna rood omdat onze GET-validator ten onrechte `enabled=true` eiste.
 - Het officiële SendGrid-contract voor `GET /v3/user/webhooks/event/settings/signed/{id}` bevat uitsluitend `id` en `public_key`; `enabled` is alleen requestinput voor PATCH en geen GET-responseveld. De acceptatie verifieert daarom exact webhook-ID, geldige P-256-public-key en bytecanonieke fingerprint, zonder een niet-bestaand veld te vertrouwen.
+
+## SendGrid staging-sessie requestcontract — 2026-08-15
+
+- Exact-main CI-run `31862197916` en immutable stagingdeploy `31862197844` zijn groen op SHA `1050410cca10f720a4913a1df003b1b097df9d9e`; staging rapporteert exact dezelfde revision en artifactdigest.
+- Provider-run `31863583992` passeerde account-, key-, webhook- en signingcontrole, maar stopte vóór Mail Send met `E2E_APP_SESSION_HTTP_403`; alle tijdelijke Auth-/databasefixtures zijn succesvol opgeruimd.
+- De productie-API vereist terecht een gelijk origin, fetch-metadata en de expliciete CSRF-header voor iedere browsermutatie. De Node-acceptatie stuurde wel `Origin`, maar bootste `Sec-Fetch-Site: same-origin` en `X-Duindorp-CSRF: same-origin` niet na. De harness stuurt nu exact hetzelfde mutatiecontract als de browserclient; de serverbeveiliging is niet versoepeld.
+- Lokale kandidaatgate: 17/17 gerichte provider/evidence-tests, 198 Vitestbestanden/1.229 tests, ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden groen.
