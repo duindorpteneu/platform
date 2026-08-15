@@ -69,7 +69,7 @@ Bewijs stagingconfiguratie: `___________________________________________________
 - [ ] Desktop-, tablet- en mobiele browsermatrix is uitgevoerd.
 - [ ] Toetsenbord, labels, focus, contrast, foutmeldingen en reduced motion zijn beoordeeld.
 - [ ] Mollie testmode: exact paid, mismatch, replay, delayed en refund/reconciliatie zijn uitgevoerd via publiek HTTPS-webhook.
-- [ ] SendGrid: SPF/DKIM/afzender, template, Mail Send, echte TLS-IMAP-inbox, tweemaal signed webhook, retry en deduplicatie zijn uitgevoerd.
+- [ ] SendGrid: SPF/DKIM/afzender, template, Mail Send, requestreplay, signed `delivered`-event, fout/retry en deduplicatie zijn uitgevoerd; dit bewijst ontvangende-mailserveracceptatie, niet inboxplaatsing.
 - [ ] E-mail- en Mollie-safety switches zijn tijdens een gecontroleerde test uit- en ingeschakeld.
 - [ ] Health, queue, webhookfouten en betaalverschillen zijn tijdens acceptatie zichtbaar.
 - [ ] Retentiejob is tweemaal uitgevoerd en idempotentie/cutoffs zijn bewezen.

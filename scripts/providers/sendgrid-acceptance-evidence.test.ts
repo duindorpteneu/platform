@@ -4,24 +4,29 @@ import { buildSendGridAcceptanceEvidence, validatePostDeliveryHealth, validateSe
 
 const releaseSha = "a".repeat(40);
 const observation = {
-  schema_version: 1,
+  schema_version: 2,
   release_sha: releaseSha,
   checks: {
     account_identity: true,
-    app_request_idempotency: true,
-    inbox_delivery: true,
+    app_http_acceptance: true,
+    ephemeral_admin_cleanup: true,
+    ephemeral_admin_mfa: true,
     mail_send_scope: true,
+    recipient_server_delivery: true,
+    request_id_replay_reuse: true,
     signed_delivery_event: true,
     webhook_configuration: true,
   },
   delivery: {
     application_requests: 2,
-    inbox_messages: 1,
+    distinct_delivery_ids: 1,
+    http_accepted_deliveries: 1,
     provider_events: 2,
     delivered_events: 1,
     deferred_events: 1,
     failure_events: 0,
     quarantined_events: 0,
+    request_replays: 1,
   },
 };
 const health = {
@@ -52,11 +57,12 @@ describe("SendGrid acceptance evidence", () => {
       },
     });
     expect(JSON.stringify(evidence)).not.toMatch(
-      /@|recipient|message[_-]?id|delivery[_-]?id/i,
+      /@|message[_-]?id|[0-9a-f]{8}-[0-9a-f-]{27,}/i,
     );
   });
 
   it.each([
+    { schema_version: 1 },
     { release_sha: "b".repeat(40) },
     { extra: true },
     {

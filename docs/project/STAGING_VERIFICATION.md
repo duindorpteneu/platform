@@ -271,10 +271,11 @@ Bewijs: `________________`
 - [ ] Segmentatie onderscheidt ontbrekend, onbevestigd, bevestigd en `Anders…`; doelgroep wordt vlak voor enqueue herbeoordeeld en gedeeld account krijgt één geconsolideerde mail per run.
 - [ ] Reminderregel respecteert Europe/Amsterdam, quiet hours, cooldown, maximum/einddatum en stopvoorwaarden; nieuwe regel start inactief.
 
-### E2E-27 — SendGrid inbox, events en definitieve fout
+### E2E-27 — SendGrid recipient-server, events en definitieve fout
 
 - [ ] Dedicated stagingaccountfingerprint klopt voor admin- en Mail Send-key.
-- [ ] Testdelivery komt werkelijk in de TLS-IMAP-testinbox aan.
+- [ ] De app accepteert exact één testdelivery; dezelfde request-ID wordt zonder tweede delivery-ID hergebruikt.
+- [ ] Een vers signed `delivered`-event voor exact die delivery bewijst acceptatie door de ontvangende mailserver; inboxmap/-plaatsing is bewust geen releaseclaim.
 - [ ] Twee signed eventleveringen/replays projecteren exact één attempt; bounce/drop/failure maakt één intern actiepunt en monitoringalarm.
 
 ### E2E-28 — Scannerzoekherstel zonder bypass

@@ -60,12 +60,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `SENDGRID_REPLY_TO_EMAIL` | Configuratie | Leeg | Operationeel beheerd antwoordadres |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | Verificatiesleutel | Leeg | Publieke verificatiesleutel van de omgeving |
 | `SENDGRID_WEBHOOK_ID` | Beschermde providerbinding | Leeg | Omgevingsunieke webhook-UUID |
-| `SENDGRID_SMOKE_RECIPIENT` | PII, acceptatie-only secret | Leeg | Alleen staging; fictieve, exclusieve testinbox |
-| `E2E_MAILBOX_IMAP_HOST` | Acceptatieconfiguratie | Leeg | Alleen staging; TLS-IMAP-host van de testinbox |
-| `E2E_MAILBOX_IMAP_PORT` | Acceptatieconfiguratie | `993` | Alleen staging; exact `993` |
-| `E2E_MAILBOX_IMAP_MAILBOX` | Acceptatieconfiguratie | `INBOX` | Alleen staging; standaard `INBOX` |
-| `E2E_MAILBOX_IMAP_USER` | PII, acceptatie-only secret | Leeg | Alleen staging; nooit in workflowoutput |
-| `E2E_MAILBOX_IMAP_PASSWORD` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; unieke app-password/credential |
+| `SENDGRID_SMOKE_RECIPIENT` | PII, acceptatie-only secret | Leeg | Alleen staging; vaste beheerde testontvanger, nooit in bewijs of workflowoutput |
 | `STAGING_CLEANUP_BACKUP_PASSPHRASE` | Hoog geheim, cleanup-only | Leeg | Alleen staging; minimaal 32 tekens en los van appkeys |
 | `PRODUCTION_BACKUP_PASSPHRASE` | Hoog geheim, promotion-only | Leeg | Alleen production; minimaal 32 tekens, versleutelt het herstelpunt dat vóór iedere migratie duurzaam wordt geüpload |
 | `RELEASE_ARTIFACT_DIGEST` | Niet geheim, deployment-generated | Leeg | Exacte SHA-256 van het getransporteerde image-archief; komt uit het gesigneerde manifest en wordt nooit handmatig ingesteld |
@@ -88,9 +83,11 @@ secretwaarden zijn niet gelezen. Staging bevat de Supabase-, server-action-,
 parent-, QR-, cron-, import-, Mollie-, Mail Send- en recoverable-cleanupsecrets.
 Project-ref, lokale JWKS, QR-versie, 24-uurs importretentie, webhook-public-key,
 webhook-ID en de goedgekeurde afzendernaam/-adressen staan als variables. De
-testinboxpoort is `993` en de mailboxnaam `INBOX`. Ook de heartbeat, gescheiden
-SendGrid-beheerkey, key- en accountfingerprints en testinboxconfiguratie zijn
-op naam aanwezig. Providers en dynamische import blijven standaard uit.
+Ook de heartbeat, gescheiden SendGrid-beheerkey, key- en accountfingerprints en
+vaste testontvanger zijn op naam aanwezig. IMAP-gegevens zijn niet meer nodig:
+het acceptatiebewijs eist één app-HTTP-acceptatie, één hergebruikte requestreplay
+en een vers gekoppeld, cryptografisch geldig `delivered`-event. Providers en
+dynamische import blijven standaard uit.
 
 De SendGrid-acceptatie gebruikt geen duurzaam E2E-medewerkeraccount meer. De
 workflow maakt op staging per run een gemarkeerde fictieve Auth-user en uniek,

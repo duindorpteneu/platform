@@ -82,8 +82,8 @@ Nog vereist vóór gehost groen:
 
 - staging én production: `OPERATIONS_HEARTBEAT_URL`;
 - staging: `SENDGRID_ADMIN_API_KEY`, `SENDGRID_API_KEY_FINGERPRINT`,
-  `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT`, `E2E_MAILBOX_IMAP_HOST`,
-  `E2E_MAILBOX_IMAP_USER`, `E2E_MAILBOX_IMAP_PASSWORD`,
+  `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` en destijds nog de inmiddels
+  vervallen IMAP-configuratie,
   `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` en `E2E_ADMIN_TOTP_SECRET`;
 - production: `SENDGRID_API_KEY_FINGERPRINT` en
   `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY`.
@@ -94,7 +94,7 @@ Nog vereist vóór gehost groen:
 2. Eén immutable artifact met commit, digest, SBOM, checksums en
    Sigstore/Cosign-bundel.
 3. Deploy naar staging met exact dat digest.
-4. Staging Phase-B-, core-, Mollie-, SendGrid-inbox/event-, operations-,
+4. Staging Phase-B-, core-, Mollie-, SendGrid-recipient-server/event-, operations-,
    restore- en rollbackacceptatie.
 5. De geautoriseerde staging-cleanup pas na encrypted backup/upload,
    netwerkloze restore, targetbewijs en dry-run; beheerders/Auth/config

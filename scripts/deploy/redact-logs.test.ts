@@ -5,8 +5,8 @@ import { redactLine } from "./redact-logs.mjs";
 describe("deployment log redaction", () => {
   const values = {
     SENDGRID_API_KEY: "SG.secret-value",
+    SENDGRID_ADMIN_API_KEY: "SG.admin-secret-value",
     SENDGRID_SMOKE_RECIPIENT: "acceptance@duindorpsv.invalid",
-    E2E_MAILBOX_IMAP_PASSWORD: "mailbox-password",
   };
 
   it.each([
@@ -15,7 +15,7 @@ describe("deployment log redaction", () => {
     "authorization=Basic YWxhZGRpbjpvcGVuc2VzYW1l",
     "https://example.invalid/callback?token=secret-token&code=123456",
     "Mail voor persoon@example.nl",
-    "Provider SG.secret-value mailbox-password acceptance@duindorpsv.invalid",
+    "Provider SG.secret-value SG.admin-secret-value acceptance@duindorpsv.invalid",
     "Cookie: duindorp_staff_session=session-secret; Path=/",
     "Set-Cookie=duindorp_parent_session=parent-secret; HttpOnly",
     "locator q2.k1.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi",

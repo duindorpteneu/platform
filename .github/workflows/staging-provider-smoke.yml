@@ -156,9 +156,6 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
       SENDGRID_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      E2E_MAILBOX_IMAP_HOST: ${{ vars.E2E_MAILBOX_IMAP_HOST }}
-      E2E_MAILBOX_IMAP_PORT: ${{ vars.E2E_MAILBOX_IMAP_PORT || '993' }}
-      E2E_MAILBOX_IMAP_MAILBOX: ${{ vars.E2E_MAILBOX_IMAP_MAILBOX || 'INBOX' }}
     steps:
       - name: Checkout provider validation code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -194,7 +191,7 @@ jobs:
       - name: Install locked provider acceptance dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Verify app delivery, signed callback and real inbox
+      - name: Verify app delivery and signed recipient-server acceptance
         env:
           RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -203,8 +200,6 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          E2E_MAILBOX_IMAP_USER: ${{ secrets.E2E_MAILBOX_IMAP_USER }}
-          E2E_MAILBOX_IMAP_PASSWORD: ${{ secrets.E2E_MAILBOX_IMAP_PASSWORD }}
           SENDGRID_ACCEPTANCE_OBSERVATION_PATH: ${{ runner.temp }}/sendgrid-acceptance-observation.json
         run: >-
           timeout --signal=TERM --kill-after=15s 8m

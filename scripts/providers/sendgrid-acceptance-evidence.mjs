@@ -4,9 +4,12 @@ import { pathToFileURL } from "node:url";
 const SHA_PATTERN = /^[a-f0-9]{40}$/u;
 const OBSERVATION_CHECKS = [
   "account_identity",
-  "app_request_idempotency",
-  "inbox_delivery",
+  "app_http_acceptance",
+  "ephemeral_admin_cleanup",
+  "ephemeral_admin_mfa",
   "mail_send_scope",
+  "recipient_server_delivery",
+  "request_id_replay_reuse",
   "signed_delivery_event",
   "webhook_configuration",
 ];
@@ -18,10 +21,12 @@ const DELIVERY_KEYS = [
   "application_requests",
   "deferred_events",
   "delivered_events",
+  "distinct_delivery_ids",
   "failure_events",
-  "inbox_messages",
+  "http_accepted_deliveries",
   "provider_events",
   "quarantined_events",
+  "request_replays",
 ];
 
 function hasExactKeys(value, keys) {
@@ -45,14 +50,16 @@ export function validateSendGridObservation(value, releaseSha) {
       value,
       ["checks", "delivery", "release_sha", "schema_version"],
     )
-    || value.schema_version !== 1
+    || value.schema_version !== 2
     || value.release_sha !== releaseSha
     || !hasExactKeys(value.checks, OBSERVATION_CHECKS)
     || !Object.values(value.checks).every((check) => check === true)
     || !hasExactKeys(value.delivery, DELIVERY_KEYS)
     || !Object.values(value.delivery).every(nonnegativeInteger)
     || value.delivery.application_requests !== 2
-    || value.delivery.inbox_messages !== 1
+    || value.delivery.http_accepted_deliveries !== 1
+    || value.delivery.request_replays !== 1
+    || value.delivery.distinct_delivery_ids !== 1
     || value.delivery.delivered_events < 1
     || value.delivery.failure_events !== 0
     || value.delivery.quarantined_events !== 0
@@ -91,7 +98,7 @@ export function buildSendGridAcceptanceEvidence(
     validateSendGridObservation(observation, releaseSha);
   validatePostDeliveryHealth(health);
   return {
-    schema_version: 1,
+    schema_version: 2,
     release_sha: releaseSha,
     checks: Object.fromEntries(
       FINAL_CHECKS.map((key) => [key, true]),

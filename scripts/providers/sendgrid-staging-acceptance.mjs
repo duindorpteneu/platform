@@ -10,7 +10,6 @@ import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { ImapFlow } from "imapflow";
 import { requireExplicitDatabaseTls } from "../staging/require-database-tls.mjs";
 
 const allowedApiBases = new Set([
@@ -180,12 +179,6 @@ export function validateSendGridAcceptanceConfig(values) {
     stagingBaseUrl: required(values, "STAGING_BASE_URL"),
     releaseSha: required(values, "RELEASE_SHA").toLowerCase(),
     ...fixture,
-    imapHost: required(values, "E2E_MAILBOX_IMAP_HOST"),
-    imapPort: Number(required(values, "E2E_MAILBOX_IMAP_PORT")),
-    imapUser: required(values, "E2E_MAILBOX_IMAP_USER"),
-    imapPassword: required(values, "E2E_MAILBOX_IMAP_PASSWORD"),
-    imapMailbox:
-      values.E2E_MAILBOX_IMAP_MAILBOX?.trim() || "INBOX",
   };
   let webhookUrl;
   let stagingBaseUrl;
@@ -224,11 +217,6 @@ export function validateSendGridAcceptanceConfig(values) {
     || stagingBaseUrl.hash
     || webhookUrl.origin !== stagingBaseUrl.origin
     || config.supabaseAnonKey.length < 20
-    || !/^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u.test(config.imapHost)
-    || !Number.isSafeInteger(config.imapPort)
-    || config.imapPort !== 993
-    || config.imapMailbox.length > 128
-    || /[\u0000-\u001f\u007f]/u.test(config.imapMailbox)
   ) {
     throw new Error("SENDGRID_ACCEPTANCE_CONFIG_INVALID");
   }
@@ -998,91 +986,6 @@ export async function sendApplicationTestMail(
   };
 }
 
-export async function waitForInboxMessage(
-  config,
-  deliveryId,
-  dependencies = {},
-) {
-  const createClient = dependencies.createImapClient
-    ?? ((options) => new ImapFlow(options));
-  const sleep = dependencies.sleep
-    ?? ((milliseconds) => new Promise(
-      (resolve) => setTimeout(resolve, milliseconds),
-    ));
-  const attempts = dependencies.attempts ?? 24;
-  const client = createClient({
-    host: config.imapHost,
-    port: config.imapPort,
-    secure: true,
-    auth: {
-      user: config.imapUser,
-      pass: config.imapPassword,
-    },
-    tls: {
-      rejectUnauthorized: true,
-      minVersion: "TLSv1.2",
-    },
-    logger: false,
-    disableAutoIdle: true,
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 30_000,
-    maxLineLength: 64 * 1_024,
-    maxLiteralSize: 2 * 1_024 * 1_024,
-  });
-  try {
-    await client.connect();
-    const lock = await client.getMailboxLock(
-      config.imapMailbox,
-      { readOnly: true },
-    );
-    try {
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const matches = await client.search({
-          header: { "x-duindorp-acceptance": deliveryId },
-        }, { uid: true });
-        if (Array.isArray(matches) && matches.length === 1) {
-          const message = await client.fetchOne(
-            matches[0],
-            { envelope: true, uid: true },
-            { uid: true },
-          );
-          const from = message?.envelope?.from?.map(
-            (entry) => entry.address?.toLowerCase(),
-          );
-          const to = message?.envelope?.to?.map(
-            (entry) => entry.address?.toLowerCase(),
-          );
-          const subject = message?.envelope?.subject;
-          if (
-            typeof subject === "string"
-            && subject.length >= 3
-            && subject.length <= 200
-            && from?.includes(config.fromEmail)
-            && to?.includes(config.recipient)
-          ) {
-            return { messageCount: 1 };
-          }
-          throw new Error(
-            "E2E_MAILBOX_MESSAGE_CONTRACT_INVALID",
-          );
-        }
-        if (Array.isArray(matches) && matches.length > 1) {
-          throw new Error(
-            "E2E_MAILBOX_CORRELATION_NOT_UNIQUE",
-          );
-        }
-        if (attempt + 1 < attempts) await sleep(5_000);
-      }
-    } finally {
-      lock.release();
-    }
-    throw new Error("E2E_MAILBOX_DELIVERY_TIMEOUT");
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
-}
-
 export async function waitForSignedProviderEvent(
   session,
   deliveryId,
@@ -1199,39 +1102,35 @@ export async function runSendGridAcceptance(
       throw new Error("E2E_TEST_DELIVERY_REPLAY_INVALID");
     }
     const { deliveryId } = firstDelivery;
-    const [inbox, provider] = await Promise.all([
-      waitForInboxMessage(
-        config,
-        deliveryId,
-        dependencies,
-      ),
-      waitForSignedProviderEvent(
-        session,
-        deliveryId,
-        dependencies,
-      ),
-    ]);
+    const provider = await waitForSignedProviderEvent(
+      session,
+      deliveryId,
+      dependencies,
+    );
     return {
-      schema_version: 1,
+      schema_version: 2,
       release_sha: config.releaseSha,
       checks: {
         account_identity: true,
-        app_request_idempotency: true,
+        app_http_acceptance: true,
         ephemeral_admin_cleanup: true,
         ephemeral_admin_mfa: true,
-        inbox_delivery: true,
         mail_send_scope: true,
+        recipient_server_delivery: true,
+        request_id_replay_reuse: true,
         signed_delivery_event: true,
         webhook_configuration: true,
       },
       delivery: {
         application_requests: 2,
-        inbox_messages: inbox.messageCount,
+        distinct_delivery_ids: 1,
+        http_accepted_deliveries: 1,
         provider_events: provider.eventCount,
         delivered_events: provider.deliveredEventCount,
         deferred_events: provider.deferredEventCount,
         failure_events: provider.failureEventCount,
         quarantined_events: provider.quarantinedEventCount,
+        request_replays: 1,
       },
     };
   } catch (error) {
@@ -1272,7 +1171,7 @@ async function main() {
     );
   }
   process.stdout.write(
-    "SendGrid appkey, tijdelijke beheerder-MFA, idempotente app-testdelivery, exact één inboxbericht, gekoppeld signed deliverybewijs en cleanup zijn groen.\n",
+    "SendGrid appkey, tijdelijke beheerder-MFA, idempotente app-testdelivery, ontvangende-mailserveracceptatie via gekoppeld signed deliverybewijs en cleanup zijn groen.\n",
   );
 }
 

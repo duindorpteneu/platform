@@ -19,24 +19,46 @@ describe("read-only legacy production capture", () => {
     );
   });
 
-  it("verifies live state before and after without runtime or database mutation", () => {
+  it("verifies production state before and after without runtime or database mutation", () => {
     expect(source).toContain("state_before=");
     expect(source).toContain("state_after=");
     expect(source).toContain('[[ "${state_after}" == "${state_before}" ]]');
     expect(source).toContain("container_image_id=");
+    expect(source).toContain('capture_source="running_container"');
+    expect(source).toContain('capture_source="local_manifest_image"');
     expect(source).toContain(
-      '[[ "${loaded_digest}" == "${config_digest}"',
+      'app_container_output="$(',
     );
     expect(source).toContain(
-      '&& "${container_image_id}" == "${loaded_digest}"',
+      ')" || die "Productionappcontainerinventaris kon niet worden gelezen."',
+    );
+    expect(source).toContain(
+      'current_app_container_output="$(',
+    );
+    expect(source).not.toContain(
+      "mapfile -t app_containers < <(",
+    );
+    expect(source).toContain(
+      'LEGACY_CAPTURE_SOURCE="${capture_source}"',
+    );
+    expect(source).toContain(
+      '"${loaded_digest}" == "${config_digest}"',
+    );
+    expect(source).toContain(
+      '[[ "${container_image_id}" == "${loaded_digest}" ]]',
     );
     expect(source).toContain('exec 9<>"${runtime_directory}/.deploy.lock"');
     expect(source).not.toContain(
       'exec 9>"${runtime_directory}/.deploy.lock"',
     );
-    expect(source).toContain("check-legacy-http.mjs");
+    expect(source.match(/check-legacy-http\.mjs/gu)).toHaveLength(4);
+    expect(source.match(/http:\/\/127\.0\.0\.1:24000/gu))
+      .toHaveLength(2);
     expect(source).not.toMatch(/\bsupabase db push\b/u);
     expect(source).not.toMatch(/\bdocker compose\b[^\n]*\bup\b/u);
+    expect(source).not.toMatch(
+      /\bdocker (?:build|pull|load|tag|run|create|start|stop|restart|rm|prune)\b/u,
+    );
     expect(source).not.toMatch(
       /\b(?:cp|tar|gzip)\b[^\n]*\.env\.runtime/u,
     );
@@ -46,6 +68,10 @@ describe("read-only legacy production capture", () => {
     expect(source).toContain("docker save");
     expect(source).toContain("archive_manifest_digest");
     expect(source).toContain("archive_config_path");
+    expect(source).toContain("image_release_label");
+    expect(source).toContain(
+      '[[ "${archive_manifest_digest}" == "${image_digest}" ]]',
+    );
     expect(source).not.toContain("docker build");
   });
 });

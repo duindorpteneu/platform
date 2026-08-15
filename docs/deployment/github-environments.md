@@ -1,12 +1,10 @@
 # GitHub environments
 
-Audit opnieuw uitgevoerd op 2026-08-03 via `gh` zonder secretwaarden uit te
+Audit opnieuw uitgevoerd op 2026-08-15 via `gh` zonder secretwaarden uit te
 lezen. Beide environments hebben een custom branch policy voor uitsluitend
-`main`. De organisatie gebruikt GitHub Free met een private repository:
-`production` heeft daardoor geen `required_reviewers`-protection rule. De
-promotieworkflow weigert production fail-closed totdat een planupgrade, minstens
-één reviewer en `prevent_self_review=true` daadwerkelijk via de API zichtbaar
-zijn.
+`main`. `production` heeft twee bestaande repositorycollaborators als reviewers
+en `prevent_self_review=true`; de promotieworkflow verifieert deze grens opnieuw
+vóór een productionmutatie.
 
 ## Variables
 
@@ -32,9 +30,6 @@ zijn.
 | `SENDGRID_WEBHOOK_ID` | `fd290462-…` | `84500cb8-…` | UUID, omgevingsuniek | provider-smoke | production blijft ongevalideerd en uit |
 | `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | ja | nee | geldige P-256 public key | webhookvalidatie | staging via de exacte signed-webhookconfiguratie opgehaald; production blijft uit |
 | `SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT` | nee | nee | 64 lowercase hex; vooraf gecontroleerde SHA-256 van `username:user_id` | provider-smoke | verplicht vóór staging-webhookmutatie of Mail Send |
-| `E2E_MAILBOX_IMAP_HOST` | nee | nee | geldige TLS-IMAP-host | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_PORT` | nee | nee | exact `993` | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_MAILBOX` | nee | nee | veilige mailboxnaam, standaard `INBOX` | inboxacceptatie | staging ontbreekt |
 
 ## Secrets
 
@@ -53,9 +48,7 @@ zijn.
 | `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_ADMIN_API_KEY` | nee | niet van toepassing | dedicated stagingkey met uitsluitend user/webhook read-write | provider-smoke | verplicht vóór webhookconfiguratie |
-| `SENDGRID_SMOKE_RECIPIENT` | ja | nee | dedicated beheerde testinbox | provider-smoke | waarde niet uitgelezen; uitsluitend handmatige staging-smoke |
-| `E2E_MAILBOX_IMAP_USER` | nee | niet van toepassing | dedicated testinboxgebruiker | inboxacceptatie | staging ontbreekt |
-| `E2E_MAILBOX_IMAP_PASSWORD` | nee | niet van toepassing | unieke app-password/credential | inboxacceptatie | staging ontbreekt |
+| `SENDGRID_SMOKE_RECIPIENT` | ja | nee | vaste beheerde testontvanger | provider-smoke | waarde niet uitgelezen; provideracceptatie correleert op delivery-ID en signed event |
 | `STAGING_CLEANUP_BACKUP_PASSPHRASE` | ja | niet van toepassing | unieke, hoog-entropische passphrase van minimaal 32 tekens | uitsluitend client-side encryptie/decryptie van de tijdelijke pre-wipeback-up | staging aanwezig; nooit als productionsecret gebruiken |
 | `PRODUCTION_BACKUP_PASSPHRASE` | niet van toepassing | nee | unieke hoog-entropische passphrase van minimaal 32 tekens | encrypted herstelpunt vóór productiemigratie | ontbreekt; harde promotieblocker |
 
