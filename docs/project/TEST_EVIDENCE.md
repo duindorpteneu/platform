@@ -479,3 +479,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Provideracceptatie `31863583992`: key-, account-, webhook- en signed-public-keycontrole groen; sessiesynchronisatie stopte met `E2E_APP_SESSION_HTTP_403` vóór mailverzending; fixturecleanup groen.
 - Regressie eist voor de Node-harness exact `Origin`, `Sec-Fetch-Site: same-origin` en `X-Duindorp-CSRF: same-origin` op de app-sessie-POST. De routeguard en zijn fail-closed browsermutatiecontract blijven ongewijzigd.
 - Lokaal groen: gerichte provider/evidence-suite 17/17; volledige Vitest-suite 198 bestanden/1.229 tests; ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden.
+
+## SendGrid testdelivery- en cleanupcontract — 2026-08-15
+
+- Main-CI `31880856810` en immutable stagingdeploy `31880856818` zijn volledig groen op exact SHA `7dc3cd8376cc7f01943c82625b59476a6a25261d`.
+- Provider-run `31886420637`: exact-SHA/digestpreflight en AAL2-appsessie groen; primaire acceptatie plus interne cleanup eindigden als `SENDGRID_ACCEPTANCE_AND_CLEANUP_FAILED`; de afzonderlijke fail-safe cleanup verwijderde de tijdelijke acceptatie-identiteit succesvol.
+- Codeanalyse bewijst twee deterministische oorzaken: de testdelivery-POST miste de door `guardBrowserMutation` verplichte fetch-metadata-/CSRF-headers, en lokale sign-out maakte de JWT ongeldig vóór de daaropvolgende globale admin-sign-out. De regressie eist headers op beide idempotente deliveryaanvragen, globale intrekking met de AAL2-JWT en geen voortijdige client-sign-out.
+- Legacy-adoptierun `31863584074`: main-/artifact-/historie-/runner-/Node-/Cosigncontrole groen; read-only capture stopte op `Productionappcontainer ontbreekt`; cleanup groen en production ongewijzigd.
+- Lokaal groen: gerichte provider/evidence-suite 17/17; volledige Vitest-suite 198 bestanden/1.229 tests; ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden.

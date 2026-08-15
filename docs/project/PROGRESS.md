@@ -270,3 +270,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Provider-run `31863583992` passeerde account-, key-, webhook- en signingcontrole, maar stopte vóór Mail Send met `E2E_APP_SESSION_HTTP_403`; alle tijdelijke Auth-/databasefixtures zijn succesvol opgeruimd.
 - De productie-API vereist terecht een gelijk origin, fetch-metadata en de expliciete CSRF-header voor iedere browsermutatie. De Node-acceptatie stuurde wel `Origin`, maar bootste `Sec-Fetch-Site: same-origin` en `X-Duindorp-CSRF: same-origin` niet na. De harness stuurt nu exact hetzelfde mutatiecontract als de browserclient; de serverbeveiliging is niet versoepeld.
 - Lokale kandidaatgate: 17/17 gerichte provider/evidence-tests, 198 Vitestbestanden/1.229 tests, ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden groen.
+
+## SendGrid testdelivery- en cleanupcontract — 2026-08-15
+
+- PR `#85` is gemerged als `7dc3cd8376cc7f01943c82625b59476a6a25261d`; CI-run `31880856810`, immutable stagingdeploy `31880856818` en publieke exact-SHA/digesthealth zijn groen.
+- Provider-run `31886420637` passeerde de eerder geblokkeerde AAL2-appsessie. De volgende en enige resterende browsermutatie in het harnas, `/api/email/v2/test-delivery`, miste nog hetzelfde fetch-metadata-/CSRF-contract en werd terecht vóór mailverzending geweigerd.
+- De interne cleanup probeerde bovendien eerst lokaal uit te loggen en daarna dezelfde ongeldig gemaakte JWT globaal in te trekken. Cleanup trekt nu rechtstreeks globaal in via de service-only adminroute en verwijdert daarna de uitsluitend fictieve Auth-gebruiker; de aparte fail-safe cleanup van de hosted fout bleef reeds groen.
+- De productionrunner is online, maar adoptionrun `31863584074` vond opnieuw geen appcontainer in zijn geïsoleerde Dockerdaemon. Publieke productiehealth is hersteld, maar bytegelijke legacycapture blijft extern geblokkeerd; opnieuw dispatchen zonder hostcorrectie is zinloos.
+- Lokale kandidaatgate: 17/17 gerichte provider/evidence-tests, 198 Vitestbestanden/1.229 tests, ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden groen.

@@ -430,6 +430,11 @@ describe("SendGrid staging acceptance", () => {
       acceptanceUserId(),
       false,
     );
+    expect(admin.auth.admin.signOut).toHaveBeenCalledWith(
+      "aal2-token",
+      "global",
+    );
+    expect(client.auth.signOut).not.toHaveBeenCalled();
     expect(client.rpc).toHaveBeenCalledWith(
       "get_mail_test_delivery_status_v2",
       { p_delivery_id: deliveryId },
@@ -447,6 +452,17 @@ describe("SendGrid staging acceptance", () => {
       ),
     );
     expect(testDeliveryCalls).toHaveLength(2);
+    for (const call of testDeliveryCalls) {
+      expect(call[1]?.headers).toEqual(
+        expect.objectContaining({
+          Accept: "application/json",
+          Origin:
+            "https://staging-duindorp.dgwebservices.nl",
+          "Sec-Fetch-Site": "same-origin",
+          "X-Duindorp-CSRF": "same-origin",
+        }),
+      );
+    }
     expect(testDeliveryCalls[0]?.[1]?.body).toBe(
       testDeliveryCalls[1]?.[1]?.body,
     );
