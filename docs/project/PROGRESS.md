@@ -257,3 +257,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Op expliciet besluit van de producteigenaar is de exacte-één-scoperegel verwijderd. De acceptatie vereist nog steeds dat de gebonden runtimekey `mail.send` bevat; een ontbrekende of ongeldige scopelijst faalt vóór verzending. Extra door SendGrid gerapporteerde scopes blokkeren niet langer.
 - De voormalige muterende hardeningworkflow controleert keyfingerprint, accountfingerprint en `mail.send` voortaan read-only. Zij voert geen API-keyupdate uit en vereist geen providerrecht om keys te wijzigen.
 - Live adoptionrun `31854456980` bewees de nieuwe Node-bootstrap, runnerboundary, historie- en manifestcontrole, maar vond geen appcontainer in de environment-eigen productiondaemon. Tegelijk retourneren `/` en `/api/health` publiek HTTP 502. Cleanup is groen; de workflow heeft productie niet gemuteerd. Legacycapture en rollback blijven daardoor extern geblokkeerd.
+
+## SendGrid signed-webhook GET-contract — 2026-08-15
+
+- Exact-main deployrun `31859488625` plaatste SHA `0885f1eae2ce4a220067d2aabc586595c54b26ef` groen op staging. Provider-runs `31860835400` en `31860997813` stopten vóór mailverzending met `SENDGRID_WEBHOOK_SIGNING_INVALID`; fixturecleanup bleef groen.
+- De staging-only configuratierun `31860942511` valideerde de webhook, eventselectie en signing bij SendGrid en leverde dezelfde publieke verificatiesleutel voor de environmenthandoff. De provider bleef daarna rood omdat onze GET-validator ten onrechte `enabled=true` eiste.
+- Het officiële SendGrid-contract voor `GET /v3/user/webhooks/event/settings/signed/{id}` bevat uitsluitend `id` en `public_key`; `enabled` is alleen requestinput voor PATCH en geen GET-responseveld. De acceptatie verifieert daarom exact webhook-ID, geldige P-256-public-key en bytecanonieke fingerprint, zonder een niet-bestaand veld te vertrouwen.
