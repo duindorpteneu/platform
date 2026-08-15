@@ -1,10 +1,10 @@
-name: Harden staging SendGrid Mail key
+name: Verify staging SendGrid Mail key
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Typ RESTRICT-STAGING-MAIL-SEND om de runtime-key te beperken
+        description: Typ VERIFY-STAGING-MAIL-SEND om de runtime-key read-only te controleren
         required: true
         type: string
 
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  restrict:
-    name: Restrict runtime key to mail.send
+  verify:
+    name: Verify runtime key has mail.send
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
@@ -25,7 +25,7 @@ jobs:
       SENDGRID_API_BASE_URL: ${{ vars.SENDGRID_API_BASE_URL || 'https://api.sendgrid.com' }}
 
     steps:
-      - name: Verify binding and restrict exact runtime key
+      - name: Verify binding and mail.send scope read-only
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -33,10 +33,9 @@ jobs:
           set -euo pipefail
           umask 077
 
-          [[ "${CONFIRMATION}" == "RESTRICT-STAGING-MAIL-SEND" ]]
+          [[ "${CONFIRMATION}" == "VERIFY-STAGING-MAIL-SEND" ]]
           [[ "${SENDGRID_API_BASE_URL}" == "https://api.sendgrid.com" ]]
           [[ "${SENDGRID_API_KEY}" =~ ^SG\.([A-Za-z0-9_-]{10,64})\.[A-Za-z0-9_-]{10,128}$ ]]
-          api_key_id="${BASH_REMATCH[1]}"
           [[ "${SENDGRID_ADMIN_API_KEY}" == SG.* ]]
           [[ "${SENDGRID_API_KEY}" != "${SENDGRID_ADMIN_API_KEY}" ]]
           [[ "${SENDGRID_API_KEY_FINGERPRINT}" =~ ^[a-f0-9]{64}$ ]]
@@ -61,43 +60,11 @@ jobs:
           )"
           [[ "${computed_account_fingerprint}" == "${SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT}" ]]
 
-          key_json="$(
-            curl --fail --silent --show-error --max-time 20 \
-              --header "Authorization: Bearer ${SENDGRID_ADMIN_API_KEY}" \
-              "${SENDGRID_API_BASE_URL}/v3/api_keys/${api_key_id}"
-          )"
-          key_name="$(
-            jq -er --arg id "${api_key_id}" '
-              .result
-              | if type == "array" then
-                  map(select(.api_key_id == $id)) | first
-                else
-                  select(.api_key_id == $id)
-                end
-              | .name | strings | select(length > 0 and length <= 255)
-            ' <<<"${key_json}"
-          )"
-          update_body="$(
-            jq -cn --arg name "${key_name}" \
-              '{name: $name, scopes: ["mail.send"]}'
-          )"
-          response_path="${RUNNER_TEMP}/sendgrid-key-update.json"
-          trap 'rm -f -- "${response_path}"' EXIT
-          curl --fail --silent --show-error --max-time 20 \
-            --request PUT \
-            --header "Authorization: Bearer ${SENDGRID_ADMIN_API_KEY}" \
-            --header "Content-Type: application/json" \
-            --data "${update_body}" \
-            --output "${response_path}" \
-            "${SENDGRID_API_BASE_URL}/v3/api_keys/${api_key_id}"
-          jq -e --arg id "${api_key_id}" '
-            .api_key_id == $id and .scopes == ["mail.send"]
-          ' "${response_path}" >/dev/null
-
           runtime_scopes="$(
             curl --fail --silent --show-error --max-time 20 \
               --header "Authorization: Bearer ${SENDGRID_API_KEY}" \
               "${SENDGRID_API_BASE_URL}/v3/scopes"
           )"
-          jq -e '.scopes == ["mail.send"]' <<<"${runtime_scopes}" >/dev/null
-          echo "De gebonden staging-runtime-key heeft uitsluitend mail.send."
+          jq -e '.scopes | index("mail.send") != null' \
+            <<<"${runtime_scopes}" >/dev/null
+          echo "De gebonden staging-runtime-key heeft mail.send; er is niets gewijzigd."

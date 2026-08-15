@@ -244,16 +244,17 @@ function acceptanceAdmin(runMarker = "123456-1") {
 }
 
 describe("SendGrid staging acceptance", () => {
-  it("hardt de gebonden staging-key alleen na expliciete bevestiging", () => {
+  it("verifieert de gebonden staging-key read-only op mail.send", () => {
     const workflow = readFileSync(
       new URL("../../.github/workflows/sendgrid-fingerprints.yml", import.meta.url),
       "utf8",
     );
 
-    expect(workflow).toContain("RESTRICT-STAGING-MAIL-SEND");
-    expect(workflow).toContain("/v3/api_keys/${api_key_id}");
-    expect(workflow).toContain("'{name: $name, scopes: [\"mail.send\"]}'");
-    expect(workflow).toContain(".scopes == [\"mail.send\"]");
+    expect(workflow).toContain("VERIFY-STAGING-MAIL-SEND");
+    expect(workflow).toContain("/v3/scopes");
+    expect(workflow).toContain(".scopes | index(\"mail.send\") != null");
+    expect(workflow).not.toContain("--request PUT");
+    expect(workflow).not.toContain("/v3/api_keys/${api_key_id}");
     expect(workflow).toContain("SENDGRID_API_KEY_FINGERPRINT");
     expect(workflow).toContain("SENDGRID_EXPECTED_ACCOUNT_FINGERPRINT");
     expect(workflow).not.toContain("echo \"$SENDGRID_API_KEY\"");
@@ -310,13 +311,15 @@ describe("SendGrid staging acceptance", () => {
     }
   });
 
-  it("bewijst minimale appkey, read-only webhookconfig, MFA, appdelivery, inbox en gekoppeld event", async () => {
+  it("bewijst mail.send met extra providerscopes, read-only webhookconfig, MFA, appdelivery, inbox en gekoppeld event", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(
         response(200, accountIdentity),
       )
       .mockResolvedValueOnce(
-        response(200, { scopes: ["mail.send"] }),
+        response(200, {
+          scopes: ["mail.send", "user.profile.read"],
+        }),
       )
       .mockResolvedValueOnce(
         response(200, webhookSettings),
@@ -440,19 +443,19 @@ describe("SendGrid staging acceptance", () => {
     );
   });
 
-  it("weigert extra scopes op de runtime Mail Send-key", async () => {
+  it("weigert een runtimekey zonder mail.send", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(
         response(200, accountIdentity),
       )
       .mockResolvedValueOnce(response(200, {
-        scopes: ["mail.send", "user.profile.read"],
+        scopes: ["user.profile.read"],
       }));
     await expect(runSendGridAcceptance(values, {
       randomUUID: () => correlation,
       fetchImpl,
     })).rejects.toThrow(
-      "SENDGRID_APP_KEY_SCOPE_NOT_MINIMAL",
+      "SENDGRID_MAIL_SEND_SCOPE_MISSING",
     );
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });

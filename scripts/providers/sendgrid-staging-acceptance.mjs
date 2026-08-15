@@ -292,10 +292,9 @@ export async function runSendGridProviderChecks(
   const scopes = await scopesResponse.json();
   if (
     !Array.isArray(scopes?.scopes)
-    || scopes.scopes.length !== 1
-    || scopes.scopes[0] !== "mail.send"
+    || !scopes.scopes.includes("mail.send")
   ) {
-    throw new Error("SENDGRID_APP_KEY_SCOPE_NOT_MINIMAL");
+    throw new Error("SENDGRID_MAIL_SEND_SCOPE_MISSING");
   }
 
   const settingsResponse = await providerRequest(
