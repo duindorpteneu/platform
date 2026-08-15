@@ -334,7 +334,6 @@ export async function runSendGridProviderChecks(
   const signing = await signingResponse.json();
   if (
     signing?.id !== config.webhookId
-    || signing?.enabled !== true
     || validatedPublicKey(
       signing?.public_key,
       "SENDGRID_PROVIDER_WEBHOOK_PUBLIC_KEY",

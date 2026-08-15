@@ -464,3 +464,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm exec vitest run scripts/providers/sendgrid-staging-acceptance.test.ts scripts/providers/sendgrid-acceptance-evidence.test.ts` — groen: 17 tests.
 - Volledige lokale gate — groen: 198 Vitestbestanden/1.229 tests, ESLint, TypeScript, actionlint, secretscan, 139 forward-only migrations, dependency-audit zonder bekende kwetsbaarheden en production build. Exact Node 22-, main-, immutable staging-, inbox- en signed-eventbewijs volgt via GitHub Actions.
 - Legacy-adoptierun `31854456980` stopte na groene trusted-main-, historie-, runner-, Node- en Cosignstappen op `Productionappcontainer ontbreekt`. Publieke read-only probes op `/` en `/api/health` gaven gelijktijdig HTTP 502; cleanup slaagde en productie werd niet gewijzigd.
+
+## SendGrid signed-webhook GET-contract — 2026-08-15
+
+- CI-run `31859488638` en immutable deployrun `31859488625` zijn groen op exact main-SHA `0885f1eae2ce4a220067d2aabc586595c54b26ef`; publieke staginghealth meldt dezelfde SHA en het result-bound artifactdigest.
+- Provider-runs `31860835400` en `31860997813` bereikten de read-only account-, scope-, eventselectie- en signingcontrole, maar stopten vóór testmailverzending op `SENDGRID_WEBHOOK_SIGNING_INVALID`. De always-cleanup verwijderde de tijdelijke authfixture in beide runs.
+- Configuratierun `31860942511` bewees bij SendGrid dat webhook, eventselectie en signing correct zijn en maakte een nieuwe expliciete publieke-keyhandoff. De resterende fout zat in het harnas: het eiste bij de signed-public-key-GET een `enabled`-veld dat het officiële responsecontract niet bevat.
+- De regressietest modelleert nu de officiële response met alleen `id` en `public_key`. De fail-closed controle op webhook-ID, P-256-keytype/-curve en SHA-256-fingerprint blijft behouden. Nieuwe exact-head CI, main-deploy en echte inbox-/signed-eventacceptatie volgen.

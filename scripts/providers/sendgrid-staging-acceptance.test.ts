@@ -326,7 +326,6 @@ describe("SendGrid staging acceptance", () => {
       )
       .mockResolvedValueOnce(response(200, {
         id: values.SENDGRID_WEBHOOK_ID,
-        enabled: true,
         public_key: publicKeyDer,
       }))
       .mockResolvedValueOnce(response(
