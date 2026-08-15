@@ -147,6 +147,7 @@ Gebruik daarna uitsluitend fictieve `example.invalid`-leden. Maak ten minste é�
 - Stagingacceptatie promoot alleen de geteste commit-SHA. Rebuild of dependencywijziging vereist heracceptatie.
 - Production gebruikt dezelfde artefact-SHA, maar andere secrets en providerconfiguraties.
 - Alleen de runtimeflags `MOLLIE_ENABLED`, `EMAIL_ENABLED` en `DYNAMIC_IMPORT_ENABLED` en hun gelijknamige beheerde databaseswitches zijn toegestaan. Providerverkeer en dynamische import vereisen dat beide lagen aan staan.
+- De enige e-mailuitzondering is de AAL2-beheerderstestdelivery naar de vaste fictieve acceptance-inbox: die maakt geen ledenevent of queuejob en mag met een gepubliceerde template/branding vóór de operationele `mail_templates_v2`-cutover lopen. De harde runtimeflag `EMAIL_ENABLED`, keyfingerprint, vaste afzender, idempotente ledger en signed-eventcontrole blijven daarbij verplicht.
 - Na migraties maar vóór appactivatie bewijst de service-only importstaging-gate dat de runtimekey alle niet-verlopen uploads kan ontsleutelen; de fingerprint wordt nooit in release-output getoond.
 
 ## Scheidingscontrole vóór staging

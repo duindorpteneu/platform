@@ -487,3 +487,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Codeanalyse bewijst twee deterministische oorzaken: de testdelivery-POST miste de door `guardBrowserMutation` verplichte fetch-metadata-/CSRF-headers, en lokale sign-out maakte de JWT ongeldig vóór de daaropvolgende globale admin-sign-out. De regressie eist headers op beide idempotente deliveryaanvragen, globale intrekking met de AAL2-JWT en geen voortijdige client-sign-out.
 - Legacy-adoptierun `31863584074`: main-/artifact-/historie-/runner-/Node-/Cosigncontrole groen; read-only capture stopte op `Productionappcontainer ontbreekt`; cleanup groen en production ongewijzigd.
 - Lokaal groen: gerichte provider/evidence-suite 17/17; volledige Vitest-suite 198 bestanden/1.229 tests; ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden.
+
+## SendGrid pre-cutover providerbewijs — 2026-08-15
+
+- Exact-main CI `31887576984` en deploy `31887576958` zijn groen op `f1cef43214e612230829554a550ed2fa3c0307a1`; staginghealth, deployresultaat en result-bound attestatie bewijzen exact hetzelfde artifact.
+- Provider-run `31888915556` passeerde provider-, webhook-, signing- en AAL2-sessiecontrole, stopte vóór verzending op de onterechte operationele featureflageis en verwijderde de tijdelijke acceptance-identiteit via de always-cleanup.
+- `pnpm exec vitest run scripts/providers/sendgrid-staging-acceptance.test.ts scripts/providers/sendgrid-acceptance-evidence.test.ts` — groen: 24 tests. De succesflow modelleert nu expliciet `featureEnabled: false`; afzonderlijke regressies bewijzen query-, niet-gepubliceerde-template- en ieder afzender-brandingveld zonder providerrequest.
+- `pnpm exec node scripts/run-supabase.mjs test db --local supabase/tests/mail_v2_test_delivery.sql` — groen: 47 pgTAP-asserties; de AAL2-beheerder kan een gepubliceerde testdelivery voorbereiden terwijl `mail_templates_v2` expliciet uit staat, en AAL1/kledingcommissie blijven geblokkeerd.
+- Volledige lokale gate — groen: 198 Vitestbestanden/1.236 tests, ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrations en dependency-audit zonder bekende kwetsbaarheden.
