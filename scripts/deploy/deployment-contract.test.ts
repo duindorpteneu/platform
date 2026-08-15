@@ -567,7 +567,7 @@ describe("fail-closed release chain", () => {
   it("binds SendGrid delivery evidence after final health and gates branding races", () => {
     const provider = workflow("staging-provider-smoke.yml");
     const harness = provider.indexOf(
-      "Verify app delivery, signed callback and real inbox",
+      "Verify app delivery and signed recipient-server acceptance",
     );
     const finalHealth = provider.indexOf(
       "Verify final internal health after provider evidence",

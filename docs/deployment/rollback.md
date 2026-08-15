@@ -6,11 +6,16 @@ Bij mislukte health- of routechecks probeert `scripts/deploy-vps.sh` de vorige `
 
 Voor de eerste overgang vanaf production-SHA `a79c8d8…` is uitsluitend de
 aparte workflow `Adopt exact legacy production rollback target` toegestaan.
-Zij archiveert niet opnieuw gebouwde code, maar de live manifestgebonden image,
+Zij archiveert niet opnieuw gebouwde code, maar de manifestgebonden lokale image,
 en bewijst candidate→legacy→candidate op staging. Legacyhealth zonder
 `artifactDigest` wordt alleen geaccepteerd wanneer signed capturebewijs,
 adoptierun-ID, exacte legacy-SHA en productionmanifest alle overeenkomen. Er is
-geen herbruikbare flag of algemene bypass. De oude image bevat geen scheduler:
+geen herbruikbare flag of algemene bypass. Bij exact nul zichtbare
+productionappcontainers wordt de eenmalige provenance-uitzondering expliciet in
+het signed bewijs vastgelegd; publieke én loopbackhealth, alle OCI/config/layer-
+digests en bytegelijke before/after-state zijn dan verplicht. Dit is geen claim
+dat de lokale tag rechtstreeks aan een zichtbare live container was gebonden.
+De oude image bevat geen scheduler:
 tijdens uitsluitend deze legacyfase zijn alle providers uit, is de scheduler
 aantoonbaar gestopt en draait alleen de app. Het kandidaat-herstel moet app én
 scheduler weer gezond bewijzen. Het historische gequote runtimebestand wordt

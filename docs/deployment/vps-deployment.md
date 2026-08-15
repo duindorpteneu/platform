@@ -79,15 +79,25 @@ historische Actions-artifacts zijn verlopen. Vóór de eerste gewone promotie
 moet daarom exact eenmaal `Adopt exact legacy production rollback target`
 draaien, na de kandidaatdeploy en vóór de rollbackdrill. Die workflow:
 
-1. verifieert historische run `29754524344`, live productionmanifest, image,
-   container en legacyhealth vóór en na een read-only `docker save`;
+1. verifieert historische run `29754524344`, het gelockte productionmanifest,
+   lokale image, alle OCI/config/layerdigests en publieke plus loopbackhealth vóór
+   en na een read-only `docker save`;
 2. ondertekent manifest, capturebewijs en recovered archive via Cosign/OIDC;
 3. normaliseert het historische gequote runtimecontract zonder `eval`, forceert
    e-mail, Mollie en dynamische import uit en bewijst op staging kandidaat →
-   exact live legacy-app → kandidaat;
+   exact manifestgebonden legacy-app → kandidaat;
 4. installeert het geverifieerde legacydoel als vorige stagingrelease;
 5. levert een signed adoption-run-ID/hash die de rollbackdrill en eerste
    promotie verplicht valideren.
+
+Een zichtbare productioncontainer wordt direct aan het image gebonden. Als de
+geïsoleerde productionrunner exact nul appcontainers ziet, is uitsluitend voor
+deze SHA een expliciet geaudite fallback toegestaan: dezelfde lokale tag moet
+bytegelijk aan manifest/config/layers zijn, de server op `127.0.0.1:24000` én
+de publieke host moeten vóór/na exact dezelfde legacyhealth tonen en de volledige
+runner-/manifest-/imagestate moet bytegelijk blijven. Het bewijs noemt dit
+eerlijk `one-time-local-manifest-provenance-exception-v1`; het claimt dan geen
+live-containerbinding en bouwt, haalt, laadt of start niets.
 
 De workflow is automatisch onbruikbaar zodra production niet meer exact op
 `a79c8d8…` draait of zodra een eerdere adoptierun succesvol was. De legacyimage

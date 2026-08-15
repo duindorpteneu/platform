@@ -63,7 +63,7 @@ jobs:
           node scripts/deploy/verify-legacy-history.mjs
 
   capture-production:
-    name: Capture exact live legacy production image read-only
+    name: Capture manifest-bound legacy production image read-only
     needs:
       - preflight
       - validate-control
@@ -107,7 +107,7 @@ jobs:
         with:
           cosign-release: v3.0.6
 
-      - name: Capture and byte-verify live legacy image without runtime secrets
+      - name: Capture and byte-verify manifest-bound legacy image without runtime secrets
         env:
           PRODUCTION_BASE_URL: https://duindorp.dgwebservices.nl
           LEGACY_CAPTURE_DIRECTORY: ${{ runner.temp }}/legacy-production-capture-${{ github.run_id }}-${{ github.run_attempt }}

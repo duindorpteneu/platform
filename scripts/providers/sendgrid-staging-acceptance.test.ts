@@ -10,7 +10,7 @@ import {
   vi,
 } from "vitest";
 // @ts-expect-error The provider acceptance entrypoint is intentionally plain Node.js ESM.
-import { cleanupSendGridAcceptanceFixture, runSendGridAcceptance, sendApplicationTestMail, validateSendGridAcceptanceConfig, waitForInboxMessage, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
+import { cleanupSendGridAcceptanceFixture, runSendGridAcceptance, sendApplicationTestMail, validateSendGridAcceptanceConfig, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
 
 const correlation =
   "12345678-1234-4123-8123-123456789abc";
@@ -62,11 +62,6 @@ const values = {
     "postgresql://postgres:secret@db.dxbdjtbyghsovlrdcwcr.supabase.co:5432/postgres?sslmode=require",
   SUPABASE_PROJECT_REF: "dxbdjtbyghsovlrdcwcr",
   SENDGRID_ACCEPTANCE_RUN_ID: "123456-1",
-  E2E_MAILBOX_IMAP_HOST: "imap.example.invalid",
-  E2E_MAILBOX_IMAP_PORT: "993",
-  E2E_MAILBOX_IMAP_USER: "acceptance",
-  E2E_MAILBOX_IMAP_PASSWORD: "secret",
-  E2E_MAILBOX_IMAP_MAILBOX: "INBOX",
 };
 
 const webhookSettings = {
@@ -265,7 +260,6 @@ describe("SendGrid staging acceptance", () => {
     expect(validateSendGridAcceptanceConfig(values))
       .toMatchObject({
         fromEmail: "kleding@duindorpsv.nl",
-        imapPort: 993,
         releaseSha: "a".repeat(40),
       });
     expect(validateSendGridAcceptanceConfig({
@@ -297,9 +291,6 @@ describe("SendGrid staging acceptance", () => {
           "https://staging-duindorp.dgwebservices.nl/api/webhooks/sendgrid?token=leak",
       },
       {
-        E2E_MAILBOX_IMAP_HOST: "127.0.0.1",
-      },
-      {
         SUPABASE_DB_URL:
           "postgresql://postgres:secret@db.wobcbufmmputydtzemyu.supabase.co:5432/postgres?sslmode=require",
       },
@@ -311,7 +302,7 @@ describe("SendGrid staging acceptance", () => {
     }
   });
 
-  it("bewijst mail.send met extra providerscopes, read-only webhookconfig, MFA, appdelivery, inbox en gekoppeld event", async () => {
+  it("bewijst mail.send met extra providerscopes, read-only webhookconfig, MFA, appdelivery en gekoppeld recipient-serverevent", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(
         response(200, accountIdentity),
@@ -346,27 +337,6 @@ describe("SendGrid staging acceptance", () => {
         status: "accepted",
         reused: true,
       }));
-    const release = vi.fn();
-    const logout = vi.fn().mockResolvedValue(undefined);
-    const imap = {
-      connect: vi.fn().mockResolvedValue(undefined),
-      getMailboxLock: vi.fn().mockResolvedValue({
-        release,
-      }),
-      search: vi.fn().mockResolvedValue([42]),
-      fetchOne: vi.fn().mockResolvedValue({
-        envelope: {
-          subject: "Voorbeeldpakket compleet voor Sophie",
-          from: [{
-            address: "kleding@duindorpsv.nl",
-          }],
-          to: [{
-            address: "acceptance@example.invalid",
-          }],
-        },
-      }),
-      logout,
-    };
     const client = acceptanceClient();
     const admin = acceptanceAdmin();
     const spawnSync = vi.fn().mockReturnValue({ status: 0 });
@@ -376,7 +346,6 @@ describe("SendGrid staging acceptance", () => {
       fetchImpl,
       createClient: () => client,
       createAdminClient: () => admin,
-      createImapClient: () => imap,
       spawnSync,
       randomBytes: () => Buffer.alloc(32, 7),
       attempts: 1,
@@ -384,20 +353,23 @@ describe("SendGrid staging acceptance", () => {
     })).resolves.toMatchObject({
       release_sha: "a".repeat(40),
       checks: {
-        app_request_idempotency: true,
+        app_http_acceptance: true,
         ephemeral_admin_cleanup: true,
         ephemeral_admin_mfa: true,
-        inbox_delivery: true,
+        recipient_server_delivery: true,
+        request_id_replay_reuse: true,
         signed_delivery_event: true,
       },
       delivery: {
         application_requests: 2,
-        inbox_messages: 1,
+        distinct_delivery_ids: 1,
+        http_accepted_deliveries: 1,
         provider_events: 2,
         delivered_events: 1,
         deferred_events: 1,
         failure_events: 0,
         quarantined_events: 0,
+        request_replays: 1,
       },
     });
 
@@ -439,13 +411,6 @@ describe("SendGrid staging acceptance", () => {
       "get_mail_test_delivery_status_v2",
       { p_delivery_id: deliveryId },
     );
-    expect(imap.search).toHaveBeenCalledWith({
-      header: {
-        "x-duindorp-acceptance": deliveryId,
-      },
-    }, { uid: true });
-    expect(release).toHaveBeenCalledOnce();
-    expect(logout).toHaveBeenCalledOnce();
     const testDeliveryCalls = fetchImpl.mock.calls.filter(
       (call) => String(call[0]).endsWith(
         "/api/email/v2/test-delivery",
@@ -692,40 +657,6 @@ describe("SendGrid staging acceptance", () => {
   it("gebruikt per run een andere Auth-identiteit", () => {
     expect(acceptanceUserId("123456-1"))
       .not.toBe(acceptanceUserId("123456-2"));
-  });
-
-  it("faalt gesloten bij dubbele inboxcorrelatie of timeout", async () => {
-    const config =
-      validateSendGridAcceptanceConfig(values);
-    const makeClient = (matches: number[]) => ({
-      connect: vi.fn().mockResolvedValue(undefined),
-      getMailboxLock: vi.fn().mockResolvedValue({
-        release: vi.fn(),
-      }),
-      search: vi.fn().mockResolvedValue(matches),
-      fetchOne: vi.fn(),
-      logout: vi.fn().mockResolvedValue(undefined),
-    });
-    await expect(waitForInboxMessage(
-      config,
-      deliveryId,
-      {
-        createImapClient: () => makeClient([1, 2]),
-        attempts: 1,
-      },
-    )).rejects.toThrow(
-      "E2E_MAILBOX_CORRELATION_NOT_UNIQUE",
-    );
-    await expect(waitForInboxMessage(
-      config,
-      deliveryId,
-      {
-        createImapClient: () => makeClient([]),
-        attempts: 1,
-      },
-    )).rejects.toThrow(
-      "E2E_MAILBOX_DELIVERY_TIMEOUT",
-    );
   });
 
   it("faalt direct op een testevent in quarantaine of een definitieve fout", async () => {

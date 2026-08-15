@@ -633,7 +633,7 @@ async function main() {
       `/actions/runs/${legacyAdoptionRunId}/jobs?filter=latest&per_page=100`,
     );
     validateRequiredJobs(adoptionJobs.jobs, [
-      "Capture exact live legacy production image read-only",
+      "Capture manifest-bound legacy production image read-only",
       "Prove legacy rollback and restore exact candidate",
     ]);
     const adoptionArtifacts = await fetchJson(

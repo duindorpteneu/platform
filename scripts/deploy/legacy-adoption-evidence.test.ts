@@ -28,7 +28,11 @@ const capture = buildLegacyCaptureEvidence({
   repository: "duindorpteneu/platform",
   captureWorkflowRunId: 300,
   captureWorkflowRunAttempt: 1,
+  captureSource: "local_manifest_image",
+  stateBeforeSha256: digest("f"),
+  stateAfterSha256: digest("f"),
   productionHealthProvenBeforeAfter: true,
+  loopbackHealthProvenBeforeAfter: true,
   capturedAt: "2026-08-03T20:00:00.000Z",
 });
 
@@ -43,12 +47,29 @@ describe("one-time legacy adoption evidence", () => {
       run_id: 29754524344,
       artifacts_expired: true,
     });
+    expect(capture).toMatchObject({
+      schema_version: 2,
+      capture_source: "local_manifest_image",
+      loopback_health_proven_before_after: true,
+      live_container_bound: false,
+      local_image_manifest_bound: true,
+      production_state_before_sha256: digest("f"),
+      production_state_after_sha256: digest("f"),
+      provenance_contract:
+        "one-time-local-manifest-provenance-exception-v1",
+    });
   });
 
   it.each([
     { legacy_release_sha: "f".repeat(40) },
     { production_health_proven_before_after: false },
+    { loopback_health_proven_before_after: false },
+    { provenance_contract: "live-container-byte-capture-v1" },
     { recovered_archive_sha256: "sha256:short" },
+    { capture_source: "rebuilt_image" },
+    { live_container_bound: true },
+    { local_image_manifest_bound: false },
+    { production_state_after_sha256: digest("0") },
     { historic_deploy: { ...capture.historic_deploy, run_id: 1 } },
   ])("rejects capture drift", (patch) => {
     expect(() => validateLegacyCaptureEvidence(

@@ -89,7 +89,6 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.19.0",
     "eslint-config-next": "15.5.21",
-    "imapflow": "1.6.5",
     "jsdom": "^26.0.0",
     "postcss": "8.5.23",
     "supabase": "2.109.1",

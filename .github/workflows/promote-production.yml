@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       sendgrid_run_id:
-        description: Groene SendGrid provider-run inclusief inbox/eventbewijs voor hetzelfde artifact
+        description: Groene SendGrid provider-run inclusief recipient-server/eventbewijs voor hetzelfde artifact
         required: true
         type: string
       restore_run_id:

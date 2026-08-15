@@ -14,6 +14,10 @@ const HISTORIC_ARTIFACTS = {
     name: `staging-release-${LEGACY_PRODUCTION_SHA}`,
   },
 };
+const CAPTURE_SOURCES = new Set([
+  "running_container",
+  "local_manifest_image",
+]);
 
 function validDigest(value) {
   return typeof value === "string"
@@ -43,6 +47,16 @@ function canonicalHash(value) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+function captureProvenanceContract(source) {
+  if (source === "running_container") {
+    return "live-container-byte-capture-v1";
+  }
+  if (source === "local_manifest_image") {
+    return "one-time-local-manifest-provenance-exception-v1";
+  }
+  return null;
+}
+
 function timestampWithin(value, expected) {
   const timestamp = new Date(value).valueOf();
   const notBefore = expected.notBefore === undefined
@@ -70,19 +84,31 @@ export function buildLegacyCaptureEvidence(input) {
     || input.repository !== "duindorpteneu/platform"
     || !positiveInteger(input.captureWorkflowRunId)
     || !positiveInteger(input.captureWorkflowRunAttempt)
+    || !CAPTURE_SOURCES.has(input.captureSource)
+    || !validDigest(input.stateBeforeSha256)
+    || input.stateBeforeSha256 !== input.stateAfterSha256
     || input.productionHealthProvenBeforeAfter !== true
+    || input.loopbackHealthProvenBeforeAfter !== true
   ) throw new Error("Legacy capturebewijs is ongeldig");
   const capturedAt = new Date(input.capturedAt ?? Date.now());
   if (Number.isNaN(capturedAt.valueOf())) {
     throw new Error("Legacy capturetijd is ongeldig");
   }
   return {
-    schema_version: 1,
+    schema_version: 2,
     result: "passed",
     repository: input.repository,
     legacy_release_sha: LEGACY_PRODUCTION_SHA,
     production_health_contract: "legacy-v1-exact-four-fields",
     production_health_proven_before_after: true,
+    loopback_health_proven_before_after: true,
+    provenance_contract:
+      captureProvenanceContract(input.captureSource),
+    live_container_bound:
+      input.captureSource === "running_container",
+    local_image_manifest_bound: true,
+    production_state_before_sha256: input.stateBeforeSha256,
+    production_state_after_sha256: input.stateAfterSha256,
     historic_deploy: {
       workflow_path: ".github/workflows/deploy.yml",
       run_id: HISTORIC_RUN_ID,
@@ -92,6 +118,7 @@ export function buildLegacyCaptureEvidence(input) {
     legacy_manifest: input.manifest,
     legacy_manifest_sha256: input.manifestSha256,
     recovered_archive_sha256: input.recoveredArchiveSha256,
+    capture_source: input.captureSource,
     capture_workflow_run_id: positiveInteger(input.captureWorkflowRunId),
     capture_workflow_run_attempt:
       positiveInteger(input.captureWorkflowRunAttempt),
@@ -111,8 +138,15 @@ export function validateLegacyCaptureEvidence(
     repository: value?.repository,
     captureWorkflowRunId: value?.capture_workflow_run_id,
     captureWorkflowRunAttempt: value?.capture_workflow_run_attempt,
+    captureSource: value?.capture_source,
+    stateBeforeSha256:
+      value?.production_state_before_sha256,
+    stateAfterSha256:
+      value?.production_state_after_sha256,
     productionHealthProvenBeforeAfter:
       value?.production_health_proven_before_after,
+    loopbackHealthProvenBeforeAfter:
+      value?.loopback_health_proven_before_after,
     capturedAt: value?.captured_at,
   });
   if (
@@ -214,7 +248,13 @@ async function main() {
       repository: process.env.GITHUB_REPOSITORY,
       captureWorkflowRunId: process.env.GITHUB_RUN_ID,
       captureWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      captureSource: process.env.LEGACY_CAPTURE_SOURCE,
+      stateBeforeSha256:
+        process.env.LEGACY_CAPTURE_STATE_BEFORE_SHA256,
+      stateAfterSha256:
+        process.env.LEGACY_CAPTURE_STATE_AFTER_SHA256,
       productionHealthProvenBeforeAfter: true,
+      loopbackHealthProvenBeforeAfter: true,
     });
     await writeFile(
       outputPath,
