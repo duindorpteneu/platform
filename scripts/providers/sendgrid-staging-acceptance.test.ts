@@ -405,6 +405,16 @@ describe("SendGrid staging acceptance", () => {
     expect(fetchImpl.mock.calls.slice(0, 4).every(
       (call) => !call[1]?.method,
     )).toBe(true);
+    expect(fetchImpl.mock.calls[4]?.[1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        Accept: "application/json",
+        Origin:
+          "https://staging-duindorp.dgwebservices.nl",
+        "Sec-Fetch-Site": "same-origin",
+        "X-Duindorp-CSRF": "same-origin",
+      }),
+    });
     expect(
       client.auth.mfa.challengeAndVerify,
     ).toHaveBeenCalledWith({

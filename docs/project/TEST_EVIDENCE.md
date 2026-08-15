@@ -471,3 +471,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - Provider-runs `31860835400` en `31860997813` bereikten de read-only account-, scope-, eventselectie- en signingcontrole, maar stopten vóór testmailverzending op `SENDGRID_WEBHOOK_SIGNING_INVALID`. De always-cleanup verwijderde de tijdelijke authfixture in beide runs.
 - Configuratierun `31860942511` bewees bij SendGrid dat webhook, eventselectie en signing correct zijn en maakte een nieuwe expliciete publieke-keyhandoff. De resterende fout zat in het harnas: het eiste bij de signed-public-key-GET een `enabled`-veld dat het officiële responsecontract niet bevat.
 - De regressietest modelleert nu de officiële response met alleen `id` en `public_key`. De fail-closed controle op webhook-ID, P-256-keytype/-curve en SHA-256-fingerprint blijft behouden. Nieuwe exact-head CI, main-deploy en echte inbox-/signed-eventacceptatie volgen.
+
+## SendGrid staging-sessie requestcontract — 2026-08-15
+
+- Exact-main CI `31862197916`: groen voor applicatiegate, 139 migraties, DB/RLS, concurrency, capaciteit, MFA, recovery, oudertoegang en Playwright op `1050410cca10f720a4913a1df003b1b097df9d9e`.
+- Immutable stagingdeploy `31862197844`: groen op dezelfde SHA; publieke health retourneert dezelfde revision en release-artifactdigest.
+- Provideracceptatie `31863583992`: key-, account-, webhook- en signed-public-keycontrole groen; sessiesynchronisatie stopte met `E2E_APP_SESSION_HTTP_403` vóór mailverzending; fixturecleanup groen.
+- Regressie eist voor de Node-harness exact `Origin`, `Sec-Fetch-Site: same-origin` en `X-Duindorp-CSRF: same-origin` op de app-sessie-POST. De routeguard en zijn fail-closed browsermutatiecontract blijven ongewijzigd.
+- Lokaal groen: gerichte provider/evidence-suite 17/17; volledige Vitest-suite 198 bestanden/1.229 tests; ESLint, TypeScript, actionlint, production build, secretscan, 139 forward-only migrationchecks en dependency-audit zonder bekende kwetsbaarheden.

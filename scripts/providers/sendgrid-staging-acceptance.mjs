@@ -888,9 +888,12 @@ export async function createAal2AdminSession(
     {
       method: "POST",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
         Cookie: cookieHeader(cookies),
         Origin: new URL(config.stagingBaseUrl).origin,
+        "Sec-Fetch-Site": "same-origin",
+        "X-Duindorp-CSRF": "same-origin",
       },
       body: JSON.stringify({
         accessToken: session.data.session.access_token,
