@@ -938,15 +938,18 @@ export async function sendApplicationTestMail(
     (item) => item?.key === "package_complete",
   );
   const branding = workspace.data?.branding?.published;
+  if (workspace.error) {
+    throw new Error("E2E_MAIL_WORKSPACE_QUERY_FAILED");
+  }
+  if (!template?.published?.contentHash) {
+    throw new Error("E2E_MAIL_TEMPLATE_NOT_PUBLISHED");
+  }
   if (
-    workspace.error
-    || workspace.data?.featureEnabled !== true
-    || !template?.published?.contentHash
-    || branding?.fromName !== config.fromName
+    branding?.fromName !== config.fromName
     || branding?.fromEmail !== config.fromEmail
     || branding?.replyToEmail !== config.replyToEmail
   ) {
-    throw new Error("E2E_MAIL_WORKSPACE_NOT_READY");
+    throw new Error("E2E_MAIL_BRANDING_NOT_READY");
   }
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const response = await fetchImpl(

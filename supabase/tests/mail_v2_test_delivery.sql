@@ -92,6 +92,16 @@ select ok(
   'service_role heeft alleen de nieuwste webhook- en healthgrens'
 );
 
+select is(
+  (
+    select enabled::text
+    from app.release_feature_flags
+    where key = 'mail_templates_v2'
+  ),
+  'false',
+  'beheerderstestdelivery blijft vóór de operationele mailcutover beschikbaar'
+);
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"e3300000-0000-4000-8000-000000000001","aal":"aal1"}',

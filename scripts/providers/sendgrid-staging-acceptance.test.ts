@@ -10,7 +10,7 @@ import {
   vi,
 } from "vitest";
 // @ts-expect-error The provider acceptance entrypoint is intentionally plain Node.js ESM.
-import { cleanupSendGridAcceptanceFixture, runSendGridAcceptance, validateSendGridAcceptanceConfig, waitForInboxMessage, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
+import { cleanupSendGridAcceptanceFixture, runSendGridAcceptance, sendApplicationTestMail, validateSendGridAcceptanceConfig, waitForInboxMessage, waitForSignedProviderEvent } from "./sendgrid-staging-acceptance.mjs";
 
 const correlation =
   "12345678-1234-4123-8123-123456789abc";
@@ -114,7 +114,7 @@ function acceptanceClient() {
     if (name === "get_mail_workspace_v1") {
       return {
         data: {
-          featureEnabled: true,
+          featureEnabled: false,
           templates: [{
             key: "package_complete",
             published: {
@@ -466,6 +466,111 @@ describe("SendGrid staging acceptance", () => {
     expect(testDeliveryCalls[0]?.[1]?.body).toBe(
       testDeliveryCalls[1]?.[1]?.body,
     );
+  });
+
+  it("staat een beheerderstestmail toe voor de operationele mailcutover", async () => {
+    const client = acceptanceClient();
+    const fetchImpl = vi.fn().mockResolvedValue(response(200, {
+      deliveryId,
+      status: "accepted",
+      reused: false,
+    }));
+
+    await expect(sendApplicationTestMail(
+      validateSendGridAcceptanceConfig(values),
+      correlation,
+      { client, cookies: new Map() },
+      { fetchImpl },
+    )).resolves.toEqual({
+      deliveryId,
+      reused: false,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      expected: "E2E_MAIL_WORKSPACE_QUERY_FAILED",
+      workspace: { data: null, error: { code: "PGRST000" } },
+    },
+    {
+      expected: "E2E_MAIL_TEMPLATE_NOT_PUBLISHED",
+      workspace: {
+        data: { templates: [], branding: { published: {} } },
+        error: null,
+      },
+    },
+    {
+      expected: "E2E_MAIL_BRANDING_NOT_READY",
+      workspace: {
+        data: {
+          templates: [{
+            key: "package_complete",
+            published: { contentHash: "b".repeat(64) },
+          }],
+          branding: { published: {} },
+        },
+        error: null,
+      },
+    },
+  ])("rapporteert de exacte preflightblokkade: $expected", async ({
+    expected,
+    workspace,
+  }) => {
+    const rpc = vi.fn().mockResolvedValue(workspace);
+    const fetchImpl = vi.fn();
+
+    await expect(sendApplicationTestMail(
+      validateSendGridAcceptanceConfig(values),
+      correlation,
+      {
+        client: { schema: vi.fn(() => ({ rpc })) },
+        cookies: new Map(),
+      },
+      { fetchImpl },
+    )).rejects.toThrow(expected);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "fromName",
+    "fromEmail",
+    "replyToEmail",
+  ] as const)("weigert brandingdrift in %s voor ieder providerrequest", async (
+    field,
+  ) => {
+    const branding = {
+      fromName: "Kledingcommissie Duindorp SV",
+      fromEmail: "kleding@duindorpsv.nl",
+      replyToEmail: "kleding@duindorpsv.nl",
+      [field]: "afwijkend@example.invalid",
+    };
+    const rpc = vi.fn().mockResolvedValue({
+      data: {
+        featureEnabled: false,
+        templates: [{
+          key: "package_complete",
+          published: { contentHash: "b".repeat(64) },
+        }],
+        branding: { published: branding },
+      },
+      error: null,
+    });
+    const fetchImpl = vi.fn();
+
+    await expect(sendApplicationTestMail(
+      validateSendGridAcceptanceConfig(values),
+      correlation,
+      {
+        client: { schema: vi.fn(() => ({ rpc })) },
+        cookies: new Map(),
+      },
+      { fetchImpl },
+    )).rejects.toThrow("E2E_MAIL_BRANDING_NOT_READY");
+
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("weigert een runtimekey zonder mail.send", async () => {

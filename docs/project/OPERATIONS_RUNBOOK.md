@@ -145,6 +145,8 @@ Een database-update buiten `app.recover_stale_email_job` is geen herstelroute. T
 
 Mollie en e-mail gebruiken ieder twee onafhankelijke veiligheidslagen: de runtimeflags `MOLLIE_ENABLED` en `EMAIL_ENABLED` zijn de harde bovengrens, terwijl een beheerder de bijbehorende databaseswitch via Instellingen kan uitzetten. Providerverkeer is alleen toegestaan wanneer beide lagen expliciet aan staan. Andere featureflags zijn niet toegestaan.
 
+Uitsluitend de beheerderstestdelivery naar de vaste fictieve acceptance-inbox vormt een pre-cutover-uitzondering: AAL2, een gepubliceerde template/branding, de runtimeflag, keyfingerprint, vaste afzender, immutable testledger en signed providerbewijs blijven verplicht. Dit pad maakt geen ledenevent, reminder, queuejob of vrije ontvanger aan en activeert geen operationele mail.
+
 Uitschakelen:
 
 1. incidentleider besluit en noteert reden/tijd;
