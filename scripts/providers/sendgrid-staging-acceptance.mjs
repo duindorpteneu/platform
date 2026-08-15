@@ -957,9 +957,12 @@ export async function sendApplicationTestMail(
     {
       method: "POST",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
         Cookie: cookieHeader(session.cookies),
         Origin: new URL(config.stagingBaseUrl).origin,
+        "Sec-Fetch-Site": "same-origin",
+        "X-Duindorp-CSRF": "same-origin",
         "X-Correlation-Id": correlation,
       },
       body: JSON.stringify({
@@ -1232,8 +1235,6 @@ export async function runSendGridAcceptance(
     acceptanceError = error;
     throw error;
   } finally {
-    await session?.client.auth.signOut({ scope: "local" })
-      .catch(() => undefined);
     try {
       await cleanupSendGridAcceptanceFixture(config, {
         ...dependencies,
