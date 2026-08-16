@@ -113,7 +113,7 @@ run_preflight() {
   node -e '
     const fs = require("node:fs");
     const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    if (value.schema_version !== 1 || value.cleanup_table_count !== 100 || value.preserved_table_count !== 28) process.exit(1);
+    if (value.schema_version !== 1 || value.cleanup_table_count !== 101 || value.preserved_table_count !== 28) process.exit(1);
     const latest = require("node:fs").readdirSync("supabase/migrations")
       .filter((name) => /^\d{14}_.+\.sql$/.test(name)).sort().at(-1).slice(0, 14);
     if (value.latest_migration_version !== latest) throw new Error("staging migration ledger is not current");
