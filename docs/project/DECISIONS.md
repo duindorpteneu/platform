@@ -118,3 +118,15 @@
 - Besluit: alleen een beheerder met AAL2 kan een lid handmatig toevoegen. De actieve open seizoenrelatie wordt gemaakt, maar toegang, mail, bestelling, pakket, betaling en maten niet.
 - Een exact bestaand Sportlink-ID blokkeert altijd. Een kandidaat op naam+DOB, naam+e-mail of uitsluitend naam wordt nooit automatisch samengevoegd; de beheerder kan na een ongewijzigde preflight bewust een afzonderlijk lid maken.
 - DOB blijft in `private.member_sensitive_identity`; auditmetadata bevat uitsluitend booleans, UUID's en payloaddigests.
+
+## D-093 — Pakketten bulk beheren vanuit het ledenoverzicht
+
+- Besluit: alleen een beheerder met AAL2 wijst een pakket toe of trekt het in voor één, meerdere of alle actieve leden. Een expliciete selectie is maximaal vijftig lid-seizoenen; `alle actieve leden` wordt na preflight opnieuw server-side uit het actieve seizoen afgeleid.
+- Preview en uitvoering zijn door actie, scope, pakket, seizoen, selectie, reden, databaserevisie en een tien minuten geldig ondertekend bewijs aan elkaar gebonden. De uitvoeringsrequest heeft daarnaast een duurzame idempotentiesleutel en aggregeerde plus individuele auditregels.
+- Alleen `confirmed` en `locked` maatkeuzes met een actieve echte productvariant materialiseren als orderregel. `imported_unconfirmed`, leeg en conflict blijven zonder logistieke regel, zodat nooit een maat of SKU wordt gegokt.
+
+## D-094 — Pakket verwijderen is een omkeerbare commerciële withdrawal
+
+- Besluit: een toegewezen pakket wordt niet hard verwijderd en `package_revision_id`, prijs of snapshots worden niet geleegd. De order krijgt `package_assignment_state = withdrawn`; open backorderregels worden ingetrokken en historische snapshots blijven immutable.
+- Withdrawal is uitsluitend toegestaan vóór iedere betaling, harde reservering, allocatie, afhaalklaarstatus of uitgifte. Databaseguards blokkeren nieuwe betaling en logistieke activiteit zolang het pakket ingetrokken is.
+- Een latere veilige toewijzing heractiveert dezelfde lid-seizoensorder via de bestaande pakketselectiekern en legt een afzonderlijke `package_order.reactivated`-audit vast.

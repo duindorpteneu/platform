@@ -522,3 +522,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - De echte lokale Playwrightflow is groen en heeft via de productiebuild 99 leden geïmporteerd, waaronder één lid zonder team met genegeerde onbekende maat; 98 geldige maten bleven intact. Dezelfde flow heeft een lid zonder team handmatig toegevoegd, private DOB en nul orders bewezen en alle fictieve data plus workerheartbeats weer verwijderd. De direct aansluitende volledige pgTAP-suite bleef groen.
 - ESLint, `tsc --noEmit`, production `next build`, `git diff --check`, secretscan en migrationlint (141 migrations) zijn groen.
 - Hosted exact-SHA CI, immutable stagingdeploy en echte beheerderbrowseracceptatie volgen na publicatie; productie is niet benaderd of gewijzigd.
+
+## Pakketbulkbeheer voor leden — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 142 forward-only migrations, inclusief `20260816053605_member_package_bulk_assignment.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` — groen: 57 pgTAP-bestanden en 1.810 assertions. De 28 nieuwe assertions bewijzen geselecteerd en alle actief, confirmed/locked-maatkoppeling, ontbrekende maten zonder gok, soft withdrawal, betalingsguard, actuele projecties, veilige hertoewijzing, RLS/privileges, idempotentie en audit.
+- `pnpm test:db:package-concurrency` — groen: pakketselectie, defaults, wissels en maatresoluties serialiseren zonder partial writes; de nieuwe bulk-RPC gebruikt dezelfde deterministische lid-seizoenslocks en een duurzame requestledger.
+- `pnpm test` — groen: 202 Vitestbestanden en 1.257 tests, inclusief contract-, previewtoken-, route-, workspace- en UI-integratietests voor individueel, geselecteerd en alle actief.
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm lint:workflows`, `pnpm security:dependencies`, `pnpm security:secrets`, `pnpm security:migrations` en `git diff --check` — groen na de finale controle.
+- Geen staging- of productiedeploy uitgevoerd. Hosted CI en menselijke browseracceptatie volgen pas na review/merge.

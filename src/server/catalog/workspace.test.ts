@@ -64,7 +64,7 @@ describe("catalogus- en pakketworkspace", () => {
       schema: () => ({ rpc: mocks.rpc }),
     });
     mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === "get_catalog_order_workspace_v4") {
+      if (name === "get_catalog_order_workspace_v5") {
         return { data: databaseWorkspace(), error: null };
       }
       if (name === "get_catalog_seasons") {
@@ -89,7 +89,7 @@ describe("catalogus- en pakketworkspace", () => {
     const result = await getCatalogOrderWorkspace();
 
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "get_catalog_order_workspace_v4",
+      "get_catalog_order_workspace_v5",
     );
     expect(result.workspace.packageSizeChangeRequests).toHaveLength(1);
   });
@@ -104,7 +104,7 @@ describe("catalogus- en pakketworkspace", () => {
 
   it("weigert onverwachte ouderidentificatie fail-closed", async () => {
     mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === "get_catalog_order_workspace_v4") {
+      if (name === "get_catalog_order_workspace_v5") {
         return {
           data: databaseWorkspace({ parentAccountId: thirdId }),
           error: null,

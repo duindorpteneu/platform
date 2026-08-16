@@ -5,6 +5,7 @@ import {
   memberListResponseSchema,
   type MemberListQuery,
 } from "@/lib/member-overview-contract";
+import { memberPackageBulkOptionsSchema } from "@/lib/member-package-bulk-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getMemberSavedViews } from "@/server/members/saved-views";
 import { getSupabaseServerClient } from "@/server/supabase/server";
@@ -44,7 +45,7 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
     if (rateError || allowed !== true) throw new Error("MEMBER_SEARCH_RATE_LIMITED");
   }
 
-  const { data: listData, error: listError } = await supabase.schema("app").rpc("get_member_list", {
+  const { data: listData, error: listError } = await supabase.schema("app").rpc("get_member_list_v2", {
     p_search: query.search ?? null,
     p_team: query.team ?? null,
     p_payment_filter: query.payment ?? null,
@@ -61,6 +62,19 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
   }
   const list = memberListResponseSchema.safeParse(listData);
   if (!list.success) throw new Error("MEMBER_LIST_RESPONSE_INVALID");
+  let packageOptions = null;
+  if (staff.role === "beheerder") {
+    const { data: packageData, error: packageError } = await supabase.schema("app").rpc(
+      "get_member_package_bulk_options",
+    );
+    if (packageError) {
+      if (packageError.code === "42501") throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+      throw new Error("MEMBER_PACKAGE_OPTIONS_QUERY_FAILED");
+    }
+    const parsedPackages = memberPackageBulkOptionsSchema.safeParse(packageData);
+    if (!parsedPackages.success) throw new Error("MEMBER_PACKAGE_OPTIONS_RESPONSE_INVALID");
+    packageOptions = parsedPackages.data;
+  }
   let savedViews = null;
   if (list.data.activeSeason) {
     const savedViewResult = await getMemberSavedViews(list.data.activeSeason.id);
@@ -75,7 +89,7 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
 
   let detail = null;
   if (query.member) {
-    const { data: detailData, error: detailError } = await supabase.schema("app").rpc("get_member_detail_v3", {
+    const { data: detailData, error: detailError } = await supabase.schema("app").rpc("get_member_detail_v4", {
       p_member_id: query.member,
     });
     if (detailError) {
@@ -88,5 +102,5 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
     }
   }
 
-  return { list: list.data, detail, query, savedViews, staff };
+  return { list: list.data, detail, query, savedViews, staff, packageOptions };
 }

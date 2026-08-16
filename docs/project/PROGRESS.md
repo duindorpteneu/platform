@@ -309,3 +309,12 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Beheerders met AAL2 kunnen op het ledenoverzicht handmatig een lid voor het actieve open seizoen toevoegen. Alleen voor- en achternaam zijn verplicht; relatienummer, e-mail, DOB, geslacht en team zijn optioneel. Mogelijke dubbelen vereisen een zichtbare tweede bevestiging en een bestaand Sportlink-ID blijft hard geblokkeerd.
 - Handmatige invoer is transactioneel, request-idempotent en PII-vrij geaudit. Zij maakt geen oudertoegang, uitnodiging, e-mail, pakketorder, betaling of maatkeuze aan.
 - Lokaal groen: drie volledige schone migratiereplays, 56 pgTAP-bestanden/1.782 assertions, 199 Vitestbestanden/1.247 tests, ESLint, TypeScript, production build, secretscan en lint van 141 forward-only migrations. Staging en productie zijn in deze lokale implementatiefase nog niet gewijzigd.
+
+## Pakketten individueel, geselecteerd of aan alle actieve leden — 2026-08-16
+
+- Het ledenoverzicht biedt beheerders met AAL2 één pakketactie voor één lid, de aangevinkte leden of alle actieve leden van het actieve seizoen. De optie `alle actieve leden` wordt volledig server-side bepaald en is niet beperkt tot de zichtbare pagina.
+- Iedere actie heeft een actuele preflight met geschikt, overgeslagen en geblokkeerd, een pakket- en seizoensrevisie, een verplichte reden, een ondertekend kortlevend bevestigingsbewijs en een duurzame idempotentiesleutel.
+- Toewijzing maakt alleen logistieke orderregels voor actieve echte varianten waarvan de maat door het lid is `confirmed` of `locked`. Ontbrekende, geïmporteerd-onbevestigde of conflicterende maten worden niet gegokt en blijven zichtbaar als ontbrekende pakketmaten.
+- Verwijderen is een geaudite soft withdrawal zolang nog geen betaling, reservering, afhaalklare regel of uitgifte bestaat. Pakketnaam, prijs, inhoudsnapshot, ingetrokken orderregels en historie blijven intact; een latere veilige hertoewijzing activeert dezelfde lid-seizoensorder opnieuw.
+- Nieuwe betalingen, allocaties en logistieke regels op een ingetrokken pakket worden database-side geblokkeerd. Actuele leden-, catalogus- en ouderprojecties tonen ingetrokken pakketten niet als actief.
+- Lokaal groen: schone replay van alle 142 forward-only migrations, 57 pgTAP-bestanden/1.810 assertions, 28 gerichte pakketbulkasserties, pakketconcurrency, 202 Vitestbestanden/1.257 tests, ESLint, TypeScript, production build en securitychecks. Er is niet gedeployed.
