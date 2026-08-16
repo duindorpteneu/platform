@@ -578,3 +578,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm security:secrets`, `pnpm security:dependencies` en `pnpm security:migrations` — groen; dependency-audit meldt geen bekende kwetsbaarheden en migrationlint controleert 147 bestanden.
 - `pnpm build` — groen: production build bevat de ledeneditor, `/api/live`, health v13 en alle drie applicatieoppervlakken.
 - Composecontracttest bewijst dat actuele images uitsluitend `/api/live` gebruiken en dat de hoofdpaginafallback alleen bij exact HTTP 404 van een vorige image wordt gebruikt; `/api/health` blijft buiten Dockerliveness en binnen de latere harde deploygate.
+
+## Ledenreview ouderportaalcopy — 2026-08-16 lokaal
+
+- `pnpm exec vitest run src/components/member/member-dashboard.test.ts src/app/api/parent/packages/select/route.test.ts src/app/api/parent/packages/sizes/route.test.ts src/server/email/mail-v2.test.ts src/server/email/otp.test.ts src/app/api/parent-auth/request-code/route.test.ts` — groen: 6 bestanden en 33 tests. Bewijst ouderdashboard-, pakket-/maatroute- en OTP-rendercontracten.
+- `pnpm db:reset` — groen: alle 148 forward-only migrations replayen schoon, inclusief `20260816162413_align_parent_portal_copy.sql`; veilige metadatacontrole bewijst het nieuwe OTP-onderwerp en een geldige herberekende content-hash zonder persoonsgegevens of secretwaarden uit te lezen.
+- `node scripts/check-migrations.mjs`, `pnpm lint`, `pnpm typecheck`, `pnpm build` en `git diff --check` — groen. Op verzoek is de volledige lokale testmatrix niet opnieuw uitgevoerd; de verplichte hosted exact-main releaseketen blijft onverkort gelden.

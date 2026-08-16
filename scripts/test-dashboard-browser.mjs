@@ -577,8 +577,14 @@ async function verifyProviderSprint(page, screenshotDir) {
   await page.goto(`${baseUrl}/betaling/terug`);
   await page.getByRole("heading", { name: "Betaling wordt gecontroleerd" }).waitFor({ timeout: 5_000 });
   const returnText = await page.locator("body").innerText();
-  if (!returnText.includes("Deze pagina markeert een bestelling nooit zelf als betaald.")) {
-    throw new Error("De Mollie-retourpagina mist de webhook-first veiligheidsmelding.");
+  if (!returnText.includes("Je actuele betaalstatus verschijnt in het overzicht zodra de beveiligde bevestiging is ontvangen.")) {
+    throw new Error("De Mollie-retourpagina mist de oudergerichte statusuitleg.");
+  }
+  if (!returnText.includes("Naar mijn overzicht")) {
+    throw new Error("De Mollie-retourpagina mist de oudergerichte terugkeeractie.");
+  }
+  if (returnText.includes("Deze pagina markeert een bestelling nooit zelf als betaald.")) {
+    throw new Error("De Mollie-retourpagina toont nog interne webhookuitleg aan ouders.");
   }
   const returnDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));
   if (returnDimensions.scrollWidth > returnDimensions.clientWidth) throw new Error("Mollie-retourpagina heeft horizontale body-overflow.");

@@ -1,4 +1,4 @@
-import { Clock3, ShieldCheck } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -15,11 +15,8 @@ export default function PaymentReturnPage() {
           </div>
           <p className="mt-5 text-xs font-bold uppercase tracking-[0.14em] text-brand-500">Betaling teruggekoppeld</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-brand-900">Betaling wordt gecontroleerd</h1>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">Mollie verwerkt de betaling op de achtergrond. Je actuele betaalstatus verschijnt in het tenue-overzicht zodra de beveiligde bevestiging is ontvangen.</p>
-          <Link href="/mijn-tenue" className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">Naar mijn tenue-overzicht</Link>
-          <div className="mt-7 flex items-center justify-center gap-2 border-t border-line pt-5 text-[11px] text-slate-400">
-            <ShieldCheck className="size-3.5" aria-hidden="true" /> Deze pagina markeert een bestelling nooit zelf als betaald.
-          </div>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">Mollie verwerkt de betaling op de achtergrond. Je actuele betaalstatus verschijnt in het overzicht zodra de beveiligde bevestiging is ontvangen.</p>
+          <Link href="/mijn-tenue" className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">Naar mijn overzicht</Link>
         </div>
       </div>
     </main>

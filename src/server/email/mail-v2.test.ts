@@ -279,7 +279,7 @@ describe("mail-v2 renderer", () => {
     });
     const source: MailTemplateSource = {
       templateKey: "login_otp",
-      subjectSource: "Uw verificatiecode voor {{club_name}}",
+      subjectSource: "Uw verificatiecode voor het tenueportaal van {{club_name}}",
       preheaderSource: "Tien minuten geldig.",
       bodyTipTap,
       allowedShortcodes: ["club_name", "otp_expiry_minutes"],
@@ -293,10 +293,13 @@ describe("mail-v2 renderer", () => {
       protectedValues: preview.protectedValues,
       appBaseUrl: "https://tenue.duindorpsv.nl",
     });
+    expect(rendered.subject).toBe("Uw verificatiecode voor het tenueportaal van Duindorp SV");
     expect(rendered.html).toContain("123456");
     expect(rendered.html).toContain("10 minuten geldig");
-    expect(rendered.html).toContain("Deel deze code nooit");
+    expect(rendered.html).toContain("Deel deze code nooit.");
+    expect(rendered.html).not.toContain("Een medewerker vraagt niet om uw verificatiecode.");
     expect(rendered.text).toContain("Verificatiecode: 123456");
+    expect(rendered.text).toContain("Deel deze code nooit.");
   });
 
   it("keeps final package mail free of partial-pickup blocks", () => {

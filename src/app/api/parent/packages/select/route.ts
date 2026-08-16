@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       if (error.message?.includes("FEATURE_DISABLED")) {
         return fail("Pakketkeuze is veilig gepauzeerd.", 503);
       }
-      return fail("Geen toegang tot dit lid-seizoen.", 403);
+      return fail("Geen toegang tot dit lid.", 403);
     }
     if (error.code === "40001") {
       return fail(

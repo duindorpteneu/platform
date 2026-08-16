@@ -163,3 +163,9 @@
 - Append-only OTP-pogingen met `configuration_error` of `disabled` blijven volledig bewaard voor audit en monitoring, maar tellen niet dubbel als actueel verzendincident: de publieke en interne health controleren reeds rechtstreeks de actuele runtimeflag, databasecutover, providerconfiguratie en sleutelbinding.
 - Een recente `provider_rejected` of `render_failed` OTP-poging blijft wel releaseblokkerend. Ook delivery uncertainty, bounce/drop/failure, quarantaine en actuele runtime-/databaseafwijkingen blijven ongewijzigd fail-closed.
 - Compose gebruikt `/api/live` voor actuele images. Alleen wanneer een aantoonbaar vorige image die route nog niet kent (`404`) mag de healthcheck éénmalig terugvallen op `/`; iedere andere niet-successtatus blijft een harde fout. De volledige `/api/health` blijft vóór publicatie van revision en manifest verplicht.
+
+## D-100 — Ouderportaalcopy is ledengericht en gepubliceerde mailinhoud blijft beheerbaar
+
+- De door de producteigenaar aangeleverde Nederlandse teksten vervangen technische termen als lid-seizoen, harde reservering, Sportlink-herkomst en pakketmaat waar die voor ouders zichtbaar waren. De onderliggende status-, autorisatie- en veiligheidscontracten wijzigen niet.
+- De aangeleverde verschrijving `teneuportaal` wordt als `tenueportaal` uitgevoerd. De OTP-systeemfallback en uitsluitend onaangeraakte systeemconcepten krijgen het nieuwe onderwerp en de kortere beschermde waarschuwing.
+- Een door medewerkers gewijzigd of gepubliceerd mailtemplate wordt niet stil door een migratie overschreven; templatebeheer blijft de actuele inhoudsbron. De browseracceptatie bewaakt dat de interne Mollie-disclaimer niet meer aan ouders wordt getoond.

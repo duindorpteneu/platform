@@ -66,7 +66,7 @@ const paymentLabel: Record<string, string> = {
 };
 const sourceLabel = {
   legacy: "Bestaande registratie",
-  import: "Sportlink-import",
+  import: "Vooraf bekend",
   parent: "Door jou gekozen",
   staff: "Door beheer aangepast",
   order: "Bestaande bestelling",
@@ -197,7 +197,7 @@ function QrPanel({ member }: { member: ParentPackageMember }) {
       <div className="flex flex-col items-center justify-center rounded-xl border border-brand-100 bg-white p-3 text-center">
         <Image
           src={order.qrDataUrl}
-          alt={`Afhaal-QR voor ${fullName(member)}`}
+          alt={`QR voor ${fullName(member)}`}
           width={144}
           height={144}
           unoptimized
@@ -217,8 +217,8 @@ function QrPanel({ member }: { member: ParentPackageMember }) {
       </p>
       <p className="mt-1 max-w-32 text-[9px] leading-4 text-slate-400">
         {!["paid", "duplicate_paid"].includes(order?.paymentStatus ?? "")
-          ? "Beschikbaar na betaling en harde reservering"
-          : "Wordt actief zodra minimaal één product afhaalklaar is"}
+          ? "Beschikbaar na betaling en wanneer één of meerdere producten af te halen zijn"
+          : "Wordt actief zodra minimaal één product af te halen is"}
       </p>
     </div>
   );
@@ -368,7 +368,7 @@ function SizeItem({
       )}
       {item.selectionStatus === "change_requested" && (
         <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800">
-          De huidige reservering blijft staan totdat een beheerder jouw verzoek
+          De huidige reservering blijft staan totdat de kledingcommissie jouw verzoek
           goedkeurt of afwijst.
         </div>
       )}
@@ -586,7 +586,7 @@ export function MemberDashboard() {
       drafts[member.memberSeasonId] ?? {},
     );
     if (!selections) {
-      setError("Kies voor ieder pakketproduct een maat of licht Anders… toe.");
+      setError("Kies voor ieder product een maat of licht toe.");
       return;
     }
     const requestId = sizeRequestIds[member.memberSeasonId]
@@ -627,7 +627,7 @@ export function MemberDashboard() {
           });
         }
         throw new Error(
-          payload.error ?? "De pakketmaten konden niet worden bevestigd.",
+          payload.error ?? "De maten konden niet worden bevestigd.",
         );
       }
       setSizeRequestIds((current) => {
@@ -637,17 +637,17 @@ export function MemberDashboard() {
       });
       setNotice(
         (payload.changeRequestCount ?? 0) > 0
-          ? "De maten zijn bevestigd. Een wijziging na reservering wacht op beheer."
+          ? "De maten zijn bevestigd. De kledingcommissie kan alleen nog maten wijzigen."
           : (payload.conflictCount ?? 0) > 0
-            ? "De maten zijn bevestigd. Anders… blijft zichtbaar voor beheer."
-            : "Alle pakketmaten zijn bevestigd.",
+            ? "De maten zijn bevestigd."
+            : "Alle maten zijn bevestigd.",
       );
       await load();
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "De pakketmaten konden niet worden bevestigd.",
+          : "De maten konden niet worden bevestigd.",
       );
     } finally {
       setBusyMember(null);
@@ -656,8 +656,8 @@ export function MemberDashboard() {
 
   const memberCountLabel = useMemo(
     () => workspace.members.length === 1
-      ? "1 lid-seizoen"
-      : `${workspace.members.length} lid-seizoenen`,
+      ? "1 lid"
+      : `${workspace.members.length} leden`,
     [workspace.members.length],
   );
 
@@ -703,8 +703,7 @@ export function MemberDashboard() {
             Jouw kledingpakketten
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            {loadedSuccessfully ? memberCountLabel : "Leden konden niet worden geladen"}. Ieder seizoen houdt eigen pakket, maten,
-            betaling en uitgifte.
+            {loadedSuccessfully ? memberCountLabel : "Leden konden niet worden geladen"}. Je oude gegevens worden per seizoen opnieuw gebruikt.
           </p>
         </div>
         <div className="flex gap-2">
@@ -764,8 +763,8 @@ export function MemberDashboard() {
           </h2>
           <p className="mt-2 text-sm text-slate-500">
             Alleen een beheerder kan portaaltoegang voor een lid en seizoen
-            activeren. Een gedeeld e-mailadres koppelt nooit automatisch
-            kinderen.
+            activeren. Neem contact op met de kledingcommissie via
+            kleding@duindorpsv.nl!
           </p>
         </div>
       ) : (
@@ -850,9 +849,7 @@ export function MemberDashboard() {
 
                   {order?.legacy && (
                     <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-                      Dit is een historische bestelling met losse artikelen.
-                      Een beheerder koppelt die gecontroleerd aan een pakket;
-                      Speler of Keeper wordt nooit gegokt.
+                      Dit is een oude bestelling.
                     </div>
                   )}
 
@@ -912,13 +909,13 @@ export function MemberDashboard() {
                           <span>
                             <strong className="block text-xs">
                               {packageSizeAction(member) === "fill"
-                                ? "Pakketmaten invullen verplicht"
-                                : "Pakketmaten controleren en bevestigen"}
+                                ? "Het is verplicht om de maten in te vullen."
+                                : "Maten controleren en bevestigen"}
                             </strong>
                             <span className="mt-1 block text-xs leading-5">
                               {packageSizeAction(member) === "fill"
-                                ? "Kies voor ieder product een maat. Daarna bevestig je alle pakketmaten in één keer."
-                                : "De geïmporteerde maten zijn voorgeselecteerd, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                                ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
+                                : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
                             </span>
                           </span>
                         </a>
@@ -934,14 +931,14 @@ export function MemberDashboard() {
                               Maten per product
                             </h3>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Controleer alle voorgeselecteerde Sportlink-maten
+                              Controleer alle vooraf ingevulde maten
                               en bevestig het pakket in één keer.
                             </p>
                           </div>
                           {order.sizesConfirmed && (
                             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-success">
                               <CheckCircle2 className="size-4" />
-                              Pakketmaten bevestigd
+                              Maten bevestigd
                             </span>
                           )}
                         </div>
@@ -970,9 +967,8 @@ export function MemberDashboard() {
                         {hasEditableItems && (
                           <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-xl bg-slate-50 px-4 py-4 sm:flex-row sm:items-center">
                             <p className="text-[10px] leading-4 text-slate-500">
-                              Na reservering wordt een andere maat een
-                              beheeractie; de bestaande allocatie verandert
-                              niet stil.
+                              Na reservering kan alleen de kledingcommissie de
+                              maten nog wijzigen.
                             </p>
                             <button
                               type="button"
@@ -983,7 +979,7 @@ export function MemberDashboard() {
                               {busy
                                 ? <Loader2 className="size-4 animate-spin" />
                                 : <CheckCircle2 className="size-4" />}
-                              Alle pakketmaten bevestigen
+                              Alle maten bevestigen
                             </button>
                           </div>
                         )}
@@ -1020,15 +1016,15 @@ export function MemberDashboard() {
                         <div className="mt-5 flex flex-wrap items-center gap-3">
                           <div className="mr-auto">
                             <p className="text-[10px] text-slate-400">
-                              Verschuldigd pakketbedrag
+                              Verschuldigd bedrag
                             </p>
                             <p className="mt-1 text-sm font-bold text-ink">
                               {amount.format(order.amountDueCents / 100)}
                             </p>
                             {canStartPayment(member) && (
                               <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
-                                Je kunt direct betalen; voorraad is niet nodig.
-                                De afhaal-QR wordt pas actief na een harde reservering.
+                                Je kunt direct betalen. De QR wordt pas actief
+                                wanneer één of meerdere producten af te halen zijn.
                               </p>
                             )}
                           </div>
