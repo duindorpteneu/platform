@@ -229,7 +229,7 @@ export function MailV2CutoverPanel({
         <div className="flex min-w-0 gap-3">
           <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
             snapshot.enabled
-              ? "bg-emerald-100 text-success"
+              ? "bg-emerald-50 text-success"
               : "bg-amber-100 text-amber-800"
           }`}>
             <ShieldCheck className="size-5" />
@@ -282,7 +282,7 @@ export function MailV2CutoverPanel({
               </span>
               <span className={`rounded-full px-2.5 py-1 ${
                 complete
-                  ? "bg-emerald-100 text-success"
+                  ? "bg-emerald-50 text-success"
                   : "bg-amber-100 text-amber-800"
               }`}>
                 {complete ? "Preflight gereed" : "Preflight geblokkeerd"}

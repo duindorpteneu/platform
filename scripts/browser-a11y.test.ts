@@ -75,4 +75,13 @@ describe("browser accessibility gate", () => {
     }
     expect(emailSurfaceSources.join("\n")).toContain("transition-[width]");
   });
+
+  it("keeps completed mail-cutover success states above the normal-text contrast threshold", () => {
+    expect(emailSurfaceSources.join("\n")).not.toContain(
+      "bg-emerald-100 text-success",
+    );
+    expect(emailSurfaceSources.join("\n")).toContain(
+      "bg-emerald-50 text-success",
+    );
+  });
 });
