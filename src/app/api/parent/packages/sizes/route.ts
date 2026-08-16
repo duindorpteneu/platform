@@ -37,12 +37,12 @@ export async function POST(request: Request) {
   if (!body.ok) return body.response;
   const parsed = parentPackageSizesRequestSchema.safeParse(body.data);
   if (!parsed.success) {
-    return fail("Controleer alle gekozen pakketmaten.", 400);
+    return fail("Controleer alle gekozen maten.", 400);
   }
 
   const session = await getParentSession();
   const admin = getSupabaseAdminClient();
-  if (!session || !admin) return fail("Oudersessie vereist.", 401);
+  if (!session || !admin) return fail("Inloggen vereist.", 401);
 
   const { data, error } = await admin.rpc(
       "confirm_parent_package_sizes_v5",
@@ -62,11 +62,11 @@ export async function POST(request: Request) {
       if (error.message?.includes("FEATURE_DISABLED")) {
         return fail("Maatbevestiging is veilig gepauzeerd.", 503);
       }
-      return fail("Geen toegang tot dit lid-seizoen.", 403);
+      return fail("Geen toegang tot dit lid.", 403);
     }
     if (error.code === "40001") {
       return fail(
-        "De pakketmaten zijn intussen gewijzigd. Vernieuw en controleer opnieuw.",
+        "De maten zijn intussen gewijzigd. Vernieuw en controleer opnieuw.",
         409,
       );
     }
@@ -81,14 +81,14 @@ export async function POST(request: Request) {
     }
     if (error.code === "23514") {
       return fail(
-        "Een gereserveerde of uitgegeven pakketregel kan niet rechtstreeks worden gewijzigd.",
+        "Een gereserveerd of uitgegeven product kan niet rechtstreeks worden gewijzigd.",
         409,
       );
     }
     if (error.code === "22023") {
-      return fail("De pakketmaten zijn onvolledig of niet meer geldig.", 400);
+      return fail("De maten zijn onvolledig of niet meer geldig.", 400);
     }
-    return fail("De pakketmaten konden niet veilig worden bevestigd.", 500);
+    return fail("De maten konden niet veilig worden bevestigd.", 500);
   }
 
   const output = parentPackageSizesResponseSchema.safeParse(data);

@@ -367,3 +367,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De tweede immutable deploy activeerde de nieuwe image en scheduler correct, maar health bleef rood op exact twee historische OTP-`configuration_error`-uitkomsten uit de eerdere foutieve runtimeconfiguratie. Alle queue-, import-, voorraad-, branding- en overige provideraggregaten waren groen.
 - Operationele health v13 laat deze immutable auditfeiten intact en gebruikt de reeds bestaande actuele runtimeflag, databasecutover, SendGridconfiguratie en key-fingerprint als configuratiepoort. Recente providerafwijzing, renderfout, delivery uncertainty, bounce/drop/failure en quarantaine blijven hard blokkeren.
 - De Composehealthcheck accepteert bij rollback uitsluitend een vorige image die `/api/live` nog niet kent en waarvan `/` wel antwoordt. Een actuele image met een bestaande maar falende livenessroute krijgt nooit de legacyfallback; volledige readiness blijft daarna apart verplicht.
+
+## Ledenreview ouderportaalcopy — 2026-08-16
+
+- De volledige aangeleverde ouderflow is vergeleken met login, verificatie, dashboard, pakketkeuze, maten, QR, betaling, Mollie-terugkeer en OTP-mailfallback. Alleen werkelijke afwijkingen zijn gewijzigd; reeds overeenkomende teksten blijven onaangeraakt.
+- Het dashboard gebruikt nu ledenvriendelijke aantallen en uitleg, neutrale maatherkomst, kledingcommissie als operationeel aanspreekpunt, kortere historische-ordercopy en de goedgekeurde maat-, QR- en betaalteksten. De technische Mollie-disclaimer is uit de ouderweergave verwijderd.
+- Een forward-only migratie past uitsluitend onaangeraakte OTP-systeemdefaults aan. Gepubliceerde of door medewerkers gewijzigde templates blijven intact.
+- Gericht lokaal groen: 33 Vitesttests, migrationlint voor 148 migrations, ESLint, TypeScript, productiebuild, schone database-replay en content-hashcontrole. Exact-main CI en immutable stagingdeploy leveren het hosted bewijs.
+- De eerste hosted databasejob vond uitsluitend testdrift: de OTP-beheer-RPC-test stuurde na de geldige migratie nog hardcoded versie 2. De test gebruikt nu de actuele beginversie en bewijst opnieuw zowel het optimistische versiecontract als exact één verhoging.

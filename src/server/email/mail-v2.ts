@@ -314,7 +314,7 @@ function renderProtectedBlock(
     }
     case "otp_warning": {
       protectedValue(kind, values);
-      const warning = "Deel deze code nooit. Een medewerker vraagt niet om uw verificatiecode.";
+      const warning = "Deel deze code nooit.";
       return {
         html: `<p style="background-color:#FFF7ED;color:#7C2D12;font-size:14px;line-height:1.6;margin:12px 0;padding:12px">${warning}</p>`,
         text: warning,
