@@ -49,6 +49,13 @@ let generatedSource = `${
     'page.getByRole("heading", { name: "Voorraad en vraag per maat" })',
   )
   .replace(
+    "  const emailDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));",
+    [
+      '  await assertNoAutomatedA11yViolations(page, "email_center");',
+      "  const emailDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));",
+    ].join("\n"),
+  )
+  .replace(
     "  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });",
     [
       "  const staffContext = await browser.newContext({",

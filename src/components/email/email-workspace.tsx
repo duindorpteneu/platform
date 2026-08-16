@@ -128,7 +128,7 @@ export function EmailWorkspace({
     </section>
 
     <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-white p-1 shadow-card" aria-label="E-mailonderdelen">
-      {navigation.map((entry) => <button key={entry.id} type="button" onClick={() => setTab(entry.id)} className={`inline-flex h-10 min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-bold transition ${tab === entry.id ? "bg-brand-700 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-brand-900"}`}><entry.icon className="size-4" />{entry.label}</button>)}
+      {navigation.map((entry) => <button key={entry.id} type="button" onClick={() => setTab(entry.id)} className={`inline-flex h-10 min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-bold ${tab === entry.id ? "bg-brand-700 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-brand-900"}`}><entry.icon className="size-4" />{entry.label}</button>)}
     </nav>
 
     <div className="mt-6">
