@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ParentPackageMember } from "@/lib/parent-package-contract";
 import {
   buildPackageSizeSelections,
+  canStartPayment,
   initialSizeDraft,
+  packageSizeAction,
 } from "./member-dashboard";
 
 const articleId = "10000000-0000-4000-8000-000000000001";
@@ -102,5 +104,33 @@ describe("MemberDashboard package sizes", () => {
       variantId: null,
       note: "Valt buiten de maattabel",
     }]);
+  });
+
+  it("laat een toegewezen pakket betalen zonder maten, regels of voorraad", () => {
+    expect(canStartPayment(member)).toBe(true);
+    expect(canStartPayment({
+      ...member,
+      order: member.order ? { ...member.order, legacy: true } : null,
+    })).toBe(false);
+  });
+
+  it("onderscheidt invullen van geïmporteerde maten controleren", () => {
+    expect(packageSizeAction(member)).toBe("review");
+    expect(packageSizeAction({
+      ...member,
+      order: member.order ? {
+        ...member.order,
+        items: [{
+          ...item,
+          selectedVariantId: null,
+          selectionStatus: null,
+          selectionSource: null,
+        }],
+      } : null,
+    })).toBe("fill");
+    expect(packageSizeAction({
+      ...member,
+      order: member.order ? { ...member.order, sizesConfirmed: true } : null,
+    })).toBeNull();
   });
 });

@@ -531,3 +531,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test` — groen: 202 Vitestbestanden en 1.257 tests, inclusief contract-, previewtoken-, route-, workspace- en UI-integratietests voor individueel, geselecteerd en alle actief.
 - `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm lint:workflows`, `pnpm security:dependencies`, `pnpm security:secrets`, `pnpm security:migrations` en `git diff --check` — groen na de finale controle.
 - Geen staging- of productiedeploy uitgevoerd. Hosted CI en menselijke browseracceptatie volgen pas na review/merge.
+
+## Pakketbetaling en maatsegmentatie — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 143 forward-only migrations, inclusief `20260816061345_package_payment_size_communication.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` direct na de schone reset — groen: 57 pgTAP-bestanden en 1.821 assertions. De geïsoleerde sequentiële run is het geldige eindbewijs.
+- Gerichte pgTAP-regressie — groen: 39 assertions in `member_package_bulk_assignment.sql`. Bewijst Mollie-prepare zonder maten/regels/voorraad, nul voorraadmutaties, invul- versus controlesegment, wederzijdse suppressie, nul-regelcampagne/eventstate, campagneworkspace en pakketsnapshotfallback in de betaalbevestiging.
+- Bestaande mail- en providerregressies — groen: 137 assertions voor campagnes/projectie/reminders plus 131 assertions voor Mollie-providerhardening, legacycompatibiliteit en het nieuwe pakketpad.
+- `pnpm test:db:package-concurrency`, `pnpm test:db:payment-concurrency`, `pnpm test:db:mail-campaign-concurrency` en `pnpm test:db:mail-projection-concurrency` — groen; retries, webhook/kas, reminders en gezinsprojectie blijven geserialiseerd en idempotent.
+- `pnpm test` — groen: 202 Vitestbestanden en 1.259 tests. De ouder-UI-regressie bewijst directe betaling zonder regels/voorraad, legacyblokkade in de UI en het onderscheid tussen invullen, controleren en bevestigd.
+- ESLint, TypeScript, actionlint, production build, dependency-audit, secretscan en lint van 143 forward-only migrations zijn groen. Staging en productie zijn niet gewijzigd.

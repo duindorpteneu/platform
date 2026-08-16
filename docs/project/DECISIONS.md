@@ -130,3 +130,10 @@
 - Besluit: een toegewezen pakket wordt niet hard verwijderd en `package_revision_id`, prijs of snapshots worden niet geleegd. De order krijgt `package_assignment_state = withdrawn`; open backorderregels worden ingetrokken en historische snapshots blijven immutable.
 - Withdrawal is uitsluitend toegestaan vóór iedere betaling, harde reservering, allocatie, afhaalklaarstatus of uitgifte. Databaseguards blokkeren nieuwe betaling en logistieke activiteit zolang het pakket ingetrokken is.
 - Een latere veilige toewijzing heractiveert dezelfde lid-seizoensorder via de bestaande pakketselectiekern en legt een afzonderlijke `package_order.reactivated`-audit vast.
+
+## D-095 — Betaling en maatcommunicatie zijn pakket-snapshot-first
+
+- Besluit: een actieve commerciële pakkettoewijzing met immutable prijs en inhoud is voldoende voor Mollie-checkout. Maatbevestiging, materialisatie van logistieke regels, voorraad en reservering zijn nadrukkelijk geen betaalvoorwaarden.
+- De QR- en uitgiftegrens verandert niet: zonder volledige betaling en harde afhaalklare reservering ontstaat geen actieve afhaal-QR en geen uitgifte.
+- Maat- en betaalcommunicatie worden uit pakketitems plus actuele maatprofielen afgeleid. Ontbrekend/conflict gaat naar het invulsegment; volledig geïmporteerd-onbevestigd naar het controlesegment; complete bevestiging stopt beide. Logistieke communicatie blijft orderregelgebaseerd.
+- Tijdens dual compatibility blijven legacy-orders met niet-geannuleerde regels hun bestaande betaal- en mailcontract houden; nul-regelgedrag is uitsluitend voor een actieve first-class pakkettoewijzing.

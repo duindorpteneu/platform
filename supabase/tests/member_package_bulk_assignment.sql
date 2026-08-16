@@ -90,6 +90,216 @@ select is(
   'true', 'retry retourneert duurzaam hetzelfde resultaat'
 );
 
+reset role;
+insert into private.parent_accounts(id, email_normalized)
+values('ac700000-0000-4000-8000-000000000001', 'bulk-parent@example.invalid');
+insert into private.parent_sessions(parent_account_id, token_hash, expires_at)
+values(
+  'ac700000-0000-4000-8000-000000000001',
+  repeat('d', 64),
+  timezone('utc', now()) + interval '1 hour'
+);
+insert into private.parent_member_links(parent_account_id, member_id)
+values(
+  'ac700000-0000-4000-8000-000000000001',
+  'ac500000-0000-4000-8000-000000000002'
+);
+update private.parent_portal_grants grant_row
+set status = 'active',
+    source = 'administrator',
+    granted_by = 'ac000000-0000-4000-8000-000000000001',
+    granted_at = timezone('utc', now()),
+    updated_at = timezone('utc', now())
+where grant_row.parent_account_id = 'ac700000-0000-4000-8000-000000000001'
+  and grant_row.member_season_id = (
+    select orders.member_season_id
+    from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+  );
+
+select is(
+  (
+    public.prepare_mollie_payment(
+      repeat('d', 64),
+      (
+        select orders.id
+        from app.member_orders orders
+        where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      ),
+      'package-zero-lines-payment'
+    )->>'amountCents'
+  )::integer,
+  12000,
+  'een actief pakket kan zonder bevestigde maten, regels, voorraad of allocatie betalen'
+);
+select is(
+  (
+    select count(*)
+    from app.order_lines line
+    join app.member_orders orders on orders.id = line.order_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      and line.status <> 'cancelled'
+  ),
+  0::bigint,
+  'payment prepare materialiseert geen logistieke regels en reserveert geen voorraad'
+);
+select is(
+  private.mail_v2_size_segment((
+    select orders.id
+    from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+  )),
+  'fill',
+  'een pakket met een ontbrekende maat valt in het aparte invulsegment'
+);
+select is(
+  (
+    select candidate.outcome
+    from private.mail_v2_campaign_candidates(
+      'size_fill_request',
+      'ac100000-0000-4000-8000-000000000001',
+      array[(
+        select orders.id
+        from app.member_orders orders
+        where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      )]
+    ) candidate
+  ),
+  'eligible',
+  'de invulcampagne accepteert een pakket zonder orderregels'
+);
+
+insert into app.member_article_sizes(
+  member_id, member_season_id, season_id, article_id, article_variant_id,
+  selection_status, selection_source
+)
+select
+  orders.member_id,
+  orders.member_season_id,
+  orders.season_id,
+  'ac200000-0000-4000-8000-000000000002',
+  'ac300000-0000-4000-8000-000000000002',
+  'imported_unconfirmed',
+  'import'
+from app.member_orders orders
+where orders.member_id = 'ac500000-0000-4000-8000-000000000002';
+select is(
+  private.mail_v2_size_segment((
+    select orders.id
+    from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+  )),
+  'review',
+  'volledig geïmporteerde maar onbevestigde maten vallen in het controlesegment'
+);
+select is(
+  (
+    select candidate.outcome
+    from private.mail_v2_campaign_candidates(
+      'size_review_request',
+      'ac100000-0000-4000-8000-000000000001',
+      array[(
+        select orders.id
+        from app.member_orders orders
+        where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      )]
+    ) candidate
+  ),
+  'eligible',
+  'de controlemail is apart selecteerbaar zonder logistieke regels'
+);
+select is(
+  (
+    select candidate.outcome
+    from private.mail_v2_campaign_candidates(
+      'size_fill_request',
+      'ac100000-0000-4000-8000-000000000001',
+      array[(
+        select orders.id
+        from app.member_orders orders
+        where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      )]
+    ) candidate
+  ),
+  'skipped',
+  'het controlesegment ontvangt niet tegelijk de invulmail'
+);
+create temporary table zero_line_review_event as
+select private.enqueue_mail_v2_member_event(
+  'size_review_request',
+  'ac700000-0000-4000-8000-000000000001',
+  (
+    select orders.member_season_id
+    from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+  ),
+  'package_size_test',
+  'ac710000-0000-4000-8000-000000000001',
+  null,
+  'package_size_review_zero_lines',
+  null
+) event_id;
+select is(
+  private.mail_v2_event_state((select event_id from zero_line_review_event)),
+  'eligible',
+  'een controlemail-event zonder orderregels blijft vlak voor projectie geldig'
+);
+select is(
+  jsonb_array_length(
+    private.mail_v2_member_payload(
+      'payment_received_waiting_stock',
+      'ac700000-0000-4000-8000-000000000001',
+      (
+        select orders.member_season_id
+        from app.member_orders orders
+        where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      ),
+      'ac710000-0000-4000-8000-000000000002',
+      null
+    )->'lines'
+  ),
+  2,
+  'de betaalbevestiging toont bij nul orderregels het volledige pakketsnapshot'
+);
+select ok(
+  private.mail_v2_member_payload(
+    'payment_received_waiting_stock',
+    'ac700000-0000-4000-8000-000000000001',
+    (
+      select orders.member_season_id
+      from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+    ),
+    'ac710000-0000-4000-8000-000000000002',
+    null
+  )::text like '%Maat nog controleren%',
+  'de betaalbevestiging benoemt dat geïmporteerde maten nog bevestigd moeten worden'
+);
+
+select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+set local role authenticated;
+select is(
+  (
+    select count(*)::integer
+    from jsonb_array_elements(
+      app.get_mail_v2_campaign_workspace_v1()->'orderTargets'
+    ) target
+    where target->>'orderId' = (
+      select orders.id::text
+      from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+    )
+  ),
+  1,
+  'de campagneworkspace toont een actief pakket zonder orderregels'
+);
+
+reset role;
+delete from app.payments
+where idempotency_key = 'package-zero-lines-payment';
+select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+set local role authenticated;
+
 create temporary table removal_preview as
 select app.preview_member_package_bulk_v1(
   'remove', 'all_active', array[]::uuid[], null

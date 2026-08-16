@@ -318,3 +318,13 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Verwijderen is een geaudite soft withdrawal zolang nog geen betaling, reservering, afhaalklare regel of uitgifte bestaat. Pakketnaam, prijs, inhoudsnapshot, ingetrokken orderregels en historie blijven intact; een latere veilige hertoewijzing activeert dezelfde lid-seizoensorder opnieuw.
 - Nieuwe betalingen, allocaties en logistieke regels op een ingetrokken pakket worden database-side geblokkeerd. Actuele leden-, catalogus- en ouderprojecties tonen ingetrokken pakketten niet als actief.
 - Lokaal groen: schone replay van alle 142 forward-only migrations, 57 pgTAP-bestanden/1.810 assertions, 28 gerichte pakketbulkasserties, pakketconcurrency, 202 Vitestbestanden/1.257 tests, ESLint, TypeScript, production build en securitychecks. Er is niet gedeployed.
+
+## Pakketbetaling en verplichte maatbevestiging — 2026-08-16
+
+- Een actief toegewezen pakket kan via Mollie worden betaald zodra de immutable pakketprijs en -snapshot bestaan. Bevestigde maten, orderregels, voorraad en allocatie zijn geen betaalvoorwaarde; een ingetrokken pakket blijft geblokkeerd en bestaande legacy-orders met geldige regels behouden tijdens de overgang hun huidige betaalpad.
+- Het ledenportaal toont vóór de maatsectie een duidelijke verplichte actie: ontbrekende maten invullen of geïmporteerde maten controleren. Sportlink-maten blijven voorgeselecteerd en bewerkbaar, maar zijn pas bevestigd na één pakketbrede bevestiging.
+- SIZE_FILL_REQUEST/REMINDER selecteert pakketten met minimaal één ontbrekende of onopgeloste maat. SIZE_REVIEW_REQUEST/REMINDER selecteert uitsluitend volledig ingevulde maar nog onbevestigde importmaten; het invulsegment heeft bij een gemengd pakket voorrang.
+- Commerciële pakketmails gebruiken de immutable pakketsnapshot en werken daardoor vóór materialisatie van logistieke orderregels. Voorraad-, pickup- en uitgiftemails blijven regel-, maat- en allocatiegebonden. Legacy-orders met regels behouden het bestaande mailgedrag.
+- De betaalbevestiging kan bij nul orderregels het volledige pakket tonen met per product de actuele maatstatus. QR-readiness blijft ongewijzigd: pas betaald én minimaal één harde afhaalklare reservering activeert de QR.
+- Lokaal groen: schone replay van 143 migrations, 57 pgTAP-bestanden/1.821 assertions, vier relevante concurrencyharnassen, 202 Vitestbestanden/1.259 tests, lint, types, build en securitychecks.
+- Niet gedeployed; deze wijziging wordt als aanvullende commit op PR #91 aangeboden.
