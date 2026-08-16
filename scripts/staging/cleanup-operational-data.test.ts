@@ -20,9 +20,10 @@ describe("staging domain cleanup contract", () => {
         /'((?:app|private)\.[a-z][a-z0-9_]*)'/gu,
       ),
     ].map((match) => match[1]);
-    expect(cleanupTables).toHaveLength(100);
-    expect(new Set(cleanupTables)).toHaveLength(100);
-    expect(contract).toContain("cardinality(pg_temp.cleanup_tables()) <> 100");
+    expect(cleanupTables).toHaveLength(101);
+    expect(new Set(cleanupTables)).toHaveLength(101);
+    expect(cleanupTables).toContain("private.dynamic_import_mapping_preferences");
+    expect(contract).toContain("cardinality(pg_temp.cleanup_tables()) <> 101");
     expect(contract).toContain("cardinality(pg_temp.preserved_tables()) <> 28");
     expect(contract).toContain("actual_tables is distinct from contracted_tables");
     expect(contract).toContain("'app.staff_profiles' = any(pg_temp.cleanup_tables())");

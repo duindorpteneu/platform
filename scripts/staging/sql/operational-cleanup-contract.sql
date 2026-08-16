@@ -47,6 +47,7 @@ as $$
     'app.package_template_revisions',
     'app.package_templates',
     'app.payments',
+    'private.dynamic_import_mapping_preferences',
     'private.dynamic_import_row_plans',
     'private.dynamic_import_run_leases',
     'private.dynamic_import_selected_identity_keys',
@@ -377,7 +378,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 100
+  if cardinality(pg_temp.cleanup_tables()) <> 101
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

@@ -18,7 +18,7 @@ const PRESERVED_KEYS = [
   "staff_profiles",
   "supplier_principals",
 ];
-const CLEANUP_TABLE_COUNT = 100;
+const CLEANUP_TABLE_COUNT = 101;
 const PRESERVED_TABLE_COUNT = 28;
 
 function required(values, name) {
