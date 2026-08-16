@@ -12,6 +12,7 @@ import type {
   MemberListResponse,
   MemberSavedViewsResponse,
 } from "@/lib/member-overview-contract";
+import type { MemberPackageBulkOptions } from "@/lib/member-package-bulk-contract";
 import { cn } from "@/lib/utils";
 import { MEMBER_LIST_PAGE_SIZE } from "@/server/members/overview";
 
@@ -27,12 +28,13 @@ function hrefFor(query: MemberListQuery, overrides: Partial<Record<keyof MemberL
   return suffix ? `/backoffice/leden?${suffix}` : "/backoffice/leden";
 }
 
-export function MemberOverview({ list, detail, query, savedViews, staffRole }: {
+export function MemberOverview({ list, detail, query, savedViews, staffRole, packageOptions }: {
   list: MemberListResponse;
   detail: MemberDetailResponse | null;
   query: MemberListQuery;
   savedViews: MemberSavedViewsResponse | null;
   staffRole?: "beheerder" | "kledingcommissie" | "uitgifte";
+  packageOptions: MemberPackageBulkOptions | null;
 }) {
   const firstResult = list.filteredCount === 0 ? 0 : (query.page - 1) * MEMBER_LIST_PAGE_SIZE + 1;
   const lastResult = Math.min(query.page * MEMBER_LIST_PAGE_SIZE, list.filteredCount);
@@ -65,6 +67,8 @@ export function MemberOverview({ list, detail, query, savedViews, staffRole }: {
             selectedMemberId={detail?.id ?? null}
             seasonId={list.activeSeason?.id ?? null}
             staffRole={staffRole ?? "kledingcommissie"}
+            activeCount={list.activeCount}
+            packageOptions={packageOptions}
           />
 
           <div className="flex flex-col gap-3 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

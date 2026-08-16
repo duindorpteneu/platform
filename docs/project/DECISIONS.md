@@ -118,3 +118,29 @@
 - Besluit: alleen een beheerder met AAL2 kan een lid handmatig toevoegen. De actieve open seizoenrelatie wordt gemaakt, maar toegang, mail, bestelling, pakket, betaling en maten niet.
 - Een exact bestaand Sportlink-ID blokkeert altijd. Een kandidaat op naam+DOB, naam+e-mail of uitsluitend naam wordt nooit automatisch samengevoegd; de beheerder kan na een ongewijzigde preflight bewust een afzonderlijk lid maken.
 - DOB blijft in `private.member_sensitive_identity`; auditmetadata bevat uitsluitend booleans, UUID's en payloaddigests.
+
+## D-093 — Pakketten bulk beheren vanuit het ledenoverzicht
+
+- Besluit: alleen een beheerder met AAL2 wijst een pakket toe of trekt het in voor één, meerdere of alle actieve leden. Een expliciete selectie is maximaal vijftig lid-seizoenen; `alle actieve leden` wordt na preflight opnieuw server-side uit het actieve seizoen afgeleid.
+- Preview en uitvoering zijn door actie, scope, pakket, seizoen, selectie, reden, databaserevisie en een tien minuten geldig ondertekend bewijs aan elkaar gebonden. De uitvoeringsrequest heeft daarnaast een duurzame idempotentiesleutel en aggregeerde plus individuele auditregels.
+- Alleen `confirmed` en `locked` maatkeuzes met een actieve echte productvariant materialiseren als orderregel. `imported_unconfirmed`, leeg en conflict blijven zonder logistieke regel, zodat nooit een maat of SKU wordt gegokt.
+
+## D-094 — Pakket verwijderen is een omkeerbare commerciële withdrawal
+
+- Besluit: een toegewezen pakket wordt niet hard verwijderd en `package_revision_id`, prijs of snapshots worden niet geleegd. De order krijgt `package_assignment_state = withdrawn`; open backorderregels worden ingetrokken en historische snapshots blijven immutable.
+- Withdrawal is uitsluitend toegestaan vóór iedere betaling, harde reservering, allocatie, afhaalklaarstatus of uitgifte. Databaseguards blokkeren nieuwe betaling en logistieke activiteit zolang het pakket ingetrokken is.
+- Een latere veilige toewijzing heractiveert dezelfde lid-seizoensorder via de bestaande pakketselectiekern en legt een afzonderlijke `package_order.reactivated`-audit vast.
+
+## D-095 — Betaling en maatcommunicatie zijn pakket-snapshot-first
+
+- Besluit: een actieve commerciële pakkettoewijzing met immutable prijs en inhoud is voldoende voor Mollie-checkout. Maatbevestiging, materialisatie van logistieke regels, voorraad en reservering zijn nadrukkelijk geen betaalvoorwaarden.
+- De QR- en uitgiftegrens verandert niet: zonder volledige betaling en harde afhaalklare reservering ontstaat geen actieve afhaal-QR en geen uitgifte.
+- Maat- en betaalcommunicatie worden uit pakketitems plus actuele maatprofielen afgeleid. Ontbrekend/conflict gaat naar het invulsegment; volledig geïmporteerd-onbevestigd naar het controlesegment; complete bevestiging stopt beide. Logistieke communicatie blijft orderregelgebaseerd.
+- Tijdens dual compatibility blijven legacy-orders met niet-geannuleerde regels hun bestaande betaal- en mailcontract houden; nul-regelgedrag is uitsluitend voor een actieve first-class pakkettoewijzing.
+
+## D-096 — FIFO groeperen is uitsluitend een presentatielaag
+
+- Besluit: de voorraadworkspace groepeert zichtbare wachtlijstregels op de stabiele `orderId`, nooit op naam. Naamgenoten en verschillende seizoensbestellingen blijven daardoor afzonderlijk.
+- Iedere onderliggende orderregel behoudt haar eigen volgorde, maatgeldigheid, betaalgeschiktheid en FIFO-tijdstip. Voorraadallocatie blijft regelgebonden en wordt niet naar een lidbrede positie omgezet.
+- Product en maat komen uit de immutable orderregelsnapshots; de actuele variant levert alleen de optionele SKU. Een native `details`/`summary` houdt de rij mobiel compact en standaard toetsenbordbedienbaar.
+- `PUT` behoort tot de toegestane mutatiemethoden, maar krijgt exact dezelfde Origin-, Host-, proxy-, Fetch Metadata-, CSRF- en bodyvalidatie als POST, PATCH en DELETE.

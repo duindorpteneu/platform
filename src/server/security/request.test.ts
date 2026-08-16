@@ -26,6 +26,7 @@ function mutationRequest(overrides: { method?: string; headers?: Record<string, 
 describe("browser mutation guard", () => {
   it.each([
     ["valid canonical request", {}, { ok: true }],
+    ["valid PUT mutation", { method: "PUT" }, { ok: true }],
     ["valid trusted proxy headers", { headers: { "x-forwarded-host": "tenue.duindorpsv.nl", "x-forwarded-proto": "https" } }, { ok: true }],
     ["safe method", { method: "GET" }, { ok: false, code: "method_not_allowed", status: 405 }],
     ["missing origin", { headers: { origin: "" } }, { ok: false, code: "origin_required", status: 403 }],

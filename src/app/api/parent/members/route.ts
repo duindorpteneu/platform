@@ -70,7 +70,7 @@ export async function GET() {
     return response({ error: "Oudersessie vereist." }, 401);
   }
 
-  const { data, error } = await admin.rpc("get_parent_package_workspace_v5", {
+  const { data, error } = await admin.rpc("get_parent_package_workspace_v6", {
     p_token_hash: session.tokenHash,
   });
   if (error) {

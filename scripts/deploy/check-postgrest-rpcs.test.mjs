@@ -99,6 +99,12 @@ describe("PostgREST releasecontract", () => {
     });
     expect(confirmation.body).not.toHaveProperty("p_selected_item_ids");
     expect(calls).toContainEqual(expect.objectContaining({
+      body: { p_season_id: null },
+      acceptProfile: "app",
+      contentProfile: "app",
+      rpcName: "get_inventory_workspace_v2",
+    }));
+    expect(calls).toContainEqual(expect.objectContaining({
       body: { p_auth_user_id: null },
       acceptProfile: "app",
       contentProfile: "app",

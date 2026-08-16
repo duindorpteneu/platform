@@ -6,6 +6,7 @@ import {
   CircleOff,
   KeyRound,
   Mail,
+  Package,
   Square,
   UsersRound,
   X,
@@ -14,6 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { MemberPackageBulkDialog } from "@/components/members/member-package-bulk-dialog";
 import {
   MEMBER_BULK_CONTEXT_STORAGE_KEY,
   MEMBER_BULK_CONTEXT_TTL_MS,
@@ -24,6 +26,7 @@ import type {
   MemberListQuery,
   MemberListResponse,
 } from "@/lib/member-overview-contract";
+import type { MemberPackageBulkOptions } from "@/lib/member-package-bulk-contract";
 import { cn } from "@/lib/utils";
 
 type MemberRow = MemberListResponse["members"][number];
@@ -67,20 +70,26 @@ export function MemberSelectionTable({
   selectedMemberId,
   seasonId,
   staffRole,
+  activeCount,
+  packageOptions,
 }: {
   members: MemberRow[];
   query: MemberListQuery;
   selectedMemberId: string | null;
   seasonId: string | null;
   staffRole: "beheerder" | "kledingcommissie" | "uitgifte";
+  activeCount: number;
+  packageOptions: MemberPackageBulkOptions | null;
 }) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [packageScope, setPackageScope] = useState<"selected" | "all_active" | null>(null);
   const selected = useMemo(
     () => members.filter((member) => selectedIds.has(member.id)),
     [members, selectedIds],
   );
   const selectable = members.filter((member) => member.memberSeasonId !== null);
+  const selectedMemberSeasonIds = selected.flatMap((member) => member.memberSeasonId ? [member.memberSeasonId] : []);
   const allVisibleSelected = selectable.length > 0
     && selectable.every((member) => selectedIds.has(member.id));
   const portalEligible = selected.filter((member) => (
@@ -177,6 +186,12 @@ export function MemberSelectionTable({
 
   return (
     <>
+      {staffRole === "beheerder" && packageOptions?.enabled && packageOptions.seasonId === seasonId && (
+        <div className="flex flex-col gap-3 border-b border-line bg-brand-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="text-xs font-bold text-brand-900">Kledingpakketten toewijzen of verwijderen</p><p className="mt-1 text-[11px] leading-5 text-slate-500">Gebruik de selectievakjes voor één of meerdere leden, of start direct voor alle actieve leden.</p></div>
+          <button type="button" disabled={activeCount === 0} onClick={() => setPackageScope("all_active")} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-3 text-xs font-semibold text-brand-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-40"><Package className="size-4" /> Alle actieve leden ({activeCount})</button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[930px] text-left">
           <thead>
@@ -319,6 +334,17 @@ export function MemberSelectionTable({
             {staffRole === "beheerder" && (
               <button
                 type="button"
+                disabled={!packageOptions?.enabled || selectedMemberSeasonIds.length === 0}
+                onClick={() => setPackageScope("selected")}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-brand-900 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Package className="size-4" />
+                Pakket beheren ({selectedMemberSeasonIds.length})
+              </button>
+            )}
+            {staffRole === "beheerder" && (
+              <button
+                type="button"
                 disabled={portalEligible.length === 0}
                 onClick={() => routeWithContext(
                   "portal_access",
@@ -367,6 +393,17 @@ export function MemberSelectionTable({
             </button>
           </div>
         </div>
+      )}
+      {packageScope && packageOptions && (
+        <MemberPackageBulkDialog
+          open
+          initialScope={packageScope}
+          selectedMemberSeasonIds={selectedMemberSeasonIds}
+          activeCount={activeCount}
+          options={packageOptions}
+          onClose={() => setPackageScope(null)}
+          onCommitted={() => setSelectedIds(new Set())}
+        />
       )}
     </>
   );

@@ -5,6 +5,7 @@ import {
   Boxes,
   Check,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Loader2,
   Package,
@@ -18,6 +19,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { DeliveryNotificationProposalPanel } from "@/components/stock/delivery-notification-proposal";
 import { InventoryReconciliationPanel } from "@/components/stock/inventory-reconciliation-panel";
 import { InventoryThresholdControl } from "@/components/stock/inventory-threshold-control";
+import { groupWaitlistByOrder, type WaitlistLine } from "@/components/stock/waitlist-groups";
 
 type Season = { id: string; name: string; status: string };
 type Product = { id: string; name: string; code: string; variantCount: number };
@@ -66,20 +68,6 @@ type Draft = {
   confirmedCount: number;
   totalQuantity: number;
   lines: DraftLine[];
-};
-type WaitlistLine = {
-  orderLineId: string;
-  orderId: string;
-  memberName: string;
-  relationNumber: string | null;
-  team: string | null;
-  variantId: string;
-  quantity: number;
-  paid: boolean;
-  sizeValid: boolean;
-  fifoAt: string | null;
-  eligible: boolean;
-  createdAt: string;
 };
 type Overview = {
   seasonId: string;
@@ -284,6 +272,10 @@ export function DeliveriesWorkspace() {
     selectedDraft.lines.forEach((line) => groups.set(line.productName, [...(groups.get(line.productName) ?? []), line]));
     return [...groups.entries()];
   }, [selectedDraft]);
+  const waitlistGroups = useMemo(
+    () => groupWaitlistByOrder(overview.waitlist),
+    [overview.waitlist],
+  );
   const blockers = overview.reconciliation.pendingCandidates + overview.reconciliation.reviewAllocations;
 
   if (loading && overview.seasons.length === 0) {
@@ -362,8 +354,32 @@ export function DeliveriesWorkspace() {
       </section>
 
       <section className="mt-6 rounded-2xl border border-line bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-bold text-brand-900">FIFO-wachtlijst</h2><p className="mt-1 text-xs text-slate-500">Prioriteit start op het latere tijdstip van definitieve betaling en geldige maat.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{overview.waitlist.length} regels</span></div>
-        <div className="mt-4 grid gap-2 lg:grid-cols-2">{overview.waitlist.length === 0 ? <p className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-slate-500 lg:col-span-2">Geen open orderregels.</p> : overview.waitlist.map((line) => <div key={line.orderLineId} className="flex min-h-16 items-center gap-3 rounded-xl border border-line px-4 py-3"><div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${line.eligible ? "bg-emerald-50 text-success" : "bg-amber-50 text-warning"}`}>{line.eligible ? <CheckCircle2 className="size-4" /> : <X className="size-4" />}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink">{line.memberName}</p><p className="mt-1 truncate text-xs text-slate-500">{line.team ?? "Geen team"} · {line.relationNumber ?? "Geen relatienummer"}</p></div><div className="text-right text-xs font-bold"><p className={line.paid ? "text-success" : "text-warning"}>{line.paid ? "Betaald" : "Onbetaald"}</p><p className={line.sizeValid ? "mt-1 text-success" : "mt-1 text-warning"}>{line.sizeValid ? "Maat geldig" : "Maat open"}</p></div></div>)}</div>
+        <div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-bold text-brand-900">FIFO-wachtlijst</h2><p className="mt-1 text-xs text-slate-500">Prioriteit blijft per artikelregel bepaald op het latere tijdstip van definitieve betaling en geldige maat.</p></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{waitlistGroups.length} {waitlistGroups.length === 1 ? "lid" : "leden"} · {overview.waitlist.length} regels</span></div>
+        <div className="mt-4 space-y-2">
+          {waitlistGroups.length === 0 ? <p className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-slate-500">Geen open orderregels.</p> : waitlistGroups.map((group) => {
+            const allPaid = group.lines.every((line) => line.paid);
+            const validSizeCount = group.lines.filter((line) => line.sizeValid).length;
+            const allEligible = group.lines.every((line) => line.eligible);
+            return (
+              <details key={group.orderId} className="group overflow-hidden rounded-xl border border-line bg-white open:border-brand-200">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&::-webkit-details-marker]:hidden">
+                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${allEligible ? "bg-emerald-50 text-success" : "bg-amber-50 text-warning"}`}>{allEligible ? <CheckCircle2 className="size-4" /> : <X className="size-4" />}</div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink">{group.memberName}</p><p className="mt-1 truncate text-xs text-slate-500">{group.team ?? "Geen team"} · {group.relationNumber ?? "Geen relatienummer"}</p></div>
+                  <div className="shrink-0 text-right text-xs font-bold"><p className={allPaid ? "text-success" : "text-warning"}>{allPaid ? "Betaald" : "Onbetaald"}</p><p className={validSizeCount === group.lines.length ? "mt-1 text-success" : "mt-1 text-warning"}>{validSizeCount}/{group.lines.length} maten geldig</p></div>
+                  <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="divide-y divide-line border-t border-line bg-slate-50/60 px-4">
+                  {group.lines.map((line) => (
+                    <div key={line.orderLineId} className="flex min-h-14 items-center gap-3 py-3 pl-11">
+                      <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink">{line.article} · {line.size}</p><p className="mt-1 truncate text-xs text-slate-500">{line.quantity === 1 ? "1 stuk" : `${line.quantity} stuks`}{line.sku ? ` · ${line.sku}` : ""}{line.fifoAt ? ` · FIFO sinds ${formatDate(line.fifoAt)}` : ""}</p></div>
+                      <div className="shrink-0 text-right text-xs font-semibold"><p className={line.paid ? "text-success" : "text-warning"}>{line.paid ? "Betaald" : "Onbetaald"}</p><p className={line.sizeValid ? "mt-1 text-success" : "mt-1 text-warning"}>{line.sizeValid ? "Maat geldig" : "Maat open"}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
       </section>
       {overview.role === "beheerder" && <InventoryReconciliationPanel
         seasons={overview.seasons}

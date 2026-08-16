@@ -148,7 +148,7 @@ function paymentBadge(status: string | null) {
   return "bg-amber-50 text-warning";
 }
 
-function canStartPayment(member: ParentPackageMember) {
+export function canStartPayment(member: ParentPackageMember) {
   const order = member.order;
   return Boolean(
     order
@@ -157,6 +157,18 @@ function canStartPayment(member: ParentPackageMember) {
       order.paymentStatus ?? "open",
     ),
   );
+}
+
+export function packageSizeAction(member: ParentPackageMember) {
+  const order = member.order;
+  if (!order || order.legacy || order.sizesConfirmed) return null;
+  if (order.items.some((item) => (
+    !item.selectedVariantId
+    && item.selectionStatus !== "imported_unconfirmed"
+  ))) {
+    return "fill" as const;
+  }
+  return "review" as const;
 }
 
 function itemStatus(item: PackageItem) {
@@ -871,7 +883,31 @@ export function MemberDashboard() {
                         </details>
                       )}
 
-                      <div className="mt-7 border-t border-line pt-6">
+                      {packageSizeAction(member) && (
+                        <a
+                          href={`#maten-${member.memberSeasonId}`}
+                          className="mt-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+                        >
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                          <span>
+                            <strong className="block text-xs">
+                              {packageSizeAction(member) === "fill"
+                                ? "Pakketmaten invullen verplicht"
+                                : "Pakketmaten controleren en bevestigen"}
+                            </strong>
+                            <span className="mt-1 block text-xs leading-5">
+                              {packageSizeAction(member) === "fill"
+                                ? "Kies voor ieder product een maat. Daarna bevestig je alle pakketmaten in één keer."
+                                : "De geïmporteerde maten zijn voorgeselecteerd, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                            </span>
+                          </span>
+                        </a>
+                      )}
+
+                      <div
+                        id={`maten-${member.memberSeasonId}`}
+                        className="mt-7 scroll-mt-6 border-t border-line pt-6"
+                      >
                         <div className="flex flex-wrap items-end justify-between gap-3">
                           <div>
                             <h3 className="text-sm font-bold text-brand-900">
@@ -969,6 +1005,12 @@ export function MemberDashboard() {
                             <p className="mt-1 text-sm font-bold text-ink">
                               {amount.format(order.amountDueCents / 100)}
                             </p>
+                            {canStartPayment(member) && (
+                              <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                                Je kunt direct betalen; voorraad is niet nodig.
+                                De afhaal-QR wordt pas actief na een harde reservering.
+                              </p>
+                            )}
                           </div>
                           {["paid", "duplicate_paid"].includes(
                             order.paymentStatus ?? "",

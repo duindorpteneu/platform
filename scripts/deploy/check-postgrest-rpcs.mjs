@@ -289,6 +289,9 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
 
 async function verifyStaffOnlyManagementContracts(url, serviceRoleKey) {
   const staffOnlyContracts = [
+    ["get_inventory_workspace_v2", {
+      p_season_id: null,
+    }, "INVENTORY_WORKSPACE_V2"],
     ["get_release_feature_controls_v1", {}, "RELEASE_FEATURES_GET"],
     ["activate_release_feature_v1", {
       p_key: "dynamic_import_v2",

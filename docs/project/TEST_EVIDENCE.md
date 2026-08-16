@@ -522,3 +522,33 @@ Record commands, results and relevant screenshots/notes per phase.
 - De echte lokale Playwrightflow is groen en heeft via de productiebuild 99 leden geïmporteerd, waaronder één lid zonder team met genegeerde onbekende maat; 98 geldige maten bleven intact. Dezelfde flow heeft een lid zonder team handmatig toegevoegd, private DOB en nul orders bewezen en alle fictieve data plus workerheartbeats weer verwijderd. De direct aansluitende volledige pgTAP-suite bleef groen.
 - ESLint, `tsc --noEmit`, production `next build`, `git diff --check`, secretscan en migrationlint (141 migrations) zijn groen.
 - Hosted exact-SHA CI, immutable stagingdeploy en echte beheerderbrowseracceptatie volgen na publicatie; productie is niet benaderd of gewijzigd.
+
+## Pakketbulkbeheer voor leden — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 142 forward-only migrations, inclusief `20260816053605_member_package_bulk_assignment.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` — groen: 57 pgTAP-bestanden en 1.810 assertions. De 28 nieuwe assertions bewijzen geselecteerd en alle actief, confirmed/locked-maatkoppeling, ontbrekende maten zonder gok, soft withdrawal, betalingsguard, actuele projecties, veilige hertoewijzing, RLS/privileges, idempotentie en audit.
+- `pnpm test:db:package-concurrency` — groen: pakketselectie, defaults, wissels en maatresoluties serialiseren zonder partial writes; de nieuwe bulk-RPC gebruikt dezelfde deterministische lid-seizoenslocks en een duurzame requestledger.
+- `pnpm test` — groen: 202 Vitestbestanden en 1.257 tests, inclusief contract-, previewtoken-, route-, workspace- en UI-integratietests voor individueel, geselecteerd en alle actief.
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm lint:workflows`, `pnpm security:dependencies`, `pnpm security:secrets`, `pnpm security:migrations` en `git diff --check` — groen na de finale controle.
+- Geen staging- of productiedeploy uitgevoerd. Hosted CI en menselijke browseracceptatie volgen pas na review/merge.
+
+## Pakketbetaling en maatsegmentatie — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 143 forward-only migrations, inclusief `20260816061345_package_payment_size_communication.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` direct na de schone reset — groen: 57 pgTAP-bestanden en 1.821 assertions. De geïsoleerde sequentiële run is het geldige eindbewijs.
+- Gerichte pgTAP-regressie — groen: 39 assertions in `member_package_bulk_assignment.sql`. Bewijst Mollie-prepare zonder maten/regels/voorraad, nul voorraadmutaties, invul- versus controlesegment, wederzijdse suppressie, nul-regelcampagne/eventstate, campagneworkspace en pakketsnapshotfallback in de betaalbevestiging.
+- Bestaande mail- en providerregressies — groen: 137 assertions voor campagnes/projectie/reminders plus 131 assertions voor Mollie-providerhardening, legacycompatibiliteit en het nieuwe pakketpad.
+- `pnpm test:db:package-concurrency`, `pnpm test:db:payment-concurrency`, `pnpm test:db:mail-campaign-concurrency` en `pnpm test:db:mail-projection-concurrency` — groen; retries, webhook/kas, reminders en gezinsprojectie blijven geserialiseerd en idempotent.
+- `pnpm test` — groen: 202 Vitestbestanden en 1.259 tests. De ouder-UI-regressie bewijst directe betaling zonder regels/voorraad, legacyblokkade in de UI en het onderscheid tussen invullen, controleren en bevestigd.
+- ESLint, TypeScript, actionlint, production build, dependency-audit, secretscan en lint van 143 forward-only migrations zijn groen. Staging en productie zijn niet gewijzigd.
+
+## FIFO-accordion en levering-PUT — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 144 forward-only migrations replayen schoon, inclusief `20260816092543_inventory_waitlist_line_snapshots.sql`.
+- `pnpm test:db` — groen: 57 pgTAP-bestanden en 1.823 assertions. De voorraadtest bewijst de product-/maatsnapshots en dat de rol `uitgifte` de nieuwe workspace-RPC niet kan gebruiken.
+- `pnpm test:db:inventory-concurrency` — groen: één fysiek stuk geeft exact één journaalevent, de oudste geschikte artikelregel en één stabiele tekortepisode.
+- `pnpm test` — groen: 205 Vitestbestanden en 1.267 tests. Nieuwe regressies bewijzen groepering op order-ID, behoud van responsevolgorde, gescheiden naamgenoten, de v2-workspaceaanroep, het hosted PostgREST-preflightcontract en same-origin/cross-origin PUT.
+- `pnpm lint`, `pnpm typecheck`, `pnpm build` en `git diff --check` — groen. De Next.js-buildmelding over meerdere lockfiles in de gedeelde worktreeomgeving is informatief en veranderde de succesvolle build niet.
+- Geen staging- of productiedeploy uitgevoerd.
+- Hosted PR-CI `31939467117`: applicatiejob volledig groen; Supabasejob passeerde migratie-upgrades, schone replay, pgTAP en alle concurrencytests, maar blokkeerde fail-closed op de staging-cleanupinventaris. De ontbrekende operationele tabel `private.member_package_bulk_requests` is daarna expliciet aan het 102-tabellencontract toegevoegd; een exacte rerun blijft vereist vóór merge/deploy.
+- Hosted rerun `31939971437` bewees de cleanupfix later in de databasejob, maar de parallelle applicatiejob vond dezelfde nieuwe tabel nog in een tweede expliciete restore-inventaristelling van 129. Die restoreassertie en haar documentatie zijn naar de werkelijke gesloten 130-tabellenset gebracht; de volledige lokale suite en een nieuwe exacte hosted run blijven vereist.
