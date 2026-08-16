@@ -1,4 +1,4 @@
-const MUTATION_METHODS = new Set(["POST", "PATCH", "DELETE"]);
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export type BrowserMutationFailureCode =
   | "method_not_allowed"

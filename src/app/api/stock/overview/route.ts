@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
 
-    const { data, error } = await supabase.schema("app").rpc("get_inventory_workspace", {
+    const { data, error } = await supabase.schema("app").rpc("get_inventory_workspace_v2", {
       p_season_id: parsed.data.seasonId ?? null,
     });
     if (error) {

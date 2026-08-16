@@ -541,3 +541,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:db:package-concurrency`, `pnpm test:db:payment-concurrency`, `pnpm test:db:mail-campaign-concurrency` en `pnpm test:db:mail-projection-concurrency` — groen; retries, webhook/kas, reminders en gezinsprojectie blijven geserialiseerd en idempotent.
 - `pnpm test` — groen: 202 Vitestbestanden en 1.259 tests. De ouder-UI-regressie bewijst directe betaling zonder regels/voorraad, legacyblokkade in de UI en het onderscheid tussen invullen, controleren en bevestigd.
 - ESLint, TypeScript, actionlint, production build, dependency-audit, secretscan en lint van 143 forward-only migrations zijn groen. Staging en productie zijn niet gewijzigd.
+
+## FIFO-accordion en levering-PUT — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 144 forward-only migrations replayen schoon, inclusief `20260816092543_inventory_waitlist_line_snapshots.sql`.
+- `pnpm test:db` — groen: 57 pgTAP-bestanden en 1.823 assertions. De voorraadtest bewijst de product-/maatsnapshots en dat de rol `uitgifte` de nieuwe workspace-RPC niet kan gebruiken.
+- `pnpm test:db:inventory-concurrency` — groen: één fysiek stuk geeft exact één journaalevent, de oudste geschikte artikelregel en één stabiele tekortepisode.
+- `pnpm test` — groen: 205 Vitestbestanden en 1.267 tests. Nieuwe regressies bewijzen groepering op order-ID, behoud van responsevolgorde, gescheiden naamgenoten, de v2-workspaceaanroep, het hosted PostgREST-preflightcontract en same-origin/cross-origin PUT.
+- `pnpm lint`, `pnpm typecheck`, `pnpm build` en `git diff --check` — groen. De Next.js-buildmelding over meerdere lockfiles in de gedeelde worktreeomgeving is informatief en veranderde de succesvolle build niet.
+- Geen staging- of productiedeploy uitgevoerd.

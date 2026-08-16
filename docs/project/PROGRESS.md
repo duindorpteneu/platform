@@ -328,3 +328,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De betaalbevestiging kan bij nul orderregels het volledige pakket tonen met per product de actuele maatstatus. QR-readiness blijft ongewijzigd: pas betaald én minimaal één harde afhaalklare reservering activeert de QR.
 - Lokaal groen: schone replay van 143 migrations, 57 pgTAP-bestanden/1.821 assertions, vier relevante concurrencyharnassen, 202 Vitestbestanden/1.259 tests, lint, types, build en securitychecks.
 - Niet gedeployed; deze wijziging wordt als aanvullende commit op PR #91 aangeboden.
+
+## Gegroepeerde FIFO-wachtlijst en herstel leveringconcept — 2026-08-16
+
+- De FIFO-wachtlijst toont voortaan één toegankelijke uitklaprij per lid-seizoensbestelling. De onderliggende regels blijven in database-FIFO-volgorde staan en tonen product, historische maat, aantal, SKU, betaalstatus, maatgeldigheid en het eigen FIFO-moment.
+- De voorraadworkspace projecteert product en maat uit de immutable orderregelsnapshots. Daardoor blijven historische of later gedeactiveerde varianten begrijpelijk zonder de actuele catalogus als tweede waarheid te gebruiken.
+- De centrale browsermutatieguard accepteert nu ook `PUT`. Origin, Host, forwarded headers, Fetch Metadata, CSRF en bodylimieten blijven ongewijzigd verplicht. Hiermee werken zowel `Concept opslaan` in leveringen als het opslaan van de lagevoorraaddrempel weer.
+- Lokaal groen: schone replay van alle 144 forward-only migrations, 57 pgTAP-bestanden/1.823 assertions, voorraadconcurrency, 205 Vitestbestanden/1.267 tests, lint, TypeScript en production build. De deploypreflight controleert het nieuwe PostgREST-contract vóór imageactivatie.
+- Niet gedeployed; de wijziging wordt op dezelfde featurebranch en PR #91 aangeboden.

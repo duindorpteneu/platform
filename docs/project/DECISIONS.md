@@ -137,3 +137,10 @@
 - De QR- en uitgiftegrens verandert niet: zonder volledige betaling en harde afhaalklare reservering ontstaat geen actieve afhaal-QR en geen uitgifte.
 - Maat- en betaalcommunicatie worden uit pakketitems plus actuele maatprofielen afgeleid. Ontbrekend/conflict gaat naar het invulsegment; volledig geïmporteerd-onbevestigd naar het controlesegment; complete bevestiging stopt beide. Logistieke communicatie blijft orderregelgebaseerd.
 - Tijdens dual compatibility blijven legacy-orders met niet-geannuleerde regels hun bestaande betaal- en mailcontract houden; nul-regelgedrag is uitsluitend voor een actieve first-class pakkettoewijzing.
+
+## D-096 — FIFO groeperen is uitsluitend een presentatielaag
+
+- Besluit: de voorraadworkspace groepeert zichtbare wachtlijstregels op de stabiele `orderId`, nooit op naam. Naamgenoten en verschillende seizoensbestellingen blijven daardoor afzonderlijk.
+- Iedere onderliggende orderregel behoudt haar eigen volgorde, maatgeldigheid, betaalgeschiktheid en FIFO-tijdstip. Voorraadallocatie blijft regelgebonden en wordt niet naar een lidbrede positie omgezet.
+- Product en maat komen uit de immutable orderregelsnapshots; de actuele variant levert alleen de optionele SKU. Een native `details`/`summary` houdt de rij mobiel compact en standaard toetsenbordbedienbaar.
+- `PUT` behoort tot de toegestane mutatiemethoden, maar krijgt exact dezelfde Origin-, Host-, proxy-, Fetch Metadata-, CSRF- en bodyvalidatie als POST, PATCH en DELETE.

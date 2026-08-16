@@ -250,7 +250,7 @@ select set_config(
 );
 set local role authenticated;
 select throws_ok(
-  $$select app.get_inventory_workspace(
+  $$select app.get_inventory_workspace_v2(
     'f1100000-0000-4000-8000-000000000001'
   )$$,
   '42501',
@@ -279,6 +279,22 @@ select set_config(
   true
 );
 set local role authenticated;
+
+select is(
+  app.get_inventory_workspace_v2(
+    'f1100000-0000-4000-8000-000000000001'
+  ) -> 'waitlist' -> 0 ->> 'article',
+  'Journaalshirt',
+  'FIFO-werkruimte projecteert de historische productnaam per orderregel'
+);
+
+select is(
+  app.get_inventory_workspace_v2(
+    'f1100000-0000-4000-8000-000000000001'
+  ) -> 'waitlist' -> 0 ->> 'size',
+  'M',
+  'FIFO-werkruimte projecteert de historische maat per orderregel'
+);
 
 select lives_ok(
   $$select app.create_inventory_delivery_draft(
