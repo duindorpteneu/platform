@@ -290,7 +290,7 @@ export function MailV2RemindersPanel({
                 </p>
                 <span className={`rounded-full px-2 py-1 text-xs font-bold uppercase ${
                   rule.active
-                    ? "bg-emerald-100 text-success"
+                    ? "bg-emerald-50 text-success"
                     : "bg-slate-100 text-slate-500"
                 }`}>
                   {rule.active ? "Actief" : "Inactief"}
