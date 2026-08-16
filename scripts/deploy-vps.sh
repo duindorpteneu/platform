@@ -227,12 +227,13 @@ deploy_environment() {
     local url="$1"
     local expected_revision="${2:-$RELEASE_SHA}"
     local expected_artifact="${3:-$expected_artifact_digest}"
-    for attempt in $(seq 1 20); do
+    local max_attempts="${4:-20}"
+    for attempt in $(seq 1 "$max_attempts"); do
       if node scripts/deploy/check-http.mjs \
         "$url" "$environment" "$expected_revision" "$expected_artifact"; then
         return 0
       fi
-      [[ "$attempt" == 20 ]] && return 1
+      [[ "$attempt" == "$max_attempts" ]] && return 1
       sleep 3
     done
   }
@@ -412,8 +413,13 @@ deploy_environment() {
     [[ "$expected_runtime_probe" == "$actual_runtime_probe" ]] || die "Actieve runtime bevat niet de verwachte importstaging-sleutel."
   fi
 
-  check_with_retries "http://127.0.0.1:${expected_port}"
-  check_with_retries "https://${expected_host}"
+  # The scheduler can only repair stale operational markers after the app's
+  # process-liveness gate has allowed it to start. Keep full readiness
+  # fail-closed, but allow up to five minutes for that first complete cycle.
+  check_with_retries "http://127.0.0.1:${expected_port}" \
+    "$RELEASE_SHA" "$expected_artifact_digest" 100
+  check_with_retries "https://${expected_host}" \
+    "$RELEASE_SHA" "$expected_artifact_digest" 100
   node scripts/deploy/check-edge-body-limits.mjs "$environment"
   check_scheduler_with_retries "$image_tag" \
     || die "Scheduler werd niet gezond."

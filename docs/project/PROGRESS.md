@@ -354,3 +354,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Het Sportlink-relatienummer blijft bewust alleen-lezen als primaire importidentiteit. Portaaltoegang, lidstatus, pakketten, losse regels en betalingen behouden hun afzonderlijke bestaande beheerflows.
 - De twee immutable requestledgers zijn opgenomen in het gesloten stagingcleanupcontract: exact 105 operationele tabellen worden gewist, 28 configuratie-/stafftabellen blijven behouden en de volledige restore-inventaris omvat 133 app/private-tabellen.
 - Lokaal groen: 146 forward-only migrations replayen schoon; 58 pgTAP-bestanden/1.860 assertions, 210 Vitestbestanden/1.283 tests, lint, TypeScript, secretscan, migrationlint, productiebuild en de volledige browseracceptatie zijn groen.
+
+## Stagingstart na operationele degradatie — 2026-08-16
+
+- PR #93 en exact-main CI zijn groen op `0612d89b210f7df9b2fed40f0825de38b5526c7a`; de forward-only ledenbeheermigratie is op staging toegepast.
+- Deployrun `31949963942` bewees image, runtime-scan, SBOM, checksums en OIDC-signature, maar vond daarna een circulaire containerstart: Docker eiste volledige operationele readiness voordat de scheduler mocht starten, terwijl juist die scheduler verouderde operationele markers moet herstellen.
+- Docker gebruikt daarom een afzonderlijke minimale `/api/live`-procescontrole. De bestaande `/api/health`, exacte release-identiteit, database-/provider-/QR-/importstatus, schedulerhealth, edge-bodylimits en publieke routecontrole blijven verplichte fail-closed deploygates.
+- De eerste volledige schedulercyclus krijgt maximaal vijf minuten om operationele readiness te herstellen. Dit verruimt alleen de wachttijd; een blijvende degradatie blijft de release blokkeren.
