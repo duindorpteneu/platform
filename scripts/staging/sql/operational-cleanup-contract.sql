@@ -85,6 +85,7 @@ as $$
     'private.mail_test_delivery_provider_quarantine',
     'private.manual_payment_corrections',
     'private.manual_payment_requests',
+    'private.member_package_bulk_requests',
     'private.member_sensitive_identity',
     'private.parent_access_batch_items',
     'private.parent_access_batches',
@@ -378,7 +379,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 101
+  if cardinality(pg_temp.cleanup_tables()) <> 102
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then
