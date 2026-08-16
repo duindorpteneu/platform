@@ -59,7 +59,12 @@ describe("staging application rollback drill", () => {
     expect(script).toContain(
       'legacy_sha="a79c8d843d75e90810ccceb228538c6368d2198b"',
     );
-    expect(script).toContain("legacy-adoption-evidence.mjs verify-result");
+    expect(script).toContain(
+      "legacy-adoption-evidence.mjs verify-provenance",
+    );
+    expect(script).not.toContain(
+      '"${current_manifest}" "${legacy_adoption_run_id}"',
+    );
     expect(script).toContain("legacy-v1-exact-four-fields");
     expect(script).toContain("check-legacy-http.mjs");
     expect(script).toContain("schema_version: 2");

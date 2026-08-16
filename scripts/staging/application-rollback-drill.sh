@@ -113,9 +113,9 @@ if [[ "${previous_revision}" == "${legacy_sha}" ]]; then
     ' "${legacy_adoption_result}"
   )"
   legacy_adoption_evidence_sha256="$(
-    node scripts/deploy/legacy-adoption-evidence.mjs verify-result \
+    node scripts/deploy/legacy-adoption-evidence.mjs verify-provenance \
       "${legacy_adoption_result}" "${legacy_capture_evidence}" \
-      "${current_manifest}" "${legacy_adoption_run_id}"
+      "${legacy_adoption_run_id}"
   )"
   [[ "${legacy_adoption_evidence_sha256}" =~ ^sha256:[a-f0-9]{64}$ ]] \
     || die "Legacy adoptiebewijs heeft een ongeldige hash."

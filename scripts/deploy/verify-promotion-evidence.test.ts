@@ -7,6 +7,7 @@ const {
   validateArtifacts,
   validateAttestationFreshness,
   validateDeploymentBranchPolicies,
+  validateLegacyAdoptionRun,
   validateProductionProtection,
   validatePromotionRun,
   validateRequiredJobs,
@@ -64,6 +65,19 @@ describe("promotion run contract", () => {
     expect(() => validatePromotionRun(
       { ...run, event: "push", head_sha: "b".repeat(40) },
       { ...expected, events: ["push"] },
+    )).toThrow();
+  });
+
+  it("treats signed one-time adoption as provenance, not fresh acceptance", () => {
+    const oldRun = {
+      ...run,
+      created_at: "2025-08-03T20:00:00Z",
+      updated_at: "2025-08-03T20:10:00Z",
+    };
+    expect(validateLegacyAdoptionRun(oldRun, expected)).toEqual(oldRun);
+    expect(() => validateLegacyAdoptionRun(
+      { ...oldRun, head_sha: "b".repeat(40) },
+      expected,
     )).toThrow();
   });
 });

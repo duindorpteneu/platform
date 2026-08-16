@@ -236,6 +236,25 @@ export function validateLegacyAdoptionResult(
   return canonical;
 }
 
+export function validateLegacyAdoptionProvenance(
+  value,
+  captureEvidenceSha256,
+  expected,
+) {
+  return validateLegacyAdoptionResult(
+    value,
+    captureEvidenceSha256,
+    {
+      candidateReleaseSha: value?.candidate_release_sha,
+      candidateArtifactDigest: value?.candidate_artifact_digest,
+      runId: expected.runId,
+      runAttempt: expected.runAttempt,
+      notBefore: expected.notBefore,
+      notAfter: expected.notAfter,
+    },
+  );
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "create-capture") {
@@ -327,9 +346,37 @@ async function main() {
     process.stdout.write(canonicalHash(captureBytes));
     return;
   }
+  if (command === "verify-provenance") {
+    const [
+      resultPath,
+      capturePath,
+      expectedRunId,
+      expectedRunAttempt,
+    ] = args;
+    const result = JSON.parse(await readFile(resultPath, "utf8"));
+    const captureBytes = await readFile(capturePath);
+    const capture = JSON.parse(captureBytes);
+    const expected = {
+      runId: expectedRunId,
+      ...(expectedRunAttempt ? { runAttempt: expectedRunAttempt } : {}),
+    };
+    validateLegacyCaptureEvidence(
+      capture,
+      capture?.legacy_manifest,
+      expected,
+    );
+    validateLegacyAdoptionProvenance(
+      result,
+      canonicalHash(captureBytes),
+      expected,
+    );
+    process.stdout.write(canonicalHash(captureBytes));
+    return;
+  }
   throw new Error(
     "Gebruik legacy-adoption-evidence.mjs "
-    + "create-capture|verify-capture|create-result|verify-result ...",
+    + "create-capture|verify-capture|create-result|verify-result"
+    + "|verify-provenance ...",
   );
 }
 

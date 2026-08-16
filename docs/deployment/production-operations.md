@@ -36,7 +36,15 @@ teruggedownload en bytegelijk aan het evidence-checksum bewezen. Een nieuwere
 `main`-SHA of ontbrekend required-reviewerbeleid blokkeert.
 
 Alleen bij de eerste overgang wordt bovendien het run-ID van de signed
-legacy-adoptie opgegeven. Daarna moet dit inputveld leeg blijven.
+legacy-adoptie opgegeven. De eenmalige capture en adoptiresultaten blijven
+gebonden aan de oorspronkelijke adoptierun; zij worden niet opnieuw gemaakt
+of stil aan een latere kandidaat gekoppeld. De actuele rollbackdrill bewijst
+afzonderlijk kandidaat → exact gecapturede legacyrelease → kandidaat. De
+promotie verifieert daarbij zowel de signed legacyprovenance als de actuele
+kandidaatgebonden rollbackattestatie. De eenmalige provenance valt niet onder
+het 48-uursvenster voor actuele acceptatieruns, maar het signed artifact moet
+wel bestaan en niet verlopen zijn. Na de eerste productiepromotie moet het
+legacy-inputveld leeg blijven.
 Tijdens die exacte legacyrollback draait bewust alleen de historische app:
 die image bevatte nog geen schedulerbestand. Providerflags staan uit en de
 scheduler is aantoonbaar gestopt. Terugkeer naar de kandidaat start en bewijst
