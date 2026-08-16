@@ -41,9 +41,9 @@ async function fixture() {
 }
 
 describe("volledig restoreverificatiecontract", () => {
-  it("bindt exact alle migrations en 128 app/private-tabellen", async () => {
+  it("bindt exact alle migrations en 129 app/private-tabellen", async () => {
     const { expected, raw } = await fixture();
-    expect(expected.entityKeys).toHaveLength(128);
+    expect(expected.entityKeys).toHaveLength(129);
     expect(validateRestoreVerification(raw, expected)).toBe(true);
   });
 
