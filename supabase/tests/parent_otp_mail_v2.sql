@@ -112,6 +112,24 @@ select ok(
   ),
   'service_role heeft uitsluitend de smalle OTP-RPC-grens'
 );
+select ok(
+  has_function_privilege(
+    'service_role',
+    'app.get_operational_health_v13(text,integer,text,integer)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'app.get_operational_health_v13(text,integer,text,integer)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'app.get_operational_health_v13(text,integer,text,integer)',
+    'EXECUTE'
+  ),
+  'de gecorrigeerde operationele health blijft service-only'
+);
 select is(
   app.assert_sendgrid_events_ready_v1(
     jsonb_build_array(
@@ -447,6 +465,68 @@ insert into private.parent_otp_delivery_outcomes(
   '27940000-0000-4000-8000-000000000098',
   'provider_rejected',
   'provider_rejected'
+);
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{parentOtpDelivery,sendFailuresRecent}'
+  )::integer,
+  1,
+  'een recente providerafwijzing blijft releaseblokkerend'
+);
+insert into private.parent_otp_delivery_attempts(
+  id,
+  parent_account_id,
+  challenge_id,
+  template_revision_id,
+  branding_revision_id,
+  expires_at
+)
+select
+  '27940000-0000-4000-8000-000000000097',
+  attempt.parent_account_id,
+  '27950000-0000-4000-8000-000000000097',
+  attempt.template_revision_id,
+  attempt.branding_revision_id,
+  statement_timestamp() + interval '10 minutes'
+from private.parent_otp_delivery_attempts attempt
+where attempt.id = '27940000-0000-4000-8000-000000000098';
+insert into private.parent_otp_delivery_outcomes(
+  delivery_attempt_id,
+  outcome,
+  error_code
+) values (
+  '27940000-0000-4000-8000-000000000097',
+  'configuration_error',
+  'configuration_error'
+);
+select is(
+  (
+    app.get_operational_health_v12(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{parentOtpDelivery,sendFailuresRecent}'
+  )::integer,
+  2,
+  'de historische health telt de actuele configuratiefout nog als incident'
+);
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{parentOtpDelivery,sendFailuresRecent}'
+  )::integer,
+  1,
+  'actuele runtimebinding vervangt historische configuratiefouten als readinesspoort'
 );
 select is(
   app.assert_sendgrid_events_ready_v1(

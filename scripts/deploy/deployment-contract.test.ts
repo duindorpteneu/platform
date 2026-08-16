@@ -135,6 +135,9 @@ describe("deployment environment isolation", () => {
     expect(compose).toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- operations-scheduler\.mjs/);
     expect(compose).not.toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- node/);
     expect(compose).toContain("fetch('http://127.0.0.1:3000/api/live')");
+    expect(compose).toContain(
+      "r.status===404?fetch('http://127.0.0.1:3000/'):r",
+    );
     expect(compose).not.toContain("fetch('http://127.0.0.1:3000/api/health')");
   });
 
@@ -200,7 +203,7 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain('"get_parent_package_workspace_v6"');
     expect(contractScript).toContain('"get_member_detail_v5"');
     expect(contractScript).toContain('"remove_loose_order_line_v1"');
-    expect(contractScript).toContain('"get_operational_health_v12"');
+    expect(contractScript).toContain('"get_operational_health_v13"');
     expect(contractScript).toContain('"register_order_qr_locator"');
     expect(contractScript).toContain('"exchange_order_qr_locator_v2"');
     expect(contractScript).toContain('"commit_fulfilment_v3"');

@@ -565,5 +565,16 @@ Record commands, results and relevant screenshots/notes per phase.
 ## Liveness/readiness-startcontract — 2026-08-16 lokaal
 
 - Gefaalde hosted deploy `31949963942`: migration `20260816122941_member_profile_editing.sql` en PostgREST-contract groen; kandidaat en rollbackimage startten Next.js, maar Compose blokkeerde beide op de volledige operationele `/api/health` voordat de scheduler kon starten.
+
 - `pnpm exec vitest run src/app/api/live/route.test.ts scripts/deploy/deployment-contract.test.ts` — groen: 2 bestanden, 32 tests. Bewijst minimale PII-vrije liveness, Composebinding uitsluitend aan `/api/live` en behoud van twee volledige readinesschecks met begrensde herstelwachttijd.
 - Volledige lokale gate — groen: 211 Vitestbestanden/1.284 tests, ESLint, TypeScript, production build, dependency-audit zonder bekende kwetsbaarheden, secretscan, lint van 146 forward-only migrations en `git diff --check`. Hosted exact-main CI en immutable stagingredeploy volgen op de herstelcommit.
+
+## OTP-readiness en rollbackcompatibiliteit — 2026-08-16
+
+- Read-only stagingdiagnose op uitsluitend geaggregeerde healthvelden: twee recente `configuration_error`-uitkomsten; nul provider rejection/render failure, nul delivery uncertainty, nul bounce/drop/failure, nul quarantaine, nul mailqueuefout, nul importfout, nul brandingblocker en nul reconciliatieverschil. De kandidaatworker had alle vier operationele jobs succesvol uitgevoerd.
+- `pnpm db:reset` — groen: alle 147 forward-only migrations, inclusief `20260816151112_resolve_recovered_parent_otp_health.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` — groen: 58 pgTAP-bestanden en 1.864 assertions. Nieuwe assertions bewijzen service-only health v13, blijvend blokkeren van echte providerafwijzing en het niet dubbel blokkeren op een bewaarde historische runtimeconfiguratiefout.
+- `pnpm test` — groen: 211 Vitestbestanden en 1.284 tests.
+- `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows`, `pnpm security:secrets`, `pnpm security:dependencies` en `pnpm security:migrations` — groen; dependency-audit meldt geen bekende kwetsbaarheden en migrationlint controleert 147 bestanden.
+- `pnpm build` — groen: production build bevat de ledeneditor, `/api/live`, health v13 en alle drie applicatieoppervlakken.
+- Composecontracttest bewijst dat actuele images uitsluitend `/api/live` gebruiken en dat de hoofdpaginafallback alleen bij exact HTTP 404 van een vorige image wordt gebruikt; `/api/health` blijft buiten Dockerliveness en binnen de latere harde deploygate.

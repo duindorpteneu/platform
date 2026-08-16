@@ -56,7 +56,7 @@ describe("PostgREST releasecontract", () => {
           json(response, 200, { candidates: [] });
         } else if (rpcName === "get_parent_package_workspace_v6") {
           json(response, 403, { code: "42501" });
-        } else if (rpcName === "get_operational_health_v12") {
+        } else if (rpcName === "get_operational_health_v13") {
           json(response, 200, {
             qrControl: {
               keyMismatchActiveLocators: 0,
