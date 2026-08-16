@@ -20,18 +20,20 @@ export async function POST(request: Request) {
 
     const supabase = await getSupabaseServerClient();
     if (!supabase) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
-    const { data, error } = await supabase.schema("app").rpc("set_member_article_sizes", {
+    const { data, error } = await supabase.schema("app").rpc("set_member_article_sizes_v2", {
       p_member_id: parsed.data.memberId,
-      p_season_id: parsed.data.seasonId,
+      p_member_season_id: parsed.data.memberSeasonId,
       p_sizes: parsed.data.sizes,
       p_expected_revision: parsed.data.revision,
+      p_reason: parsed.data.reason,
+      p_request_id: parsed.data.requestId,
       p_correlation_id: normalizeCorrelationId(request.headers.get("x-correlation-id")),
     });
     if (error) {
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot kledingmaten." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Dit lid bestaat niet meer." }, { status: 404 });
       if (error.code === "40001") return NextResponse.json({ error: "De maten zijn intussen gewijzigd. Vernieuw het liddetail en probeer opnieuw." }, { status: 409 });
-      if (error.code === "23514") return NextResponse.json({ error: "Een bestelde maat of gesloten seizoen kan hier niet worden gewijzigd." }, { status: 409 });
+      if (error.code === "23514") return NextResponse.json({ error: "Een uitgegeven maat is vergrendeld. Een reservering vrijgeven kan alleen als beheerder en met expliciete bevestiging." }, { status: 409 });
       if (error.code === "22023") return NextResponse.json({ error: "Een artikel of maat is niet meer beschikbaar voor dit seizoen." }, { status: 400 });
       return NextResponse.json({ error: "De kledingmaten konden niet veilig worden opgeslagen." }, { status: 422 });
     }

@@ -144,3 +144,10 @@
 - Iedere onderliggende orderregel behoudt haar eigen volgorde, maatgeldigheid, betaalgeschiktheid en FIFO-tijdstip. Voorraadallocatie blijft regelgebonden en wordt niet naar een lidbrede positie omgezet.
 - Product en maat komen uit de immutable orderregelsnapshots; de actuele variant levert alleen de optionele SKU. Een native `details`/`summary` houdt de rij mobiel compact en standaard toetsenbordbedienbaar.
 - `PUT` behoort tot de toegestane mutatiemethoden, maar krijgt exact dezelfde Origin-, Host-, proxy-, Fetch Metadata-, CSRF- en bodyvalidatie als POST, PATCH en DELETE.
+
+## D-097 — Identiteit en operationele maten hebben gescheiden beheergrenzen
+
+- Alleen een beheerder met AAL2 mag naam, ouder-e-mail, geboortedatum, geslacht en het actieve team wijzigen. De kledingcommissie houdt uitsluitend de operationele maatbevoegdheid; uitgifte en leverancier krijgen deze mutaties niet.
+- Het Sportlink-relatienummer is geen generiek profielveld maar een primaire externe importidentiteit en blijft daarom alleen-lezen. Een gewijzigd e-mailadres muteert geen ouderaccount, grant of sessie; portaaltoegang blijft een expliciete afzonderlijke beheeractie.
+- Een ongereserveerde bestelde maat mag geauditeerd worden gecorrigeerd. Een harde reservering mag alleen door een beheerder met expliciete vrijgave worden losgelaten; de oude voorraadboeking krijgt een immutable journaalevent en de vervangende regel start opnieuw als nalevering. Uitgegeven maten zijn definitief vergrendeld.
+- Profiel- en maatwrites zijn request-idempotent, gebruiken dezelfde lid-/lid-seizoenlocks als import en bewaken een inhoudsrevisie. Auditmetadata noemt alleen gewijzigde velden en technische identifiers, niet de oude of nieuwe persoonsgegevens.

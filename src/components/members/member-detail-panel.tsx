@@ -6,6 +6,7 @@ import { OrderAdminActions } from "@/components/members/order-admin-actions";
 import { MemberStatusAction } from "@/components/members/member-status-action";
 import { MemberSizeProfile } from "@/components/members/member-size-profile";
 import { LooseOrderLineRemoval } from "@/components/members/loose-order-line-removal";
+import { MemberProfileEditor } from "@/components/members/member-profile-editor";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -86,6 +87,7 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
             {detail.dateOfBirth && <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 size-4 shrink-0 text-brand-500" /><div><dt className="text-slate-400">Geboortedatum</dt><dd className="mt-0.5 font-semibold text-ink">{date(detail.dateOfBirth)}</dd></div></div>}
           </dl>
           {detail.memberSeasons.length > 1 && <div className="mt-4 rounded-lg border border-line p-3"><p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Seizoenshistorie</p><ul className="mt-2 space-y-1.5">{detail.memberSeasons.map((season) => <li key={season.id} className="flex justify-between gap-3 text-[11px]"><span className="font-semibold text-ink">{season.seasonName}</span><span className="text-right text-slate-500">{season.team ?? "Team nog te controleren"} · {season.participationStatus === "active" ? "Actief" : season.participationStatus === "inactive" ? "Inactief" : "Historie onbekend"}</span></li>)}</ul></div>}
+          {staffRole === "beheerder" && <MemberProfileEditor detail={detail} />}
           <MemberStatusAction memberId={detail.id} active={detail.activeForSeason} enabled={Boolean(detail.activeSeason)} />
         </section>
 
