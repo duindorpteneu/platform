@@ -157,3 +157,9 @@
 - De Compose-healthcheck bewijst uitsluitend dat het Next.js-proces via `/api/live` antwoordt. Zij beoordeelt geen queue-, scheduler-, provider- of voorraadstatus.
 - De release blijft daarna verplicht de bestaande volledige `/api/health` op loopback en publiek, schedulerhealth, runtime-secretbinding, database-/RPC-contract en edge-bodylimits bewijzen voordat revision en manifest worden gepubliceerd.
 - Deze scheiding voorkomt dat de scheduler afhankelijk wordt van een readinessstatus die alleen door een schedulercyclus kan herstellen. Een blijvende operationele fout blijft fail-closed; alleen de eerste herstelcyclus krijgt een begrensde langere wachttijd.
+
+## D-099 — Actuele mailconfiguratie en historische OTP-incidenten blijven afzonderlijke healthassen
+
+- Append-only OTP-pogingen met `configuration_error` of `disabled` blijven volledig bewaard voor audit en monitoring, maar tellen niet dubbel als actueel verzendincident: de publieke en interne health controleren reeds rechtstreeks de actuele runtimeflag, databasecutover, providerconfiguratie en sleutelbinding.
+- Een recente `provider_rejected` of `render_failed` OTP-poging blijft wel releaseblokkerend. Ook delivery uncertainty, bounce/drop/failure, quarantaine en actuele runtime-/databaseafwijkingen blijven ongewijzigd fail-closed.
+- Compose gebruikt `/api/live` voor actuele images. Alleen wanneer een aantoonbaar vorige image die route nog niet kent (`404`) mag de healthcheck éénmalig terugvallen op `/`; iedere andere niet-successtatus blijft een harde fout. De volledige `/api/health` blijft vóór publicatie van revision en manifest verplicht.

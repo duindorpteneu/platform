@@ -361,3 +361,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Deployrun `31949963942` bewees image, runtime-scan, SBOM, checksums en OIDC-signature, maar vond daarna een circulaire containerstart: Docker eiste volledige operationele readiness voordat de scheduler mocht starten, terwijl juist die scheduler verouderde operationele markers moet herstellen.
 - Docker gebruikt daarom een afzonderlijke minimale `/api/live`-procescontrole. De bestaande `/api/health`, exacte release-identiteit, database-/provider-/QR-/importstatus, schedulerhealth, edge-bodylimits en publieke routecontrole blijven verplichte fail-closed deploygates.
 - De eerste volledige schedulercyclus krijgt maximaal vijf minuten om operationele readiness te herstellen. Dit verruimt alleen de wachttijd; een blijvende degradatie blijft de release blokkeren.
+
+## OTP-readiness en rollbackcompatibiliteit — 2026-08-16
+
+- De tweede immutable deploy activeerde de nieuwe image en scheduler correct, maar health bleef rood op exact twee historische OTP-`configuration_error`-uitkomsten uit de eerdere foutieve runtimeconfiguratie. Alle queue-, import-, voorraad-, branding- en overige provideraggregaten waren groen.
+- Operationele health v13 laat deze immutable auditfeiten intact en gebruikt de reeds bestaande actuele runtimeflag, databasecutover, SendGridconfiguratie en key-fingerprint als configuratiepoort. Recente providerafwijzing, renderfout, delivery uncertainty, bounce/drop/failure en quarantaine blijven hard blokkeren.
+- De Composehealthcheck accepteert bij rollback uitsluitend een vorige image die `/api/live` nog niet kent en waarvan `/` wel antwoordt. Een actuele image met een bestaande maar falende livenessroute krijgt nooit de legacyfallback; volledige readiness blijft daarna apart verplicht.

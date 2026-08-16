@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     failureStage = "health_database";
     const { data, error } = await admin
       .schema("app")
-      .rpc("get_operational_health_v12", {
+      .rpc("get_operational_health_v13", {
         p_current_key_version: qrKeys.current.version,
         p_current_pepper_fingerprint: qrKeys.current.fingerprint,
         p_previous_key_version: qrKeys.previous?.version ?? null,

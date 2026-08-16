@@ -206,7 +206,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
   const health = await callRpc(
     url,
     serviceRoleKey,
-    "get_operational_health_v12",
+    "get_operational_health_v13",
     {
       p_current_key_version: 1,
       p_current_pepper_fingerprint: "0".repeat(64),
