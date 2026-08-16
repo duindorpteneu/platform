@@ -127,7 +127,7 @@ function ToolbarButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`flex size-9 items-center justify-center rounded-md border text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`flex size-9 items-center justify-center rounded-md border text-slate-600 disabled:cursor-not-allowed disabled:opacity-40 ${
         active
           ? "border-brand-200 bg-brand-50 text-brand-700"
           : "border-transparent hover:border-line hover:bg-slate-50"
