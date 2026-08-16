@@ -39,7 +39,7 @@ type CampaignTarget = {
   statusDetail: string | null;
 };
 
-const fieldClass = "mt-2 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
+const fieldClass = "mt-2 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", { dateStyle: "short", timeStyle: "short" });
 const emailJobLabels: Record<string, string> = {
   ...emailTemplateLabels,
@@ -199,7 +199,7 @@ function TemplatesPanel({ workspace }: { workspace: Workspace }) {
   }
 
   return <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-    <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-5 py-4"><h2 className="text-sm font-bold text-brand-900">Berichttypen</h2><p className="mt-1 text-[11px] text-slate-400">Rolgebonden templatecatalogus</p></div><div className="divide-y divide-line">{workspace.templates.map((entry) => <button key={entry.id} type="button" onClick={() => setSelectedId(entry.id)} className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${entry.id === template.id ? "bg-brand-50" : "hover:bg-slate-50"}`}><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm"><Mail className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-brand-900">{emailTemplateLabels[entry.key]}</span><span className="mt-1 block text-[10px] text-slate-400">Versie {entry.version} · {entry.active ? "Actief" : "Inactief"}</span></span></button>)}</div></aside>
+    <aside className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-5 py-4"><h2 className="text-sm font-bold text-brand-900">Berichttypen</h2><p className="mt-1 text-[11px] text-slate-400">Rolgebonden templatecatalogus</p></div><div className="divide-y divide-line">{workspace.templates.map((entry) => <button key={entry.id} type="button" onClick={() => setSelectedId(entry.id)} className={`flex w-full items-center gap-3 px-4 py-4 text-left ${entry.id === template.id ? "bg-brand-50" : "hover:bg-slate-50"}`}><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm"><Mail className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-brand-900">{emailTemplateLabels[entry.key]}</span><span className="mt-1 block text-[10px] text-slate-400">Versie {entry.version} · {entry.active ? "Actief" : "Inactief"}</span></span></button>)}</div></aside>
     <div>
       <StatusNotice notice={notice} />
       <form onSubmit={save} className="rounded-xl border border-line bg-white p-6 shadow-card">

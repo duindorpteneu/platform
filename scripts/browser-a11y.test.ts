@@ -10,6 +10,15 @@ const globalStyles = readFileSync(
   path.join(import.meta.dirname, "../src/app/globals.css"),
   "utf8",
 );
+const emailSurfaceSources = [
+  "../src/components/email/email-workspace.tsx",
+  "../src/components/email/mail-v2-editor.tsx",
+  "../src/components/email/mail-v2-reminders-panel.tsx",
+  "../src/components/email/mail-v2-workspace.tsx",
+].map((relativePath) => readFileSync(
+  path.join(import.meta.dirname, relativePath),
+  "utf8",
+));
 
 describe("browser accessibility gate", () => {
   it("uses WCAG 2.2 AA without exclusions or raw DOM output", () => {
@@ -58,5 +67,12 @@ describe("browser accessibility gate", () => {
     expect(platformHarness).toMatch(
       /assertNoAutomatedA11yViolations\(page, "email_center"\);'[\s\S]{0,200}const emailDimensions/u,
     );
+  });
+
+  it("does not animate simultaneous foreground and background state changes in the e-mail center", () => {
+    for (const emailSource of emailSurfaceSources) {
+      expect(emailSource).not.toMatch(/\btransition(?=\s)/u);
+    }
+    expect(emailSurfaceSources.join("\n")).toContain("transition-[width]");
   });
 });

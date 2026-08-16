@@ -67,7 +67,7 @@ const processLabels: Record<MailV2Workspace["templates"][number]["process"], str
   internal: "Intern",
 };
 
-const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
+const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400";
 
 async function postJson(path: string, body: unknown) {
   const response = await fetch(path, {
@@ -592,7 +592,7 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
               key={entry.key}
               type="button"
               onClick={() => setSelectedKey(entry.key)}
-              className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition ${
+              className={`flex w-full items-center gap-3 px-4 py-3.5 text-left ${
                 entry.key === template.key ? "bg-brand-50" : "hover:bg-slate-50"
               }`}
             >
@@ -807,7 +807,7 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
                   title={`Preview ${templateLabels[template.key]}`}
                   sandbox=""
                   srcDoc={preview.html}
-                  className={`mx-auto h-[620px] border-0 bg-white transition-all ${
+                  className={`mx-auto h-[620px] border-0 bg-white transition-[width] ${
                     previewMode === "mobile" ? "w-[390px] max-w-full" : "w-full max-w-[760px]"
                   }`}
                 />

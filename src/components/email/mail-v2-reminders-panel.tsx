@@ -30,7 +30,7 @@ const templateLabels: Record<MailReminderTemplateKey, string> = {
   payment_reminder: "Betalingsherinnering",
   pickup_reminder: "Afhaalherinnering",
 };
-const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
+const fieldClass = "mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
 const dateFormatter = new Intl.DateTimeFormat("nl-NL", {
   dateStyle: "short",
   timeStyle: "short",
@@ -280,7 +280,7 @@ export function MailV2RemindersPanel({
               key={rule.id}
               type="button"
               onClick={() => setSelectedId(rule.id)}
-              className={`w-full p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-300 ${
+              className={`w-full p-4 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-300 ${
                 selectedId === rule.id ? "bg-brand-50" : "hover:bg-slate-50"
               }`}
             >
