@@ -90,7 +90,7 @@ export function EmailWorkspace({
   reminderWorkspace?: MailReminderWorkspace;
   canManageTemplates: boolean;
   emailEnabled: boolean;
-  initialTab?: "bulk" | "branding";
+  initialTab?: "templates" | "bulk" | "branding";
 }) {
   const [tab, setTab] = useState<Tab>(
     initialTab ?? (canManageTemplates ? "templates" : "bulk"),

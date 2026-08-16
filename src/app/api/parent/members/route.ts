@@ -8,6 +8,7 @@ import {
 } from "@/lib/parent-package-contract";
 import { getParentSession } from "@/server/auth/parent-session";
 import { deriveQrLocator } from "@/server/qr/tokens";
+import { operationalLogger } from "@/server/security/logger";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
 export const runtime = "nodejs";
@@ -74,11 +75,23 @@ export async function GET() {
     p_token_hash: session.tokenHash,
   });
   if (error) {
+    operationalLogger.error("parent.workspace_rpc_failed", {
+      code: "parent_workspace_v6_rpc_error",
+      provider: "supabase",
+      route: "/api/parent/members",
+      status: 503,
+    });
     return response({ error: "De leden konden niet worden geladen." }, 503);
   }
 
   const parsed = parentPackageWorkspaceDatabaseSchema.safeParse(data);
   if (!parsed.success) {
+    operationalLogger.error("parent.workspace_schema_invalid", {
+      code: "parent_workspace_v6_schema_invalid",
+      provider: "supabase",
+      route: "/api/parent/members",
+      status: 502,
+    });
     return response({ error: "Ongeldig antwoord van de database." }, 502);
   }
 

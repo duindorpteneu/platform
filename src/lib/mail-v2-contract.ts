@@ -969,6 +969,11 @@ export const manageMailV2CutoverRequestSchema = z.discriminatedUnion("action", [
   }).strict(),
 ]);
 
+export const prepareAndActivateMailV2RequestSchema = z.object({
+  action: z.literal("prepare_activate"),
+  reason: mailV2CutoverReasonSchema,
+}).strict();
+
 const fulfilmentProjectionLineSchema = z.object({
   product: z.string().trim().min(1).max(160),
   size: z.string().trim().min(1).max(80),

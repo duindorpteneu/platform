@@ -295,6 +295,116 @@ select is(
 );
 
 reset role;
+insert into app.articles(id, name, code, icon_type, sort_order)
+values('ac200000-0000-4000-8000-000000000003', 'Los trainingsshirt', 'LOS-TRAIN', 'shirt', 30);
+insert into app.article_variants(id, article_id, size, sku, sort_order)
+values('ac300000-0000-4000-8000-000000000003', 'ac200000-0000-4000-8000-000000000003', 'M', 'LT-M', 10);
+insert into app.article_seasons(article_id, season_id)
+values('ac200000-0000-4000-8000-000000000003', 'ac100000-0000-4000-8000-000000000001');
+insert into app.order_lines(
+  id, order_id, article_variant_id, quantity, package_template_item_id
+)
+select
+  'ac720000-0000-4000-8000-000000000001', orders.id,
+  'ac300000-0000-4000-8000-000000000003', 1, null
+from app.member_orders orders
+where orders.member_id = 'ac500000-0000-4000-8000-000000000001';
+
+select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000002","aal":"aal2"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select app.remove_loose_order_line_v1(
+    'ac720000-0000-4000-8000-000000000001',
+    'Onjuist los artikel',
+    'ac730000-0000-4000-8000-000000000001', null
+  )$$,
+  '42501', 'STAFF_AUTHORIZATION_REQUIRED',
+  'kledingcommissie kan losse commerciële orderregels niet verwijderen'
+);
+reset role;
+select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
+set local role authenticated;
+select is(
+  (
+    select line->>'lineKind'
+    from jsonb_array_elements(
+      app.get_member_detail_v5('ac500000-0000-4000-8000-000000000001')
+        #> '{order,lines}'
+    ) line
+    where line->>'id' = 'ac720000-0000-4000-8000-000000000001'
+  ),
+  'loose',
+  'liddetail onderscheidt een losse extra van pakketonderdelen'
+);
+select is(
+  (
+    select (line->>'canRemove')::boolean
+    from jsonb_array_elements(
+      app.get_member_detail_v5('ac500000-0000-4000-8000-000000000001')
+        #> '{order,lines}'
+    ) line
+    where line->>'id' = 'ac720000-0000-4000-8000-000000000001'
+  ),
+  true,
+  'alleen een onbelemmerde losse regel krijgt de beheeractie'
+);
+select throws_ok(
+  $$select app.remove_loose_order_line_v1(
+    (
+      select line.id from app.order_lines line
+      join app.member_orders orders on orders.id = line.order_id
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000001'
+        and line.package_template_item_id is not null
+      limit 1
+    ),
+    'Pakketregel mag niet weg',
+    'ac730000-0000-4000-8000-000000000002', null
+  )$$,
+  '23514', 'LOOSE_ORDER_LINE_NOT_REMOVABLE',
+  'een pakketonderdeel kan niet via de losse-regelactie verdwijnen'
+);
+create temporary table loose_removal_result as
+select app.remove_loose_order_line_v1(
+  'ac720000-0000-4000-8000-000000000001',
+  'Onjuist los artikel',
+  'ac730000-0000-4000-8000-000000000001',
+  'ac740000-0000-4000-8000-000000000001'
+) result;
+select is(
+  (select result->>'status' from loose_removal_result),
+  'cancelled',
+  'los artikel wordt uitsluitend soft-geannuleerd'
+);
+select is(
+  app.remove_loose_order_line_v1(
+    'ac720000-0000-4000-8000-000000000001',
+    'Onjuist los artikel',
+    'ac730000-0000-4000-8000-000000000001',
+    'ac740000-0000-4000-8000-000000000001'
+  )->>'reused',
+  'true',
+  'een retry retourneert hetzelfde immutable resultaat'
+);
+reset role;
+select is(
+  (select status::text from app.order_lines where id = 'ac720000-0000-4000-8000-000000000001'),
+  'cancelled',
+  'historische orderregel blijft bewaard als geannuleerd'
+);
+select is(
+  (select count(*) from app.audit_logs where action = 'order.loose_line.cancelled'),
+  1::bigint,
+  'de correctie schrijft exact één auditgebeurtenis'
+);
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'private.loose_order_line_removal_requests',
+    'SELECT,INSERT,UPDATE,DELETE'
+  ),
+  'browserrollen kunnen de idempotentieledger niet rechtstreeks benaderen'
+);
+
 delete from app.payments
 where idempotency_key = 'package-zero-lines-payment';
 select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}', true);

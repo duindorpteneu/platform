@@ -8,6 +8,7 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DeliveryNotificationProposal } from "@/lib/delivery-notification-contract";
 
@@ -222,6 +223,28 @@ export function DeliveryNotificationProposalPanel({
               </div>
             ))}
           </div>
+
+          {proposal.items.some((item) => (
+            item.reasonCode === "notification.mail_v2_inactive"
+          )) && (
+            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold text-amber-950">
+                  Mail-v2 moet eenmalig door een beheerder worden geactiveerd
+                </p>
+                <p className="mt-1 text-xs leading-5 text-amber-900">
+                  Open het e-mailcentrum, publiceer de veilige systeemtemplates
+                  en activeer Mail-v2. Deze levering blijft daarna hercontroleerbaar.
+                </p>
+              </div>
+              <Link
+                href="/backoffice/emails?tab=templates#mail-v2-cutover"
+                className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-brand-700 px-4 text-xs font-bold text-white hover:bg-brand-900"
+              >
+                Naar Mail-v2-activatie
+              </Link>
+            </div>
+          )}
 
           <div className="mt-4 space-y-2">
             {proposal.items.length === 0 ? (

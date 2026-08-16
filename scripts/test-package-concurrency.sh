@@ -39,6 +39,11 @@ where member_season_id in (
   'cc510000-0000-4000-8000-000000000003',
   'cc510000-0000-4000-8000-000000000004'
 );
+delete from private.loose_order_line_removal_requests
+where order_id in (
+  select orders.id from app.member_orders orders
+  where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
 delete from app.package_change_requests
 where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from private.parent_package_selection_requests
@@ -94,6 +99,15 @@ where order_line_id in (
   join app.member_orders orders on orders.id = line.order_id
   where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
 );
+delete from app.inventory_allocation_events
+where allocation_id in (
+  select allocation.id from app.inventory_allocations allocation
+  where allocation.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
+delete from app.inventory_allocations
+where season_id = 'cc100000-0000-4000-8000-000000000001';
+delete from private.inventory_allocation_queue
+where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from app.delivery_receipt_lines
 where receipt_id = 'cc700000-0000-4000-8000-000000000001';
 delete from app.delivery_receipts
@@ -123,6 +137,28 @@ where actor_user_id in (
   'cc000000-0000-4000-8000-000000000002'
 )
 or metadata::text like '%cc510000-0000-4000-8000-%';
+delete from app.order_package_snapshot_items
+where snapshot_id in (
+  select snapshot.id from app.order_package_snapshots snapshot
+  where snapshot.member_season_id in (
+    'cc510000-0000-4000-8000-000000000001',
+    'cc510000-0000-4000-8000-000000000002',
+    'cc510000-0000-4000-8000-000000000003',
+    'cc510000-0000-4000-8000-000000000004'
+  )
+);
+delete from app.order_package_snapshots
+where member_season_id in (
+  'cc510000-0000-4000-8000-000000000001',
+  'cc510000-0000-4000-8000-000000000002',
+  'cc510000-0000-4000-8000-000000000003',
+  'cc510000-0000-4000-8000-000000000004'
+);
+delete from app.order_lines
+where order_id in (
+  select orders.id from app.member_orders orders
+  where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
 delete from app.member_orders
 where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from private.parent_portal_grants
@@ -1162,4 +1198,87 @@ if [[ "$change_state" != "cc410000-0000-4000-8000-000000000001:archived" ]]; the
   exit 1
 fi
 
-echo "Package-concurrencytests geslaagd: idempotency, catalogus, default, pakketwissel en conflicterende maatresoluties serialiseren zonder partial writes."
+"${psql_cmd[@]}" <<'SQL'
+insert into app.order_lines(
+  id, order_id, article_variant_id, quantity, package_template_item_id
+)
+select
+  'cc840000-0000-4000-8000-000000000001', orders.id,
+  'cc300000-0000-4000-8000-000000000005', 1, null
+from app.member_orders orders
+where orders.member_season_id = 'cc510000-0000-4000-8000-000000000004';
+SQL
+
+loose_first_log="$test_tmp_dir/loose-remove-first.log"
+loose_second_log="$test_tmp_dir/loose-remove-second.log"
+(
+  "${psql_cmd[@]}" >"$loose_first_log" 2>&1 <<'SQL'
+begin;
+set local statement_timeout = '15s';
+set local lock_timeout = '10s';
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+select app.remove_loose_order_line_v1(
+  'cc840000-0000-4000-8000-000000000001',
+  'Concurrencytest losse extra verwijderen',
+  'cc850000-0000-4000-8000-000000000001',
+  'cc860000-0000-4000-8000-000000000001'
+);
+\echo LOOSE_REMOVE_FIRST_HOLDING
+select pg_sleep(1.5);
+commit;
+SQL
+) &
+loose_first_pid=$!
+wait_for_marker "$loose_first_log" "LOOSE_REMOVE_FIRST_HOLDING"
+(
+  "${psql_cmd[@]}" >"$loose_second_log" 2>&1 <<'SQL'
+begin;
+set local statement_timeout = '15s';
+set local lock_timeout = '10s';
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+select app.remove_loose_order_line_v1(
+  'cc840000-0000-4000-8000-000000000001',
+  'Concurrencytest losse extra verwijderen',
+  'cc850000-0000-4000-8000-000000000001',
+  'cc860000-0000-4000-8000-000000000001'
+);
+commit;
+SQL
+) &
+loose_second_pid=$!
+wait "$loose_first_pid"
+wait "$loose_second_pid"
+if ! grep -q '"reused"[[:space:]]*:[[:space:]]*false' "$loose_first_log"; then
+  tail -n 40 "$loose_first_log"
+  exit 1
+fi
+if ! grep -q '"reused"[[:space:]]*:[[:space:]]*true' "$loose_second_log"; then
+  tail -n 40 "$loose_second_log"
+  exit 1
+fi
+loose_state="$("${psql_cmd[@]}" -Atc "
+  select
+    (select count(*) from private.loose_order_line_removal_requests
+      where request_id = 'cc850000-0000-4000-8000-000000000001') || ':' ||
+    (select status::text from app.order_lines
+      where id = 'cc840000-0000-4000-8000-000000000001') || ':' ||
+    (select count(*) from app.audit_logs
+      where action = 'order.loose_line.cancelled'
+        and entity_id = 'cc840000-0000-4000-8000-000000000001')
+")"
+if [[ "$loose_state" != "1:cancelled:1" ]]; then
+  echo "Onverwachte losse-regelconcurrencystaat: $loose_state"
+  exit 1
+fi
+
+echo "Package-concurrencytests geslaagd: idempotency, losse-regelcorrectie, catalogus, default, pakketwissel en conflicterende maatresoluties serialiseren zonder partial writes."

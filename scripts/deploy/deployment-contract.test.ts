@@ -195,7 +195,9 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain('"revoke_staff_app_session"');
     expect(contractScript).toContain('"revoke_all_staff_app_sessions_for_user"');
     expect(contractScript).toContain('"list_order_qr_identity_candidates"');
-    expect(contractScript).toContain('"get_parent_package_workspace_v5"');
+    expect(contractScript).toContain('"get_parent_package_workspace_v6"');
+    expect(contractScript).toContain('"get_member_detail_v5"');
+    expect(contractScript).toContain('"remove_loose_order_line_v1"');
     expect(contractScript).toContain('"get_operational_health_v12"');
     expect(contractScript).toContain('"register_order_qr_locator"');
     expect(contractScript).toContain('"exchange_order_qr_locator_v2"');

@@ -121,6 +121,13 @@ export function MailV2CutoverPanel({
     && snapshot.legacyPendingCount === 0
     && snapshot.projectionFailureCount === 0
     && snapshot.unresolvedConfirmationCount === 0;
+  const canPrepareDefaults = snapshot.catalogCount === 19
+    && snapshot.publishedCount < 19
+    && snapshot.brandingCount === 1
+    && snapshot.producerCount === 19
+    && snapshot.legacyPendingCount === 0
+    && snapshot.projectionFailureCount === 0
+    && snapshot.unresolvedConfirmationCount === 0;
 
   async function change(action: "activate" | "pause") {
     setBusy(action);
@@ -148,6 +155,33 @@ export function MailV2CutoverPanel({
         text: error instanceof Error
           ? error.message
           : "De mailcutover kon niet worden gewijzigd.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareAndActivate() {
+    setBusy("prepare_activate");
+    setNotice(null);
+    try {
+      const result = await postJson("/api/email/v2/prepare-activate", {
+        action: "prepare_activate",
+        reason,
+      });
+      setNotice({
+        tone: "success",
+        text: `${Number(result.preparedCount ?? 0)} ontbrekende template${Number(result.preparedCount ?? 0) === 1 ? "" : "s"} veilig gepubliceerd; Mail-v2 is actief. Er is geen mail verstuurd.`,
+      });
+      setReason("");
+      setConfirmed(false);
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error instanceof Error
+          ? error.message
+          : "De standaardtemplates konden niet veilig worden geactiveerd.",
       });
     } finally {
       setBusy(null);
@@ -185,7 +219,7 @@ export function MailV2CutoverPanel({
   }
 
   return (
-    <section className={`mb-6 rounded-xl border p-5 shadow-card ${
+    <section id="mail-v2-cutover" className={`mb-6 scroll-mt-24 rounded-xl border p-5 shadow-card ${
       snapshot.enabled
         ? "border-emerald-200 bg-emerald-50"
         : "border-amber-200 bg-amber-50"
@@ -205,7 +239,11 @@ export function MailV2CutoverPanel({
               Gecontroleerde mailcutover
             </p>
             <h2 className="mt-1 text-sm font-bold text-brand-900">
-              {snapshot.enabled ? "Mail-v2-projectie actief" : "Mail-v2-projectie gepauzeerd"}
+              {snapshot.enabled
+                ? "Mail-v2-projectie actief"
+                : snapshot.cutoverAt
+                  ? "Mail-v2-projectie gepauzeerd"
+                  : "Mail-v2 nog niet geactiveerd"}
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-600">
               Activeren vereist alle 19 gepubliceerde templates, alle 19 bewezen
@@ -213,6 +251,13 @@ export function MailV2CutoverPanel({
               lege legacywachtrij zonder projectie- of historiereconciliaties.
               Pauzeren wist het historische cutovermoment niet.
             </p>
+            {!snapshot.enabled && snapshot.publishedCount < 19 && (
+              <p className="mt-2 max-w-2xl text-[11px] font-semibold leading-5 text-amber-900">
+                Nog {19 - snapshot.publishedCount} systeemtemplate{19 - snapshot.publishedCount === 1 ? "" : "s"}
+                {" "}moeten via de sanitizer worden gepubliceerd. De beheeractie
+                hiernaast doet dat in één gecontroleerde doorgang en verstuurt niets.
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
               <span className="rounded-full bg-white/80 px-2.5 py-1 text-brand-900">
                 Catalogus {snapshot.catalogCount} / 19
@@ -291,6 +336,16 @@ export function MailV2CutoverPanel({
             >
               {busy === "pause" && <Loader2 className="size-4 animate-spin" />}
               Projectie pauzeren
+            </button>
+          ) : canPrepareDefaults ? (
+            <button
+              type="button"
+              onClick={() => void prepareAndActivate()}
+              disabled={!confirmed || reason.trim().length < 4}
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+            >
+              {busy === "prepare_activate" && <Loader2 className="size-4 animate-spin" />}
+              Templates publiceren en Mail-v2 activeren
             </button>
           ) : (
             <button
@@ -402,6 +457,9 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
       </div>
     );
   }
+  const needsSafeRender = Boolean(
+    template.draft && !template.draft.sanitizedHtmlSource,
+  );
 
   function markDirty() {
     setDirty(true);
@@ -685,11 +743,14 @@ export function MailV2TemplatesPanel({ workspace }: { workspace: MailV2Workspace
             <button
               type="button"
               onClick={() => void saveDraft()}
-              disabled={Boolean(busy) || !dirty}
+              disabled={Boolean(busy) || (!dirty && !needsSafeRender)}
+              title={needsSafeRender
+                ? "Render en sanitiseer dit ongewijzigde systeemconcept"
+                : undefined}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 text-xs font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40"
             >
               {busy === "save" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Concept opslaan
+              {needsSafeRender && !dirty ? "Concept veilig voorbereiden" : "Concept opslaan"}
             </button>
             <button
               type="button"

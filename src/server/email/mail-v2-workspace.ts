@@ -126,7 +126,7 @@ export async function retryMailV2Projection(
   return { data: parsed.data, error: null };
 }
 
-function sourceForTemplate(
+export function mailV2SourceForTemplate(
   template: MailV2Workspace["templates"][number],
   input: {
     subjectSource: string;
@@ -145,7 +145,7 @@ function sourceForTemplate(
   } as const;
 }
 
-function brandingValues(
+export function mailV2BrandingValues(
   revision: MailV2Workspace["branding"]["published"],
 ): MailBranding {
   const {
@@ -183,11 +183,11 @@ export async function previewMailV2Template(input: {
   const workspace = await getMailV2Workspace();
   const template = workspace.templates.find((candidate) => candidate.key === input.templateKey);
   if (!template) throw new Error("MAIL_V2_TEMPLATE_NOT_FOUND");
-  const source = sourceForTemplate(template, input);
+  const source = mailV2SourceForTemplate(template, input);
   const preview = mailV2PreviewData();
   return renderMailV2({
     source,
-    branding: brandingValues(workspace.branding.published),
+    branding: mailV2BrandingValues(workspace.branding.published),
     shortcodes: preview.shortcodes,
     protectedValues: preview.protectedValues,
     appBaseUrl,
@@ -207,8 +207,8 @@ export async function saveMailV2TemplateDraft(input: {
   if (!template) throw new Error("MAIL_V2_TEMPLATE_NOT_FOUND");
   const preview = mailV2PreviewData();
   const renderedBody = renderMailV2Body({
-    source: sourceForTemplate(template, input),
-    branding: brandingValues(workspace.branding.published),
+    source: mailV2SourceForTemplate(template, input),
+    branding: mailV2BrandingValues(workspace.branding.published),
     shortcodes: preview.shortcodes,
     protectedValues: preview.protectedValues,
   });

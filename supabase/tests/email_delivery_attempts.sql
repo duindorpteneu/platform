@@ -45,7 +45,9 @@ insert into private.email_jobs(
   template_id,
   order_id,
   idempotency_key,
-  payload
+  payload,
+  available_at,
+  created_at
 )
 select
   job_id,
@@ -55,7 +57,11 @@ select
   template.id,
   '277a2000-0000-4000-8000-000000000001',
   'delivery-attempt-test-' || slot,
-  '{}'::jsonb
+  '{}'::jsonb,
+  statement_timestamp() - interval '2 minutes'
+    + slot * interval '1 second',
+  statement_timestamp() - interval '2 minutes'
+    + slot * interval '1 second'
 from app.email_templates template
 cross join (
   values
