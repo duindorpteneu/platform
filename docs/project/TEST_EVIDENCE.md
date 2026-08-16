@@ -514,3 +514,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:db` — groen bij sequentiële CI-conforme uitvoering: 54 pgTAP-bestanden en 1.763 assertions. `variant_size_aliases.sql` bewijst redundante eigen label-/codealiassen, opslag/audit van alleen de aanvullende alias en blijvende cross-variantblokkade.
 - `pnpm test:db:variant-concurrency` — groen; v2 en legacy serialiseren nog steeds op dezelfde productsleutel.
 - Een eerdere lokale parallelle combinatie van de volledige pgTAP-suite met de concurrencyfixture gaf bewust geen bewijs: één globale eigenaarstelling zag de gelijktijdige tijdelijke medewerker. De aansluitende sequentiële volledige suite is groen en is het geldige resultaat.
+## Flexibele ledenimport en handmatige invoer — 2026-08-16 lokaal
+
+- Schone database-upgrade: alle 141 forward-only migrations zijn vanaf nul drie keer succesvol gereplayed; `20260816034918_member_import_flexibility_manual_create.sql` is telkens vóór seed en containerrestart toegepast.
+- Volledige pgTAP: 56 bestanden, 1.782 assertions, groen. Nieuwe bewijzen de service-rolefilter, het niet duurzaam stagen van onbekende maten, niet-blokkerende creatie zonder team, admin+AAL2, private DOB, ontbrekend team, idempotentie, duplicatebevestiging en het ontbreken van order/toegang.
+- Volledige Vitest: 199 bestanden, 1.247 tests, groen. Nieuwe route- en workerregressies bewijzen de policybinding, filtering vóór staging, handmatige create, kandidaatresponse, bevestiging en harde externe-ID-blokkade.
+- De echte lokale Playwrightflow is groen en heeft via de productiebuild 99 leden geïmporteerd, waaronder één lid zonder team met genegeerde onbekende maat; 98 geldige maten bleven intact. Dezelfde flow heeft een lid zonder team handmatig toegevoegd, private DOB en nul orders bewezen en alle fictieve data plus workerheartbeats weer verwijderd. De direct aansluitende volledige pgTAP-suite bleef groen.
+- ESLint, `tsc --noEmit`, production `next build`, `git diff --check`, secretscan en migrationlint (141 migrations) zijn groen.
+- Hosted exact-SHA CI, immutable stagingdeploy en echte beheerderbrowseracceptatie volgen na publicatie; productie is niet benaderd of gewijzigd.

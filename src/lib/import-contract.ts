@@ -192,6 +192,7 @@ export const dynamicImportMappingRequestSchema = z.object({
   batchId: uuid,
   expectedRevision: z.number().int().nonnegative(),
   expectedCatalogHash: z.string().regex(/^[0-9a-f]{64}$/),
+  ignoreOptionalConflicts: z.boolean().default(false),
   preset: z.object({
     id: uuid,
     revision: z.number().int().positive(),
