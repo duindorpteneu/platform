@@ -552,3 +552,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - Geen staging- of productiedeploy uitgevoerd.
 - Hosted PR-CI `31939467117`: applicatiejob volledig groen; Supabasejob passeerde migratie-upgrades, schone replay, pgTAP en alle concurrencytests, maar blokkeerde fail-closed op de staging-cleanupinventaris. De ontbrekende operationele tabel `private.member_package_bulk_requests` is daarna expliciet aan het 102-tabellencontract toegevoegd; een exacte rerun blijft vereist vóór merge/deploy.
 - Hosted rerun `31939971437` bewees de cleanupfix later in de databasejob, maar de parallelle applicatiejob vond dezelfde nieuwe tabel nog in een tweede expliciete restore-inventaristelling van 129. Die restoreassertie en haar documentatie zijn naar de werkelijke gesloten 130-tabellenset gebracht; de volledige lokale suite en een nieuwe exacte hosted run blijven vereist.
+
+## Geauditeerd ledenbeheer — 2026-08-16 lokaal
+
+- `pnpm db:reset` — groen: alle 146 forward-only migrations, inclusief `20260816122941_member_profile_editing.sql`, replayen schoon vanaf nul.
+- `pnpm test:db` — groen: 58 pgTAP-bestanden en 1.860 assertions. De 24 nieuwe assertions bewijzen ingetrokken directe writes, admin+AAL2, actieve versus historische seizoenbinding, private DOB, PII-vrije audit, idempotentie, commissiegrens, ongereserveerde bestelmaat, uitgegeven lock en journal-aware reserveringsvrijgave.
+- `pnpm test` — groen: 210 Vitestbestanden en 1.283 tests, inclusief strikte request-/responsecontracten en autorisatie-, validatie- en foutmappingtests voor profiel en maten.
+- `pnpm test:e2e` — groen: de productiebuild doorloopt echte AAL2-login, opent `Lid bewerken`, slaat DOB en geslacht op, herlaadt en leest beide terug; desktop, mobiel, import, overige backofficeflows en scanner-PWA blijven groen.
+- De cleanup-/restorecontracttests binden de twee nieuwe requestledgers aan exact 105 operationele, 28 behouden en 133 totale app/private-tabellen; onverwachte schema- of inventarisdrift blijft fail-closed.
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, secretscan, migrationlint en `git diff --check` — groen. Stagingacceptatie volgt na exact-SHA merge; productie blijft geblokkeerd tot de afgesproken ouderportaalcopy is verwerkt.

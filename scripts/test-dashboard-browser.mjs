@@ -324,6 +324,29 @@ async function verifyMemberOverview(page, screenshotDir) {
     if (!bodyText.includes(expected)) throw new Error(`Liddetail mist verwachte tekst: ${expected}`);
   }
   if (bodyText.includes("token_hash") || bodyText.includes("qrToken")) throw new Error("Liddetail toont QR-geheim materiaal.");
+  process.stdout.write("Backoffice-browsertest: lidgegevens geauditeerd bewerken…\n");
+  await page.getByRole("button", { name: "Lid bewerken", exact: true }).click();
+  const profileForm = page.locator("form").filter({ hasText: "Lidgegevens bewerken" });
+  await profileForm.getByLabel("Geboortedatum").fill("2012-04-15");
+  await profileForm.getByLabel("Geslacht").selectOption("female");
+  await profileForm.getByLabel("Reden").fill("Browseracceptatie van ledenbeheer");
+  const [profileResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/members/profile") && response.request().method() === "POST"),
+    profileForm.getByRole("button", { name: "Opslaan", exact: true }).click(),
+  ]);
+  if (!profileResponse.ok()) {
+    throw new Error(`Lidgegevens opslaan gaf HTTP ${profileResponse.status()}: ${await profileResponse.text()}`);
+  }
+  await page.reload();
+  await page.getByRole("button", { name: "Lid bewerken", exact: true }).click();
+  const savedProfileForm = page.locator("form").filter({ hasText: "Lidgegevens bewerken" });
+  if (await savedProfileForm.getByLabel("Geboortedatum").inputValue() !== "2012-04-15") {
+    throw new Error("De gewijzigde geboortedatum bleef na herladen niet bewaard.");
+  }
+  if (await savedProfileForm.getByLabel("Geslacht").inputValue() !== "female") {
+    throw new Error("Het gewijzigde geslacht bleef na herladen niet bewaard.");
+  }
+  await savedProfileForm.getByRole("button", { name: "Annuleren", exact: true }).click();
   if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, "after-members-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });

@@ -16,6 +16,7 @@ export const memberGenderSchema = z.enum(["male", "female", "other", "unknown"])
 const uuid = z.string().uuid();
 
 export const memberSizeProfileSchema = z.object({
+  memberSeasonId: uuid,
   seasonId: uuid,
   seasonName: z.string().min(1).max(120),
   editable: z.boolean(),
@@ -28,6 +29,29 @@ export const memberSizeProfileSchema = z.object({
     selectedVariantId: uuid.nullable(),
     ordered: z.boolean(),
     orderLineStatus: memberLineStatusSchema.nullable(),
+    orderLineId: uuid.nullable(),
+    selectionStatus: z.enum([
+      "missing",
+      "imported_unconfirmed",
+      "confirmed",
+      "conflict",
+      "change_requested",
+      "locked",
+    ]),
+    selectionSource: z.enum(["legacy", "import", "parent", "staff", "order"]).nullable(),
+    rawValue: z.string().max(160).nullable(),
+    memberNote: z.string().max(500).nullable(),
+    requestedRawValue: z.string().max(160).nullable(),
+    requestedMemberNote: z.string().max(500).nullable(),
+    hasReservation: z.boolean(),
+    issued: z.boolean(),
+    editable: z.boolean(),
+    editBlockReason: z.enum([
+      "season_locked",
+      "article_inactive",
+      "issued",
+      "reserved_admin_required",
+    ]).nullable(),
     variants: z.array(z.object({
       id: uuid,
       size: z.string().min(1).max(80),
@@ -191,6 +215,8 @@ export const memberListResponseSchema = z.object({
 
 export const memberDetailResponseSchema = z.object({
   id: z.string().uuid(),
+  memberSeasonId: uuid,
+  profileRevision: z.string().regex(/^[0-9a-f]{64}$/),
   memberName: z.string().min(1).max(320),
   firstName: z.string().min(1).max(120),
   insertion: z.string().max(80).nullable(),
@@ -257,11 +283,14 @@ export const memberStatusResponseSchema = z.object({
 
 export const memberSizesRequestSchema = z.object({
   memberId: uuid,
-  seasonId: uuid,
+  memberSeasonId: uuid,
   revision: z.string().regex(/^[0-9a-f]{64}$/),
+  reason: z.string().trim().min(3).max(500),
+  requestId: uuid,
   sizes: z.array(z.object({
     articleId: uuid,
     variantId: uuid.nullable(),
+    releaseReserved: z.boolean(),
   }).strict()).max(25),
 }).strict().superRefine((value, context) => {
   if (new Set(value.sizes.map((size) => size.articleId)).size !== value.sizes.length) {

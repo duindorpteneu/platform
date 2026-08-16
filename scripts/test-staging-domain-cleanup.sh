@@ -11,6 +11,8 @@ second_commit_run_id="f8000000-0000-4000-8000-000000000006"
 release_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 backup_checksum="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 backup_artifact_id="123456"
+profile_request_id="f8000000-0000-4000-8000-000000000007"
+size_request_id="f8000000-0000-4000-8000-000000000008"
 
 cleanup() {
   set +e
@@ -18,6 +20,8 @@ cleanup() {
 delete from app.audit_logs
 where correlation_id in ('${rollback_run_id}'::uuid, '${commit_run_id}'::uuid);
 delete from app.audit_logs where correlation_id = '${second_commit_run_id}'::uuid;
+delete from private.member_profile_edit_requests where request_id = '${profile_request_id}'::uuid;
+delete from private.member_size_edit_requests where request_id = '${size_request_id}'::uuid;
 delete from app.members where id = '${member_id}'::uuid;
 delete from app.articles where id = '${article_id}'::uuid;
 delete from app.staff_profiles where auth_user_id = '${auth_user_id}'::uuid;
@@ -30,6 +34,8 @@ psql "${db_url}" --no-psqlrc --quiet --set=ON_ERROR_STOP=1 <<SQL
 delete from app.audit_logs
 where correlation_id in ('${rollback_run_id}'::uuid, '${commit_run_id}'::uuid);
 delete from app.audit_logs where correlation_id = '${second_commit_run_id}'::uuid;
+delete from private.member_profile_edit_requests where request_id = '${profile_request_id}'::uuid;
+delete from private.member_size_edit_requests where request_id = '${size_request_id}'::uuid;
 delete from app.members where id = '${member_id}'::uuid;
 delete from app.articles where id = '${article_id}'::uuid;
 delete from app.staff_profiles where auth_user_id = '${auth_user_id}'::uuid;
@@ -76,6 +82,24 @@ values (
 
 insert into app.articles (id, name, code, icon_type)
 values ('${article_id}'::uuid, 'Cleanup testartikel', 'CLNTEST', 'package');
+
+insert into private.member_profile_edit_requests(
+  request_id, staff_user_id, member_id, member_season_id,
+  request_hash, result_snapshot
+)
+select '${profile_request_id}'::uuid, '${auth_user_id}'::uuid,
+  '${member_id}'::uuid, member_season.id, repeat('a', 64), '{}'::jsonb
+from app.member_seasons member_season
+where member_season.member_id = '${member_id}'::uuid;
+
+insert into private.member_size_edit_requests(
+  request_id, staff_user_id, member_id, member_season_id,
+  request_hash, result_snapshot
+)
+select '${size_request_id}'::uuid, '${auth_user_id}'::uuid,
+  '${member_id}'::uuid, member_season.id, repeat('b', 64), '{}'::jsonb
+from app.member_seasons member_season
+where member_season.member_id = '${member_id}'::uuid;
 SQL
 
 preflight_json="$(
@@ -158,6 +182,8 @@ postcondition="$(
     --command="select (
       not exists(select 1 from app.members)
       and not exists(select 1 from app.articles)
+      and not exists(select 1 from private.member_profile_edit_requests)
+      and not exists(select 1 from private.member_size_edit_requests)
       and exists(select 1 from app.staff_profiles where auth_user_id = '${auth_user_id}'::uuid)
       and exists(select 1 from auth.users where id = '${auth_user_id}'::uuid)
       and exists(select 1 from app.audit_logs where correlation_id = '${commit_run_id}'::uuid)
@@ -194,4 +220,4 @@ SECOND_RESULT="${second_result}" node -e '
   if (value.result !== "committed" || value.removed_rows !== 0 || value.remaining_operational_rows !== 0) process.exit(1);
 '
 
-echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 103 tabellen en behield staff/Auth/config."
+echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 105 tabellen en behield staff/Auth/config."

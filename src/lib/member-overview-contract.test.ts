@@ -44,6 +44,8 @@ const list = {
 };
 const detail = {
   id: list.members[0].id,
+  memberSeasonId: list.members[0].memberSeasonId,
+  profileRevision: "b".repeat(64),
   memberName: "Sophie Tester",
   firstName: "Sophie",
   insertion: null,
@@ -200,9 +202,11 @@ describe("member overview contract", () => {
   it("validates season-bound individual size changes", () => {
     const request = {
       memberId: list.members[0].id,
-      seasonId: season.id,
+      memberSeasonId: list.members[0].memberSeasonId,
       revision: "a".repeat(64),
-      sizes: [{ articleId: "72000000-0000-4000-8000-000000000001", variantId: "73000000-0000-4000-8000-000000000001" }],
+      reason: "Correctie na passen",
+      requestId: "79000000-0000-4000-8000-000000000001",
+      sizes: [{ articleId: "72000000-0000-4000-8000-000000000001", variantId: "73000000-0000-4000-8000-000000000001", releaseReserved: false }],
     };
     expect(memberSizesRequestSchema.safeParse(request).success).toBe(true);
     expect(memberSizesRequestSchema.safeParse({ ...request, sizes: [...request.sizes, { ...request.sizes[0], variantId: null }] }).success).toBe(false);

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildCleanupEvidence } from "./write-cleanup-evidence.mjs";
 
 const rowCounts = Object.fromEntries(
-  Array.from({ length: 101 }, (_, index) => [`app.cleanup_${String(index).padStart(3, "0")}`, index]),
+  Array.from({ length: 105 }, (_, index) => [`app.cleanup_${String(index).padStart(3, "0")}`, index]),
 );
 const blockers = {
   active_import_leases: 0,
@@ -27,7 +27,7 @@ const preflight = {
   mode: "dry-run",
   latest_migration_version: "20260802280000",
   state_digest: "a".repeat(64),
-  cleanup_table_count: 101,
+  cleanup_table_count: 105,
   preserved_table_count: 28,
   total_rows: totalRows,
   non_empty_tables: 89,
@@ -71,7 +71,7 @@ describe("buildCleanupEvidence", () => {
       schema_version: 1,
       result: "committed",
       cleanup_run_id: applyValues.CLEANUP_RUN_ID,
-      cleanup_table_count: 101,
+      cleanup_table_count: 105,
       removed_rows: totalRows,
       remaining_operational_rows: 0,
       cleanup_audit_rows: 1,
@@ -103,7 +103,7 @@ describe("buildCleanupEvidence", () => {
       schema_version: 1,
       result: "committed",
       cleanup_run_id: applyValues.CLEANUP_RUN_ID,
-      cleanup_table_count: 101,
+      cleanup_table_count: 105,
       removed_rows: totalRows,
       remaining_operational_rows: 0,
       cleanup_audit_rows: 1,
@@ -122,7 +122,7 @@ describe("buildCleanupEvidence", () => {
       schema_version: 1,
       result: "committed",
       cleanup_run_id: applyValues.CLEANUP_RUN_ID,
-      cleanup_table_count: 101,
+      cleanup_table_count: 105,
       removed_rows: totalRows,
       remaining_operational_rows: 0,
       cleanup_audit_rows: 1,
