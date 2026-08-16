@@ -46,4 +46,17 @@ describe("browser accessibility gate", () => {
       'page.emulateMedia({ reducedMotion: "no-preference" })',
     );
   });
+
+  it("checks the e-mail center while that route is still rendered", () => {
+    const platformHarness = readFileSync(
+      path.join(import.meta.dirname, "test-platform-browser.mjs"),
+      "utf8",
+    );
+    expect(platformHarness).toContain(
+      'assertNoAutomatedA11yViolations(page, "email_center")',
+    );
+    expect(platformHarness).toMatch(
+      /assertNoAutomatedA11yViolations\(page, "email_center"\);'[\s\S]{0,200}const emailDimensions/u,
+    );
+  });
 });
