@@ -94,12 +94,26 @@ async function processPreview(
         if (validatedRows.length === 0) {
           throw new Error("DYNAMIC_IMPORT_PAYLOAD_METADATA_MISMATCH");
         }
+        const filteredResult = await admin.schema("app").rpc(
+          "filter_dynamic_import_optional_conflicts",
+          {
+            p_run_id: job.runId,
+            p_claim_token: claimToken,
+            p_generation: job.generation,
+            p_rows: validatedRows,
+          },
+        );
+        if (filteredResult.error) throw new Error("DYNAMIC_IMPORT_OPTIONAL_FILTER_FAILED");
+        const filteredRows = selectedImportRowSchema.array().safeParse(filteredResult.data);
+        if (!filteredRows.success || filteredRows.data.length !== validatedRows.length) {
+          throw new Error("DYNAMIC_IMPORT_OPTIONAL_FILTER_INVALID");
+        }
         const { data, error } = await admin.schema("app").rpc("stage_dynamic_import_rows", {
           p_run_id: job.runId,
           p_claim_token: claimToken,
           p_generation: job.generation,
           p_start_source_row: nextSourceRow,
-          p_rows: validatedRows,
+          p_rows: filteredRows.data,
         });
         if (error) throw new Error("DYNAMIC_IMPORT_STAGE_FAILED");
         const stage = dynamicImportStageResponseSchema.safeParse(data);

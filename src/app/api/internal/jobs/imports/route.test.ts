@@ -99,6 +99,9 @@ describe("POST /api/internal/jobs/imports", () => {
           error: null,
         });
       }
+      if (name === "filter_dynamic_import_optional_conflicts") {
+        return Promise.resolve({ data: mocks.selectedRows.mock.results[0]?.value, error: null });
+      }
       if (name === "analyze_dynamic_import_chunk") {
         return Promise.resolve({
           data: {
@@ -121,6 +124,10 @@ describe("POST /api/internal/jobs/imports", () => {
           },
           error: null,
         });
+      }
+      if (name === "filter_dynamic_import_optional_conflicts") {
+        const call = mocks.rpc.mock.calls.at(-1);
+        return Promise.resolve({ data: call?.[1]?.p_rows, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
@@ -469,6 +476,10 @@ describe("POST /api/internal/jobs/imports", () => {
           },
           error: null,
         });
+      }
+      if (name === "filter_dynamic_import_optional_conflicts") {
+        const parameters = mocks.rpc.mock.calls.at(-1)?.[1];
+        return Promise.resolve({ data: parameters?.p_rows, error: null });
       }
       if (name === "stage_dynamic_import_rows") {
         nextSourceRow += 250;

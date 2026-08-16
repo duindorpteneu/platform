@@ -114,6 +114,7 @@ describe("/api/imports/mapping", () => {
       batchId,
       expectedRevision: 0,
       expectedCatalogHash: catalogHash,
+      ignoreOptionalConflicts: true,
       preset: null,
       mapping: {
         policy: IMPORT_POLICY,
@@ -133,6 +134,8 @@ describe("/api/imports/mapping", () => {
       previewRevision: 0,
     });
     const saveParameters = mocks.rpc.mock.calls[1]?.[1];
+    expect(mocks.rpc.mock.calls[1]?.[0]).toBe("save_dynamic_import_mapping_v2");
+    expect(saveParameters.p_ignore_optional_conflicts).toBe(true);
     expect(saveParameters.p_mapping).toEqual(mocks.selected.mock.results[0]?.value);
     expect(JSON.stringify(saveParameters.p_mapping)).not.toContain("Voornaam");
   });

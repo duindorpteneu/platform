@@ -100,6 +100,7 @@ export function ColumnMappingStep({ upload, onValidated }: Props) {
   const [selectedPreset, setSelectedPreset] = useState<MappingPreset | null>(null);
   const [validation, setValidation] = useState<DynamicImportMappingResponse | null>(null);
   const [presetName, setPresetName] = useState("");
+  const [ignoreOptionalConflicts, setIgnoreOptionalConflicts] = useState(false);
   const [busy, setBusy] = useState<"loading" | "validating" | "preset" | null>("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -164,6 +165,7 @@ export function ColumnMappingStep({ upload, onValidated }: Props) {
           batchId: upload.batchId,
           expectedRevision: workspace.revision,
           expectedCatalogHash: workspace.catalogHash,
+          ignoreOptionalConflicts,
           preset: preset ? { id: preset.id, revision: preset.revision } : null,
           mapping: {
             policy: IMPORT_POLICY,
@@ -355,6 +357,29 @@ export function ColumnMappingStep({ upload, onValidated }: Props) {
         >
           <Save className="size-4" /> Preset opslaan
         </button>
+      </div>
+
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <input
+          type="checkbox"
+          checked={ignoreOptionalConflicts}
+          onChange={(event) => {
+            setIgnoreOptionalConflicts(event.target.checked);
+            setValidation(null);
+            onValidated(null);
+          }}
+          className="mt-0.5 size-4 rounded border-amber-300 text-brand-700 focus:ring-brand-500"
+        />
+        <span>
+          <span className="block text-xs font-bold text-amber-950">Optionele problemen negeren en lid toch importeren</span>
+          <span className="mt-1 block text-[11px] leading-5 text-amber-900">
+            Ongeldig of onbekend team, tussenvoegsel, geslacht, actiefstatus en productmaat worden voor die rij weggelaten. Identiteitsproblemen, een ongeldige naam/e-mail/geboortedatum en dubbele leden blijven blokkeren.
+          </span>
+        </span>
+      </label>
+
+      <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50 p-4 text-[11px] leading-5 text-brand-800">
+        <strong>Herimportbeleid:</strong> geselecteerde, niet-lege gegevens van bestaande leden worden overschreven. Lege bronwaarden wissen niets; een afwijkende geboortedatum en bevestigde of vergrendelde maten worden nooit stil overschreven.
       </div>
 
       <button

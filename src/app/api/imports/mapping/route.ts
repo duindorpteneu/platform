@@ -157,13 +157,14 @@ export async function POST(request: Request) {
     assertMappingHeaders(input.data.mapping, parsedCsv);
     const storedMapping = selectedMappingForStorage(input.data.mapping);
     const diagnostics = buildSizeDiagnostics(input.data.mapping, parsedCsv, workspace);
-    const { data, error } = await supabase.schema("app").rpc("save_dynamic_import_mapping", {
+    const { data, error } = await supabase.schema("app").rpc("save_dynamic_import_mapping_v2", {
       p_batch_id: input.data.batchId,
       p_expected_revision: input.data.expectedRevision,
       p_expected_catalog_hash: input.data.expectedCatalogHash,
       p_header_hash: importHeaderHash(parsedCsv.headers),
       p_mapping: storedMapping,
       p_policy: input.data.mapping.policy,
+      p_ignore_optional_conflicts: input.data.ignoreOptionalConflicts,
       p_preset_id: input.data.preset?.id ?? null,
       p_preset_revision: input.data.preset?.revision ?? null,
       p_correlation_id: normalizeCorrelationId(request.headers.get("x-correlation-id")),

@@ -18,6 +18,7 @@ const articleId = "eb100000-0000-4000-8000-000000000001";
 const variantId = "eb110000-0000-4000-8000-000000000001";
 const articleCode = "BROWSER-IMPORT-SHIRT";
 const fileName = "dynamic-browser-import.csv";
+const manualRelationNumber = "BROWSER-MANUAL-001";
 const cronSecret = "dynamic-import-browser-cron-secret";
 const stagingKey = crypto
   .createHash("sha256")
@@ -60,21 +61,27 @@ function sql(databaseUrl, query, capture = false) {
 function cleanupSql(userId, featureFlag) {
   return `
     begin;
+    set local session_replication_role = replica;
     create temporary table browser_batches on commit drop as
       select id from app.import_batches
-      where actor_user_id = '${userId}' and file_name = '${fileName}';
+      where file_name = '${fileName}';
+    create temporary table browser_actors on commit drop as
+      select actor_user_id id from app.import_batches
+      where id in (select id from browser_batches)
+      union select '${userId}'::uuid;
     create temporary table browser_runs on commit drop as
       select id from app.dynamic_import_runs
       where batch_id in (select id from browser_batches);
     create temporary table browser_members on commit drop as
       select id from app.members
-      where imported_from_batch_id in (select id from browser_batches);
+      where imported_from_batch_id in (select id from browser_batches)
+         or relation_number = '${manualRelationNumber}';
     create temporary table browser_member_seasons on commit drop as
       select id from app.member_seasons
       where member_id in (select id from browser_members);
 
     delete from app.audit_logs
-    where actor_user_id = '${userId}'
+    where actor_user_id in (select id from browser_actors)
       or entity_id in (select id from browser_batches)
       or entity_id in (select id from browser_members)
       or entity_id = '${articleId}';
@@ -84,6 +91,8 @@ function cleanupSql(userId, featureFlag) {
       or source_id in (select id from browser_batches)
       or source_id in (select id from browser_runs);
     delete from private.parent_portal_grants
+    where member_season_id in (select id from browser_member_seasons);
+    delete from app.member_size_selection_history
     where member_season_id in (select id from browser_member_seasons);
     delete from app.member_article_sizes
     where member_id in (select id from browser_members);
@@ -97,6 +106,13 @@ function cleanupSql(userId, featureFlag) {
     where run_id in (select id from browser_runs);
     delete from app.dynamic_import_row_results
     where run_id in (select id from browser_runs);
+    delete from private.operation_runs operation_run
+    where operation_run.operation = 'import_worker'
+      and operation_run.started_at >= coalesce(
+        (select min(batch.created_at) from app.import_batches batch
+          where batch.id in (select id from browser_batches)),
+        'infinity'::timestamptz
+      );
     delete from app.dynamic_import_runs
     where id in (select id from browser_runs);
     delete from app.member_external_identities
@@ -121,7 +137,9 @@ function cleanupSql(userId, featureFlag) {
     delete from app.article_seasons where article_id = '${articleId}';
     delete from app.article_variants where article_id = '${articleId}';
     delete from app.articles where id = '${articleId}';
-    delete from app.staff_profiles where auth_user_id = '${userId}';
+    delete from app.staff_profiles
+    where auth_user_id in (select id from browser_actors)
+       or display_name = 'Dynamische import browser';
     update app.release_feature_flags
     set enabled = ${featureFlag === "t" ? "true" : "false"}
     where key = 'dynamic_import_v2';
@@ -211,10 +229,10 @@ function csvBuffer() {
       `BROWSER-IMPORT-${String(index).padStart(3, "0")}`,
       `Import${index}`,
       "Browser",
-      "JO9-1",
+      index === 99 ? "" : "JO9-1",
       "2014-01-01",
-      index % 2 === 0 ? "male" : "female",
-      "152",
+      index === 99 ? "niet-bestaand" : index % 2 === 0 ? "male" : "female",
+      index === 99 ? "XXXL" : "152",
       `NIET-BEWAREN-${index}`,
     ].join(";"));
   }
@@ -316,6 +334,7 @@ try {
     throw created.error ?? new Error("Importtestbeheerder kon niet worden aangemaakt.");
   }
   userId = created.data.user.id;
+  sql(local.DB_URL, cleanupSql(userId, featureFlag));
   sql(local.DB_URL, fixtureSql(userId));
 
   appProcess = spawn(
@@ -462,9 +481,10 @@ try {
   if (await ignoredColumn.getByLabel("Importdoel").inputValue() !== "ignore") {
     throw new Error("Een niet-geselecteerde CSV-kolom werd toch gemapt.");
   }
+  await page.getByLabel("Optionele problemen negeren en lid toch importeren").check();
   await page.getByRole("button", { name: "Koppeling valideren" }).click();
   await page.getByText("Koppeling gevalideerd", { exact: true }).waitFor();
-  await page.getByText(/101 herkend · 0 leeg · 0 onbekend/u).waitFor();
+  await page.getByText(/100 herkend · 0 leeg · 1 onbekend/u).waitFor();
   await assertNoAutomatedA11yViolations(page, "dynamic_import_mapping");
   await assertKeyboardFocusVisible(page, "dynamic_import_mapping");
 
@@ -526,6 +546,17 @@ try {
     timeout: 10_000,
   });
 
+  await page.goto(`${baseUrl}/backoffice/leden`);
+  await page.getByRole("button", { name: "Formulier openen" }).click();
+  await page.getByLabel("Voornaam *").fill("Handmatig");
+  await page.getByLabel("Achternaam *").fill("Browsertest");
+  await page.getByLabel("Sportlink-relatienummer").fill(manualRelationNumber);
+  await page.getByLabel("Geboortedatum").fill("2013-03-03");
+  await page.getByLabel("Geslacht").selectOption("female");
+  await page.getByRole("button", { name: "Toevoegen", exact: true }).click();
+  await page.getByText(/Lid toegevoegd aan het actieve seizoen/u).waitFor();
+  await assertNoAutomatedA11yViolations(page, "manual_member_create");
+
   const evidence = sql(
     local.DB_URL,
     `
@@ -571,10 +602,36 @@ try {
         'ignoredLeaks', (
           select count(*) from app.audit_logs
           where metadata::text like '%NIET-BEWAREN%'
+             or metadata::text like '%XXXL%'
         ) + (
           select count(*) from private.dynamic_import_selected_rows
           where run_id in (select id from target_run)
-            and selected_values::text like '%NIET-BEWAREN%'
+            and (selected_values::text like '%NIET-BEWAREN%'
+              or selected_values::text like '%XXXL%')
+        ),
+        'membersWithoutTeam', (
+          select count(*) from app.members
+          where id in (select id from target_members) and team is null
+        ),
+        'importedSizes', (
+          select count(*) from app.member_article_sizes
+          where member_id in (select id from target_members)
+        ),
+        'manualMembers', (
+          select count(*) from app.members
+          where relation_number = '${manualRelationNumber}' and team is null
+        ),
+        'manualDob', (
+          select count(*)
+          from app.members member
+          join private.member_sensitive_identity sensitive on sensitive.member_id = member.id
+          where member.relation_number = '${manualRelationNumber}'
+            and sensitive.date_of_birth = date '2013-03-03'
+        ),
+        'manualOrders', (
+          select count(*) from app.member_orders orders
+          join app.members member on member.id = orders.member_id
+          where member.relation_number = '${manualRelationNumber}'
         )
       )::text
     `,
@@ -589,6 +646,11 @@ try {
     rawPayloads: 0,
     rowAudits: 101,
     ignoredLeaks: 0,
+    membersWithoutTeam: 1,
+    importedSizes: 98,
+    manualMembers: 1,
+    manualDob: 1,
+    manualOrders: 0,
   };
   if (Object.entries(expectedEvidence).some(
     ([key, value]) => parsedEvidence[key] !== value,
@@ -597,7 +659,7 @@ try {
   }
 
   process.stdout.write(
-    "Dynamische import-browsertest geslaagd: mapping, workerresume, paginering, conflict, commit, DOB en suppressie.\n",
+    "Dynamische import-browsertest geslaagd: flexibele mapping, workerresume, conflict, commit, DOB, suppressie en handmatige invoer.\n",
   );
 } finally {
   await browser?.close();

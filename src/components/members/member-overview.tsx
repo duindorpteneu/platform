@@ -4,6 +4,7 @@ import { ImportPanel } from "@/components/backoffice/import-panel";
 import { MemberDetailPanel } from "@/components/members/member-detail-panel";
 import { MemberFilterForm } from "@/components/members/member-filter-form";
 import { MemberSelectionTable } from "@/components/members/member-selection-table";
+import { ManualMemberPanel } from "@/components/members/manual-member-panel";
 import { TeamMemberStatusPanel } from "@/components/members/team-member-status-panel";
 import type {
   MemberDetailResponse,
@@ -78,6 +79,7 @@ export function MemberOverview({ list, detail, query, savedViews, staffRole }: {
         <div className="space-y-6">
           {detail ? <MemberDetailPanel detail={detail} closeHref={closeDetailHref} staffRole={staffRole} /> : <section className="rounded-xl border border-brand-100 bg-brand-50 p-5"><h2 className="text-sm font-bold text-brand-900">Selecteer een lid</h2><p className="mt-1 text-xs leading-5 text-brand-700">Open een rij voor bedrag, betaling, artikelregels, QR-status, ouderkoppelingen en relevante historie.</p></section>}
           <TeamMemberStatusPanel teams={list.filterOptions.teams} initialTeam={query.team} disabled={!list.activeSeason} />
+          {staffRole === "beheerder" && <ManualMemberPanel />}
           {staffRole === "beheerder" && <ImportPanel />}
         </div>
       </div>
