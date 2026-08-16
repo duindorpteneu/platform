@@ -23,6 +23,7 @@ describe("catalogus- en bestelcontract", () => {
 
   it("normaliseert een lege leverancierscode naar null", () => {
     expect(catalogVariantRequestSchema.parse({ articleId: id, variantId: null, size: " 152 ", supplierCode: "  ", aliases: ["  maat 152  "], active: true, sortOrder: 1 })).toMatchObject({ size: "152", supplierCode: null, aliases: ["maat 152"] });
+    expect(catalogVariantRequestSchema.parse({ articleId: id, variantId: null, size: "116", supplierCode: "M-116", aliases: ["１１６", " m-116 ", "Jeugd 116"], active: true, sortOrder: 1 })).toMatchObject({ aliases: ["Jeugd 116"] });
     expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "152", supplierCode: null, aliases: ["2xl", "２ＸＬ"], active: true, sortOrder: 1 }).success).toBe(false);
     expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "Anders…", supplierCode: null, aliases: [], active: true, sortOrder: 1 }).success).toBe(false);
     expect(catalogVariantRequestSchema.safeParse({ articleId: id, variantId: null, size: "XX\uFE0FL", supplierCode: null, aliases: [], active: true, sortOrder: 1 }).success).toBe(false);

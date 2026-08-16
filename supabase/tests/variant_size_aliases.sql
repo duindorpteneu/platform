@@ -118,6 +118,70 @@ select app.upsert_catalog_variant_v2(
   10
 ) variant_id;
 
+create temporary table redundant_alias_variant as
+select app.upsert_catalog_variant_v2(
+  'a1200000-0000-4000-8000-000000000001',
+  null,
+  '116',
+  'M-116',
+  array['１１６', 'm-116', 'Jeugd 116'],
+  true,
+  15
+) variant_id;
+
+select is(
+  (select count(*) from app.article_variant_aliases
+    where article_variant_id = (select variant_id from redundant_alias_variant)),
+  1::bigint,
+  'eigen maatlabel en leverancierscode zijn redundante aliassen en blokkeren de eerste variant niet'
+);
+select is(
+  (select alias from app.article_variant_aliases
+    where article_variant_id = (select variant_id from redundant_alias_variant)),
+  'Jeugd 116',
+  'alleen de aanvullende exacte importalias wordt opgeslagen'
+);
+select is(
+  (
+    select (metadata->>'alias_count')::integer
+    from app.audit_logs
+    where action = 'catalog.variant.match_keys.updated'
+      and entity_id = (select variant_id from redundant_alias_variant)
+    order by id desc
+    limit 1
+  ),
+  1,
+  'audittelling bevat alleen werkelijk opgeslagen aliassen'
+);
+select throws_ok(
+  $$select app.upsert_catalog_variant_v2(
+    'a1200000-0000-4000-8000-000000000001',
+    null,
+    '128',
+    null,
+    array['Jeugdmaat', 'Ｊｅｕｇｄｍａａｔ'],
+    true,
+    16
+  )$$,
+  '23505',
+  'VARIANT_MATCH_KEY_EXISTS',
+  'twee niet-redundante aliassen blijven na normalisatie ongeldig'
+);
+select throws_ok(
+  $$select app.upsert_catalog_variant_v2(
+    'a1200000-0000-4000-8000-000000000001',
+    null,
+    'Jeugd 116',
+    null,
+    array[]::text[],
+    true,
+    17
+  )$$,
+  '23505',
+  'VARIANT_MATCH_KEY_EXISTS',
+  'een matchsleutel van een andere variant blijft geblokkeerd'
+);
+
 select is(
   (select count(*) from app.article_variant_aliases
     where article_variant_id = (select variant_id from alias_variant)),

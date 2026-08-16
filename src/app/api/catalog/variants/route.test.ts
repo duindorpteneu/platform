@@ -61,6 +61,29 @@ describe("POST /api/catalog/variants", () => {
     });
   });
 
+  it("negeert redundante aliassen van het eigen maatlabel en de eigen code", async () => {
+    const response = await POST(request({
+      articleId,
+      variantId: null,
+      size: "116",
+      supplierCode: "M-116",
+      aliases: ["１１６", "m-116", "Jeugd 116"],
+      active: true,
+      sortOrder: 10,
+    }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.rpc).toHaveBeenCalledWith("upsert_catalog_variant_v2", {
+      p_article_id: articleId,
+      p_variant_id: null,
+      p_size: "116",
+      p_supplier_code: "M-116",
+      p_aliases: ["Jeugd 116"],
+      p_active: true,
+      p_sort_order: 10,
+    });
+  });
+
   it("weigert genormaliseerd dubbele aliassen en Anders vóór de database", async () => {
     for (const aliases of [[" 2xl ", "２ＸＬ"], ["Anders…"], ["XXL\u061C"], ["XX\u00ADL"]]) {
       const response = await POST(request({

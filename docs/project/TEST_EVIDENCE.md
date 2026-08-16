@@ -504,3 +504,13 @@ Record commands, results and relevant screenshots/notes per phase.
 - Het legacybewijs valideert exact één OCI-manifestdescriptor, de manifestblob, de verwijzing naar de verwachte config, de configblob, iedere layerblob en het releaselabel. Publieke en loopback legacyhealth lopen vóór en na; de gehashte daemon-/manifest-/container-/imagestate moet exact gelijk blijven.
 - Een onafhankelijke read-only finale review gaf `GO`: Compose-, daemon- en OCI-inventarisfouten falen gesloten, beide schema-v2-contracten zijn canoniek en promotion/jobnaam/evidencehash zijn consistent. De enige beperking is de expliciet benoemde eenmalige provenance-uitzondering met `live_container_bound=false`.
 - Hosted provider-run `31895800773` heeft appacceptatie en idempotente replay daadwerkelijk bereikt; het oude gecombineerde harnas stopte uitsluitend op `E2E_MAILBOX_DELIVERY_TIMEOUT`. De nieuwe hoofd-SHA moet het gekoppelde signed `delivered`-event en finale health nog als canoniek artifactbewijs produceren. Production is niet gemuteerd.
+
+## Catalogusvariant-aliasregressie — 2026-08-16
+
+- `pnpm lint`, `pnpm typecheck`, `pnpm lint:workflows` en `pnpm build` — groen.
+- `pnpm test` — groen: 198 bestanden en 1.243 tests, inclusief requestnormalisatie en de catalogusvariant-route.
+- `pnpm security:dependencies`, `pnpm security:secrets` en `pnpm security:migrations` — groen; nul bekende dependencykwetsbaarheden en 140 forward-only migraties.
+- `pnpm test:dashboard-browser` — groen na een volledige schone replay van alle 140 migraties. De operationele browserflow maakt een variant met maat `164`, code `BROWSER-164` en aliassen `１６４, Browser jeugd 164`; na reload resteert alleen de aanvullende alias en de flow vervolgt alle overige backoffice-, import-, scanner- en securitycontroles.
+- `pnpm test:db` — groen bij sequentiële CI-conforme uitvoering: 54 pgTAP-bestanden en 1.763 assertions. `variant_size_aliases.sql` bewijst redundante eigen label-/codealiassen, opslag/audit van alleen de aanvullende alias en blijvende cross-variantblokkade.
+- `pnpm test:db:variant-concurrency` — groen; v2 en legacy serialiseren nog steeds op dezelfde productsleutel.
+- Een eerdere lokale parallelle combinatie van de volledige pgTAP-suite met de concurrencyfixture gaf bewust geen bewijs: één globale eigenaarstelling zag de gelijktijdige tijdelijke medewerker. De aansluitende sequentiële volledige suite is groen en is het geldige resultaat.
