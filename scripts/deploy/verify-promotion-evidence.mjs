@@ -150,6 +150,10 @@ export function validatePromotionRun(run, expected) {
   return run;
 }
 
+export function validateLegacyAdoptionRun(run, expected) {
+  return validatePromotionRun(run, expected);
+}
+
 function timestamp(value, name) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) {
@@ -628,7 +632,7 @@ async function main() {
       || workflow.path !== workflowPath
       || workflow.state !== "active"
     ) throw new Error("Legacy adoptieworkflow is niet canoniek actief");
-    const adoptionRun = validatePromotionRun(
+    const adoptionRun = validateLegacyAdoptionRun(
       await fetchJson(
         token,
         repository,
@@ -643,7 +647,6 @@ async function main() {
         releaseSha: adoptionProvenance.candidate_release_sha,
       },
     );
-    validateRunFreshness(adoptionRun, { now: verificationNow });
     const adoptionJobs = await fetchJson(
       token,
       repository,
