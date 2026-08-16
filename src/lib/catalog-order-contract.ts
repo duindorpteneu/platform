@@ -137,6 +137,14 @@ function uniqueValues(values: readonly string[]) {
   return new Set(values).size === values.length;
 }
 
+function normalizeVariantMatchKey(value: string) {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/gu, " ")
+    .toLocaleUpperCase("nl-NL");
+}
+
 export const catalogArticleRequestSchema = z.object({
   articleId: uuid.nullable().optional(),
   name: z.string().trim().min(1).max(120),
@@ -162,9 +170,9 @@ export const catalogVariantRequestSchema = z.object({
   sortOrder: z.number().int().min(0).max(10_000),
 }).strict().superRefine((value, context) => {
   const unsafeFormat = /[\p{Cf}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0]/u;
-  const sizeKey = value.size.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL");
-  const codeKey = value.supplierCode?.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL") ?? null;
-  const normalized = value.aliases.map((alias) => alias.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleUpperCase("nl-NL"));
+  const sizeKey = normalizeVariantMatchKey(value.size);
+  const codeKey = value.supplierCode ? normalizeVariantMatchKey(value.supplierCode) : null;
+  const normalized = value.aliases.map(normalizeVariantMatchKey);
   if (unsafeFormat.test(value.size) || (value.supplierCode && unsafeFormat.test(value.supplierCode)) || value.aliases.some((alias) => unsafeFormat.test(alias))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["aliases"], message: "Onzichtbare of bidi-opmaaktekens zijn niet toegestaan." });
   }
@@ -177,6 +185,17 @@ export const catalogVariantRequestSchema = z.object({
   if (normalized.some((alias) => /^ANDERS(?:[ .…]*)$/u.test(alias))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["aliases"], message: "Anders is een conflict en geen maatalias." });
   }
+}).transform((value) => {
+  const ownMatchKeys = new Set([
+    normalizeVariantMatchKey(value.size),
+    ...(value.supplierCode ? [normalizeVariantMatchKey(value.supplierCode)] : []),
+  ]);
+  return {
+    ...value,
+    aliases: value.aliases.filter(
+      (alias) => !ownMatchKeys.has(normalizeVariantMatchKey(alias)),
+    ),
+  };
 });
 
 export const saveMemberOrderRequestSchema = z.object({
