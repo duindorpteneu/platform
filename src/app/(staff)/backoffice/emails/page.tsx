@@ -15,7 +15,7 @@ export default async function EmailsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const rawTab = (await searchParams).tab;
-  const initialTab = rawTab === "bulk" || rawTab === "branding"
+  const initialTab = rawTab === "bulk" || rawTab === "branding" || rawTab === "templates"
     ? rawTab
     : undefined;
   const { workspace, staff } = await getEmailWorkspace();

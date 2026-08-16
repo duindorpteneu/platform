@@ -68,6 +68,7 @@ as $$
     'private.inventory_command_requests',
     'private.inventory_legacy_assignments',
     'private.inventory_legacy_reconciliation',
+    'private.loose_order_line_removal_requests',
     'private.mail_v2_campaign_preflight_items',
     'private.mail_v2_campaign_preflights',
     'private.mail_v2_campaign_runs',
@@ -379,7 +380,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 102
+  if cardinality(pg_temp.cleanup_tables()) <> 103
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

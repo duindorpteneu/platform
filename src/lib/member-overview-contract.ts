@@ -230,6 +230,8 @@ export const memberDetailResponseSchema = z.object({
       size: z.string().min(1).max(80),
       quantity: z.number().int().positive(),
       status: memberLineStatusSchema,
+      lineKind: z.enum(["package", "loose"]),
+      canRemove: z.boolean(),
     }).strict()).max(100),
   }).strict().nullable(),
   activities: z.array(z.object({

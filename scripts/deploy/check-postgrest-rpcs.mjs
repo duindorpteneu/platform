@@ -188,7 +188,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
   const parentWorkspace = await callRpc(
     url,
     serviceRoleKey,
-    "get_parent_package_workspace_v5",
+    "get_parent_package_workspace_v6",
     { p_token_hash: "0".repeat(64) },
     "public",
   );
@@ -197,7 +197,7 @@ async function verifySecureQrRuntimeContracts(url, serviceRoleKey) {
     || safeRemoteCode(parentWorkspace.body?.code) !== "42501"
   ) {
     throw createPostgrestHttpError(
-      "PARENT_WORKSPACE_V5",
+      "PARENT_WORKSPACE_V6",
       parentWorkspace.status,
       parentWorkspace.body?.code,
     );
@@ -382,6 +382,15 @@ async function verifyStaffOnlyManagementContracts(url, serviceRoleKey) {
     ["get_inventory_delivery_notification_proposal_v1", {
       p_delivery_draft_id: null,
     }, "DELIVERY_NOTIFICATION_GET"],
+    ["get_member_detail_v5", {
+      p_member_id: null,
+    }, "MEMBER_DETAIL_V5"],
+    ["remove_loose_order_line_v1", {
+      p_order_line_id: null,
+      p_reason: "contract probe",
+      p_request_id: null,
+      p_correlation_id: null,
+    }, "LOOSE_ORDER_LINE_REMOVE"],
     ["confirm_inventory_delivery_notification_proposal_v1", {
       p_proposal_id: null,
       p_expected_revision: "0".repeat(64),

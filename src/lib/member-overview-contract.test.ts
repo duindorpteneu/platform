@@ -73,7 +73,7 @@ const detail = {
     orderStatus: order.orderStatus,
     paidAt: "2026-07-18T12:00:00.000Z",
     qrStatus: "Actief",
-    lines: [{ id: "76000000-0000-4000-8000-000000000001", article: "Shirt", size: "M", quantity: 1, status: "ready_for_pickup" }],
+    lines: [{ id: "76000000-0000-4000-8000-000000000001", article: "Shirt", size: "M", quantity: 1, status: "ready_for_pickup", lineKind: "package", canRemove: false }],
   },
   activities: [],
 };

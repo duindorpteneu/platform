@@ -659,6 +659,71 @@ select is(
   date '2013-03-04',
   'gegrant ouderaccount mag DOB van het eigen lid zien'
 );
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+create temporary table sequential_child_preview as
+select app.preview_parent_portal_activation(
+  'ac100000-0000-4000-8000-000000000001',
+  array['ac300000-0000-4000-8000-000000000003']::uuid[]
+) result;
+select app.activate_parent_portal_access(
+  'ac100000-0000-4000-8000-000000000001',
+  array['ac300000-0000-4000-8000-000000000003']::uuid[],
+  (select result->>'revision' from sequential_child_preview),
+  'ac400000-0000-4000-8000-000000000030',
+  null
+);
+reset role;
+select is(
+  (select count(*) from private.parent_accounts
+    where email_normalized = 'gezin@example.invalid'),
+  1::bigint,
+  'apart activeren van een volgend kind hergebruikt hetzelfde ouderaccount'
+);
+select is(
+  (select count(*) from public.get_parent_members(repeat('4', 64))),
+  3::bigint,
+  'de bestaande oudersessie behoudt eerdere kinderen na aparte activatie'
+);
+select is(
+  jsonb_array_length(
+    public.get_parent_package_workspace_v6(repeat('4', 64))->'members'
+  ),
+  3,
+  'het actuele v6-runtimecontract levert alle afzonderlijk geactiveerde kinderen'
+);
+
+create temporary table sequential_child_grant as
+select id grant_id from private.parent_portal_grants
+where member_season_id = 'ac300000-0000-4000-8000-000000000003'
+  and status = 'active';
+grant select on sequential_child_grant to authenticated;
+set local role authenticated;
+create temporary table sequential_child_revoke_preview as
+select app.preview_parent_portal_revocation(
+  'ac100000-0000-4000-8000-000000000001',
+  array[(select grant_id from sequential_child_grant)]::uuid[]
+) result;
+select app.revoke_parent_portal_access(
+  'ac100000-0000-4000-8000-000000000001',
+  array[(select grant_id from sequential_child_grant)]::uuid[],
+  'Regressietest voor apart activeren afgerond',
+  (select result->>'revision' from sequential_child_revoke_preview),
+  'ac400000-0000-4000-8000-000000000031',
+  null
+);
+reset role;
+select is(
+  (select count(*) from public.get_parent_members(repeat('4', 64))),
+  2::bigint,
+  'expliciet intrekken van het testkind laat de eerdere twee grants intact'
+);
+
 select throws_ok(
   $$select public.create_parent_session(
     'ac700000-0000-4000-8000-000000000001',

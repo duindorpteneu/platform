@@ -54,7 +54,7 @@ describe("PostgREST releasecontract", () => {
           json(response, 200, null);
         } else if (rpcName === "list_order_qr_identity_candidates") {
           json(response, 200, { candidates: [] });
-        } else if (rpcName === "get_parent_package_workspace_v5") {
+        } else if (rpcName === "get_parent_package_workspace_v6") {
           json(response, 403, { code: "42501" });
         } else if (rpcName === "get_operational_health_v12") {
           json(response, 200, {
@@ -113,7 +113,7 @@ describe("PostgREST releasecontract", () => {
 
     for (const call of calls) {
       const expectedProfile = [
-        "get_parent_package_workspace_v5",
+        "get_parent_package_workspace_v6",
         "prepare_mollie_acceptance_fixture",
         "get_mollie_acceptance_payment_state",
         "cleanup_mollie_acceptance_fixture",

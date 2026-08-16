@@ -23,6 +23,8 @@ const memberId = "10000000-0000-4000-8000-000000000001";
 const memberSeasonId = "20000000-0000-4000-8000-000000000001";
 const seasonId = "30000000-0000-4000-8000-000000000001";
 const orderId = "40000000-0000-4000-8000-000000000001";
+const secondMemberId = "60000000-0000-4000-8000-000000000001";
+const secondMemberSeasonId = "70000000-0000-4000-8000-000000000001";
 
 function workspace() {
   return {
@@ -102,6 +104,30 @@ describe("GET /api/parent/members", () => {
         order: { qrDataUrl: null },
       }],
     });
+  });
+
+  it("behoudt meerdere expliciet gekoppelde kinderen in één oudersessie", async () => {
+    const input = workspace();
+    input.members.push({
+      ...input.members[0],
+      memberId: secondMemberId,
+      memberSeasonId: secondMemberSeasonId,
+      firstName: "Sem",
+      relationNumber: "REL-2",
+      order: {
+        ...input.members[0].order,
+        id: "80000000-0000-4000-8000-000000000001",
+      },
+    });
+    mocks.rpc.mockResolvedValueOnce({ data: input, error: null });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.members).toHaveLength(2);
+    expect(body.members.map((member: { memberSeasonId: string }) => member.memberSeasonId)).toEqual([
+      memberSeasonId,
+      secondMemberSeasonId,
+    ]);
   });
 
   it("activeert geen QR voor een betaald pakket zonder afhaalklare reservering", async () => {

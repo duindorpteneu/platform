@@ -437,6 +437,7 @@ export function MemberDashboard() {
   const [sizeRequestIds, setSizeRequestIds] = useState<StringMap>({});
   const [busyMember, setBusyMember] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadedSuccessfully, setLoadedSuccessfully] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -456,6 +457,7 @@ export function MemberDashboard() {
       if (!response.ok) throw new Error();
       const payload = await response.json() as ParentPackageWorkspace;
       setWorkspace(payload);
+      setLoadedSuccessfully(true);
       setDrafts(Object.fromEntries(payload.members.map((member) => [
         member.memberSeasonId,
         Object.fromEntries(
@@ -701,7 +703,7 @@ export function MemberDashboard() {
             Jouw kledingpakketten
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            {memberCountLabel}. Ieder seizoen houdt eigen pakket, maten,
+            {loadedSuccessfully ? memberCountLabel : "Leden konden niet worden geladen"}. Ieder seizoen houdt eigen pakket, maten,
             betaling en uitgifte.
           </p>
         </div>
@@ -736,7 +738,25 @@ export function MemberDashboard() {
         </div>
       )}
 
-      {workspace.members.length === 0 ? (
+      {!loadedSuccessfully ? (
+        <div className="mt-8 rounded-2xl border border-red-100 bg-white p-8 text-center shadow-card">
+          <AlertTriangle className="mx-auto size-7 text-danger" />
+          <h2 className="mt-4 text-base font-bold text-brand-900">
+            Portaalgegevens tijdelijk niet beschikbaar
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+            Je bestaande toegang en koppelingen zijn niet verwijderd. Probeer
+            de gegevens opnieuw te laden.
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900"
+          >
+            <RefreshCw className="size-4" /> Opnieuw proberen
+          </button>
+        </div>
+      ) : workspace.members.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-card">
           <UserRound className="mx-auto size-7 text-brand-500" />
           <h2 className="mt-4 text-base font-bold text-brand-900">

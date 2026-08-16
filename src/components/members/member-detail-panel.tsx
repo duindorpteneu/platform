@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { OrderAdminActions } from "@/components/members/order-admin-actions";
 import { MemberStatusAction } from "@/components/members/member-status-action";
 import { MemberSizeProfile } from "@/components/members/member-size-profile";
+import { LooseOrderLineRemoval } from "@/components/members/loose-order-line-removal";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -111,7 +112,7 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
               <div className="flex justify-between gap-3"><dt className="text-slate-400">Betaaldatum</dt><dd className="text-right font-semibold text-ink">{detail.order.paidAt ? moment(detail.order.paidAt) : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-slate-400">QR-status</dt><dd className="text-right font-semibold text-ink">{detail.order.qrStatus}</dd></div>
             </dl>
-            <div className="mt-4 space-y-2">{detail.order.lines.map((line) => <div key={line.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5"><div className="min-w-0"><p className="truncate text-xs font-semibold text-ink">{line.article} · {line.size}</p><p className="mt-0.5 text-[10px] text-slate-400">{line.quantity} stuk{line.quantity === 1 ? "" : "s"}</p></div><span className="shrink-0 text-[10px] font-semibold text-brand-700">{lineLabels[line.status]}</span></div>)}</div>
+            <div className="mt-4 space-y-2">{detail.order.lines.map((line) => <div key={line.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5"><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink">{line.article} · {line.size}</p><p className="mt-0.5 text-[10px] text-slate-400">{line.quantity} stuk{line.quantity === 1 ? "" : "s"} · {line.lineKind === "loose" ? "Los artikel" : "Pakketonderdeel"}</p></div><div className="flex shrink-0 items-center gap-2"><span className="text-[10px] font-semibold text-brand-700">{lineLabels[line.status]}</span>{line.canRemove && <LooseOrderLineRemoval orderLineId={line.id} article={`${line.article} · ${line.size}`} />}</div></div>)}</div>
           </div>}
         </section>
 
