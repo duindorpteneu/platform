@@ -561,3 +561,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm test:e2e` — groen: de productiebuild doorloopt echte AAL2-login, opent `Lid bewerken`, slaat DOB en geslacht op, herlaadt en leest beide terug; desktop, mobiel, import, overige backofficeflows en scanner-PWA blijven groen.
 - De cleanup-/restorecontracttests binden de twee nieuwe requestledgers aan exact 105 operationele, 28 behouden en 133 totale app/private-tabellen; onverwachte schema- of inventarisdrift blijft fail-closed.
 - `pnpm lint`, `pnpm typecheck`, `pnpm build`, secretscan, migrationlint en `git diff --check` — groen. Stagingacceptatie volgt na exact-SHA merge; productie blijft geblokkeerd tot de afgesproken ouderportaalcopy is verwerkt.
+
+## Liveness/readiness-startcontract — 2026-08-16 lokaal
+
+- Gefaalde hosted deploy `31949963942`: migration `20260816122941_member_profile_editing.sql` en PostgREST-contract groen; kandidaat en rollbackimage startten Next.js, maar Compose blokkeerde beide op de volledige operationele `/api/health` voordat de scheduler kon starten.
+- `pnpm exec vitest run src/app/api/live/route.test.ts scripts/deploy/deployment-contract.test.ts` — groen: 2 bestanden, 32 tests. Bewijst minimale PII-vrije liveness, Composebinding uitsluitend aan `/api/live` en behoud van twee volledige readinesschecks met begrensde herstelwachttijd.
+- Volledige lokale gate — groen: 211 Vitestbestanden/1.284 tests, ESLint, TypeScript, production build, dependency-audit zonder bekende kwetsbaarheden, secretscan, lint van 146 forward-only migrations en `git diff --check`. Hosted exact-main CI en immutable stagingredeploy volgen op de herstelcommit.

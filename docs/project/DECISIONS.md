@@ -151,3 +151,9 @@
 - Het Sportlink-relatienummer is geen generiek profielveld maar een primaire externe importidentiteit en blijft daarom alleen-lezen. Een gewijzigd e-mailadres muteert geen ouderaccount, grant of sessie; portaaltoegang blijft een expliciete afzonderlijke beheeractie.
 - Een ongereserveerde bestelde maat mag geauditeerd worden gecorrigeerd. Een harde reservering mag alleen door een beheerder met expliciete vrijgave worden losgelaten; de oude voorraadboeking krijgt een immutable journaalevent en de vervangende regel start opnieuw als nalevering. Uitgegeven maten zijn definitief vergrendeld.
 - Profiel- en maatwrites zijn request-idempotent, gebruiken dezelfde lid-/lid-seizoenlocks als import en bewaken een inhoudsrevisie. Auditmetadata noemt alleen gewijzigde velden en technische identifiers, niet de oude of nieuwe persoonsgegevens.
+
+## D-098 — Containerliveness en operationele readiness zijn afzonderlijke poorten
+
+- De Compose-healthcheck bewijst uitsluitend dat het Next.js-proces via `/api/live` antwoordt. Zij beoordeelt geen queue-, scheduler-, provider- of voorraadstatus.
+- De release blijft daarna verplicht de bestaande volledige `/api/health` op loopback en publiek, schedulerhealth, runtime-secretbinding, database-/RPC-contract en edge-bodylimits bewijzen voordat revision en manifest worden gepubliceerd.
+- Deze scheiding voorkomt dat de scheduler afhankelijk wordt van een readinessstatus die alleen door een schedulercyclus kan herstellen. Een blijvende operationele fout blijft fail-closed; alleen de eerste herstelcyclus krijgt een begrensde langere wachttijd.

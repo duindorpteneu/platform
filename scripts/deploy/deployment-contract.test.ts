@@ -134,6 +134,8 @@ describe("deployment environment isolation", () => {
     expect(compose.match(/- \/nodejs\/bin\/node/g)).toHaveLength(2);
     expect(compose).toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- operations-scheduler\.mjs/);
     expect(compose).not.toMatch(/scheduler:[\s\S]*?command:\s*\n\s*- node/);
+    expect(compose).toContain("fetch('http://127.0.0.1:3000/api/live')");
+    expect(compose).not.toContain("fetch('http://127.0.0.1:3000/api/health')");
   });
 
   it("accepts the staging Mollie profile id from a protected secret or variable", () => {
@@ -235,6 +237,15 @@ describe("deployment environment isolation", () => {
     expect(postgrestGate).toBeLessThan(deployScript.indexOf("activated=true"));
     expect(importKeyGate).toBeGreaterThan(postgrestGate);
     expect(importKeyGate).toBeLessThan(deployScript.indexOf("activated=true"));
+    expect(deployScript).toContain(
+      'check_with_retries "http://127.0.0.1:${expected_port}"',
+    );
+    expect(deployScript).toContain(
+      'check_with_retries "https://${expected_host}"',
+    );
+    expect(
+      deployScript.match(/"\$RELEASE_SHA" "\$expected_artifact_digest" 100/g),
+    ).toHaveLength(2);
   });
 
   it("blocks staging and production until the public proxy rejects chunked oversize bodies", () => {
