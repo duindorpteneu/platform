@@ -9,7 +9,7 @@ import {
 import { validateStagingManifest } from "./verify-staging-deploy.mjs";
 import { validateRollbackEvidence } from "./rollback-evidence.mjs";
 import {
-  validateLegacyAdoptionResult,
+  validateLegacyAdoptionProvenance,
   validateLegacyCaptureEvidence,
 } from "./legacy-adoption-evidence.mjs";
 import { validateRestoreEvidence } from "../staging/write-restore-evidence.mjs";
@@ -595,6 +595,26 @@ async function main() {
     ) {
       throw new Error("Legacy adoptierun-ID is ongeldig of hergebruikt");
     }
+    const adoptionRoot = required(
+      process.env,
+      "LEGACY_ADOPTION_EVIDENCE_ROOT",
+    );
+    const capturePath = join(
+      adoptionRoot,
+      "legacy-capture-evidence.json",
+    );
+    const captureBytes = await readFile(capturePath);
+    const captureHash = `sha256:${createHash("sha256")
+      .update(captureBytes).digest("hex")}`;
+    const adoptionValue = JSON.parse(await readFile(
+      join(adoptionRoot, "legacy-adoption-result.json"),
+      "utf8",
+    ));
+    const adoptionProvenance = validateLegacyAdoptionProvenance(
+      adoptionValue,
+      captureHash,
+      { runId: legacyAdoptionRunId },
+    );
     const workflowPath =
       ".github/workflows/adopt-legacy-production.yml";
     const workflow = await fetchJson(
@@ -620,13 +640,10 @@ async function main() {
         workflowPath,
         events: ["workflow_dispatch"],
         repository,
-        releaseSha,
+        releaseSha: adoptionProvenance.candidate_release_sha,
       },
     );
-    validateRunFreshness(adoptionRun, {
-      now: verificationNow,
-      notBefore: deployCompletedAt,
-    });
+    validateRunFreshness(adoptionRun, { now: verificationNow });
     const adoptionJobs = await fetchJson(
       token,
       repository,
@@ -644,15 +661,6 @@ async function main() {
     validateArtifacts(adoptionArtifacts.artifacts, [
       `legacy-production-adoption-${legacyAdoptionRunId}-${adoptionRun.run_attempt}`,
     ]);
-    const adoptionRoot = required(
-      process.env,
-      "LEGACY_ADOPTION_EVIDENCE_ROOT",
-    );
-    const capturePath = join(
-      adoptionRoot,
-      "legacy-capture-evidence.json",
-    );
-    const captureBytes = await readFile(capturePath);
     const legacyManifest = JSON.parse(await readFile(
       join(adoptionRoot, "LEGACY_RELEASE_MANIFEST"),
       "utf8",
@@ -667,21 +675,14 @@ async function main() {
         notAfter: adoptionRun.updated_at,
       },
     );
-    const captureHash = `sha256:${createHash("sha256")
-      .update(captureBytes).digest("hex")}`;
     if (
       captureHash
         !== rollbackEvidence.legacy_adoption_evidence_sha256
     ) throw new Error("Rollbackbewijs hoort niet bij de adoptiecapture");
-    const adoption = validateLegacyAdoptionResult(
-      JSON.parse(await readFile(
-        join(adoptionRoot, "legacy-adoption-result.json"),
-        "utf8",
-      )),
+    const adoption = validateLegacyAdoptionProvenance(
+      adoptionValue,
       captureHash,
       {
-        candidateReleaseSha: releaseSha,
-        candidateArtifactDigest: stagingManifest.artifactDigest,
         runId: legacyAdoptionRunId,
         runAttempt: adoptionRun.run_attempt,
         notBefore: adoptionRun.run_started_at ?? adoptionRun.created_at,

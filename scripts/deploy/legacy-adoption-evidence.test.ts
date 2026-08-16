@@ -5,6 +5,7 @@ import * as legacyAdoptionEvidence from "./legacy-adoption-evidence.mjs";
 const {
   buildLegacyAdoptionResult,
   buildLegacyCaptureEvidence,
+  validateLegacyAdoptionProvenance,
   validateLegacyAdoptionResult,
   validateLegacyCaptureEvidence,
 } = legacyAdoptionEvidence;
@@ -115,6 +116,33 @@ describe("one-time legacy adoption evidence", () => {
       runId: 300,
       notBefore: "2026-08-03T20:00:01.000Z",
       notAfter: "2026-08-03T21:00:00.000Z",
+    })).toThrow();
+  });
+
+  it("reuses only the signed legacy provenance for a later candidate drill", () => {
+    const captureHash = `sha256:${createHash("sha256")
+      .update("capture").digest("hex")}`;
+    const result = buildLegacyAdoptionResult({
+      repository: "duindorpteneu/platform",
+      candidateReleaseSha: "f".repeat(40),
+      candidateArtifactDigest: digest("1"),
+      captureEvidenceSha256: captureHash,
+      adoptionWorkflowRunId: 400,
+      adoptionWorkflowRunAttempt: 2,
+      restoredCandidate: true,
+      legacyHealthProven: true,
+      legacySchedulerExpected: false,
+      candidateSchedulerHealthProven: true,
+      providersDisabled: true,
+      adoptedAt: "2026-08-03T21:00:00.000Z",
+    });
+    expect(validateLegacyAdoptionProvenance(result, captureHash, {
+      runId: 400,
+      runAttempt: 2,
+    })).toEqual(result);
+    expect(() => validateLegacyAdoptionProvenance(result, captureHash, {
+      runId: 401,
+      runAttempt: 2,
     })).toThrow();
   });
 });

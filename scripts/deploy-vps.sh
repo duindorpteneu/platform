@@ -186,9 +186,9 @@ deploy_environment() {
         && -f "$legacy_result_path" && ! -L "$legacy_result_path"
         && "$legacy_run_id" =~ ^[1-9][0-9]*$ ]] \
         || die "Legacy rollbacktarget mist geverifieerd adoptiebewijs."
-      node scripts/deploy/legacy-adoption-evidence.mjs verify-result \
+      node scripts/deploy/legacy-adoption-evidence.mjs verify-provenance \
         "$legacy_result_path" "$legacy_capture_path" \
-        "$RELEASE_MANIFEST_SOURCE" "$legacy_run_id" >/dev/null
+        "$legacy_run_id" >/dev/null
       previous_health_contract="legacy-v1-exact-four-fields"
     fi
   else

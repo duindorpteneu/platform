@@ -703,7 +703,7 @@ describe("fail-closed release chain", () => {
       "a79c8d843d75e90810ccceb228538c6368d2198b",
     );
     expect(deployScript).toContain(
-      "legacy-adoption-evidence.mjs verify-result",
+      "legacy-adoption-evidence.mjs verify-provenance",
     );
     expect(deployScript).toContain("check-legacy-http.mjs");
     expect(deployScript).toContain("legacy-v1-exact-four-fields");

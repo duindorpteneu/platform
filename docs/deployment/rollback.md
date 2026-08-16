@@ -9,8 +9,11 @@ aparte workflow `Adopt exact legacy production rollback target` toegestaan.
 Zij archiveert niet opnieuw gebouwde code, maar de manifestgebonden lokale image,
 en bewijst candidate→legacy→candidate op staging. Legacyhealth zonder
 `artifactDigest` wordt alleen geaccepteerd wanneer signed capturebewijs,
-adoptierun-ID, exacte legacy-SHA en productionmanifest alle overeenkomen. Er is
-geen herbruikbare flag of algemene bypass. Bij exact nul zichtbare
+adoptierun-ID, exacte legacy-SHA en productionmanifest alle overeenkomen. De
+eenmalige adoptieprovenance blijft aan haar oorspronkelijke workflowrun
+gebonden; iedere latere releasecandidate moet zelf de volledige
+candidate→legacy→candidate-drill doorlopen. Er is geen herbruikbare flag of
+algemene bypass. Bij exact nul zichtbare
 productionappcontainers wordt de eenmalige provenance-uitzondering expliciet in
 het signed bewijs vastgelegd; publieke én loopbackhealth, alle OCI/config/layer-
 digests en bytegelijke before/after-state zijn dan verplicht. Dit is geen claim
