@@ -47,7 +47,7 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `IMPORT_RAW_RETENTION_HOURS` | Retentieconfiguratie | `24` | Geheel getal 1–72; veilige standaard 24 |
 | `OPERATIONS_HEARTBEAT_URL` | Hoog geheim, server-only | Leeg | Unieke externe HTTPS dead-man-switch; verplicht in production en nooit gelogd |
 | `MOLLIE_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
-| `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging, afzonderlijke live key in production |
+| `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging; uitsluitend voor de operationeel publieke cluborigin mag dezelfde stagingruntime een afzonderlijke live key gebruiken; production gebruikt een eigen live key |
 | `MOLLIE_PROFILE_ID` | Beschermde providerbinding | Leeg | Protected secret of variable volgens workflow; actueel als secret aanwezig |
 | `EMAIL_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
 | `SENDGRID_API_KEY` | Hoog geheim, server-only | Leeg | Unieke minimaal bevoegde Mail Send-key |
