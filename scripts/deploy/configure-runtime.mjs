@@ -8,7 +8,7 @@ const releaseArtifactDigest =
   process.env.RELEASE_ARTIFACT_DIGEST?.trim() ?? "";
 const rules = {
   staging: {
-    host: "staging-duindorp.dgwebservices.nl",
+    host: "duindorpsv.dgwebservices.nl",
     port: "14000",
     root: "/srv/apps/duindorpteneu/staging",
     project: "duindorpteneu-staging",

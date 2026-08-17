@@ -163,7 +163,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: staging
-      url: https://staging-duindorp.dgwebservices.nl
+      url: https://duindorpsv.dgwebservices.nl
     permissions:
       actions: read
       contents: read
@@ -214,7 +214,7 @@ jobs:
         env:
           RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
           ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
-          STAGING_APP_URL: https://staging-duindorp.dgwebservices.nl
+          STAGING_APP_URL: https://duindorpsv.dgwebservices.nl
           LEGACY_CAPTURE_DIRECTORY: ${{ github.workspace }}/.legacy-capture
           LEGACY_ADOPTION_RESULT_PATH: ${{ runner.temp }}/legacy-adoption-result-${{ github.run_id }}-${{ github.run_attempt }}.json
         run: bash scripts/staging/adopt-legacy-release.sh

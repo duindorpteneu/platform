@@ -12,7 +12,7 @@ describe("one-time staging legacy adoption", () => {
       'legacy_sha="a79c8d843d75e90810ccceb228538c6368d2198b"',
     );
     expect(source).toContain(
-      '"https://staging-duindorp.dgwebservices.nl"',
+      '"https://duindorpsv.dgwebservices.nl"',
     );
     expect(source).toContain("assert_runner_boundary staging");
     expect(source).toContain("legacy-adoption-evidence.mjs verify-capture");

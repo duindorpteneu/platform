@@ -17,7 +17,7 @@ function releaseIdentity() {
   const revision = process.env.RELEASE_SHA;
   const artifactDigest = process.env.RELEASE_ARTIFACT_DIGEST;
   const value = (name: string) => process.env[name]?.trim() ?? "";
-  const expectedOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
+  const expectedOrigin = environment === "staging" ? "https://duindorpsv.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
   const importEnabled = value("DYNAMIC_IMPORT_ENABLED");
   const importRetention = value("IMPORT_RAW_RETENTION_HOURS");
   const importKey = value("IMPORT_STAGING_ENCRYPTION_KEY");

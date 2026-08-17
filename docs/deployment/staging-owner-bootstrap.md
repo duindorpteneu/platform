@@ -51,7 +51,7 @@ join auth.users auth_user on auth_user.id = profile.auth_user_id
 where profile.role = 'beheerder';
 ```
 
-4. Log in op `https://staging-duindorp.dgwebservices.nl/staff/login`. De applicatie stuurt de eerste AAL1-sessie naar `/staff/mfa`; koppel daar TOTP en bevestig de zescijferige code. Backoffice-toegang wordt pas op AAL2 verleend.
+4. Log in op `https://duindorpsv.dgwebservices.nl/staff/login`. De applicatie stuurt de eerste AAL1-sessie naar `/staff/mfa`; koppel daar TOTP en bevestig de zescijferige code. Backoffice-toegang wordt pas op AAL2 verleend.
 
 ## Volgende medewerkers
 
@@ -61,9 +61,9 @@ Na deze bootstrap gebruikt de beheerder **Backoffice → Instellingen → Medewe
 
 Configureer in het staging-Supabaseproject onder **Authentication → URL Configuration**:
 
-- Site URL: `https://staging-duindorp.dgwebservices.nl`;
-- Redirect URL: `https://staging-duindorp.dgwebservices.nl/staff/set-password`;
-- Redirect URL: `https://staging-duindorp.dgwebservices.nl/staff/reset-password`.
+- Site URL: `https://duindorpsv.dgwebservices.nl`;
+- Redirect URL: `https://duindorpsv.dgwebservices.nl/staff/set-password`;
+- Redirect URL: `https://duindorpsv.dgwebservices.nl/staff/reset-password`.
 
 Een medewerker gebruikt daarna **Medewerkerslogin → Wachtwoord vergeten?**. Het antwoord blijft voor bekende en onbekende adressen gelijk. Een bestaande geverifieerde TOTP-factor wordt vóór de wachtwoordwijziging opnieuw gevraagd; na succes worden alle opaque app-sessies, open sessie-exchanges en sessiegebonden QR-scangrants ingetrokken en moet de medewerker opnieuw inloggen. De Supabase-dashboardactie **Send password recovery** blijft als operationele fallback bruikbaar: een strikt geldig `type=recovery`-fragment wordt vanaf de Site URL direct naar dezelfde staff-resetpagina geleid.
 

@@ -27,7 +27,7 @@ function jwt(role: "anon" | "service_role", ref: string) {
 function runtimeEnvironment(environment: "staging" | "production") {
   const staging = environment === "staging";
   const ref = staging ? "dxbdjtbyghsovlrdcwcr" : "wobcbufmmputydtzemyu";
-  const host = staging ? "staging-duindorp.dgwebservices.nl" : "duindorp.dgwebservices.nl";
+  const host = staging ? "duindorpsv.dgwebservices.nl" : "duindorp.dgwebservices.nl";
   return {
     ...process.env,
     DEPLOY_ENVIRONMENT: environment,

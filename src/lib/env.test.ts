@@ -12,7 +12,7 @@ describe("server provider configuration", () => {
 
   it("treats explicitly empty optional provider values as unset while disabled", () => {
     const env = parseServerEnv({
-      APP_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
+      APP_BASE_URL: "https://duindorpsv.dgwebservices.nl",
       MOLLIE_ENABLED: "false",
       MOLLIE_API_KEY: "",
       EMAIL_ENABLED: "false",

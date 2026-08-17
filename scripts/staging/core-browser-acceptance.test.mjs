@@ -10,7 +10,7 @@ import {
 } from "./core-browser-acceptance.mjs";
 
 const valid = {
-  STAGING_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
+  STAGING_BASE_URL: "https://duindorpsv.dgwebservices.nl",
   SUPABASE_PROJECT_REF: "dxbdjtbyghsovlrdcwcr",
   RELEASE_SHA: "a".repeat(40),
   ARTIFACT_DIGEST: `sha256:${"b".repeat(64)}`,

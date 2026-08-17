@@ -4,7 +4,7 @@ De applicatie draait per environment als één Rootless-Docker-Composeproject me
 
 | Onderdeel | Staging | Production |
 | --- | --- | --- |
-| Publieke origin | `https://staging-duindorp.dgwebservices.nl` | `https://duindorp.dgwebservices.nl` |
+| Publieke origin | `https://duindorpsv.dgwebservices.nl` | `https://duindorp.dgwebservices.nl` |
 | Routes | `/`, `/admin`, `/uitgifte` | `/`, `/admin`, `/uitgifte` |
 | Hostbinding | `127.0.0.1:14000` | `127.0.0.1:24000` |
 | Composeproject | `duindorpteneu-staging` | `duindorpteneu-production` |
@@ -20,7 +20,7 @@ De applicatie draait per environment als één Rootless-Docker-Composeproject me
 | Controle | Staging | Production | Acceptatie |
 | --- | --- | --- | --- |
 | Lokale health | `http://127.0.0.1:14000/api/health` | `http://127.0.0.1:24000/api/health` | 200 JSON; exact environment, SHA en artifactdigest |
-| Publieke health | `https://staging-duindorp.dgwebservices.nl/api/health` | `https://duindorp.dgwebservices.nl/api/health` | Dezelfde drieledige identiteit; geen secrets/DB-metadata |
+| Publieke health | `https://duindorpsv.dgwebservices.nl/api/health` | `https://duindorp.dgwebservices.nl/api/health` | Dezelfde drieledige identiteit; geen secrets/DB-metadata |
 | Ouderportaal | `/` | `/` | 200 login of geldige sessie naar `/mijn-tenue` |
 | Backoffice | `/admin` | `/admin` | Zelfde-origin login/MFAredirect of 200 na autorisatie; nooit 404/loop |
 | Uitgifte | `/uitgifte` | `/uitgifte` | Zelfde-origin login/MFAredirect of 200 na autorisatie; nooit 404/loop |

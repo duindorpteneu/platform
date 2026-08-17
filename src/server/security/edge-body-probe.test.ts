@@ -52,7 +52,7 @@ function probeRequest(
       timestamp,
       nonce,
       name,
-      host: "staging-duindorp.dgwebservices.nl",
+      host: "duindorpsv.dgwebservices.nl",
       path: contract.path,
       environment: "staging",
       releaseSha,
@@ -62,8 +62,8 @@ function probeRequest(
   return new Request(options.requestUrl ?? `https://0.0.0.0:3000${contract.path}`, {
     method: "POST",
     headers: {
-      "Host": "staging-duindorp.dgwebservices.nl",
-      "X-Forwarded-Host": "staging-duindorp.dgwebservices.nl",
+      "Host": "duindorpsv.dgwebservices.nl",
+      "X-Forwarded-Host": "duindorpsv.dgwebservices.nl",
       "X-Forwarded-Proto": "https",
       "Content-Type": "application/octet-stream",
       "X-Duindorp-Edge-Body-Probe": "v1",
@@ -89,7 +89,7 @@ afterEach(() => {
 function configureRuntime() {
   process.env.CRON_SECRET = secret;
   process.env.APP_ENVIRONMENT = "staging";
-  process.env.APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
+  process.env.APP_BASE_URL = "https://duindorpsv.dgwebservices.nl";
   process.env.RELEASE_SHA = releaseSha;
 }
 
@@ -149,7 +149,7 @@ describe("edge body-probe applicatiecontract", () => {
   });
 
   it("laat normale requests volledig aan de bestaande routebeveiliging over", async () => {
-    const request = new Request("https://staging-duindorp.dgwebservices.nl/api/catalog/articles", {
+    const request = new Request("https://duindorpsv.dgwebservices.nl/api/catalog/articles", {
       method: "POST",
       body: "{}",
     });
@@ -176,7 +176,7 @@ describe("edge body-probe applicatiecontract", () => {
       (request: Request) => request.headers.delete("host"),
       (request: Request) => request.headers.set("host", "duindorp.dgwebservices.nl"),
       (request: Request) => request.headers.delete("x-forwarded-host"),
-      (request: Request) => request.headers.set("x-forwarded-host", "staging-duindorp.dgwebservices.nl, attacker.example"),
+      (request: Request) => request.headers.set("x-forwarded-host", "duindorpsv.dgwebservices.nl, attacker.example"),
       (request: Request) => request.headers.set("x-forwarded-host", "attacker.example"),
       (request: Request) => request.headers.delete("x-forwarded-proto"),
       (request: Request) => request.headers.set("x-forwarded-proto", "http"),

@@ -49,10 +49,10 @@ const values = {
   SENDGRID_WEBHOOK_ID:
     "32345678-1234-4123-8123-123456789abc",
   SENDGRID_WEBHOOK_URL:
-    "https://staging-duindorp.dgwebservices.nl/api/webhooks/sendgrid",
+    "https://duindorpsv.dgwebservices.nl/api/webhooks/sendgrid",
   SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: publicKeyDer,
   STAGING_BASE_URL:
-    "https://staging-duindorp.dgwebservices.nl",
+    "https://duindorpsv.dgwebservices.nl",
   RELEASE_SHA: "a".repeat(40),
   NEXT_PUBLIC_SUPABASE_URL:
     "https://dxbdjtbyghsovlrdcwcr.supabase.co",
@@ -288,7 +288,7 @@ describe("SendGrid staging acceptance", () => {
       },
       {
         SENDGRID_WEBHOOK_URL:
-          "https://staging-duindorp.dgwebservices.nl/api/webhooks/sendgrid?token=leak",
+          "https://duindorpsv.dgwebservices.nl/api/webhooks/sendgrid?token=leak",
       },
       {
         SUPABASE_DB_URL:
@@ -382,7 +382,7 @@ describe("SendGrid staging acceptance", () => {
       headers: expect.objectContaining({
         Accept: "application/json",
         Origin:
-          "https://staging-duindorp.dgwebservices.nl",
+          "https://duindorpsv.dgwebservices.nl",
         "Sec-Fetch-Site": "same-origin",
         "X-Duindorp-CSRF": "same-origin",
       }),
@@ -422,7 +422,7 @@ describe("SendGrid staging acceptance", () => {
         expect.objectContaining({
           Accept: "application/json",
           Origin:
-            "https://staging-duindorp.dgwebservices.nl",
+            "https://duindorpsv.dgwebservices.nl",
           "Sec-Fetch-Site": "same-origin",
           "X-Duindorp-CSRF": "same-origin",
         }),

@@ -29,7 +29,7 @@ die() {
 
 [[ "${CONFIRMATION}" == "STAGING-ROLLBACK" ]] \
   || die "Bevestiging is ongeldig."
-[[ "${STAGING_APP_URL}" == "https://staging-duindorp.dgwebservices.nl" ]] \
+[[ "${STAGING_APP_URL}" == "https://duindorpsv.dgwebservices.nl" ]] \
   || die "Alleen de vaste staginghost is toegestaan."
 [[ "${RELEASE_SHA}" =~ ^[a-f0-9]{40}$ ]] \
   || die "RELEASE_SHA is ongeldig."

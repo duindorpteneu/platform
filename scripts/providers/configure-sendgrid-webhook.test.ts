@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { configureSendGridWebhook } from "./configure-sendgrid-webhook.mjs";
 
 const webhookId = "fd290462-a274-4899-82bd-4777cc382bae";
-const webhookUrl = "https://staging-duindorp.dgwebservices.nl/api/webhooks/sendgrid";
+const webhookUrl = "https://duindorpsv.dgwebservices.nl/api/webhooks/sendgrid";
 const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const encodedPublicKey = publicKey.export({ type: "spki", format: "der" }).toString("base64");
 const accountIdentity = { username: "duindorp-staging", user_id: 12345 };
@@ -83,7 +83,7 @@ describe("SendGrid webhook configurator", () => {
     await expect(configureSendGridWebhook({
       apiKey: "SG.test-key", apiBaseUrl: "https://api.eu.sendgrid.com", webhookId,
       expectedAccountFingerprint,
-      webhookUrl: "http://staging-duindorp.dgwebservices.nl/api/webhooks/sendgrid", fetchImpl,
+      webhookUrl: "http://duindorpsv.dgwebservices.nl/api/webhooks/sendgrid", fetchImpl,
     })).rejects.toThrow("SENDGRID_WEBHOOK_URL_INVALID");
   });
 

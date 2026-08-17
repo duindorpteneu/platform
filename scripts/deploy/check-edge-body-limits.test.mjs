@@ -152,7 +152,7 @@ describe("edge body-limit releaseprobe", () => {
     const headers = createEdgeBodyProbeHeaders(probe, probe.maxBytes, secret, {
       nowMs: 1_787_680_000_000,
       nonce: "a".repeat(64),
-      host: "staging-duindorp.dgwebservices.nl",
+      host: "duindorpsv.dgwebservices.nl",
       ...context,
     });
     const expected = createHmac("sha256", secret)
@@ -160,7 +160,7 @@ describe("edge body-limit releaseprobe", () => {
         ...probe,
         timestamp: headers["X-Duindorp-Edge-Body-Probe-Timestamp"],
         nonce: headers["X-Duindorp-Edge-Body-Probe-Nonce"],
-        host: "staging-duindorp.dgwebservices.nl",
+        host: "duindorpsv.dgwebservices.nl",
         ...context,
         bytes: probe.maxBytes,
       }))

@@ -11,7 +11,7 @@ import {
   createEdgeBodyProbeHeaders,
 } from "./check-edge-body-limits.mjs";
 
-const publicHost = "staging-duindorp.dgwebservices.nl";
+const publicHost = "duindorpsv.dgwebservices.nl";
 const secret = "edge-body-next-runtime-secret";
 const context = {
   environment: "staging",
