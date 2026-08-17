@@ -326,6 +326,9 @@ jobs:
       - name: Install checksum-verified Supabase CLI
         run: bash scripts/deploy/install-supabase-cli.sh
 
+      - name: Install checksum-verified GitHub CLI
+        run: bash scripts/deploy/install-github-cli.sh
+
       - name: Install pinned Cosign verifier
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:

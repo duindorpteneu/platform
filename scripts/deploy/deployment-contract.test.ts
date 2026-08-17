@@ -561,6 +561,9 @@ describe("fail-closed release chain", () => {
         "bash scripts/deploy/install-supabase-cli.sh",
       );
     }
+    expect(workflow("promote-production.yml")).toContain(
+      "bash scripts/deploy/install-github-cli.sh",
+    );
   });
 
   it("serializes every staging mutation or acceptance on the deployment lock", () => {
