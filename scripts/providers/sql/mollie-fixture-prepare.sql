@@ -14,6 +14,7 @@ create temporary table mollie_acceptance_input (
   readiness_article_id uuid not null,
   readiness_variant_id uuid not null,
   readiness_order_line_id uuid not null,
+  mismatch_order_line_id uuid not null,
   readiness_qr_request_id uuid not null,
   parent_account_id uuid not null,
   grant_actor_id uuid not null,
@@ -30,6 +31,7 @@ insert into mollie_acceptance_input values (
   :'readiness_article_id'::uuid,
   :'readiness_variant_id'::uuid,
   :'readiness_order_line_id'::uuid,
+  :'mismatch_order_line_id'::uuid,
   :'readiness_qr_request_id'::uuid,
   :'parent_account_id'::uuid,
   :'grant_actor_id'::uuid,
@@ -63,6 +65,7 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id,
       fixture_input.readiness_qr_request_id,
       fixture_input.parent_account_id,
       fixture_input.grant_actor_id
@@ -76,6 +79,7 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
+        fixture_input.mismatch_order_line_id,
         fixture_input.readiness_qr_request_id,
         fixture_input.parent_account_id,
         fixture_input.grant_actor_id
@@ -154,6 +158,15 @@ begin
         and line.status = 'backorder'
     ) and exists (
       select 1
+      from app.order_lines line
+      where line.id = fixture_input.mismatch_order_line_id
+        and line.order_id = fixture_input.mismatch_order_id
+        and line.article_id = fixture_input.readiness_article_id
+        and line.article_variant_id = fixture_input.readiness_variant_id
+        and line.quantity = 1
+        and line.status = 'backorder'
+    ) and exists (
+      select 1
       from app.member_article_sizes size_choice
       join app.member_orders orders
         on orders.id = fixture_input.paid_order_id
@@ -217,7 +230,10 @@ begin
     where variant.id = fixture_input.readiness_variant_id
   ) or exists (
     select 1 from app.order_lines line
-    where line.id = fixture_input.readiness_order_line_id
+    where line.id in (
+      fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id
+    )
   ) or exists (
     select 1
     from private.parent_accounts account
@@ -334,12 +350,19 @@ begin
     order_id,
     article_variant_id,
     quantity
-  ) values (
-    fixture_input.readiness_order_line_id,
-    fixture_input.paid_order_id,
-    fixture_input.readiness_variant_id,
-    1
-  );
+  ) values
+    (
+      fixture_input.readiness_order_line_id,
+      fixture_input.paid_order_id,
+      fixture_input.readiness_variant_id,
+      1
+    ),
+    (
+      fixture_input.mismatch_order_line_id,
+      fixture_input.mismatch_order_id,
+      fixture_input.readiness_variant_id,
+      1
+    );
   if not exists (
     select 1
     from app.member_article_sizes size_choice

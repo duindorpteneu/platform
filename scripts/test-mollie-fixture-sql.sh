@@ -16,6 +16,7 @@ fixture_args=(
   -v readiness_article_id=a9300000-0000-4000-8000-000000000001
   -v readiness_variant_id=a9400000-0000-4000-8000-000000000001
   -v readiness_order_line_id=a9500000-0000-4000-8000-000000000001
+  -v mismatch_order_line_id=a9500000-0000-4000-8000-000000000002
   -v readiness_qr_request_id=a9600000-0000-4000-8000-000000000001
   -v parent_account_id=a9700000-0000-4000-8000-000000000001
   -v grant_actor_id=a9800000-0000-4000-8000-000000000001
@@ -143,6 +144,11 @@ if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.email_delivery_attemp
   exit 1
 fi
 "${psql_cmd[@]}" -c "insert into app.action_items(type, season_id, object_type, object_id, source_type, source_id, dedupe_key, severity, reason_code) values ('paid_without_stock', '$previous_active'::uuid, 'member_order', 'a9200000-0000-4000-8000-000000000001'::uuid, 'mollie_acceptance', 'a9200000-0000-4000-8000-000000000001'::uuid, repeat('a', 64), 'warning', 'mollie_acceptance.synthetic')" >/dev/null
+"${psql_cmd[@]}" -c "insert into private.mail_v2_domain_events(id, template_key, parent_account_id, season_id, member_season_id, order_id, source_type, source_id, idempotency_key, payload_snapshot) select 'a9900000-0000-4000-8000-000000000002'::uuid, 'payment_received_waiting_stock', 'a9700000-0000-4000-8000-000000000001'::uuid, '$previous_active'::uuid, member_season.id, 'a9200000-0000-4000-8000-000000000001'::uuid, 'payment', 'a9200000-0000-4000-8000-000000000001'::uuid, 'mollie-acceptance-v2-12345a1', '{}'::jsonb from app.member_seasons member_season where member_season.member_id = 'a9100000-0000-4000-8000-000000000001'::uuid and member_season.season_id = '$previous_active'::uuid" >/dev/null
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.mail_v2_domain_events where id = 'a9900000-0000-4000-8000-000000000002'::uuid")" != "1" ]]; then
+  echo "Mollie-fixture kon geen synthetisch mail-v2-event voorbereiden." >&2
+  exit 1
+fi
 if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$cleanup_sql")" != '{"cleaned": true}' ]]; then
   echo "Mollie-fixture cleanup gaf geen geldig resultaat." >&2
   exit 1
@@ -173,6 +179,10 @@ if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.email_delivery_attemp
 fi
 if [[ "$("${psql_cmd[@]}" -c "select count(*) from app.action_items where object_id = 'a9200000-0000-4000-8000-000000000001'::uuid or source_id = 'a9200000-0000-4000-8000-000000000001'::uuid")" != "0" ]]; then
   echo "Mollie-fixture cleanup liet een synthetisch actiepunt achter." >&2
+  exit 1
+fi
+if [[ "$("${psql_cmd[@]}" -c "select count(*) from private.mail_v2_domain_events where id = 'a9900000-0000-4000-8000-000000000002'::uuid")" != "0" ]]; then
+  echo "Mollie-fixture cleanup liet een synthetisch mail-v2-event achter." >&2
   exit 1
 fi
 if [[ "$("${psql_cmd[@]}" -c "select to_regclass('private.mollie_acceptance_fixtures') is null")" != "t" ]]; then
