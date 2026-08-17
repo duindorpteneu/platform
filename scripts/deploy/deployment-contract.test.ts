@@ -72,6 +72,25 @@ describe("deployment environment isolation", () => {
     })).not.toThrow();
   });
 
+  it("allows a live Mollie key only on the canonical public club origin", () => {
+    const staging = {
+      ...runtimeEnvironment("staging"),
+      MOLLIE_ENABLED: "true",
+      MOLLIE_API_KEY: "live_public-club-runtime",
+    };
+    expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], {
+      env: staging,
+      stdio: "pipe",
+    })).not.toThrow();
+
+    const invalid = spawnSync(process.execPath, [configureRuntime, "validate"], {
+      env: { ...staging, MOLLIE_API_KEY: "invalid_key" },
+      encoding: "utf8",
+    });
+    expect(invalid.status).toBe(1);
+    expect(invalid.stderr).toContain("MOLLIE_API_KEY");
+  });
+
   it("rejects production Supabase identity in staging", () => {
     const staging = runtimeEnvironment("staging");
     const production = runtimeEnvironment("production");

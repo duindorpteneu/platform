@@ -388,3 +388,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De volledige fail-closed stagingketen gebruikt voortaan `https://duindorpsv.dgwebservices.nl`: runtimeconfiguratie, health, edge-bodylimits, browseracceptatie, providers, rollback en GitHub-workflows zijn gezamenlijk aangepast.
 - De stagingruntime blijft op poort `14000` en gebruikt dezelfde stagingdatabase en stagingrunner. De afzonderlijke productionorigin op poort `24000` blijft onaangeraakt.
 - Gerichte lokale controle is groen met 165 tests, TypeScript, syntax, ESLint en diffcheck; volledige hosted CI en de publieke deployment volgen op dezelfde commit.
+
+## Live Mollie op de publieke cluborigin — 2026-08-17
+
+- De runtimepreflight accepteert een live Mollie-key alleen voor exact `duindorpsv.dgwebservices.nl`; testkeys blijven toegestaan en alle overige vormen blijven geblokkeerd.
+- Mollie-stagingacceptatie blijft bewust test-only en kan met een live key geen providerrequest uitvoeren.
+- De eerste cutoverdeploy stopte veilig vóór mutatie; gerichte contracttests, TypeScript, ESLint, syntax en diffcheck zijn groen voor de hostgebonden correctie.

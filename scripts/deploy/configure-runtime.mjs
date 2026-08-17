@@ -163,7 +163,12 @@ const mollieEnabled = required("MOLLIE_ENABLED");
 const mollieKey = optional("MOLLIE_API_KEY");
 if (!["true", "false"].includes(mollieEnabled)) invalid("MOLLIE_ENABLED");
 if (mollieEnabled === "true" && !mollieKey) invalid("MOLLIE_API_KEY");
-if (environment === "staging" && mollieKey && !mollieKey.startsWith("test_")) invalid("MOLLIE_API_KEY");
+if (
+  environment === "staging"
+  && mollieKey
+  && !mollieKey.startsWith("test_")
+  && !(appHost === "duindorpsv.dgwebservices.nl" && mollieKey.startsWith("live_"))
+) invalid("MOLLIE_API_KEY");
 if (environment === "production" && mollieEnabled === "true" && !mollieKey.startsWith("live_")) invalid("MOLLIE_API_KEY");
 
 const emailEnabled = required("EMAIL_ENABLED");

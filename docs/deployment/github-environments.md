@@ -45,7 +45,7 @@ vóór een productionmutatie.
 | `CRON_SECRET` | ja | ja | uniek, minimaal 16 tekens | interne jobs | aanwezig |
 | `IMPORT_STAGING_ENCRYPTION_KEY` | ja | nee | 32 random bytes, canoniek 43 tekens base64url zonder padding | AES-256-GCM raw-importstaging | staging aanwezig; production ontbreekt |
 | `OPERATIONS_HEARTBEAT_URL` | nee | nee | geheime `https://` dead-man-switch-URL zonder URL-userinfo | onafhankelijke schedulerbewaking | verplicht voor productiondeploy; staging optioneel maar aanbevolen |
-| `MOLLIE_API_KEY` | ja | ja | staging `test_`; production `live_` bij activering | betalingen | aanwezig; providerflag blijft standaard uit |
+| `MOLLIE_API_KEY` | ja | ja | staging `test_` of uitsluitend op de canonieke publieke cluborigin `live_`; production `live_` bij activering | betalingen | aanwezig; stagingacceptatie blijft altijd test-only |
 | `SENDGRID_API_KEY` | ja | ja | `SG.`-vorm | e-mail | aanwezig; providerflag blijft standaard uit |
 | `SENDGRID_ADMIN_API_KEY` | nee | niet van toepassing | dedicated stagingkey met uitsluitend user/webhook read-write | provider-smoke | verplicht vóór webhookconfiguratie |
 | `SENDGRID_SMOKE_RECIPIENT` | ja | nee | vaste beheerde testontvanger | provider-smoke | waarde niet uitgelezen; provideracceptatie correleert op delivery-ID en signed event |

@@ -598,3 +598,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - Alle 36 repositoryreferenties naar de voormalige stagingorigin zijn samen naar `https://duindorpsv.dgwebservices.nl` gebracht; de productionorigin en poort `24000` zijn ongewijzigd.
 - Gerichte Vitestregressie: 13 bestanden en 165 tests groen voor deploy-, health-, provider-, stagingtarget- en Host/edgecontracten.
 - `pnpm typecheck`, shell-/Node-syntax, gerichte ESLint en `git diff --check` zijn groen. Op verzoek zijn volledige build-, browser- en databasesuites niet lokaal herhaald; exact-main CI en de immutable stagingdeployment blijven de hosted poort.
+
+## Hostgebonden live-Mollie-runtime — 2026-08-17 lokaal
+
+- Deployrun `32060172912` bouwde en signeerde exact main `ec92b3f`, maar stopte vóór iedere stagingmutatie omdat de actuele Mollie-key niet aan de eerdere staging-testprefix voldeed.
+- `scripts/deploy/deployment-contract.test.ts` — groen: 32 tests. De nieuwe regressie accepteert een live key op exact de publieke cluborigin en weigert een onbekende keyvorm; productionisolatie en test-only Mollie-acceptatie blijven intact.
+- `pnpm typecheck`, gerichte ESLint, Node-syntax en `git diff --check` zijn groen. De volledige hosted poort blijft verplicht vóór redeploy.

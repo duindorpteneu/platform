@@ -175,3 +175,9 @@
 - De bestaande stagingruntime, stagingdatabase, poort `14000`, runner en omgevingsidentiteit blijven ongewijzigd; uitsluitend de canonieke publieke origin wordt `https://duindorpsv.dgwebservices.nl`.
 - Deploy-, health-, bodylimit-, provider-, rollback- en browseracceptatie gebruiken exact dezelfde nieuwe origin. Een alias via alleen Caddy is onvoldoende, omdat muterende routes `APP_BASE_URL`, `Host` en forwarded headers fail-closed vergelijken.
 - De afzonderlijke repository-productionomgeving blijft `https://duindorp.dgwebservices.nl` op poort `24000` en wordt door deze cutover niet gewijzigd.
+
+## D-102 — Live Mollie is uitsluitend toegestaan op de canonieke publieke cluborigin
+
+- De operationeel als productie gebruikte stagingruntime mag naast een `test_`-key ook een `live_`-key laden, maar uitsluitend wanneer `APP_HOST` exact `duindorpsv.dgwebservices.nl` is. Andere keyvormen en de afzonderlijke productionregel blijven fail-closed.
+- De staging-Mollie-acceptatieworkflow blijft uitsluitend `test_` accepteren en weigert providerrequests met een live key. Hierdoor kan een release- of acceptatierun nooit automatisch een echte betaling uitvoeren.
+- De eerste domeincutoverdeploy stopte vóór runtime-, database- of containermutatie op de oude test-keyregel; de bestaande release bleef actief.
