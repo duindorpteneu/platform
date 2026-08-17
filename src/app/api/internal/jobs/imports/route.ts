@@ -23,8 +23,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const ROWS_PER_CHUNK = 250;
-const MAX_ROWS_PER_INVOCATION = 1_000;
+const PREVIEW_ROWS_PER_CHUNK = 250;
+const COMMIT_ROWS_PER_CHUNK = 50;
+// A scheduler request hands control back after one database transaction. This
+// keeps a commit safely below the 55-second scheduler/lease boundary and stops
+// an aborted request from continuing while the next cycle evaluates the run.
+const MAX_PREVIEW_ROWS_PER_INVOCATION = PREVIEW_ROWS_PER_CHUNK;
+const MAX_COMMIT_ROWS_PER_INVOCATION = COMMIT_ROWS_PER_CHUNK;
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
 type ImportJob = NonNullable<DynamicImportWorkerClaim["job"]>;
@@ -83,12 +88,15 @@ async function processPreview(
         throw new Error("DYNAMIC_IMPORT_HEADER_CHANGED");
       }
 
-      while (!staged && processed < MAX_ROWS_PER_INVOCATION) {
+      while (!staged && processed < MAX_PREVIEW_ROWS_PER_INVOCATION) {
         const rows = buildSelectedImportRows({
           parsed: parsedCsv,
           mapping: job.mapping,
           startSourceRow: nextSourceRow,
-          limit: Math.min(ROWS_PER_CHUNK, MAX_ROWS_PER_INVOCATION - processed),
+          limit: Math.min(
+            PREVIEW_ROWS_PER_CHUNK,
+            MAX_PREVIEW_ROWS_PER_INVOCATION - processed,
+          ),
         });
         const validatedRows = rows.map((row) => selectedImportRowSchema.parse(row));
         if (validatedRows.length === 0) {
@@ -131,14 +139,17 @@ async function processPreview(
     }
 
     let analyzed = nextAnalysisSourceRow === finalSourceRow;
-    while (!analyzed && processed < MAX_ROWS_PER_INVOCATION) {
+    while (!analyzed && processed < MAX_PREVIEW_ROWS_PER_INVOCATION) {
       const { data, error } = await admin.schema("app").rpc(
         "analyze_dynamic_import_chunk",
         {
           p_run_id: job.runId,
           p_claim_token: claimToken,
           p_generation: job.generation,
-          p_limit: Math.min(ROWS_PER_CHUNK, MAX_ROWS_PER_INVOCATION - processed),
+          p_limit: Math.min(
+            PREVIEW_ROWS_PER_CHUNK,
+            MAX_PREVIEW_ROWS_PER_INVOCATION - processed,
+          ),
         },
       );
       if (error) {
@@ -203,17 +214,23 @@ async function processCommit(
 
   let processed = 0;
   let complete = job.nextSourceRow === job.sourceRowCount + 2;
-  while (!complete && processed < MAX_ROWS_PER_INVOCATION) {
+  while (!complete && processed < MAX_COMMIT_ROWS_PER_INVOCATION) {
     const { data, error } = await admin.schema("app").rpc(
       "commit_dynamic_import_chunk",
       {
         p_run_id: job.runId,
         p_claim_token: claimToken,
         p_generation: job.generation,
-        p_limit: Math.min(ROWS_PER_CHUNK, MAX_ROWS_PER_INVOCATION - processed),
+        p_limit: Math.min(
+          COMMIT_ROWS_PER_CHUNK,
+          MAX_COMMIT_ROWS_PER_INVOCATION - processed,
+        ),
       },
     );
     if (error) {
+      if (error.message?.includes("DYNAMIC_IMPORT_COMMIT_LEASE_CONFLICT")) {
+        return { status: "processing" as const, processed, errorCode: null };
+      }
       if (error.message?.includes("DYNAMIC_IMPORT_STATE_DRIFT")) {
         await failRun(admin, job, claimToken, "state_drift");
         return { status: "failed" as const, processed, errorCode: "state_drift" };

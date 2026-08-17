@@ -372,6 +372,34 @@ values(
   timezone('utc', now()) - interval '5 minutes'
 );
 
+insert into private.dynamic_import_run_leases(
+  run_id,
+  claim_token,
+  generation,
+  claimed_at,
+  expires_at
+)
+values(
+  'fa400000-0000-4000-8000-000000000002',
+  'fa500000-0000-4000-8000-000000000002',
+  1,
+  clock_timestamp(),
+  clock_timestamp() + interval '55 seconds'
+);
+
+update private.dynamic_import_run_leases
+set expires_at = clock_timestamp() + interval '1 second'
+where run_id = 'fa400000-0000-4000-8000-000000000002';
+
+select ok(
+  (
+    select expires_at >= clock_timestamp() + interval '54 seconds'
+    from private.dynamic_import_run_leases
+    where run_id = 'fa400000-0000-4000-8000-000000000002'
+  ),
+  'een same-owner leaseverlenging gebruikt de actuele wandklok'
+);
+
 create temporary table first_cleanup(result jsonb);
 grant select, insert on first_cleanup to service_role;
 set local role service_role;

@@ -397,7 +397,7 @@ describe("POST /api/internal/jobs/imports", () => {
     );
   });
 
-  it("begrensd een grote commit op duizend rijen per worker-aanroep", async () => {
+  it("begrensd een grote commit op één kleine leasevernieuwende chunk per worker-aanroep", async () => {
     let nextSourceRow = 2;
     mocks.rpc.mockImplementation((name: string) => {
       if (name === "claim_dynamic_import_run") {
@@ -414,11 +414,11 @@ describe("POST /api/internal/jobs/imports", () => {
         });
       }
       if (name === "commit_dynamic_import_chunk") {
-        nextSourceRow += 250;
+        nextSourceRow += 50;
         return Promise.resolve({
           data: {
             runId: jobBase.runId,
-            processed: 250,
+            processed: 50,
             nextSourceRow,
             complete: false,
           },
@@ -435,17 +435,60 @@ describe("POST /api/internal/jobs/imports", () => {
     expect(await response.json()).toEqual({
       status: "processing",
       claimed: 1,
-      processed: 1_000,
+      processed: 50,
     });
     expect(
       mocks.rpc.mock.calls.filter(([name]) => name === "commit_dynamic_import_chunk"),
-    ).toHaveLength(4);
+    ).toHaveLength(1);
     expect(
       mocks.rpc.mock.calls.some(([name]) => name === "finalize_dynamic_import_commit"),
     ).toBe(false);
   });
 
-  it("stageert een grote preview hervatbaar in vier begrensde chunks", async () => {
+  it("behandelt een verloren commitlease als veilige hervatting", async () => {
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "claim_dynamic_import_run") {
+        return Promise.resolve({
+          data: { job: { ...jobBase, phase: "commit" } },
+          error: null,
+        });
+      }
+      if (name === "commit_dynamic_import_chunk") {
+        return Promise.resolve({
+          data: null,
+          error: { message: "DYNAMIC_IMPORT_COMMIT_LEASE_CONFLICT" },
+        });
+      }
+      return Promise.resolve({ data: null, error: { code: "PGRST202" } });
+    });
+
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/imports",
+      { method: "POST" },
+    ));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "processing",
+      claimed: 1,
+      processed: 0,
+    });
+    expect(
+      mocks.rpc.mock.calls.some(([name]) => name === "fail_dynamic_import_run"),
+    ).toBe(false);
+    expect(
+      mocks.rpc.mock.calls.some(([name]) => name === "finalize_dynamic_import_commit"),
+    ).toBe(false);
+    expect(mocks.finishRun).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "import_worker",
+      expect.any(String),
+      "succeeded",
+      0,
+      null,
+    );
+  });
+
+  it("stageert een grote preview hervatbaar in één begrensde chunk", async () => {
     mocks.openCsv.mockReturnValueOnce({
       headers: ["Relatienummer"],
       records: Array.from({ length: 2_000 }, (_, index) => [`LARGE-${index + 1}`]),
@@ -505,12 +548,12 @@ describe("POST /api/internal/jobs/imports", () => {
     expect(await response.json()).toEqual({
       status: "processing",
       claimed: 1,
-      processed: 1_000,
+      processed: 250,
     });
     expect(mocks.readPayload).toHaveBeenCalledTimes(1);
     expect(
       mocks.rpc.mock.calls.filter(([name]) => name === "stage_dynamic_import_rows"),
-    ).toHaveLength(4);
+    ).toHaveLength(1);
     expect(
       mocks.rpc.mock.calls.some(([name]) => name === "analyze_dynamic_import_chunk"),
     ).toBe(false);
@@ -556,12 +599,12 @@ describe("POST /api/internal/jobs/imports", () => {
     expect(await response.json()).toEqual({
       status: "processing",
       claimed: 1,
-      processed: 1_000,
+      processed: 250,
     });
     expect(mocks.readPayload).not.toHaveBeenCalled();
     expect(
       mocks.rpc.mock.calls.filter(([name]) => name === "analyze_dynamic_import_chunk"),
-    ).toHaveLength(4);
+    ).toHaveLength(1);
     expect(
       mocks.rpc.mock.calls.some(([name]) => name === "finalize_dynamic_import_dry_run"),
     ).toBe(false);

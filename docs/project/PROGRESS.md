@@ -394,3 +394,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De runtimepreflight accepteert een live Mollie-key alleen voor exact `duindorpsv.dgwebservices.nl`; testkeys blijven toegestaan en alle overige vormen blijven geblokkeerd.
 - Mollie-stagingacceptatie blijft bewust test-only en kan met een live key geen providerrequest uitvoeren.
 - De eerste cutoverdeploy stopte veilig vóór mutatie; gerichte contracttests, TypeScript, ESLint, syntax en diffcheck zijn groen voor de hostgebonden correctie.
+
+## Dynamische-importleasestorm — 2026-08-18
+
+- Een stagingincident met 98% database-CPU is herleid tot `DYNAMIC_IMPORT_COMMIT_LEASE_CONFLICT`: chunkrenewal gebruikte de transactionele `now()`-tijd terwijl scheduler, lease en requestgrens vrijwel samenvielen op 55/55/60 seconden.
+- De importpoort is operationeel gepauzeerd zonder domeingegevens te verwijderen. De forward-fix legt voor same-owner renewals een wall-clockvloer vast, hercontroleert een lease na de claim-rowlock en behandelt een correct gefencete oude worker als hervatbaar.
+- Commitwerk is teruggebracht naar één transactie van maximaal 50 rijen per scheduleraanroep; previewwerk blijft één begrensde transactie van maximaal 250 rijen. Hiermee kan dezelfde idempotente run gecontroleerd hervatten zonder de database onafgebroken te monopoliseren.
