@@ -585,3 +585,10 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm db:reset` — groen: alle 148 forward-only migrations replayen schoon, inclusief `20260816162413_align_parent_portal_copy.sql`; veilige metadatacontrole bewijst het nieuwe OTP-onderwerp en een geldige herberekende content-hash zonder persoonsgegevens of secretwaarden uit te lezen.
 - `node scripts/check-migrations.mjs`, `pnpm lint`, `pnpm typecheck`, `pnpm build` en `git diff --check` — groen. Op verzoek is de volledige lokale testmatrix niet opnieuw uitgevoerd; de verplichte hosted exact-main releaseketen blijft onverkort gelden.
 - Hosted PR-run `31958760837`: applicatiejob volledig groen met 211 bestanden/1.284 tests. De databasejob vond een hardcoded verwachte OTP-templateversie in `email_template_parent_otp.sql`; na versie-onafhankelijke correctie is het gerichte pgTAP-bestand lokaal groen met 11/11 assertions en volgt een nieuwe volledige hosted run.
+
+## Production recovery-point bronmajor — 2026-08-17 lokaal
+
+- Productiepromotie `32013385839`: exacte evidencevalidatie, kandidaatcapture, runnerboundary, Supabase CLI, GitHub CLI, Cosign, evidence-download, herverificatie en rollbackbinding groen. `Create, encrypt and isolated-restore the production recovery point` stopte vóór backupupload/migratie/deploy; cleanup was groen en productie bleef ongewijzigd.
+- `pnpm exec vitest run scripts/staging/validate-source-restore-inventory.test.ts scripts/staging/write-restore-evidence.test.ts scripts/deploy/production-backup-evidence.test.ts scripts/staging/cleanup-operational-data.test.ts scripts/staging/validate-target.test.ts` — groen: 5 bestanden, 76 tests.
+- De regressies bewijzen een ondersteunde major-15-legacybron naar exact major-17-herstel, weigeren major 14/18 en een oudere stagingbron, bewaren exacte schema-/ACL-/RLS-/data-HMAC-controle en valideren het gebonden versleutelde productiebackupbewijs schema v5.
+- `bash -n scripts/staging/restore-drill.sh scripts/staging/create-source-snapshot-backup.sh` en gerichte ESLint — groen. Hosted exact-main CI, stagingrestore en productie-recoverypoint blijven vereist.

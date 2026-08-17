@@ -8,6 +8,7 @@ const raw = {
   contract_mode: "current",
   inventory_sha256: "d".repeat(64),
   postgres_major: 17,
+  source_postgres_major: 17,
   source_migration_count: 126,
   candidate_migration_count: 126,
   relation_count: 160,
@@ -51,8 +52,9 @@ describe("buildRestoreEvidence", () => {
     expect(evidence).toMatchObject({
       result: "passed",
       release_sha: values.RELEASE_SHA,
-      schema_version: 4,
+      schema_version: 5,
       database: {
+        source_postgres_major: 17,
         contract_mode: "current",
         candidate_contract_exact: true,
         inventory_sha256: "d".repeat(64),
@@ -87,6 +89,7 @@ describe("buildRestoreEvidence", () => {
     const evidence = buildRestoreEvidence({
       ...raw,
       contract_mode: "source",
+      source_postgres_major: 15,
       source_migration_count: 59,
     }, {
       ...values,
@@ -100,6 +103,7 @@ describe("buildRestoreEvidence", () => {
       database: {
         contract_mode: "source",
         candidate_contract_exact: false,
+        source_postgres_major: 15,
         source_migration_count: 59,
         candidate_migration_count: 126,
       },

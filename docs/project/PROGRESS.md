@@ -374,4 +374,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Het dashboard gebruikt nu ledenvriendelijke aantallen en uitleg, neutrale maatherkomst, kledingcommissie als operationeel aanspreekpunt, kortere historische-ordercopy en de goedgekeurde maat-, QR- en betaalteksten. De technische Mollie-disclaimer is uit de ouderweergave verwijderd.
 - Een forward-only migratie past uitsluitend onaangeraakte OTP-systeemdefaults aan. Gepubliceerde of door medewerkers gewijzigde templates blijven intact.
 - Gericht lokaal groen: 33 Vitesttests, migrationlint voor 148 migrations, ESLint, TypeScript, productiebuild, schone database-replay en content-hashcontrole. Exact-main CI en immutable stagingdeploy leveren het hosted bewijs.
+
+## Legacybron naar PostgreSQL-17-hersteldoel — 2026-08-17
+
+- Productiepromotie `32013385839` valideerde alle acht SHA-/digestgebonden acceptatiebewijzen en installeerde de checksum-gecontroleerde GitHub CLI correct. De job stopte vóór backupupload, migratie en deploy doordat het herstelharnas ook voor de geadopteerde legacybron stil exact PostgreSQL major 17 eiste.
+- De broninventaris accepteert in uitsluitend `source`-modus nu begrensd major 15, 16 of 17; stagingbron en het netwerkloze hersteldoel blijven exact major 17. Schema, owners, ACL, RLS, rollen, migratieprefix, objectdefinities, aantallen, identities en data-HMAC blijven volledig exact vergeleken.
+- Restorebewijs schema v5 legt bronmajor en herstelmajor afzonderlijk vast. Een onverwachte major, een ouder major op staging of iedere andere inventarisdrift blijft fail-closed. De snapshotcontainer rapporteert voortaan uitsluitend een vaste PII-/secretvrije fasenaam bij een fout.
+- Productie is door de gefaalde recovery-pointpoort niet gewijzigd. Gerichte lokale restore-/evidence-/target-/cleanupcontractsuite: 5 bestanden en 76 tests groen; bash-syntax en ESLint groen.
 - De eerste hosted databasejob vond uitsluitend testdrift: de OTP-beheer-RPC-test stuurde na de geldige migratie nog hardcoded versie 2. De test gebruikt nu de actuele beginversie en bewijst opnieuw zowel het optimistische versiecontract als exact één verhoging.

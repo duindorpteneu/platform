@@ -51,6 +51,7 @@ const VERIFICATION_KEYS = [
   "role_contract_exact",
   "schema_definition_exact",
   "sequence_count",
+  "source_postgres_major",
   "source_migration_count",
   "staff_count",
   "trigger_count",
@@ -111,6 +112,11 @@ export function buildRestoreEvidence(raw, values) {
     || raw.result !== "passed"
     || raw.contract_mode !== contractMode
     || raw.postgres_major !== 17
+    || ![15, 16, 17].includes(raw.source_postgres_major)
+    || (
+      contractMode === "current"
+      && raw.source_postgres_major !== 17
+    )
     || !/^[a-f0-9]{64}$/u.test(raw.inventory_sha256)
     || raw.owner_acl_rls_exact !== true
     || raw.schema_definition_exact !== true
@@ -180,7 +186,7 @@ export function buildRestoreEvidence(raw, values) {
   }
 
   return {
-    schema_version: 4,
+    schema_version: 5,
     result: "passed",
     target: `${targetEnvironment}-logical-backup-isolated-restore`,
     release_sha: releaseSha,
@@ -202,6 +208,7 @@ export function buildRestoreEvidence(raw, values) {
     },
     database: {
       postgres_major: 17,
+      source_postgres_major: raw.source_postgres_major,
       contract_mode: contractMode,
       candidate_contract_exact: contractMode === "current",
       source_migration_count: counts.source_migration_count,
@@ -290,7 +297,7 @@ export function validateRestoreEvidence(value, {
   const isolation = value?.isolation;
   if (
     !exactKeys(value, topLevelKeys)
-    || value.schema_version !== 4
+    || value.schema_version !== 5
     || value.result !== "passed"
     || value.target
       !== `${targetEnvironment}-logical-backup-isolated-restore`
@@ -336,9 +343,15 @@ export function validateRestoreEvidence(value, {
       "role_contract_exact",
       "schema_definition_exact",
       "security_contract",
+      "source_postgres_major",
       "source_migration_count",
     ])
     || database?.postgres_major !== 17
+    || ![15, 16, 17].includes(database?.source_postgres_major)
+    || (
+      targetEnvironment === "staging"
+      && database.source_postgres_major !== 17
+    )
     || database?.contract_mode
       !== (targetEnvironment === "staging" ? "current" : "source")
     || database?.candidate_contract_exact

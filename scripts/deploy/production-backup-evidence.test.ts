@@ -12,7 +12,7 @@ const expected = {
 
 function evidence() {
   return {
-    schema_version: 4,
+    schema_version: 5,
     result: "passed",
     target: "production-logical-backup-isolated-restore",
     release_sha: expected.candidateReleaseSha,
@@ -34,6 +34,7 @@ function evidence() {
     },
     database: {
       postgres_major: 17,
+      source_postgres_major: 15,
       contract_mode: "source",
       candidate_contract_exact: false,
       source_migration_count: 59,
