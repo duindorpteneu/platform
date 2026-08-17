@@ -96,7 +96,7 @@ chmod 0600 "${source_inventory_path}" "${restore_work_dir}/source.dump"
 openssl rand -hex 32 > "${inventory_key_path}"
 chmod 0600 "${inventory_key_path}"
 
-echo "Een consistente PostgreSQL 17-bronsnapshot wordt gemaakt."
+echo "Een consistente bronsnapshot wordt met de PostgreSQL 17-client gemaakt."
 docker run --rm \
   --name "${dump_container_name}" \
   --label "${label}" \
@@ -129,7 +129,18 @@ source_major="$(node -e '
   }
   process.stdout.write(String(value.postgresMajor));
 ' "${source_inventory_path}")"
-[[ "${source_major}" == "17" ]]
+if [[ "${TARGET_ENVIRONMENT}" == staging ]]; then
+  [[ "${source_major}" == "17" ]] || {
+    echo "Stagingbron moet PostgreSQL 17 zijn; aangetroffen major: ${source_major}." >&2
+    exit 1
+  }
+else
+  [[ "${source_major}" =~ ^(15|16|17)$ ]] || {
+    echo "Productiebronmajor wordt niet ondersteund: ${source_major}." >&2
+    exit 1
+  }
+fi
+echo "Bronmajor ${source_major}; geïsoleerd hersteldoel major 17."
 
 [[ -s "${dump_path}" ]]
 [[ -s "${source_inventory_path}" ]]

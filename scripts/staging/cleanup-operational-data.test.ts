@@ -6,6 +6,7 @@ const contract = readFileSync(new URL("./sql/operational-cleanup-contract.sql", 
 const apply = readFileSync(new URL("./sql/operational-cleanup-apply.sql", import.meta.url), "utf8");
 const shell = readFileSync(new URL("./cleanup-operational-data.sh", import.meta.url), "utf8");
 const restoreDrill = readFileSync(new URL("./restore-drill.sh", import.meta.url), "utf8");
+const sourceSnapshot = readFileSync(new URL("./create-source-snapshot-backup.sh", import.meta.url), "utf8");
 const restoreRoles = readFileSync(new URL("./prepare-restore-roles.sql", import.meta.url), "utf8");
 const workflow = readFileSync(new URL("../../.github/workflows/staging-domain-cleanup.yml", import.meta.url), "utf8");
 
@@ -109,6 +110,21 @@ describe("staging domain cleanup contract", () => {
     expect(restoreDrill).toContain(
       'chmod 0600 "${source_inventory_path}" "${restore_work_dir}/source.dump"',
     );
+  });
+
+  it("begrensd legacybronmajor en logt uitsluitend een veilige foutfase", () => {
+    expect(restoreDrill).toContain(
+      '[[ "${source_major}" =~ ^(15|16|17)$ ]]',
+    );
+    expect(restoreDrill).toContain(
+      '[[ "${source_major}" == "17" ]]',
+    );
+    expect(sourceSnapshot).toContain(
+      'echo "Bronback-up faalde veilig in fase: ${phase}." >&2',
+    );
+    expect(sourceSnapshot).toContain("phase=broninventaris");
+    expect(sourceSnapshot).toContain("phase=logische-dump");
+    expect(sourceSnapshot).not.toMatch(/echo[^\n]*SOURCE_DB_URL/u);
   });
 
   it("spiegelt de optionele Functions-herstelrol vanuit de gevalideerde bron", () => {

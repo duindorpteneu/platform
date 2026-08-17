@@ -14,9 +14,13 @@ dump_path=/work/source.dump
 inventory_path=/work/source-inventory.json
 export_complete_path=/work/source.export.complete
 exporter_pid=
+phase=initialisatie
 
 cleanup() {
   status=$?
+  if test "${status}" -ne 0; then
+    echo "Bronback-up faalde veilig in fase: ${phase}." >&2
+  fi
   if test -n "${exporter_pid}"; then
     kill "${exporter_pid}" >/dev/null 2>&1 || true
     wait "${exporter_pid}" >/dev/null 2>&1 || true
@@ -29,6 +33,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+phase=snapshot-export
 psql "${SOURCE_DB_URL}" -X -q -A -t -v ON_ERROR_STOP=1 \
   > /work/source-exporter.log 2>&1 <<'SQL' &
 begin isolation level repeatable read read only;
@@ -61,6 +66,7 @@ esac
 inventory_hmac_key="$(tr -d '\r\n' < /run/restore-inventory-key)"
 test "${#inventory_hmac_key}" -eq 64
 
+phase=broninventaris
 psql "${SOURCE_DB_URL}" -X -q -A -t -v ON_ERROR_STOP=1 \
   -v snapshot_mode=1 \
   -v snapshot_id="${snapshot_id}" \
@@ -68,6 +74,7 @@ psql "${SOURCE_DB_URL}" -X -q -A -t -v ON_ERROR_STOP=1 \
   -f /harness/scripts/staging/source-restore-inventory.sql \
   > "${inventory_path}"
 
+phase=logische-dump
 pg_dump --format=custom --compress=6 --strict-names \
   --snapshot="${snapshot_id}" \
   --schema=app --schema=private --schema=public --schema=auth \
@@ -75,6 +82,7 @@ pg_dump --format=custom --compress=6 --strict-names \
   --dbname="${SOURCE_DB_URL}" \
   > "${dump_path}"
 
+phase=uitvoercontrole
 test -s "${inventory_path}"
 test -s "${dump_path}"
 chmod 0600 "${inventory_path}" "${dump_path}"

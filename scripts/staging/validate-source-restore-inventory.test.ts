@@ -60,6 +60,7 @@ function inventory(
   migrations: string[],
   includeSupabaseFunctionsAdmin = false,
   includePostgresRealtimeAdminMembership = false,
+  postgresMajor = 17,
 ) {
   const postgresMemberships = [
     ...(requiredMemberships.get("postgres") ?? []),
@@ -70,7 +71,7 @@ function inventory(
   ].sort();
   return {
     contractVersion: 2,
-    postgresMajor: 17,
+    postgresMajor,
     migrations,
     schemas: [{ name: "app", owner: "postgres", acl: [] }],
     relations: [{
@@ -160,6 +161,44 @@ describe("source/restore inventory", () => {
       });
     },
   );
+
+  it("herstelt een ondersteunde legacybron exact naar PostgreSQL 17", async () => {
+    const migrations = ["20260718000100"];
+    const source = inventory(migrations, false, false, 15);
+    const restored = inventory(migrations);
+    await expect(validateSourceRestoreInventory({
+      source,
+      restored,
+      mode: "source",
+      repositoryRoot: process.cwd(),
+    })).resolves.toMatchObject({
+      result: "passed",
+      source_postgres_major: 15,
+      postgres_major: 17,
+      schema_definition_exact: true,
+      data_hmac_exact: true,
+    });
+  });
+
+  it.each([14, 18])("weigert bronmajor %s", async (postgresMajor) => {
+    const source = inventory(["20260718000100"], false, false, postgresMajor);
+    await expect(validateSourceRestoreInventory({
+      source,
+      restored: inventory(["20260718000100"]),
+      mode: "source",
+      repositoryRoot: process.cwd(),
+    })).rejects.toThrow("ongeldig contract");
+  });
+
+  it("houdt stagingbron en hersteldoel strikt op PostgreSQL 17", async () => {
+    const source = inventory(["20260718000100"], false, false, 15);
+    await expect(validateSourceRestoreInventory({
+      source,
+      restored: inventory(["20260718000100"]),
+      mode: "current",
+      repositoryRoot: process.cwd(),
+    })).rejects.toThrow("ongeldig contract");
+  });
 
   it.each([
     ["ontbrekende kernrol", (roles: ReturnType<typeof role>[]) =>

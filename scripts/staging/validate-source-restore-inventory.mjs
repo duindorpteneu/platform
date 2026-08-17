@@ -205,11 +205,11 @@ function validRoleContract(roles) {
   );
 }
 
-function validateInventory(value) {
+function validateInventory(value, allowedPostgresMajors = [17]) {
   if (
     !exactKeys(value, TOP_LEVEL_KEYS)
     || value.contractVersion !== 2
-    || value.postgresMajor !== 17
+    || !allowedPostgresMajors.includes(value.postgresMajor)
     || !Array.isArray(value.migrations)
     || value.migrations.some((item) => !/^\d{14}$/u.test(item))
     || !Array.isArray(value.schemas)
@@ -289,13 +289,13 @@ function validateInventory(value) {
 }
 
 export function sourceHasSupabaseFunctionsAdmin(source) {
-  validateInventory(source);
+  validateInventory(source, [15, 16, 17]);
   return source.roles.some((role) =>
     role.name === "supabase_functions_admin");
 }
 
 export function sourceHasPostgresRealtimeAdminMembership(source) {
-  validateInventory(source);
+  validateInventory(source, [15, 16, 17]);
   return source.roles.some((role) =>
     role.name === "postgres"
     && role.memberships.includes("supabase_realtime_admin"));
@@ -314,11 +314,11 @@ export async function validateSourceRestoreInventory({
   mode,
   repositoryRoot,
 }) {
-  validateInventory(source);
-  validateInventory(restored);
   if (!["current", "source"].includes(mode)) {
     throw new Error("Onbekende restorecontractmodus");
   }
+  validateInventory(source, mode === "source" ? [15, 16, 17] : [17]);
+  validateInventory(restored, [17]);
   const expectedMigrations = await repositoryMigrations(repositoryRoot);
   const sourceMigrations = source.migrations;
   if (
@@ -334,10 +334,11 @@ export async function validateSourceRestoreInventory({
     throw new Error("Bronmigraties zijn geen geldige kandidaatprefix");
   }
   const sourceDigest = sha256(source);
-  const restoredDigest = sha256(restored);
-  if (sourceDigest !== restoredDigest) {
-    const mismatchedSections = TOP_LEVEL_KEYS.filter((key) =>
+  const mismatchedSections = TOP_LEVEL_KEYS
+    .filter((key) => key !== "postgresMajor")
+    .filter((key) =>
       sha256(source[key]) !== sha256(restored[key]));
+  if (mismatchedSections.length > 0) {
     throw new Error(
       "Herstelde database wijkt af van de bronsnapshot: "
       + mismatchedSections.map((key) =>
@@ -349,6 +350,7 @@ export async function validateSourceRestoreInventory({
     result: "passed",
     contract_mode: mode,
     inventory_sha256: sourceDigest,
+    source_postgres_major: source.postgresMajor,
     postgres_major: 17,
     source_migration_count: sourceMigrations.length,
     candidate_migration_count: expectedMigrations.length,

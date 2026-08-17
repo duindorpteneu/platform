@@ -37,7 +37,7 @@ export function validateProductionBackupEvidence(value, expected) {
     !value
     || typeof value !== "object"
     || Array.isArray(value)
-    || value.schema_version !== 4
+    || value.schema_version !== 5
     || value.result !== "passed"
     || value.target !== "production-logical-backup-isolated-restore"
     || value.release_sha !== expected.candidateReleaseSha
@@ -46,6 +46,7 @@ export function validateProductionBackupEvidence(value, expected) {
       !== expected.sourceArtifactDigest
     || value.source_project_fingerprint !== sourceFingerprint
     || value.database?.postgres_major !== 17
+    || ![15, 16, 17].includes(value.database?.source_postgres_major)
     || value.database?.contract_mode !== "source"
     || value.database?.candidate_contract_exact !== false
     || value.database?.owner_acl_rls_exact !== true
