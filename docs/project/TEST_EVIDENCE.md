@@ -608,7 +608,8 @@ Record commands, results and relevant screenshots/notes per phase.
 ## Dynamische-importleaseherstel — 2026-08-18 lokaal
 
 - Schone replay van alle 149 forward-only migrations is groen, inclusief `20260817231704_refresh_dynamic_import_lease_clock.sql`.
-- `supabase/tests/dynamic_import_operations.sql` — groen: 30 assertions, waaronder de wall-clockvloer voor een same-owner leaseverlenging.
+- `supabase/tests/dynamic_import_operations.sql` — groen: 35 assertions, waaronder de wall-clockvloer, service-only leasevrijgave en weigering van een vreemde claimtoken.
 - `pnpm test:db:import-concurrency` — groen: parallel claimen, fencing, identiteit en lockvolgorde blijven intact.
 - `src/app/api/internal/jobs/imports/route.test.ts` — groen: 15 tests; één kleine commitchunk per invocation en een oude gefencete lease eindigt hervatbaar zonder runfailure/finalizer.
 - Gerichte ESLint, TypeScript, migrationlint, secretscan, security- en performance-advisors en `git diff --check` zijn groen.
+- `scripts/test-dynamic-import-browser.mjs` — groen op de productiebuild: preview, hervatting over meerdere begrensde worker-aanroepen, commit van 101 rijen, DOB, conflictsuppressie en handmatige invoer.

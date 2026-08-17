@@ -279,16 +279,21 @@ async function waitForApp(process) {
   throw new Error("De importtestapp werd niet tijdig bereikbaar.");
 }
 
-async function runWorker() {
-  const response = await fetch(`${baseUrl}/api/internal/jobs/imports`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${cronSecret}` },
-  });
-  const body = await response.json();
-  if (!response.ok || !["previewed", "committed"].includes(body.status)) {
-    throw new Error(`Importworker eindigde gecontroleerd met HTTP ${response.status}.`);
+async function runWorkerUntil(expectedStatus, maxInvocations = 10) {
+  let processed = 0;
+  for (let invocation = 1; invocation <= maxInvocations; invocation += 1) {
+    const response = await fetch(`${baseUrl}/api/internal/jobs/imports`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${cronSecret}` },
+    });
+    const body = await response.json();
+    if (!response.ok || !["processing", expectedStatus].includes(body.status)) {
+      throw new Error(`Importworker eindigde gecontroleerd met HTTP ${response.status}.`);
+    }
+    processed += body.processed;
+    if (body.status === expectedStatus) return { ...body, processed };
   }
-  return body;
+  throw new Error(`Importworker bereikte ${expectedStatus} niet binnen ${maxInvocations} aanroepen.`);
 }
 
 const local = localSupabaseEnv();
@@ -497,7 +502,7 @@ try {
   if (!dryRunResponse.ok()) {
     throw new Error(`Dry-run queueën gaf HTTP ${dryRunResponse.status()}.`);
   }
-  const previewWorker = await runWorker();
+  const previewWorker = await runWorkerUntil("previewed");
   if (previewWorker.processed !== 202) {
     throw new Error(`De previewworker verwerkte ${previewWorker.processed} stappen.`);
   }
@@ -538,7 +543,7 @@ try {
   if (!commitResponse.ok()) {
     throw new Error(`Importcommit queueën gaf HTTP ${commitResponse.status()}.`);
   }
-  const commitWorker = await runWorker();
+  const commitWorker = await runWorkerUntil("committed");
   if (commitWorker.processed !== 101) {
     throw new Error(`De commitworker verwerkte ${commitWorker.processed} rijen.`);
   }

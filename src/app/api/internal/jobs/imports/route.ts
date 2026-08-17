@@ -341,6 +341,17 @@ export async function POST(request: Request) {
         env.IMPORT_STAGING_ENCRYPTION_KEY,
       )
       : await processCommit(admin, job, claimToken);
+    if (result.status === "processing") {
+      const { error: releaseError } = await admin.schema("app").rpc(
+        "release_dynamic_import_run_lease",
+        {
+          p_run_id: job.runId,
+          p_claim_token: claimToken,
+          p_generation: job.generation,
+        },
+      );
+      if (releaseError) throw new Error("DYNAMIC_IMPORT_LEASE_RELEASE_FAILED");
+    }
     const operationStatus = result.status === "failed" ? "failed" : "succeeded";
     const recorded = await closeOperation(
       operationStatus,

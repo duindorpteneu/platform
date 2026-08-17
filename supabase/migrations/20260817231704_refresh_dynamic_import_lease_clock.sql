@@ -168,6 +168,45 @@ from public, anon, authenticated;
 grant execute on function app.claim_dynamic_import_run(uuid, integer)
 to service_role;
 
+create function app.release_dynamic_import_run_lease(
+  p_run_id uuid,
+  p_claim_token uuid,
+  p_generation integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = app, private, pg_temp
+as $$
+declare
+  released integer;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'SERVICE_ROLE_REQUIRED' using errcode = '42501';
+  end if;
+  if p_run_id is null or p_claim_token is null or p_generation is null
+    or p_generation < 1
+  then
+    raise exception 'DYNAMIC_IMPORT_RELEASE_INVALID' using errcode = '22023';
+  end if;
+
+  delete from private.dynamic_import_run_leases lease
+  where lease.run_id = p_run_id
+    and lease.claim_token = p_claim_token
+    and lease.generation = p_generation;
+  get diagnostics released = row_count;
+  return released = 1;
+end;
+$$;
+
+revoke all on function app.release_dynamic_import_run_lease(uuid, uuid, integer)
+from public, anon, authenticated;
+grant execute on function app.release_dynamic_import_run_lease(uuid, uuid, integer)
+to service_role;
+
+comment on function app.release_dynamic_import_run_lease(uuid, uuid, integer) is
+  'Releases only the calling worker generation after a bounded chunk so a later scheduler invocation can resume immediately.';
+
 create function private.refresh_dynamic_import_lease_expiry_clock()
 returns trigger
 language plpgsql
@@ -208,6 +247,7 @@ insert into private.migration_reconciliations(
   jsonb_build_object(
     'strategy', 'wall-clock floor on same-owner lease renewal',
     'lease_seconds', 55,
+    'owned_chunk_release', true,
     'dynamic_import_enabled', (
       select enabled
       from app.release_feature_flags

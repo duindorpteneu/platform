@@ -425,6 +425,9 @@ describe("POST /api/internal/jobs/imports", () => {
           error: null,
         });
       }
+      if (name === "release_dynamic_import_run_lease") {
+        return Promise.resolve({ data: true, error: null });
+      }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
     const response = await POST(new Request(
@@ -443,6 +446,14 @@ describe("POST /api/internal/jobs/imports", () => {
     expect(
       mocks.rpc.mock.calls.some(([name]) => name === "finalize_dynamic_import_commit"),
     ).toBe(false);
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "release_dynamic_import_run_lease",
+      {
+        p_run_id: jobBase.runId,
+        p_claim_token: expect.any(String),
+        p_generation: jobBase.generation,
+      },
+    );
   });
 
   it("behandelt een verloren commitlease als veilige hervatting", async () => {
@@ -458,6 +469,9 @@ describe("POST /api/internal/jobs/imports", () => {
           data: null,
           error: { message: "DYNAMIC_IMPORT_COMMIT_LEASE_CONFLICT" },
         });
+      }
+      if (name === "release_dynamic_import_run_lease") {
+        return Promise.resolve({ data: false, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
@@ -537,6 +551,9 @@ describe("POST /api/internal/jobs/imports", () => {
           error: null,
         });
       }
+      if (name === "release_dynamic_import_run_lease") {
+        return Promise.resolve({ data: true, error: null });
+      }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
 
@@ -587,6 +604,9 @@ describe("POST /api/internal/jobs/imports", () => {
           },
           error: null,
         });
+      }
+      if (name === "release_dynamic_import_run_lease") {
+        return Promise.resolve({ data: true, error: null });
       }
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
     });
