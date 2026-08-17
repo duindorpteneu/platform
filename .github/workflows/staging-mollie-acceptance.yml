@@ -15,6 +15,11 @@ on:
         description: Typ STAGING-MOLLIE-TESTMODE om de muterende test te starten
         required: true
         type: string
+      cleanup_run_marker:
+        description: Optionele eerdere mislukte fixture-run in vorm run-id-poging
+        required: false
+        default: ""
+        type: string
 
 permissions:
   actions: read
@@ -85,6 +90,13 @@ jobs:
 
       - name: Install isolated browser client
         run: pnpm exec playwright install --with-deps chromium >/dev/null
+
+      - name: Remove one explicitly identified abandoned fixture
+        if: inputs.cleanup_run_marker != ''
+        env:
+          MOLLIE_ACCEPTANCE_RUN_ID: ${{ inputs.cleanup_run_marker }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only
 
       - name: Run paid, mismatch and replay acceptance
         env:

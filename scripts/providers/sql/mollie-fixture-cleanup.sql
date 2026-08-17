@@ -14,6 +14,7 @@ create temporary table mollie_acceptance_input (
   readiness_article_id uuid not null,
   readiness_variant_id uuid not null,
   readiness_order_line_id uuid not null,
+  mismatch_order_line_id uuid not null,
   readiness_qr_request_id uuid not null,
   parent_account_id uuid not null,
   grant_actor_id uuid not null,
@@ -30,6 +31,7 @@ insert into mollie_acceptance_input values (
   :'readiness_article_id'::uuid,
   :'readiness_variant_id'::uuid,
   :'readiness_order_line_id'::uuid,
+  :'mismatch_order_line_id'::uuid,
   :'readiness_qr_request_id'::uuid,
   :'parent_account_id'::uuid,
   :'grant_actor_id'::uuid,
@@ -44,6 +46,9 @@ declare
   fixture_marker_exists boolean;
   fixture_season_id uuid;
   fixture_marker text;
+  fixture_mail_v2_event_ids uuid[];
+  fixture_mail_v2_episode_ids uuid[];
+  fixture_mail_v2_projection_batch_ids uuid[];
   fixture_email_job_ids uuid[];
   fixture_delivery_attempt_ids uuid[];
 begin
@@ -69,6 +74,7 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id,
       fixture_input.readiness_qr_request_id,
       fixture_input.parent_account_id,
       fixture_input.grant_actor_id
@@ -82,6 +88,7 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
+        fixture_input.mismatch_order_line_id,
         fixture_input.readiness_qr_request_id,
         fixture_input.parent_account_id,
         fixture_input.grant_actor_id
@@ -118,7 +125,10 @@ begin
   ) or exists (
     select 1
     from app.order_lines line
-    where line.id = fixture_input.readiness_order_line_id
+    where line.id in (
+      fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id
+    )
   ) into fixture_marker_exists;
 
   if not fixture_marker_exists then
@@ -196,6 +206,15 @@ begin
         and line.article_variant_id = fixture_input.readiness_variant_id
         and line.quantity = 1
     )
+    and exists (
+      select 1
+      from app.order_lines line
+      where line.id = fixture_input.mismatch_order_line_id
+        and line.order_id = fixture_input.mismatch_order_id
+        and line.article_id = fixture_input.readiness_article_id
+        and line.article_variant_id = fixture_input.readiness_variant_id
+        and line.quantity = 1
+    )
     and (
       select count(*)
       from app.article_variants variant
@@ -206,7 +225,7 @@ begin
       from app.order_lines line
       where line.article_id = fixture_input.readiness_article_id
          or line.article_variant_id = fixture_input.readiness_variant_id
-    ) = 1
+    ) = 2
     and exists (
       select 1
       from app.member_article_sizes size_choice
@@ -262,18 +281,144 @@ begin
     raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
   end if;
 
+  select coalesce(array_agg(event.id), '{}'::uuid[])
+  into fixture_mail_v2_event_ids
+  from private.mail_v2_domain_events event
+  where event.parent_account_id = fixture_input.parent_account_id
+    and event.season_id = fixture_season_id
+    and (
+      event.order_id in (
+        fixture_input.paid_order_id,
+        fixture_input.mismatch_order_id
+      )
+      or event.member_season_id in (
+        select member_season.id
+        from app.member_seasons member_season
+        where member_season.member_id in (
+          fixture_input.paid_member_id,
+          fixture_input.mismatch_member_id
+        )
+          and member_season.season_id = fixture_season_id
+      )
+    );
+  if cardinality(fixture_mail_v2_event_ids) > 50 then
+    raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
+  end if;
+
+  select coalesce(array_agg(distinct projection.projection_batch_id), '{}'::uuid[])
+  into fixture_mail_v2_projection_batch_ids
+  from private.mail_v2_projections projection
+  where projection.event_id = any(fixture_mail_v2_event_ids);
+  if cardinality(fixture_mail_v2_projection_batch_ids) > 50
+    or exists (
+      select 1
+      from private.mail_v2_projections projection
+      where projection.projection_batch_id = any(fixture_mail_v2_projection_batch_ids)
+        and projection.event_id <> all(fixture_mail_v2_event_ids)
+    )
+  then
+    raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
+  end if;
+
+  select coalesce(array_agg(episode.id), '{}'::uuid[])
+  into fixture_mail_v2_episode_ids
+  from private.mail_v2_notification_episodes episode
+  where episode.parent_account_id = fixture_input.parent_account_id
+    and episode.season_id = fixture_season_id
+    and (
+      episode.opening_event_id = any(fixture_mail_v2_event_ids)
+      or episode.scope_id in (
+        fixture_input.paid_order_id,
+        fixture_input.mismatch_order_id
+      )
+      or episode.scope_id in (
+        select member_season.id
+        from app.member_seasons member_season
+        where member_season.member_id in (
+          fixture_input.paid_member_id,
+          fixture_input.mismatch_member_id
+        )
+          and member_season.season_id = fixture_season_id
+      )
+    );
+  if cardinality(fixture_mail_v2_episode_ids) > 50
+    or exists (
+      select 1
+      from private.mail_v2_episode_dispatches dispatch
+      where dispatch.episode_id = any(fixture_mail_v2_episode_ids)
+        and dispatch.event_id <> all(fixture_mail_v2_event_ids)
+    )
+  then
+    raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
+  end if;
+
   select coalesce(array_agg(job.id), '{}'::uuid[])
   into fixture_email_job_ids
   from private.email_jobs job
   where job.order_id in (
-    fixture_input.paid_order_id,
-    fixture_input.mismatch_order_id
-  );
+      fixture_input.paid_order_id,
+      fixture_input.mismatch_order_id
+    )
+    or job.parent_account_id = fixture_input.parent_account_id
+    or job.id in (
+      select batch.email_job_id
+      from private.mail_v2_projection_batches batch
+      where batch.id = any(fixture_mail_v2_projection_batch_ids)
+        and batch.email_job_id is not null
+    );
+  if cardinality(fixture_email_job_ids) > 50 then
+    raise exception 'MOLLIE_ACCEPTANCE_CLEANUP_SCOPE_VIOLATION' using errcode = '23514';
+  end if;
 
   select coalesce(array_agg(attempt.id), '{}'::uuid[])
   into fixture_delivery_attempt_ids
   from private.email_delivery_attempts attempt
   where attempt.email_job_id = any(fixture_email_job_ids);
+
+  alter table private.mail_v2_episode_transitions
+    disable trigger mail_v2_episode_transitions_immutable;
+  alter table private.mail_v2_episode_dispatches
+    disable trigger mail_v2_episode_dispatches_immutable;
+  alter table private.mail_v2_notification_episodes
+    disable trigger mail_v2_notification_episodes_guard;
+  alter table private.mail_v2_event_suppressions
+    disable trigger mail_v2_event_suppressions_immutable;
+  alter table private.mail_v2_projections
+    disable trigger mail_v2_projections_immutable;
+  alter table private.mail_v2_projection_batches
+    disable trigger mail_v2_projection_batches_guard;
+  alter table private.mail_v2_domain_events
+    disable trigger mail_v2_domain_events_immutable;
+  delete from private.mail_v2_episode_transitions transition
+  where transition.episode_id = any(fixture_mail_v2_episode_ids);
+  delete from private.mail_v2_episode_dispatches dispatch
+  where dispatch.episode_id = any(fixture_mail_v2_episode_ids);
+  delete from private.mail_v2_notification_episodes episode
+  where episode.id = any(fixture_mail_v2_episode_ids);
+  delete from private.mail_v2_event_suppressions suppression
+  where suppression.event_id = any(fixture_mail_v2_event_ids)
+    or suppression.superseding_event_id = any(fixture_mail_v2_event_ids);
+  delete from private.mail_v2_projections projection
+  where projection.event_id = any(fixture_mail_v2_event_ids)
+    and projection.projection_batch_id = any(fixture_mail_v2_projection_batch_ids);
+  delete from private.mail_v2_projection_batches batch
+  where batch.id = any(fixture_mail_v2_projection_batch_ids);
+  delete from private.mail_v2_domain_events event
+  where event.id = any(fixture_mail_v2_event_ids);
+  alter table private.mail_v2_domain_events
+    enable trigger mail_v2_domain_events_immutable;
+  alter table private.mail_v2_projection_batches
+    enable trigger mail_v2_projection_batches_guard;
+  alter table private.mail_v2_projections
+    enable trigger mail_v2_projections_immutable;
+  alter table private.mail_v2_event_suppressions
+    enable trigger mail_v2_event_suppressions_immutable;
+  alter table private.mail_v2_notification_episodes
+    enable trigger mail_v2_notification_episodes_guard;
+  alter table private.mail_v2_episode_dispatches
+    enable trigger mail_v2_episode_dispatches_immutable;
+  alter table private.mail_v2_episode_transitions
+    enable trigger mail_v2_episode_transitions_immutable;
 
   delete from app.email_events event
   where event.email_job_id = any(fixture_email_job_ids);
@@ -323,6 +468,7 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id,
       fixture_input.readiness_qr_request_id
     ]::uuid[])
     or item.source_id = any(array[
@@ -333,6 +479,7 @@ begin
       fixture_input.readiness_article_id,
       fixture_input.readiness_variant_id,
       fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id,
       fixture_input.readiness_qr_request_id
     ]::uuid[]);
   delete from private.payment_events event
@@ -508,11 +655,45 @@ begin
     where variant.id = fixture_input.readiness_variant_id
   ) or exists (
     select 1 from app.order_lines line
-    where line.id = fixture_input.readiness_order_line_id
+    where line.id in (
+      fixture_input.readiness_order_line_id,
+      fixture_input.mismatch_order_line_id
+    )
   ) or exists (
     select 1
     from private.email_jobs job
     where job.id = any(fixture_email_job_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_domain_events event
+    where event.id = any(fixture_mail_v2_event_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_projection_batches batch
+    where batch.id = any(fixture_mail_v2_projection_batch_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_projections projection
+    where projection.event_id = any(fixture_mail_v2_event_ids)
+      or projection.projection_batch_id = any(fixture_mail_v2_projection_batch_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_event_suppressions suppression
+    where suppression.event_id = any(fixture_mail_v2_event_ids)
+      or suppression.superseding_event_id = any(fixture_mail_v2_event_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_notification_episodes episode
+    where episode.id = any(fixture_mail_v2_episode_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_episode_dispatches dispatch
+    where dispatch.episode_id = any(fixture_mail_v2_episode_ids)
+      or dispatch.event_id = any(fixture_mail_v2_event_ids)
+  ) or exists (
+    select 1
+    from private.mail_v2_episode_transitions transition
+    where transition.episode_id = any(fixture_mail_v2_episode_ids)
   ) or exists (
     select 1
     from private.email_delivery_attempts attempt
@@ -542,6 +723,7 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
+        fixture_input.mismatch_order_line_id,
         fixture_input.readiness_qr_request_id
       ]::uuid[])
        or item.source_id = any(array[
@@ -552,6 +734,7 @@ begin
         fixture_input.readiness_article_id,
         fixture_input.readiness_variant_id,
         fixture_input.readiness_order_line_id,
+        fixture_input.mismatch_order_line_id,
         fixture_input.readiness_qr_request_id
       ]::uuid[])
   ) then

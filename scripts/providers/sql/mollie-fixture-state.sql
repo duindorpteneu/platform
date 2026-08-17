@@ -63,7 +63,20 @@ select coalesce((
     'qrBusinessEligible', private.order_qr_business_eligible(fixture_input.state_order_id),
     'qrUsable', private.order_qr_usable(fixture_input.state_order_id),
     'paymentEmailJobs', (select count(*) from private.email_jobs job
-      where job.order_id = fixture_input.state_order_id and job.template_key = 'payment_received'),
+      where job.order_id = fixture_input.state_order_id
+        and job.template_key in (
+          'payment_received',
+          'payment_received_waiting_stock'
+        )),
+    'paymentCommunicationIntents', (
+      (select count(*) from private.email_jobs job
+        where job.order_id = fixture_input.state_order_id
+          and job.template_key = 'payment_received')
+      +
+      (select count(*) from private.mail_v2_domain_events event
+        where event.order_id = fixture_input.state_order_id
+          and event.template_key = 'payment_received_waiting_stock')
+    ),
     'paidEvents', (select count(*) from private.payment_events event
       where event.payment_id = payment.id and event.event_type = 'paid'),
     'refundEvents', (select count(*) from private.payment_events event

@@ -141,6 +141,7 @@ export function createFixtureIdentity(runMarker) {
     readinessArticleId: uuidFromMarker(runMarker, "readiness-article"),
     readinessVariantId: uuidFromMarker(runMarker, "readiness-variant"),
     readinessOrderLineId: uuidFromMarker(runMarker, "readiness-order-line"),
+    mismatchOrderLineId: uuidFromMarker(runMarker, "mismatch-order-line"),
     readinessQrRequestId: uuidFromMarker(runMarker, "readiness-qr-request"),
     paidRelation: `${relationPrefix}-P`,
     mismatchRelation: `${relationPrefix}-M`,
@@ -156,6 +157,7 @@ function validateFixtureIdentity(identity) {
     || !uuidPattern.test(identity.readinessArticleId ?? "")
     || !uuidPattern.test(identity.readinessVariantId ?? "")
     || !uuidPattern.test(identity.readinessOrderLineId ?? "")
+    || !uuidPattern.test(identity.mismatchOrderLineId ?? "")
     || !uuidPattern.test(identity.readinessQrRequestId ?? "")
     || !uuidPattern.test(identity.parentAccountId ?? "")
     || !uuidPattern.test(identity.parentSessionId ?? "")
@@ -170,11 +172,12 @@ function validateFixtureIdentity(identity) {
       identity.readinessArticleId,
       identity.readinessVariantId,
       identity.readinessOrderLineId,
+      identity.mismatchOrderLineId,
       identity.readinessQrRequestId,
       identity.parentAccountId,
       identity.parentSessionId,
       identity.grantActorId,
-    ]).size !== 11
+    ]).size !== 12
     || !fixtureRelationPattern.test(identity.paidRelation ?? "")
     || !fixtureRelationPattern.test(identity.mismatchRelation ?? "")
     || !identity.paidRelation.endsWith("-P")
@@ -195,6 +198,7 @@ function fixtureEnvironment(config, identity, stateIdentity) {
     FIXTURE_READINESS_ARTICLE_ID: identity.readinessArticleId,
     FIXTURE_READINESS_VARIANT_ID: identity.readinessVariantId,
     FIXTURE_READINESS_ORDER_LINE_ID: identity.readinessOrderLineId,
+    FIXTURE_MISMATCH_ORDER_LINE_ID: identity.mismatchOrderLineId,
     FIXTURE_READINESS_QR_REQUEST_ID: identity.readinessQrRequestId,
     FIXTURE_PARENT_ACCOUNT_ID: identity.parentAccountId,
     FIXTURE_GRANT_ACTOR_ID: identity.grantActorId,
@@ -215,6 +219,7 @@ const fixtureSqlCommand = [
   "--set=readiness_article_id=\"$FIXTURE_READINESS_ARTICLE_ID\"",
   "--set=readiness_variant_id=\"$FIXTURE_READINESS_VARIANT_ID\"",
   "--set=readiness_order_line_id=\"$FIXTURE_READINESS_ORDER_LINE_ID\"",
+  "--set=mismatch_order_line_id=\"$FIXTURE_MISMATCH_ORDER_LINE_ID\"",
   "--set=readiness_qr_request_id=\"$FIXTURE_READINESS_QR_REQUEST_ID\"",
   "--set=parent_account_id=\"$FIXTURE_PARENT_ACCOUNT_ID\"",
   "--set=grant_actor_id=\"$FIXTURE_GRANT_ACTOR_ID\"",
@@ -255,6 +260,7 @@ export function runFixtureSql(config, action, identity, dependencies = {}) {
       "--env", "FIXTURE_READINESS_ARTICLE_ID",
       "--env", "FIXTURE_READINESS_VARIANT_ID",
       "--env", "FIXTURE_READINESS_ORDER_LINE_ID",
+      "--env", "FIXTURE_MISMATCH_ORDER_LINE_ID",
       "--env", "FIXTURE_READINESS_QR_REQUEST_ID",
       "--env", "FIXTURE_PARENT_ACCOUNT_ID",
       "--env", "FIXTURE_GRANT_ACTOR_ID",
@@ -789,7 +795,8 @@ export function assertPaidSnapshot(snapshot) {
   assert.equal(Number(snapshot.allQr), 0);
   assert.equal(snapshot.qrBusinessEligible, false);
   assert.equal(snapshot.qrUsable, false);
-  assert.equal(Number(snapshot.paymentEmailJobs), 1);
+  assert.ok(Number(snapshot.paymentEmailJobs) <= 1);
+  assert.equal(Number(snapshot.paymentCommunicationIntents), 1);
   assert.equal(Number(snapshot.paidEvents), 1);
   assert.equal(Number(snapshot.paidAudits), 1);
 }
@@ -817,6 +824,7 @@ export function assertMismatchSnapshot(snapshot) {
   assert.equal(snapshot.qrBusinessEligible, false);
   assert.equal(snapshot.qrUsable, false);
   assert.equal(Number(snapshot.paymentEmailJobs), 0);
+  assert.equal(Number(snapshot.paymentCommunicationIntents), 0);
   assert.ok(typeof snapshot.reconciliationIssue === "string" && snapshot.reconciliationIssue.includes("MISMATCH"));
   assert.ok(Number(snapshot.mismatchEvents) >= 1);
   assert.ok(Number(snapshot.manualReviewAudits) >= 1);
@@ -831,7 +839,8 @@ export function assertRefundSnapshot(snapshot) {
   assert.equal(Number(snapshot.allQr), 0);
   assert.equal(snapshot.qrBusinessEligible, false);
   assert.equal(snapshot.qrUsable, false);
-  assert.equal(Number(snapshot.paymentEmailJobs), 1);
+  assert.ok(Number(snapshot.paymentEmailJobs) <= 1);
+  assert.equal(Number(snapshot.paymentCommunicationIntents), 1);
   assert.equal(Number(snapshot.paidEvents), 1);
   assert.equal(Number(snapshot.refundEvents), 1);
   assert.equal(Number(snapshot.refundAudits), 1);
@@ -853,6 +862,7 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
   const parentSessionToken = randomBytes(32).toString("base64url");
   const parentTokenHash = createHmac("sha256", config.pepper).update(parentSessionToken).digest("hex");
   let fixturePrepared = false;
+  let acceptanceError;
 
   await assertRelease(config, fetchImpl);
   await assertProfile(config, fetchImpl);
@@ -916,10 +926,22 @@ export async function runAcceptance(rawEnv = process.env, overrides = {}) {
     );
     console.log("Metadata-afwijking bleef unpaid en zichtbaar voor handmatige review.");
     console.log("Refundinitiatie blijft buiten het portaal en dit acceptatieharnas; externe Mollie-refunds worden uitsluitend via de publieke webhook gereconcilieerd.");
+  } catch (error) {
+    acceptanceError = error;
+    throw error;
   } finally {
     if (fixturePrepared) {
-      const cleaned = await runSql(config, "cleanup", identity);
-      if (cleaned?.cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
+      try {
+        const cleaned = await runSql(config, "cleanup", identity);
+        if (cleaned?.cleaned !== true) fail("MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_INVALID");
+      } catch (cleanupError) {
+        if (!acceptanceError) throw cleanupError;
+        const cleanupCode = cleanupError instanceof Error
+          && /^MOLLIE_ACCEPTANCE_[A-Z0-9_]+$/.test(cleanupError.message)
+          ? cleanupError.message
+          : "MOLLIE_ACCEPTANCE_FIXTURE_CLEANUP_FAILED";
+        console.error(cleanupCode);
+      }
     }
   }
 }

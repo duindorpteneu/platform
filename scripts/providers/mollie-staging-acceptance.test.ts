@@ -47,7 +47,7 @@ describe("Mollie staging acceptance guards", () => {
       "utf8",
     );
     const acceptanceStep = workflow.indexOf("node scripts/providers/mollie-staging-acceptance.mjs\n");
-    const cleanupStep = workflow.indexOf(
+    const cleanupStep = workflow.lastIndexOf(
       "node scripts/providers/mollie-staging-acceptance.mjs --cleanup-only",
     );
 
@@ -57,7 +57,9 @@ describe("Mollie staging acceptance guards", () => {
     const secretBindings = [
       ...workflow.matchAll(/SUPABASE_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/gu),
     ];
-    expect(secretBindings).toHaveLength(2);
+    expect(secretBindings).toHaveLength(3);
+    expect(workflow).toContain("cleanup_run_marker:");
+    expect(workflow).toContain("inputs.cleanup_run_marker != ''");
     expect(workflow).not.toContain(
       "node scripts/staging/require-database-tls.mjs",
     );
@@ -179,11 +181,12 @@ describe("Mollie staging acceptance guards", () => {
       first.readinessArticleId,
       first.readinessVariantId,
       first.readinessOrderLineId,
+      first.mismatchOrderLineId,
       first.readinessQrRequestId,
       first.parentAccountId,
       first.parentSessionId,
       first.grantActorId,
-    ])).toHaveProperty("size", 11);
+    ])).toHaveProperty("size", 12);
   });
 
   it("runs fixture SQL in a pinned least-privilege container without a database URL in arguments", () => {
@@ -229,6 +232,7 @@ describe("Mollie staging acceptance guards", () => {
     expect(args).toContain("--env");
     expect(args).toContain("FIXTURE_READINESS_ARTICLE_ID");
     expect(options.env.FIXTURE_READINESS_ORDER_LINE_ID).toBe(identity.readinessOrderLineId);
+    expect(options.env.FIXTURE_MISMATCH_ORDER_LINE_ID).toBe(identity.mismatchOrderLineId);
   });
 
   it("provisions and owns exactly two temporary season-bound parent grants", () => {
@@ -260,9 +264,20 @@ describe("Mollie staging acceptance guards", () => {
       "enable trigger email_delivery_attempts_immutable",
     );
     expect(cleanupSql).toContain("delete from app.action_items item");
+    expect(cleanupSql).toContain("delete from private.mail_v2_domain_events event");
+    expect(cleanupSql).toContain("delete from private.mail_v2_projection_batches batch");
+    expect(cleanupSql).toContain("delete from private.mail_v2_notification_episodes episode");
+    expect(cleanupSql).toContain("fixture_mail_v2_event_ids");
     expect(cleanupSql).toContain(
       "attempt.email_job_id = any(fixture_email_job_ids)",
     );
+
+    const stateSql = readFileSync(
+      new URL("./sql/mollie-fixture-state.sql", import.meta.url),
+      "utf8",
+    );
+    expect(stateSql).toContain("'payment_received_waiting_stock'");
+    expect(stateSql).toContain("'payment_received'");
   });
 
   it("keeps the readiness inventory, allocation and QR proof rollback-only", () => {
@@ -303,6 +318,7 @@ describe("Mollie staging acceptance guards", () => {
 describe("Mollie allocation-gated QR snapshots", () => {
   const common = {
     paymentEmailJobs: 1,
+    paymentCommunicationIntents: 1,
     paidEvents: 1,
     paidAudits: 1,
     refundEvents: 0,
@@ -376,6 +392,7 @@ describe("Mollie allocation-gated QR snapshots", () => {
       activeQr: 0,
       allQr: 0,
       paymentEmailJobs: 0,
+      paymentCommunicationIntents: 0,
       reconciliationIssue: "MISMATCH_METADATA",
       mismatchEvents: 1,
       manualReviewAudits: 1,
