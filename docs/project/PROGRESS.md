@@ -382,3 +382,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Restorebewijs schema v5 legt bronmajor en herstelmajor afzonderlijk vast. Een onverwachte major, een ouder major op staging of iedere andere inventarisdrift blijft fail-closed. De snapshotcontainer rapporteert voortaan uitsluitend een vaste PII-/secretvrije fasenaam bij een fout.
 - Productie is door de gefaalde recovery-pointpoort niet gewijzigd. Gerichte lokale restore-/evidence-/target-/cleanupcontractsuite: 5 bestanden en 76 tests groen; bash-syntax en ESLint groen.
 - De eerste hosted databasejob vond uitsluitend testdrift: de OTP-beheer-RPC-test stuurde na de geldige migratie nog hardcoded versie 2. De test gebruikt nu de actuele beginversie en bewijst opnieuw zowel het optimistische versiecontract als exact één verhoging.
+
+## Publieke stagingorigin op clubdomein — 2026-08-17
+
+- De volledige fail-closed stagingketen gebruikt voortaan `https://duindorpsv.dgwebservices.nl`: runtimeconfiguratie, health, edge-bodylimits, browseracceptatie, providers, rollback en GitHub-workflows zijn gezamenlijk aangepast.
+- De stagingruntime blijft op poort `14000` en gebruikt dezelfde stagingdatabase en stagingrunner. De afzonderlijke productionorigin op poort `24000` blijft onaangeraakt.
+- Gerichte lokale controle is groen met 165 tests, TypeScript, syntax, ESLint en diffcheck; volledige hosted CI en de publieke deployment volgen op dezelfde commit.

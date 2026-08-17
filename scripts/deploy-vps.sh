@@ -54,7 +54,7 @@ deploy_environment() {
       runtime_directory="/srv/apps/duindorpteneu/staging"
       compose_project="duindorpteneu-staging"
       expected_port="14000"
-      expected_host="staging-duindorp.dgwebservices.nl"
+      expected_host="duindorpsv.dgwebservices.nl"
       ;;
     production)
       runtime_directory="/srv/apps/duindorpteneu/production"

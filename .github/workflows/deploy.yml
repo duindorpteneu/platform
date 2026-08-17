@@ -176,7 +176,7 @@ jobs:
     timeout-minutes: 45
     environment:
       name: staging
-      url: https://staging-duindorp.dgwebservices.nl
+      url: https://duindorpsv.dgwebservices.nl
     permissions:
       actions: read
       contents: read

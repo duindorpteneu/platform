@@ -28,7 +28,7 @@ const {
 } = acceptance;
 
 const validEnv = {
-  APP_BASE_URL: "https://staging-duindorp.dgwebservices.nl",
+  APP_BASE_URL: "https://duindorpsv.dgwebservices.nl",
   EXPECTED_STAGING_SUPABASE_PROJECT_REF: STAGING_SUPABASE_PROJECT_REF,
   SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key-with-at-least-forty-characters-for-tests",

@@ -169,3 +169,9 @@
 - De door de producteigenaar aangeleverde Nederlandse teksten vervangen technische termen als lid-seizoen, harde reservering, Sportlink-herkomst en pakketmaat waar die voor ouders zichtbaar waren. De onderliggende status-, autorisatie- en veiligheidscontracten wijzigen niet.
 - De aangeleverde verschrijving `teneuportaal` wordt als `tenueportaal` uitgevoerd. De OTP-systeemfallback en uitsluitend onaangeraakte systeemconcepten krijgen het nieuwe onderwerp en de kortere beschermde waarschuwing.
 - Een door medewerkers gewijzigd of gepubliceerd mailtemplate wordt niet stil door een migratie overschreven; templatebeheer blijft de actuele inhoudsbron. De browseracceptatie bewaakt dat de interne Mollie-disclaimer niet meer aan ouders wordt getoond.
+
+## D-101 — De publieke stagingorigin verhuist integraal naar het clubdomein
+
+- De bestaande stagingruntime, stagingdatabase, poort `14000`, runner en omgevingsidentiteit blijven ongewijzigd; uitsluitend de canonieke publieke origin wordt `https://duindorpsv.dgwebservices.nl`.
+- Deploy-, health-, bodylimit-, provider-, rollback- en browseracceptatie gebruiken exact dezelfde nieuwe origin. Een alias via alleen Caddy is onvoldoende, omdat muterende routes `APP_BASE_URL`, `Host` en forwarded headers fail-closed vergelijken.
+- De afzonderlijke repository-productionomgeving blijft `https://duindorp.dgwebservices.nl` op poort `24000` en wordt door deze cutover niet gewijzigd.

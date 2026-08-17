@@ -194,7 +194,7 @@ jobs:
           PROMOTION_EVIDENCE_MANIFEST_PATH: ${{ github.workspace }}/.promotion-evidence/promotion-evidence-manifest.json
           LEGACY_ADOPTION_EVIDENCE_ROOT: ${{ github.workspace }}/.legacy-adoption
           STAGING_MANIFEST_PATH: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
-          STAGING_BASE_URL: https://staging-duindorp.dgwebservices.nl
+          STAGING_BASE_URL: https://duindorpsv.dgwebservices.nl
         run: |
           set -Eeuo pipefail
           if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then
@@ -442,7 +442,7 @@ jobs:
           PROMOTION_EVIDENCE_MANIFEST_PATH: ${{ github.workspace }}/.promotion-evidence/promotion-evidence-manifest.json
           LEGACY_ADOPTION_EVIDENCE_ROOT: ${{ github.workspace }}/.legacy-adoption
           STAGING_MANIFEST_PATH: ${{ github.workspace }}/.staging-release/RELEASE_MANIFEST
-          STAGING_BASE_URL: https://staging-duindorp.dgwebservices.nl
+          STAGING_BASE_URL: https://duindorpsv.dgwebservices.nl
         run: |
           set -Eeuo pipefail
           if [[ -n "${LEGACY_ADOPTION_RUN_ID}" ]]; then

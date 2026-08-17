@@ -28,7 +28,7 @@
 	}
 }
 
-staging-duindorp.dgwebservices.nl {
+duindorpsv.dgwebservices.nl {
 	encode zstd gzip
 	import duindorp_request_limits
 	reverse_proxy 127.0.0.1:14000 {

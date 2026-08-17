@@ -18,15 +18,15 @@ describe("legacy HTTP target boundary", () => {
   it.each([
     "https://example.invalid",
     "http://localhost:14000",
-    "https://staging-duindorp.dgwebservices.nl/other",
-    "https://user@staging-duindorp.dgwebservices.nl",
+    "https://duindorpsv.dgwebservices.nl/other",
+    "https://user@duindorpsv.dgwebservices.nl",
   ])("rejects a non-canonical target before networking", (url) => {
     expect(run(url).status).toBe(2);
   });
 
   it("rejects every SHA except the single adopted production release", () => {
     expect(run(
-      "https://staging-duindorp.dgwebservices.nl",
+      "https://duindorpsv.dgwebservices.nl",
       "staging",
       "b".repeat(40),
     ).status).toBe(2);

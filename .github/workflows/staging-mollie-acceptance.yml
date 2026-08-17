@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 20
     environment: staging
     env:
-      APP_BASE_URL: https://staging-duindorp.dgwebservices.nl
+      APP_BASE_URL: https://duindorpsv.dgwebservices.nl
       EXPECTED_STAGING_SUPABASE_PROJECT_REF: dxbdjtbyghsovlrdcwcr
       RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
       MOLLIE_ACCEPTANCE_CONFIRMATION: ${{ inputs.confirmation }}

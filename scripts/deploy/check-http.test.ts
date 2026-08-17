@@ -19,8 +19,8 @@ describe("deployment HTTP target boundary", () => {
     "https://example.invalid",
     "http://localhost:14000",
     "http://127.0.0.1:24000",
-    "https://staging-duindorp.dgwebservices.nl/other",
-    "https://user@staging-duindorp.dgwebservices.nl",
+    "https://duindorpsv.dgwebservices.nl/other",
+    "https://user@duindorpsv.dgwebservices.nl",
   ])("rejects non-canonical staging target %s before networking", (url) => {
     expect(run(url).status).toBe(2);
   });

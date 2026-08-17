@@ -592,3 +592,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm exec vitest run scripts/staging/validate-source-restore-inventory.test.ts scripts/staging/write-restore-evidence.test.ts scripts/deploy/production-backup-evidence.test.ts scripts/staging/cleanup-operational-data.test.ts scripts/staging/validate-target.test.ts` — groen: 5 bestanden, 76 tests.
 - De regressies bewijzen een ondersteunde major-15-legacybron naar exact major-17-herstel, weigeren major 14/18 en een oudere stagingbron, bewaren exacte schema-/ACL-/RLS-/data-HMAC-controle en valideren het gebonden versleutelde productiebackupbewijs schema v5.
 - `bash -n scripts/staging/restore-drill.sh scripts/staging/create-source-snapshot-backup.sh` en gerichte ESLint — groen. Hosted exact-main CI, stagingrestore en productie-recoverypoint blijven vereist.
+
+## Publieke stagingorigin-cutover — 2026-08-17 lokaal
+
+- Alle 36 repositoryreferenties naar de voormalige stagingorigin zijn samen naar `https://duindorpsv.dgwebservices.nl` gebracht; de productionorigin en poort `24000` zijn ongewijzigd.
+- Gerichte Vitestregressie: 13 bestanden en 165 tests groen voor deploy-, health-, provider-, stagingtarget- en Host/edgecontracten.
+- `pnpm typecheck`, shell-/Node-syntax, gerichte ESLint en `git diff --check` zijn groen. Op verzoek zijn volledige build-, browser- en databasesuites niet lokaal herhaald; exact-main CI en de immutable stagingdeployment blijven de hosted poort.

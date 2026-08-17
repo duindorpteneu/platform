@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { requireExplicitDatabaseTls } from "../staging/require-database-tls.mjs";
 
-export const STAGING_APP_BASE_URL = "https://staging-duindorp.dgwebservices.nl";
+export const STAGING_APP_BASE_URL = "https://duindorpsv.dgwebservices.nl";
 export const STAGING_SUPABASE_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
 export const MOLLIE_API_BASE_URL = "https://api.mollie.com";
 export const ACCEPTANCE_CONFIRMATION = "STAGING-MOLLIE-TESTMODE";

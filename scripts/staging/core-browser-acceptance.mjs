@@ -9,7 +9,7 @@ import {
 } from "../browser-a11y.mjs";
 import { requireExplicitDatabaseTls } from "./require-database-tls.mjs";
 
-const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
+const STAGING_ORIGIN = "https://duindorpsv.dgwebservices.nl";
 const STAGING_REF = "dxbdjtbyghsovlrdcwcr";
 const POSTGRES_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.143@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453";
 const roles = ["beheerder", "kledingcommissie", "uitgifte"];

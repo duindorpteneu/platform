@@ -211,7 +211,7 @@ export function validateSendGridAcceptanceConfig(values) {
     || webhookUrl.hash
     || stagingBaseUrl.protocol !== "https:"
     || stagingBaseUrl.origin
-      !== "https://staging-duindorp.dgwebservices.nl"
+      !== "https://duindorpsv.dgwebservices.nl"
     || stagingBaseUrl.pathname !== "/"
     || stagingBaseUrl.search
     || stagingBaseUrl.hash

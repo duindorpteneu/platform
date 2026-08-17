@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import rawContract from "../../deploy/edge-body-probe-contract.json" with { type: "json" };
 
 const environmentUrls = Object.freeze({
-  staging: "https://staging-duindorp.dgwebservices.nl",
+  staging: "https://duindorpsv.dgwebservices.nl",
   production: "https://duindorp.dgwebservices.nl",
 });
 

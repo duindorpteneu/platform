@@ -7,7 +7,7 @@ if (
   || !/^[a-f0-9]{40}$/.test(revision ?? "")
   || !/^sha256:[a-f0-9]{64}$/.test(artifactDigest ?? "")
 ) process.exit(2);
-const publicOrigin = environment === "staging" ? "https://staging-duindorp.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
+const publicOrigin = environment === "staging" ? "https://duindorpsv.dgwebservices.nl" : "https://duindorp.dgwebservices.nl";
 const loopbackOrigin = environment === "staging"
   ? "http://127.0.0.1:14000"
   : "http://127.0.0.1:24000";

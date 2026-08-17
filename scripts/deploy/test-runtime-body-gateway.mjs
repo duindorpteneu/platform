@@ -11,7 +11,7 @@ import {
   assertEdgeBodyLimits,
 } from "./check-edge-body-limits.mjs";
 
-const publicHost = "staging-duindorp.dgwebservices.nl";
+const publicHost = "duindorpsv.dgwebservices.nl";
 const secret = "runtime-body-gateway-test-secret";
 const context = {
   environment: "staging",

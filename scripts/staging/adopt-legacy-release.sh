@@ -31,7 +31,7 @@ die() {
   exit 1
 }
 
-[[ "${STAGING_APP_URL}" == "https://staging-duindorp.dgwebservices.nl" ]] \
+[[ "${STAGING_APP_URL}" == "https://duindorpsv.dgwebservices.nl" ]] \
   || die "Legacy adoptie is uitsluitend voor de vaste staginghost."
 [[ "${RELEASE_SHA}" =~ ^[a-f0-9]{40}$ \
   && "${RELEASE_SHA}" != "${legacy_sha}" \

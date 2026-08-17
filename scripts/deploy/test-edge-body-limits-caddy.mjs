@@ -73,7 +73,7 @@ async function backendServer() {
 
 function limitsSnippet(source) {
   const start = source.indexOf("(duindorp_request_limits)");
-  const end = source.indexOf("\nstaging-duindorp.dgwebservices.nl", start);
+  const end = source.indexOf("\nduindorpsv.dgwebservices.nl", start);
   if (start < 0 || end < 0) throw new Error("CADDY_TEST_SNIPPET_INVALID");
   return source.slice(start, end).trim();
 }

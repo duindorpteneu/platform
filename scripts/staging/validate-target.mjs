@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-export const STAGING_ORIGIN = "https://staging-duindorp.dgwebservices.nl";
+export const STAGING_ORIGIN = "https://duindorpsv.dgwebservices.nl";
 export const STAGING_PROJECT_REF = "dxbdjtbyghsovlrdcwcr";
 export const PRODUCTION_PROJECT_REF = "wobcbufmmputydtzemyu";
 export const RESTORE_CONFIRMATION = "STAGING-RESTORE";

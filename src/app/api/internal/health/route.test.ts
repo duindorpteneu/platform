@@ -149,7 +149,7 @@ describe("GET /api/internal/health", () => {
       "public-key";
     process.env.CRON_SECRET = "c".repeat(16);
     process.env.APP_BASE_URL =
-      "https://staging-duindorp.dgwebservices.nl";
+      "https://duindorpsv.dgwebservices.nl";
     mocks.rpc.mockResolvedValueOnce({
       data: {
         ...healthy,

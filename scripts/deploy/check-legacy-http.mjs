@@ -11,7 +11,7 @@ if (
 ) process.exit(2);
 
 const publicOrigin = environment === "staging"
-  ? "https://staging-duindorp.dgwebservices.nl"
+  ? "https://duindorpsv.dgwebservices.nl"
   : "https://duindorp.dgwebservices.nl";
 const loopbackOrigin = environment === "staging"
   ? "http://127.0.0.1:14000"
