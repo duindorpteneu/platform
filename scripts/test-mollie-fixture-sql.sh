@@ -190,4 +190,14 @@ if [[ "$("${psql_cmd[@]}" -c "select to_regclass('private.mollie_acceptance_fixt
   exit 1
 fi
 
+if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$prepare_sql")" != '{"prepared": true}' ]]; then
+  echo "Mollie-fixture kon de legacy-cleanupregressie niet voorbereiden." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" -c "delete from app.order_lines where id = 'a9500000-0000-4000-8000-000000000002'::uuid and order_id = 'a9200000-0000-4000-8000-000000000002'::uuid" >/dev/null
+if [[ "$("${psql_cmd[@]}" "${fixture_args[@]}" < "$cleanup_sql")" != '{"cleaned": true}' ]]; then
+  echo "Mollie-fixture cleanup weigerde een begrensde oude één-regel-fixture." >&2
+  exit 1
+fi
+
 echo "Mollie-fixture SQL-integratietest geslaagd: begrensd, idempotent en zonder globale configuratiemutatie."

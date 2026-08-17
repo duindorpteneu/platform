@@ -206,14 +206,21 @@ begin
         and line.article_variant_id = fixture_input.readiness_variant_id
         and line.quantity = 1
     )
-    and exists (
-      select 1
-      from app.order_lines line
-      where line.id = fixture_input.mismatch_order_line_id
-        and line.order_id = fixture_input.mismatch_order_id
-        and line.article_id = fixture_input.readiness_article_id
-        and line.article_variant_id = fixture_input.readiness_variant_id
-        and line.quantity = 1
+    and (
+      not exists (
+        select 1
+        from app.order_lines line
+        where line.id = fixture_input.mismatch_order_line_id
+      )
+      or exists (
+        select 1
+        from app.order_lines line
+        where line.id = fixture_input.mismatch_order_line_id
+          and line.order_id = fixture_input.mismatch_order_id
+          and line.article_id = fixture_input.readiness_article_id
+          and line.article_variant_id = fixture_input.readiness_variant_id
+          and line.quantity = 1
+      )
     )
     and (
       select count(*)
@@ -225,7 +232,7 @@ begin
       from app.order_lines line
       where line.article_id = fixture_input.readiness_article_id
          or line.article_variant_id = fixture_input.readiness_variant_id
-    ) = 2
+    ) between 1 and 2
     and exists (
       select 1
       from app.member_article_sizes size_choice
