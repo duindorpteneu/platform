@@ -525,6 +525,46 @@ select is(
   1,
   'actuele runtimebinding vervangt historische configuratiefouten als readinesspoort'
 );
+insert into private.parent_otp_delivery_attempts(
+  id,
+  parent_account_id,
+  challenge_id,
+  template_revision_id,
+  branding_revision_id,
+  expires_at
+)
+select
+  '27940000-0000-4000-8000-000000000096',
+  attempt.parent_account_id,
+  '27950000-0000-4000-8000-000000000096',
+  attempt.template_revision_id,
+  attempt.branding_revision_id,
+  statement_timestamp() + interval '10 minutes'
+from private.parent_otp_delivery_attempts attempt
+where attempt.id = '27940000-0000-4000-8000-000000000098';
+insert into private.parent_otp_delivery_outcomes(
+  delivery_attempt_id,
+  outcome,
+  provider_http_message_id,
+  created_at
+) values (
+  '27940000-0000-4000-8000-000000000096',
+  'accepted',
+  'http-message-otp-recovery.filter0001.42.0',
+  statement_timestamp() + interval '1 second'
+);
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{parentOtpDelivery,sendFailuresRecent}'
+  )::integer,
+  0,
+  'een latere provideracceptatie herstelt een eerdere HTTP-afwijzing'
+);
 select is(
   app.assert_sendgrid_events_ready_v1(
     jsonb_build_array(

@@ -198,3 +198,9 @@
 - Een nog niet duurzaam afgeronde SendGrid-acceptatie is een gecontroleerde business-state en wordt als readinessaantal teruggegeven. De webhook vertaalt een onvolledige readiness naar HTTP 503 met `Retry-After: 30`.
 - Een operation-run die niet meer `running` is, kan niet nogmaals worden afgesloten en retourneert `null`. De applicatiegrens behandelt dit fail-closed zonder een database-retry te activeren.
 - De zeldzame mail-testcallbackrace gebruikt een expliciete `pending` response en hetzelfde HTTP-retrycontract. Ongeldige input blijft met een niet-retrybare validatie-SQLSTATE falen.
+
+## D-106 — OTP-providerreadiness toont alleen onherstelde systeemfouten
+
+- De append-only OTP-afleverhistorie blijft ongewijzigd. Een `provider_rejected` blijft releaseblokkerend totdat een later OTP aantoonbaar door SendGrid is geaccepteerd; die acceptatie bewijst herstel van het systeemwijde providerpad.
+- Een renderfout wordt niet door een provideracceptatie hersteld, omdat dit een afzonderlijk pad is. Delivery uncertainty, provider bounce/drop/failure en quarantaine blijven eveneens afzonderlijk fail-closed.
+- Adresgebonden providerafwijzingen houden na aantoonbaar herstel niet langer de volledige applicatie 24 uur onterecht op degraded.

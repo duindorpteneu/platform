@@ -428,3 +428,8 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Twee normale business-stateconflicten gebruikten SQLSTATE `40001`, die door de PostgREST-databaselaag als echte serialisatiefout snel intern werd herhaald. Dit veroorzaakte ruim 12,4 miljoen rollbacks, brede 504-responses en secundaire OTP-fouten.
 - Readiness retourneert pending aantallen nu als data en een dubbele of ontbrekende runfinalisatie retourneert `null`. SendGrid blijft via een gecontroleerde HTTP 503 met `Retry-After` opnieuw aanbieden; de database krijgt geen retrybare exception meer.
 - Stagingcontainment `20260818114029_staging_retry_storm_containment_20260818` is zonder datamutatie toegepast. Na 80 seconden bleef de rollbackdelta nul, zonder geblokkeerde of langlopende queries; reguliere RPC's en health antwoorden weer met 200.
+
+## Herstelde OTP-providerreadiness — 2026-08-18
+
+- Vijf bewaarde HTTP-providerafwijzingen hielden de releasehealth nog 24 uur rood, hoewel nieuwere OTP-mails aantoonbaar door SendGrid waren geaccepteerd en afgeleverd; alle overige database-readinessassen waren gezond.
+- De forward-only healthcorrectie bewaart de append-only historie, maar beschouwt een providerafwijzing na een latere echte acceptatie niet meer als een actueel systeembreed incident. Renderfouten en alle afzonderlijke uncertainty-, callback- en quarantainepoorten blijven fail-closed.
