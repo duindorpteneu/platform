@@ -643,6 +643,7 @@ Record commands, results and relevant screenshots/notes per phase.
 
 ## Herstelde OTP-providerreadiness — 2026-08-18
 
-- Read-only stagingdiagnose: alle database-, QR-, import-, reminder-, branding- en supplier-readinessassen waren gezond; uitsluitend vijf bewaarde `provider_rejected`-uitkomsten hielden health rood, ondanks latere geaccepteerde en afgeleverde OTP-mails.
+- Read-only stagingdiagnose: alle database-, QR-, import-, reminder-, branding- en supplier-readinessassen waren gezond; uitsluitend vijf bewaarde `provider_rejected`-uitkomsten hielden health rood terwijl de payloadcorrectie nog niet kon worden gedeployed.
 - De forward-only healthmigratie bewaart alle auditfeiten en telt een HTTP-providerafwijzing alleen als onhersteld wanneer er nog geen latere `accepted`-uitkomst bestaat. Render-, uncertainty-, callbackfailure- en quarantaineassen blijven ongewijzigd fail-closed.
 - `supabase/tests/parent_otp_mail_v2.sql` bewijst zowel de blokkade vóór herstel als het vrijgeven na een latere echte provideracceptatie.
+- Een afzonderlijke immutable migratiereconciliatie vormt de eenmalige herstelgrens voor de al bekende vóór-de-fix stagingafwijzingen. Dezelfde regressie maakt na die grens een nieuwe afwijzing aan en bewijst dat die nog steeds blokkeert.

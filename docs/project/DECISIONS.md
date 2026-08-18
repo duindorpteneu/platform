@@ -204,3 +204,4 @@
 - De append-only OTP-afleverhistorie blijft ongewijzigd. Een `provider_rejected` blijft releaseblokkerend totdat een later OTP aantoonbaar door SendGrid is geaccepteerd; die acceptatie bewijst herstel van het systeemwijde providerpad.
 - Een renderfout wordt niet door een provideracceptatie hersteld, omdat dit een afzonderlijk pad is. Delivery uncertainty, provider bounce/drop/failure en quarantaine blijven eveneens afzonderlijk fail-closed.
 - Adresgebonden providerafwijzingen houden na aantoonbaar herstel niet langer de volledige applicatie 24 uur onterecht op degraded.
+- De vijf stagingafwijzingen die door de gecorrigeerde OTP-providerpayload voorafgingen, krijgen één expliciete, immutable migratiereconciliatie als herstelgrens. Alleen eerdere afwijzingen worden erkend; iedere nieuwe afwijzing na die grens blokkeert opnieuw totdat een echte latere acceptatie is vastgelegd.

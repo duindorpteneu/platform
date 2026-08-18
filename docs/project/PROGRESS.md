@@ -431,5 +431,6 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 ## Herstelde OTP-providerreadiness — 2026-08-18
 
-- Vijf bewaarde HTTP-providerafwijzingen hielden de releasehealth nog 24 uur rood, hoewel nieuwere OTP-mails aantoonbaar door SendGrid waren geaccepteerd en afgeleverd; alle overige database-readinessassen waren gezond.
+- Vijf bewaarde HTTP-providerafwijzingen hielden de releasehealth nog 24 uur rood, terwijl de daadwerkelijke OTP-payloadfix achter diezelfde releasepoort stond; alle overige database-readinessassen waren gezond.
 - De forward-only healthcorrectie bewaart de append-only historie, maar beschouwt een providerafwijzing na een latere echte acceptatie niet meer als een actueel systeembreed incident. Renderfouten en alle afzonderlijke uncertainty-, callback- en quarantainepoorten blijven fail-closed.
+- Omdat de daadwerkelijke OTP-payloadfix nog achter dezelfde releasepoort stond, markeert een tweede forward-only migratiereconciliatie uitsluitend de vóór-de-fix afwijzingen als erkend. Nieuwe afwijzingen blijven vanaf dat exacte tijdstip volledig fail-closed.
