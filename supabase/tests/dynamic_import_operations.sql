@@ -605,6 +605,86 @@ select is(
   'een te lang draaiende worker wordt afzonderlijk gemarkeerd'
 );
 
+insert into private.operation_runs(
+  id,
+  operation,
+  status,
+  started_at,
+  finished_at,
+  processed_count
+)
+values(
+  'fa600000-0000-4000-8000-000000000003',
+  'import_worker',
+  'succeeded',
+  timezone('utc', now()) - interval '1 minute',
+  timezone('utc', now()) - interval '30 seconds',
+  0
+);
+select is(
+  app.get_operational_health_v4()
+    #>> '{operations,importWorker,runningStale}',
+  'false',
+  'een oude afgebroken worker blokkeert niet na een latere succesvolle cyclus'
+);
+
+update app.dynamic_import_runs
+set status = 'staging',
+    started_at = timezone('utc', now())
+where id = 'fa400000-0000-4000-8000-000000000002';
+insert into private.dynamic_import_run_leases(
+  run_id,
+  claim_token,
+  generation,
+  claimed_at,
+  expires_at
+)
+values(
+  'fa400000-0000-4000-8000-000000000002',
+  'fa500000-0000-4000-8000-000000000002',
+  1,
+  clock_timestamp(),
+  clock_timestamp() + interval '1 minute'
+);
+create temporary table safe_failure_result(result jsonb);
+grant select, insert on safe_failure_result to service_role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+insert into safe_failure_result(result)
+select app.fail_dynamic_import_run(
+  'fa400000-0000-4000-8000-000000000002',
+  'fa500000-0000-4000-8000-000000000002',
+  1,
+  'catalog_changed'
+);
+reset role;
+select is(
+  (select result->>'reconciliationRequired' from safe_failure_result),
+  'false',
+  'catalogusdrift zonder toegepaste rijen is een veilige afwijzing'
+);
+select is(
+  (
+    select severity::text
+    from app.action_items
+    where type = 'import_failure'
+      and source_id = 'fa400000-0000-4000-8000-000000000002'
+  ),
+  'warning',
+  'een veilige afwijzing opent geen critical reconciliatie-incident'
+);
+select is(
+  app.get_operational_health_v4() #>> '{importRuns,failed}',
+  '1',
+  'health telt alleen de werkelijk gedeeltelijk toegepaste importfout'
+);
+select is(
+  app.get_operational_health_v4()
+    #>> '{importRuns,reconciliationRequired}',
+  '1',
+  'de veilige catalogusafwijzing verhoogt de reconciliatieblokkade niet'
+);
+
 create temporary table second_cleanup(result jsonb);
 grant select, insert on second_cleanup to service_role;
 set local role service_role;
