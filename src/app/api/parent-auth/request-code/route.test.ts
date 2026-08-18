@@ -141,8 +141,16 @@ describe("POST /api/parent-auth/request-code", () => {
     expect(mocks.sendV2).toHaveBeenCalledWith({
       deliveryAttemptId,
       recipientEmail: "ouder@example.nl",
-      ...message,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      fromName: message.fromName,
+      fromEmail: message.fromEmail,
+      replyToEmail: message.replyToEmail,
     });
+    expect(mocks.sendV2.mock.calls[0]?.[0]).not.toHaveProperty(
+      "preheader",
+    );
     expect(mocks.complete).toHaveBeenCalledWith(
       expect.anything(),
       deliveryAttemptId,

@@ -402,3 +402,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Commitwerk is teruggebracht naar één transactie van maximaal 50 rijen per scheduleraanroep; previewwerk blijft één begrensde transactie van maximaal 250 rijen. Een worker geeft uitsluitend zijn eigen token/generatielease na de afgeronde chunk vrij, zodat een volgende cyclus direct kan hervatten zonder overlap of een kunstmatige wachttijd.
 - Een veilig gestopte import met nul toegepaste rijen is nu een waarschuwing en geen database- of releaseincident. Alleen runs met aantoonbaar gecommitte rijplannen blijven critical en reconciliatieplichtig; een oudere afgebroken worker wordt niet langer als actief incident gezien nadat een nieuwere cyclus is geslaagd.
 - De gecontroleerde foutafhandeling is operationeel succesvol voor de scheduler en bewaart de mislukte importrun plus audit ongewijzigd. De betreffende CSV vereist na `catalog_changed` bewust een nieuwe dry-run tegen de actuele catalogus.
+
+## OTP-mailcontract en volledige mailaudit — 2026-08-18
+
+- De ouder-OTP-renderer leverde naast de providerpayload ook de presentationele `preheader`. De OTP-route verspreidde dit volledige object naar de strikte SendGrid-grens, die het extra veld terecht als `configuration_error` afwees voordat een providerrequest ontstond.
+- De route selecteert nu expliciet uitsluitend onderwerp, tekst, HTML en de drie afzendervelden. De preheader blijft ongewijzigd als verborgen tekst in de gerenderde HTML aanwezig; de strikte providergrens is niet verruimd.
+- Alle overige uitgaande applicatiepaden zijn op dezelfde grens gecontroleerd. Queue-, campagne-, herinnerings-, fulfilment-, portaaluitnodigings- en beheertestmail gebruiken al expliciete providerpayloads; daar is geen tweede vormfout gevonden.
+- Staging heeft 19/19 gepubliceerde templates en producers, een lege gezonde queue en vijf door SendGrid geaccepteerde portaaluitnodigingen. De twee echte OTP-pogingen in de laatste 24 uur bevestigen de herstelde foutoorzaak: beide eindigden vóór deze hotfix als `configuration_error` zonder providerrequest.
+- Medewerkeruitnodigingen en wachtwoordherstel gebruiken afzonderlijk Supabase Auth SMTP. Hun applicatiecontract en lokale recoveryflow zijn gecontroleerd, maar hosted SMTP-/inboxaflevering vereist apart operationeel bewijs.
