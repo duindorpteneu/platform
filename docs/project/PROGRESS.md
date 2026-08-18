@@ -417,3 +417,14 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Een uitgeschakelde of onvolledig geconfigureerde dynamische import retourneert vóór adminclient en runledger gecontroleerd `paused`. De scheduler en directe interne route delen daarmee hetzelfde goedkope fail-closed contract zonder zinloze operation-runs.
 - De actuele, reeds gepinde Distroless Debian 13-runtime heeft geen nieuwere digest en bevat één `fix_deferred` HIGH-bevinding voor OpenSSL-QUIC. De app gebruikt geen OpenSSL-QUIC en luistert uitsluitend met Node HTTP op loopback achter de hostproxy.
 - Alleen `CVE-2026-14456` voor exact `libssl3t64@3.5.6-1~deb13u2` is daarom tijdelijk tot 1 september 2026 uitgezonderd. De HIGH/CRITICAL-gate, `ignore-unfixed: false`, digestpinning, SBOM en alle overige bevindingen blijven fail-closed.
+## Ouderportaal-LiveChat en workspace-nullnormalisatie — 2026-08-18
+
+- LiveChat is via één gedeelde parent-route-layout beschikbaar op de login, verificatie en volledige leden-/bestelflow. Medewerker-, uitgifte- en betalingroutes laden de integratie niet.
+- De externe provider wordt pas na een expliciete ouderactie geladen. Er worden geen ouder-, lid-, order- of betaalgegevens als LiveChat-variabelen doorgegeven; de vereiste CSP-bronnen zijn uitsluitend op de ouderroutes toegestaan.
+- Forward-only migration `20260818112859_normalize_parent_workspace_issued_boolean.sql` legt de reeds op staging toegepaste centrale ouderworkspacefix vast: expliciete JSON-nullwaarden voor `order.items[].issued` worden contractconform `false`, voor alle ouderaccounts en zonder overige workspacevelden te wijzigen.
+
+## PostgreSQL-retrystormcontainment — 2026-08-18
+
+- Twee normale business-stateconflicten gebruikten SQLSTATE `40001`, die door de PostgREST-databaselaag als echte serialisatiefout snel intern werd herhaald. Dit veroorzaakte ruim 12,4 miljoen rollbacks, brede 504-responses en secundaire OTP-fouten.
+- Readiness retourneert pending aantallen nu als data en een dubbele of ontbrekende runfinalisatie retourneert `null`. SendGrid blijft via een gecontroleerde HTTP 503 met `Retry-After` opnieuw aanbieden; de database krijgt geen retrybare exception meer.
+- Stagingcontainment `20260818114029_staging_retry_storm_containment_20260818` is zonder datamutatie toegepast. Na 80 seconden bleef de rollbackdelta nul, zonder geblokkeerde of langlopende queries; reguliere RPC's en health antwoorden weer met 200.

@@ -304,21 +304,18 @@ select ok(
   ),
   'send-time autorisatie hercontroleert challenge, toegang en mailpoort'
 );
-select throws_ok(
-  format(
-    $sql$select app.assert_sendgrid_events_ready_v1(
-      jsonb_build_array(
-        jsonb_build_object(
-          'target', 'parent_otp',
-          'delivery_attempt_id', %L
-        )
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target', 'parent_otp',
+        'delivery_attempt_id',
+          (select result->>'deliveryAttemptId' from prepared_otp)
       )
-    )$sql$,
-    (select result->>'deliveryAttemptId' from prepared_otp)
-  ),
-  '40001',
-  'SENDGRID_EVENT_ACCEPTANCE_PENDING',
-  'OTP-callback vóór HTTP-acceptatie wordt retrybaar geweigerd'
+    )
+  )->>'ready',
+  '0',
+  'OTP-callback vóór HTTP-acceptatie wordt zonder retrybare SQLSTATE uitgesteld'
 );
 select is(
   app.record_parent_otp_sendgrid_events_v3(

@@ -215,6 +215,16 @@ select lives_ok($$select app.start_operation_run('email_worker', 'a7000000-0000-
   'service start e-mailworkerrun');
 select lives_ok($$select app.finish_operation_run('a7000000-0000-4000-8000-000000000001', 'succeeded', 2, null)$$,
   'service voltooit e-mailworkerrun');
+select is(
+  app.finish_operation_run(
+    'a7000000-0000-4000-8000-000000000001',
+    'succeeded',
+    2,
+    null
+  ),
+  null::jsonb,
+  'dubbele runfinalisatie retourneert null zonder retrybare SQLSTATE'
+);
 select lives_ok($$select app.start_operation_run('retention', 'a7000000-0000-4000-8000-000000000002')$$,
   'service start retentierun');
 select lives_ok($$select app.finish_operation_run('a7000000-0000-4000-8000-000000000002', 'succeeded', 0, null)$$,

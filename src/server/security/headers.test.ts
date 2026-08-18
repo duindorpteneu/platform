@@ -24,6 +24,23 @@ describe("production security headers", () => {
     }
     expect(policy).toContain("connect-src 'self' https://project.supabase.co wss://project.supabase.co");
     expect(policy).not.toContain("'unsafe-eval'");
+    expect(policy).not.toContain("livechatinc.com");
+  });
+
+  it("allows LiveChat only after an explicit parent-route opt-in", () => {
+    const policy = buildContentSecurityPolicy(
+      true,
+      "https://project.supabase.co/rest/v1",
+      true,
+    );
+    expect(policy).toContain("script-src 'self' 'unsafe-inline' https://api.livechatinc.com https://cdn.livechatinc.com");
+    expect(policy).toContain("connect-src 'self' https://project.supabase.co wss://project.supabase.co https://api.livechatinc.com");
+    expect(policy).toContain("frame-src https://api.livechatinc.com https://cdn.livechatinc.com https://secure.livechatinc.com");
+    expect(policy).toContain("https://cdn.livechat-files.com");
+    expect(policy).toContain("https://api.text.com");
+    expect(policy).not.toContain("'unsafe-eval'");
+    expect(policy).not.toContain("youtube.com");
+    expect(policy).not.toContain("google.com");
   });
 
   it("allows the Next.js development evaluator without sending HSTS locally", () => {

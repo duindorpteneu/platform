@@ -627,3 +627,16 @@ Record commands, results and relevant screenshots/notes per phase.
 - `pnpm exec vitest run src/app/api/internal/jobs/imports/route.test.ts scripts/deploy/deployment-contract.test.ts` — groen: 2 bestanden en 49 tests. De regressies bewijzen dat disabled/ongeldige configuratie geen ledger opent, false/rejected start geen onbevestigde run afsluit en een fout na bevestigde start wel gecontroleerd wordt gesloten.
 - Trivy `0.70.0` tegen de actuele digest `gcr.io/distroless/nodejs22-debian13:nonroot@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167` vindt exact één HIGH en nul CRITICAL: `CVE-2026-14456` in `libssl3t64@3.5.6-1~deb13u2`, status `fix_deferred`, zonder fixed version.
 - De pakket- en vervaldatumgebonden ignorefile onderdrukt lokaal exact die ene bevinding en rapporteert haar zichtbaar als suppressed; dezelfde scan eindigt met nul niet-onderdrukte HIGH/CRITICAL. Vervaldatum is 1 september 2026 en de workflowtest bewaakt exact één CVE, de volledige PURL, behoud van `ignore-unfixed: false` en expliciete workflowbinding.
+## Ouderportaal-LiveChat en workspace-nullnormalisatie — 2026-08-18 lokaal
+
+- `pnpm exec vitest run src/components/member/parent-live-chat.test.tsx src/server/security/headers.test.ts` — groen: 2 bestanden en 7 tests. Bewijst expliciete activatie, de aangeleverde licentie/integratie, afwezigheid van portaal-PII en parent-only CSP zonder production `unsafe-eval`.
+- `pnpm typecheck`, gerichte ESLint, secretscan, migrationlint voor 153 forward-only migrations en `git diff --check` — groen.
+- De centrale v6-SQL is vóór opname als forward-only migration read-only vergeleken met de stagingdefinitie; de eerdere stagingprobe bewees nul null/non-boolean `issued`-waarden en ongewijzigde overige workspace-JSON. Hosted exact-SHA build-, database- en browseracceptatie blijven de releasepoort.
+
+## PostgreSQL-retrystormcontainment — 2026-08-18
+
+- Staging vóór containment: 12.421.916 rollbacks; individuele PostgREST-backends hadden miljoenen sessieregels. De twee foutfuncties gebruikten aantoonbaar SQLSTATE `40001` voor normale pending/terminal state.
+- Staging na containment: rollbackdelta 0 over 80 seconden, 0 blocked, 0 idle-aborted, 0 actieve queries langer dan 10 seconden en reguliere RPC-/healthresponses 200. Er zijn geen domeinrecords verwijderd of gewijzigd en de service-role-ACL bleef intact.
+- De drie nieuwe migrations zijn lokaal incrementeel toegepast. Vier gerichte pgTAP-bestanden zijn groen met 164 assertions voor queue-, OTP-, mail-test- en operation-runcontracten.
+- De gerichte Vitests zijn groen met 4 bestanden/17 tests, inclusief zowel compatibiliteit met de oude `40001`-response als het nieuwe getypeerde pendingpad en de LiveChat/CSP-contracten.
+- De afsluitende volledige Vitestsuite is groen met 213 bestanden/1.304 tests; ESLint, TypeScript, production build, secretscan, migrationlint en `git diff --check` zijn eveneens groen.

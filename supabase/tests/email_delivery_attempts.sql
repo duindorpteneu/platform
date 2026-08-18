@@ -193,23 +193,19 @@ select ok(
   ),
   'send-time autorisatie is ook aan de poging gebonden'
 );
-select throws_ok(
-  format(
-    $sql$select app.assert_sendgrid_events_ready_v1(
-      jsonb_build_array(
-        jsonb_build_object(
-          'target', 'email_job',
-          'email_job_id',
-            '277a3000-0000-4000-8000-000000000001',
-          'delivery_attempt_id', %L
-        )
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target', 'email_job',
+        'email_job_id', '277a3000-0000-4000-8000-000000000001',
+        'delivery_attempt_id',
+          (select result #>> '{jobs,0,deliveryAttemptId}' from first_claim)
       )
-    )$sql$,
-    (select result #>> '{jobs,0,deliveryAttemptId}' from first_claim)
-  ),
-  '40001',
-  'SENDGRID_EVENT_ACCEPTANCE_PENDING',
-  'queuecallback vóór HTTP-acceptatie wordt retrybaar geweigerd'
+    )
+  )->>'ready',
+  '0',
+  'queuecallback vóór HTTP-acceptatie wordt zonder retrybare SQLSTATE uitgesteld'
 );
 select is(
   app.record_sendgrid_events_v4(jsonb_build_array(
