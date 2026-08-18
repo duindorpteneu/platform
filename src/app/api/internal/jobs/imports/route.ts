@@ -352,11 +352,12 @@ export async function POST(request: Request) {
       );
       if (releaseError) throw new Error("DYNAMIC_IMPORT_LEASE_RELEASE_FAILED");
     }
-    const operationStatus = result.status === "failed" ? "failed" : "succeeded";
+    // Recording a domain-level run failure is successful worker execution.
+    // Partial writes remain a separate, release-blocking database-health axis.
     const recorded = await closeOperation(
-      operationStatus,
+      "succeeded",
       result.processed,
-      result.errorCode,
+      null,
     );
     if (!recorded) {
       return NextResponse.json({ error: "Importworkerresultaat kon niet worden gemonitord." }, { status: 503 });
@@ -365,7 +366,7 @@ export async function POST(request: Request) {
       status: result.status,
       claimed: 1,
       processed: result.processed,
-    }, { status: result.status === "failed" ? 503 : 200 });
+    }, { status: 200 });
   } catch {
     if (startAttempted && !closeAttempted) {
       try {

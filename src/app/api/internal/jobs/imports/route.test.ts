@@ -330,11 +330,19 @@ describe("POST /api/internal/jobs/imports", () => {
       "https://tenue.example/api/internal/jobs/imports",
       { method: "POST" },
     ));
-    expect(catalog.status).toBe(503);
+    expect(catalog.status).toBe(200);
     expect(await catalog.json()).toEqual({ status: "failed", claimed: 1, processed: 0 });
     expect(mocks.rpc).toHaveBeenCalledWith(
       "fail_dynamic_import_run",
       expect.objectContaining({ p_failure_code: "catalog_changed" }),
+    );
+    expect(mocks.finishRun).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "import_worker",
+      expect.any(String),
+      "succeeded",
+      0,
+      null,
     );
 
     mocks.rpc.mockReset().mockImplementation((name: string) => {
@@ -359,7 +367,7 @@ describe("POST /api/internal/jobs/imports", () => {
       "https://tenue.example/api/internal/jobs/imports",
       { method: "POST" },
     ));
-    expect(state.status).toBe(503);
+    expect(state.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
       "fail_dynamic_import_run",
       expect.objectContaining({ p_failure_code: "state_drift" }),
