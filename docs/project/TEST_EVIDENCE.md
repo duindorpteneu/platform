@@ -604,3 +604,12 @@ Record commands, results and relevant screenshots/notes per phase.
 - Deployrun `32060172912` bouwde en signeerde exact main `ec92b3f`, maar stopte vóór iedere stagingmutatie omdat de actuele Mollie-key niet aan de eerdere staging-testprefix voldeed.
 - `scripts/deploy/deployment-contract.test.ts` — groen: 32 tests. De nieuwe regressie accepteert een live key op exact de publieke cluborigin en weigert een onbekende keyvorm; productionisolatie en test-only Mollie-acceptatie blijven intact.
 - `pnpm typecheck`, gerichte ESLint, Node-syntax en `git diff --check` zijn groen. De volledige hosted poort blijft verplicht vóór redeploy.
+
+## Dynamische-importleaseherstel — 2026-08-18 lokaal
+
+- Schone replay van alle 149 forward-only migrations is groen, inclusief `20260817231704_refresh_dynamic_import_lease_clock.sql`.
+- `supabase/tests/dynamic_import_operations.sql` — groen: 35 assertions, waaronder de wall-clockvloer, service-only leasevrijgave en weigering van een vreemde claimtoken.
+- `pnpm test:db:import-concurrency` — groen: parallel claimen, fencing, identiteit en lockvolgorde blijven intact.
+- `src/app/api/internal/jobs/imports/route.test.ts` — groen: 15 tests; één kleine commitchunk per invocation en een oude gefencete lease eindigt hervatbaar zonder runfailure/finalizer.
+- Gerichte ESLint, TypeScript, migrationlint, secretscan, security- en performance-advisors en `git diff --check` zijn groen.
+- `scripts/test-dynamic-import-browser.mjs` — groen op de productiebuild: preview, hervatting over meerdere begrensde worker-aanroepen, commit van 101 rijen, DOB, conflictsuppressie en handmatige invoer.

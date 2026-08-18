@@ -34,6 +34,22 @@ select ok(
   ),
   'anon kan operationele health niet lezen'
 );
+select ok(
+  has_function_privilege(
+    'service_role',
+    'app.release_dynamic_import_run_lease(uuid,uuid,integer)',
+    'EXECUTE'
+  ),
+  'alleen de serviceworker kan een eigen importlease vrijgeven'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'app.release_dynamic_import_run_lease(uuid,uuid,integer)',
+    'EXECUTE'
+  ),
+  'medewerkers kunnen geen importleases vrijgeven'
+);
 
 insert into app.staff_profiles(auth_user_id, display_name, role)
 values(
@@ -370,6 +386,63 @@ values(
   'import_worker',
   'running',
   timezone('utc', now()) - interval '5 minutes'
+);
+
+insert into private.dynamic_import_run_leases(
+  run_id,
+  claim_token,
+  generation,
+  claimed_at,
+  expires_at
+)
+values(
+  'fa400000-0000-4000-8000-000000000002',
+  'fa500000-0000-4000-8000-000000000002',
+  1,
+  clock_timestamp(),
+  clock_timestamp() + interval '55 seconds'
+);
+
+update private.dynamic_import_run_leases
+set expires_at = clock_timestamp() + interval '1 second'
+where run_id = 'fa400000-0000-4000-8000-000000000002';
+
+select ok(
+  (
+    select expires_at >= clock_timestamp() + interval '54 seconds'
+    from private.dynamic_import_run_leases
+    where run_id = 'fa400000-0000-4000-8000-000000000002'
+  ),
+  'een same-owner leaseverlenging gebruikt de actuele wandklok'
+);
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(
+  not app.release_dynamic_import_run_lease(
+    'fa400000-0000-4000-8000-000000000002',
+    'fa500000-0000-4000-8000-000000000099',
+    1
+  ),
+  'een vreemde claimtoken kan een actieve importlease niet vrijgeven'
+);
+select ok(
+  app.release_dynamic_import_run_lease(
+    'fa400000-0000-4000-8000-000000000002',
+    'fa500000-0000-4000-8000-000000000002',
+    1
+  ),
+  'de actuele worker kan zijn eigen begrensde chunklease vrijgeven'
+);
+reset role;
+select is(
+  (
+    select count(*)
+    from private.dynamic_import_run_leases
+    where run_id = 'fa400000-0000-4000-8000-000000000002'
+  ),
+  0::bigint,
+  'de vrijgegeven chunklease is verwijderd'
 );
 
 create temporary table first_cleanup(result jsonb);
