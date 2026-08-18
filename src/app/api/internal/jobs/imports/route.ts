@@ -277,13 +277,25 @@ export async function POST(request: Request) {
   }
   const empty = await readEmptyRequest(request);
   if (!empty.ok) return empty.response;
+  let env: ReturnType<typeof getServerEnv>;
+  try {
+    env = getServerEnv();
+  } catch {
+    return NextResponse.json(
+      { error: "Importworkerconfiguratie is ongeldig." },
+      { status: 503 },
+    );
+  }
+  if (env.DYNAMIC_IMPORT_ENABLED !== "true" || !env.IMPORT_STAGING_ENCRYPTION_KEY) {
+    return NextResponse.json({ status: "paused", claimed: 0, processed: 0 });
+  }
   const admin = getSupabaseAdminClient();
   if (!admin) {
     return NextResponse.json({ error: "Importworker tijdelijk niet beschikbaar." }, { status: 503 });
   }
 
   const runId = randomUUID();
-  let startAttempted = false;
+  let started = false;
   let closeAttempted = false;
   const closeOperation = async (
     status: "succeeded" | "failed" | "paused",
@@ -301,18 +313,9 @@ export async function POST(request: Request) {
     );
   };
   try {
-    startAttempted = true;
-    if (!await startOperationRun(admin, "import_worker", runId)) {
-      await closeOperation("failed", 0, "start_failed");
+    started = await startOperationRun(admin, "import_worker", runId);
+    if (!started) {
       return NextResponse.json({ error: "Importworker kon niet worden gemonitord." }, { status: 503 });
-    }
-
-    const env = getServerEnv();
-    if (env.DYNAMIC_IMPORT_ENABLED !== "true" || !env.IMPORT_STAGING_ENCRYPTION_KEY) {
-      if (!await closeOperation("paused", 0)) {
-        return NextResponse.json({ error: "Gepauzeerde workerstatus kon niet worden vastgelegd." }, { status: 503 });
-      }
-      return NextResponse.json({ status: "paused", claimed: 0, processed: 0 });
     }
 
     const claimToken = randomUUID();
@@ -368,7 +371,7 @@ export async function POST(request: Request) {
       processed: result.processed,
     }, { status: 200 });
   } catch {
-    if (startAttempted && !closeAttempted) {
+    if (started && !closeAttempted) {
       try {
         await closeOperation("failed", 0, "processing_failed");
       } catch {

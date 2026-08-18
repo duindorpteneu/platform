@@ -1,0 +1,10 @@
+vulnerabilities:
+  - id: CVE-2026-14456
+    purls:
+      - pkg:deb/debian/libssl3t64@3.5.6-1~deb13u2?arch=amd64&distro=debian-13.6
+    expired_at: 2026-09-01
+    statement: >-
+      Tijdelijke acceptatie: de runtime gebruikt OpenSSL niet als QUIC-client of
+      -server en luistert uitsluitend met Node HTTP achter de hostproxy. Verwijder
+      deze uitzondering zodra de digest-gepinde Distroless-basis een gefixte
+      libssl3t64 bevat.

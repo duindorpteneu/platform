@@ -181,3 +181,9 @@
 - De operationeel als productie gebruikte stagingruntime mag naast een `test_`-key ook een `live_`-key laden, maar uitsluitend wanneer `APP_HOST` exact `duindorpsv.dgwebservices.nl` is. Andere keyvormen en de afzonderlijke productionregel blijven fail-closed.
 - De staging-Mollie-acceptatieworkflow blijft uitsluitend `test_` accepteren en weigert providerrequests met een live key. Hierdoor kan een release- of acceptatierun nooit automatisch een echte betaling uitvoeren.
 - De eerste domeincutoverdeploy stopte vóór runtime-, database- of containermutatie op de oude test-keyregel; de bestaande release bleef actief.
+
+## D-103 — Eén vervallende CVE-uitzondering vervangt geen runtime-image
+
+- De nieuwste digest van `distroless/nodejs22-debian13:nonroot` is gelijk aan de reeds gepinde runtime en bevat één `fix_deferred` HIGH-bevinding zonder fixed version. De beschikbare Debian 12-basis heeft meer en zwaardere bevindingen; een andere runtimefamilie zou voor deze hotfix een onnodig grote compatibiliteitswijziging zijn.
+- `CVE-2026-14456` raakt de OpenSSL-QUIC-server. Deze applicatie start uitsluitend Node HTTP op containerpoort 3000, gebonden aan host-loopback en achter de externe proxy; zij initialiseert geen OpenSSL-QUIC-client of -server.
+- De releasegate krijgt daarom alleen voor de exacte `libssl3t64`-PURL een tijdelijke acceptatie tot 1 september 2026. Een nieuw CVE, packageversie, distributie, architectuur of verlopen datum blokkeert automatisch; bij een gefixte Distroless-digest wordt de uitzondering direct verwijderd.

@@ -117,6 +117,7 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          trivyignores: deploy/trivy-release-ignore.yaml
           exit-code: "1"
           hide-progress: true
 

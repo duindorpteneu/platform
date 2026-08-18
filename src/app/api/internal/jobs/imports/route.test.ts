@@ -203,6 +203,9 @@ describe("POST /api/internal/jobs/imports", () => {
     ));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "paused", claimed: 0 });
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(mocks.startRun).not.toHaveBeenCalled();
+    expect(mocks.finishRun).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
@@ -241,17 +244,10 @@ describe("POST /api/internal/jobs/imports", () => {
       { method: "POST" },
     ));
     expect(unmonitored.status).toBe(503);
-    expect(mocks.finishRun).toHaveBeenCalledWith(
-      expect.anything(),
-      "import_worker",
-      expect.any(String),
-      "failed",
-      0,
-      "start_failed",
-    );
+    expect(mocks.finishRun).not.toHaveBeenCalled();
   });
 
-  it("sluit een gestarte operation-run bij env- of claimfouten", async () => {
+  it("start geen operation-run bij ongeldige runtimeconfiguratie", async () => {
     mocks.env.mockImplementationOnce(() => {
       throw new Error("invalid env");
     });
@@ -260,15 +256,22 @@ describe("POST /api/internal/jobs/imports", () => {
       { method: "POST" },
     ));
     expect(envFailure.status).toBe(503);
-    expect(mocks.finishRun).toHaveBeenLastCalledWith(
-      expect.anything(),
-      "import_worker",
-      expect.any(String),
-      "failed",
-      0,
-      "processing_failed",
-    );
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(mocks.startRun).not.toHaveBeenCalled();
+    expect(mocks.finishRun).not.toHaveBeenCalled();
+  });
 
+  it("sluit geen onbevestigde operation-run na een startfout", async () => {
+    mocks.startRun.mockRejectedValueOnce(new Error("database unavailable"));
+    const response = await POST(new Request(
+      "https://tenue.example/api/internal/jobs/imports",
+      { method: "POST" },
+    ));
+    expect(response.status).toBe(503);
+    expect(mocks.finishRun).not.toHaveBeenCalled();
+  });
+
+  it("sluit een bevestigde operation-run bij een claimfout", async () => {
     mocks.rpc.mockRejectedValueOnce(new Error("database unavailable"));
     const claimFailure = await POST(new Request(
       "https://tenue.example/api/internal/jobs/imports",
