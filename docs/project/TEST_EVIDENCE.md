@@ -613,3 +613,11 @@ Record commands, results and relevant screenshots/notes per phase.
 - `src/app/api/internal/jobs/imports/route.test.ts` — groen: 15 tests; één kleine commitchunk per invocation en een oude gefencete lease eindigt hervatbaar zonder runfailure/finalizer.
 - Gerichte ESLint, TypeScript, migrationlint, secretscan, security- en performance-advisors en `git diff --check` zijn groen.
 - `scripts/test-dynamic-import-browser.mjs` — groen op de productiebuild: preview, hervatting over meerdere begrensde worker-aanroepen, commit van 101 rijen, DOB, conflictsuppressie en handmatige invoer.
+
+## OTP-mailcontract en mailpadaudit — 2026-08-18 lokaal
+
+- `pnpm vitest run src/server/email src/lib/email-contract.test.ts src/lib/mail-v2-contract.test.ts src/app/api/parent-auth/request-code/route.test.ts src/app/api/internal/jobs/email/route.test.ts src/app/api/email` — groen: 26 bestanden en 143 tests. Dit omvat OTP, SendGrid, webhook, alle mail-v2-services, worker en e-mailroutes.
+- `pnpm vitest run src/app/api/staff-auth/password-recovery/route.test.ts` — groen: 3 tests voor neutrale responses, rate limits en de canonical recoveryredirect.
+- Gerichte ESLint op de twee gewijzigde OTP-routebestanden, volledige TypeScriptcontrole en `git diff --check` zijn groen.
+- De regressie verwacht nu expliciet dat `preheader` niet aan `sendParentOtpV2Email` wordt doorgegeven. Queue-, fulfilment-, generieke v2- en beheertestmail behouden hun reeds expliciete providerpayload.
+- Read-only stagingbewijs: 19/19 templates gepubliceerd en producers actief; queue/retry/failed/uncertain alle nul; vijf portaaluitnodigingen provider-geaccepteerd; twee echte OTP-attempts vóór de hotfix beide `configuration_error` en zonder provider-event. Er zijn in deze lokale fase geen mails verstuurd en geen staging- of productie-instellingen gewijzigd.

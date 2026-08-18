@@ -69,7 +69,12 @@ async function deliverPreparedParentOtp(
     const delivery = await sendParentOtpV2Email({
       deliveryAttemptId: preparation.deliveryAttemptId,
       recipientEmail: email,
-      ...message,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      fromName: message.fromName,
+      fromEmail: message.fromEmail,
+      replyToEmail: message.replyToEmail,
     });
     if (delivery.delivered) {
       await completeParentOtpV2(
