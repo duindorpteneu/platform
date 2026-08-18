@@ -205,3 +205,9 @@
 - Een renderfout wordt niet door een provideracceptatie hersteld, omdat dit een afzonderlijk pad is. Delivery uncertainty, provider bounce/drop/failure en quarantaine blijven eveneens afzonderlijk fail-closed.
 - Adresgebonden providerafwijzingen houden na aantoonbaar herstel niet langer de volledige applicatie 24 uur onterecht op degraded.
 - De vijf stagingafwijzingen die door de gecorrigeerde OTP-providerpayload voorafgingen, krijgen één expliciete, immutable migratiereconciliatie als herstelgrens. Alleen eerdere afwijzingen worden erkend; iedere nieuwe afwijzing na die grens blokkeert opnieuw totdat een echte latere acceptatie is vastgelegd.
+
+## D-107 — Schedulerhealth onderscheidt historische en onherstelde mailincidenten
+
+- Een immutable migratiereconciliatie erkent uitsluitend mailjobs, onzekere afleveringen en providerfailures van vóór het herstelde verzendpad. De records blijven intact; iedere nieuwe failure na de grens blijft intern fail-closed blokkeren.
+- Een oude `running` e-mailworkerrun blijft zichtbaar in de ledger, maar is niet meer actueel wanneer een latere run van dezelfde worker aantoonbaar `succeeded` is. Zonder later succes blijft `runningStale` ongewijzigd blokkeren.
+- Publieke en interne health blijven alle overige integriteits-, queue-, provider-, runtime-, QR-, import-, reminder- en supplierassen ongewijzigd afdwingen.
