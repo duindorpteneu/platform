@@ -540,8 +540,19 @@ describe("fail-closed release chain", () => {
 
   it("deploys only after canonical full CI and attests a scanned immutable image", () => {
     const deploy = workflow("deploy.yml");
+    const trivyIgnore = readFileSync(
+      path.join(repositoryRoot, "deploy/trivy-release-ignore.yaml"),
+      "utf8",
+    );
     expect(deploy).toContain("node scripts/deploy/wait-for-ci.mjs");
     expect(deploy).toContain("Reject high or critical runtime vulnerabilities");
+    expect(deploy).toContain("ignore-unfixed: false");
+    expect(deploy).toContain("trivyignores: deploy/trivy-release-ignore.yaml");
+    expect(trivyIgnore.match(/CVE-[0-9-]+/gu)).toEqual(["CVE-2026-14456"]);
+    expect(trivyIgnore).toContain(
+      "pkg:deb/debian/libssl3t64@3.5.6-1~deb13u2?arch=amd64&distro=debian-13.6",
+    );
+    expect(trivyIgnore).toContain("expired_at: 2026-09-01");
     expect(deploy).toContain("format: spdx-json");
     expect(deploy).toContain("cosign sign-blob .release/SHA256SUMS");
     expect(deploy).toContain("--bundle .release/SHA256SUMS.sigstore.json");

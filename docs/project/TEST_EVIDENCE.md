@@ -621,3 +621,9 @@ Record commands, results and relevant screenshots/notes per phase.
 - Gerichte ESLint op de twee gewijzigde OTP-routebestanden, volledige TypeScriptcontrole en `git diff --check` zijn groen.
 - De regressie verwacht nu expliciet dat `preheader` niet aan `sendParentOtpV2Email` wordt doorgegeven. Queue-, fulfilment-, generieke v2- en beheertestmail behouden hun reeds expliciete providerpayload.
 - Read-only stagingbewijs: 19/19 templates gepubliceerd en producers actief; queue/retry/failed/uncertain alle nul; vijf portaaluitnodigingen provider-geaccepteerd; twee echte OTP-attempts vóór de hotfix beide `configuration_error` en zonder provider-event. Er zijn in deze lokale fase geen mails verstuurd en geen staging- of productie-instellingen gewijzigd.
+
+## Importworker-runledger en runtime-CVE-gate — 2026-08-18 lokaal
+
+- `pnpm exec vitest run src/app/api/internal/jobs/imports/route.test.ts scripts/deploy/deployment-contract.test.ts` — groen: 2 bestanden en 49 tests. De regressies bewijzen dat disabled/ongeldige configuratie geen ledger opent, false/rejected start geen onbevestigde run afsluit en een fout na bevestigde start wel gecontroleerd wordt gesloten.
+- Trivy `0.70.0` tegen de actuele digest `gcr.io/distroless/nodejs22-debian13:nonroot@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167` vindt exact één HIGH en nul CRITICAL: `CVE-2026-14456` in `libssl3t64@3.5.6-1~deb13u2`, status `fix_deferred`, zonder fixed version.
+- De pakket- en vervaldatumgebonden ignorefile onderdrukt lokaal exact die ene bevinding en rapporteert haar zichtbaar als suppressed; dezelfde scan eindigt met nul niet-onderdrukte HIGH/CRITICAL. Vervaldatum is 1 september 2026 en de workflowtest bewaakt exact één CVE, de volledige PURL, behoud van `ignore-unfixed: false` en expliciete workflowbinding.

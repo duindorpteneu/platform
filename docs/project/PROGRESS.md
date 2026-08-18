@@ -410,3 +410,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Alle overige uitgaande applicatiepaden zijn op dezelfde grens gecontroleerd. Queue-, campagne-, herinnerings-, fulfilment-, portaaluitnodigings- en beheertestmail gebruiken al expliciete providerpayloads; daar is geen tweede vormfout gevonden.
 - Staging heeft 19/19 gepubliceerde templates en producers, een lege gezonde queue en vijf door SendGrid geaccepteerde portaaluitnodigingen. De twee echte OTP-pogingen in de laatste 24 uur bevestigen de herstelde foutoorzaak: beide eindigden vóór deze hotfix als `configuration_error` zonder providerrequest.
 - Medewerkeruitnodigingen en wachtwoordherstel gebruiken afzonderlijk Supabase Auth SMTP. Hun applicatiecontract en lokale recoveryflow zijn gecontroleerd, maar hosted SMTP-/inboxaflevering vereist apart operationeel bewijs.
+
+## Importworker-runledger en tijdelijke runtime-CVE-acceptatie — 2026-08-18
+
+- De importworker sluit een operation-run voortaan uitsluitend wanneer `start_operation_run` aantoonbaar is geslaagd. Een mislukte of onderbroken start veroorzaakt daardoor geen secundaire `OPERATION_RUN_STATE_CONFLICT`; de strikte database-state-machine blijft ongewijzigd.
+- Een uitgeschakelde of onvolledig geconfigureerde dynamische import retourneert vóór adminclient en runledger gecontroleerd `paused`. De scheduler en directe interne route delen daarmee hetzelfde goedkope fail-closed contract zonder zinloze operation-runs.
+- De actuele, reeds gepinde Distroless Debian 13-runtime heeft geen nieuwere digest en bevat één `fix_deferred` HIGH-bevinding voor OpenSSL-QUIC. De app gebruikt geen OpenSSL-QUIC en luistert uitsluitend met Node HTTP op loopback achter de hostproxy.
+- Alleen `CVE-2026-14456` voor exact `libssl3t64@3.5.6-1~deb13u2` is daarom tijdelijk tot 1 september 2026 uitgezonderd. De HIGH/CRITICAL-gate, `ignore-unfixed: false`, digestpinning, SBOM en alle overige bevindingen blijven fail-closed.
