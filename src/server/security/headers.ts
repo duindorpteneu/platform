@@ -19,20 +19,63 @@ function supabaseConnections(rawUrl: string | undefined) {
   }
 }
 
-export function buildContentSecurityPolicy(production: boolean, supabaseUrl?: string) {
+const LIVECHAT_SOURCES = {
+  connect: [
+    "https://api.livechatinc.com",
+    "https://cdn.livechatinc.com",
+    "https://secure.livechatinc.com",
+    "https://api.text.com",
+  ],
+  font: ["https://cdn.livechatinc.com", "https://secure.livechatinc.com"],
+  frame: [
+    "https://api.livechatinc.com",
+    "https://cdn.livechatinc.com",
+    "https://secure.livechatinc.com",
+  ],
+  image: [
+    "https://cdn.livechatinc.com",
+    "https://secure.livechatinc.com",
+    "https://cdn.livechat-static.com",
+    "https://cdn.livechat-files.com",
+    "https://cdn.files-text.com",
+  ],
+  media: [
+    "https://cdn.livechatinc.com",
+    "https://secure.livechatinc.com",
+    "https://cdn.livechat-static.com",
+  ],
+  script: [
+    "https://api.livechatinc.com",
+    "https://cdn.livechatinc.com",
+    "https://secure.livechatinc.com",
+    "https://cdn.livechat-static.com",
+  ],
+} as const;
+
+function sources(values: readonly string[], enabled: boolean) {
+  return enabled ? ` ${values.join(" ")}` : "";
+}
+
+export function buildContentSecurityPolicy(
+  production: boolean,
+  supabaseUrl?: string,
+  liveChatAllowed = false,
+) {
   const directives = [
     "default-src 'self'",
     "base-uri 'self'",
-    `connect-src 'self' ${supabaseConnections(supabaseUrl).join(" ")}`.trim(),
-    "font-src 'self' data:",
+    `connect-src 'self' ${supabaseConnections(supabaseUrl).join(" ")}${sources(LIVECHAT_SOURCES.connect, liveChatAllowed)}`.trim(),
+    `font-src 'self' data:${sources(LIVECHAT_SOURCES.font, liveChatAllowed)}`,
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "frame-src 'none'",
-    "img-src 'self' data: blob:",
+    liveChatAllowed
+      ? `frame-src${sources(LIVECHAT_SOURCES.frame, true)}`
+      : "frame-src 'none'",
+    `img-src 'self' data: blob:${sources(LIVECHAT_SOURCES.image, liveChatAllowed)}`,
     "manifest-src 'self'",
-    "media-src 'self'",
+    `media-src 'self'${sources(LIVECHAT_SOURCES.media, liveChatAllowed)}`,
     "object-src 'none'",
-    `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"}`,
+    `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"}${sources(LIVECHAT_SOURCES.script, liveChatAllowed)}`,
     "style-src 'self' 'unsafe-inline'",
     "worker-src 'self' blob:",
   ];
@@ -44,9 +87,13 @@ export function buildSecurityHeaders(
   production: boolean,
   supabaseUrl?: string,
   cameraAllowed = false,
+  liveChatAllowed = false,
 ) {
   const headers: Array<{ key: string; value: string }> = [
-    { key: "Content-Security-Policy", value: buildContentSecurityPolicy(production, supabaseUrl) },
+    {
+      key: "Content-Security-Policy",
+      value: buildContentSecurityPolicy(production, supabaseUrl, liveChatAllowed),
+    },
     {
       key: "Permissions-Policy",
       value: `camera=${cameraAllowed ? "(self)" : "()"}, geolocation=(), microphone=(), payment=(), usb=()`,

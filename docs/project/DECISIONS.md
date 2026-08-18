@@ -187,3 +187,14 @@
 - De nieuwste digest van `distroless/nodejs22-debian13:nonroot` is gelijk aan de reeds gepinde runtime en bevat één `fix_deferred` HIGH-bevinding zonder fixed version. De beschikbare Debian 12-basis heeft meer en zwaardere bevindingen; een andere runtimefamilie zou voor deze hotfix een onnodig grote compatibiliteitswijziging zijn.
 - `CVE-2026-14456` raakt de OpenSSL-QUIC-server. Deze applicatie start uitsluitend Node HTTP op containerpoort 3000, gebonden aan host-loopback en achter de externe proxy; zij initialiseert geen OpenSSL-QUIC-client of -server.
 - De releasegate krijgt daarom alleen voor de exacte `libssl3t64`-PURL een tijdelijke acceptatie tot 1 september 2026. Een nieuw CVE, packageversie, distributie, architectuur of verlopen datum blokkeert automatisch; bij een gefixte Distroless-digest wordt de uitzondering direct verwijderd.
+## D-104 — LiveChat wordt alleen na ouderactie en alleen op ouderroutes geladen
+
+- Login, codeverificatie en het leden-/besteldashboard delen één supportwidget via de parent-route-layout. Staff, uitgifte en de order-ID bevattende betalingroute vallen erbuiten.
+- LiveChat wordt pas na de expliciete knop `Chat starten` geladen. De applicatie geeft geen ouder-, lid-, order- of betaalgegevens door als providercontext.
+- Alleen deze ouderroutes krijgen de minimaal benodigde LiveChat-bronnen in hun Content Security Policy; de strengere globale policy blijft voor alle andere oppervlakken intact.
+
+## D-105 — SQLSTATE 40001 wordt uitsluitend voor echte serialisatiefouten gebruikt
+
+- Een nog niet duurzaam afgeronde SendGrid-acceptatie is een gecontroleerde business-state en wordt als readinessaantal teruggegeven. De webhook vertaalt een onvolledige readiness naar HTTP 503 met `Retry-After: 30`.
+- Een operation-run die niet meer `running` is, kan niet nogmaals worden afgesloten en retourneert `null`. De applicatiegrens behandelt dit fail-closed zonder een database-retry te activeren.
+- De zeldzame mail-testcallbackrace gebruikt een expliciete `pending` response en hetzelfde HTTP-retrycontract. Ongeldige input blijft met een niet-retrybare validatie-SQLSTATE falen.

@@ -14,6 +14,12 @@ const nextConfig: NextConfig = {
   async headers() {
     const production = process.env.NODE_ENV === "production";
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const parentPortalHeaders = buildSecurityHeaders(
+      production,
+      supabaseUrl,
+      false,
+      true,
+    );
     return [
       {
         source: "/(.*)",
@@ -22,6 +28,18 @@ const nextConfig: NextConfig = {
       {
         source: "/uitgifte/:path*",
         headers: buildSecurityHeaders(production, supabaseUrl, true),
+      },
+      {
+        source: "/",
+        headers: parentPortalHeaders,
+      },
+      {
+        source: "/login/:path*",
+        headers: parentPortalHeaders,
+      },
+      {
+        source: "/mijn-tenue/:path*",
+        headers: parentPortalHeaders,
       },
       {
         source: "/uitgifte/scanner-sw.js",

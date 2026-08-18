@@ -14,10 +14,30 @@ const responseSchema = z.object({
   recorded: z.number().int().nonnegative(),
   ignored: z.number().int().nonnegative(),
   quarantined: z.number().int().nonnegative(),
+  pending: z.literal(true).optional(),
 }).strict();
 const readinessSchema = z.object({
   ready: z.number().int().nonnegative(),
 }).strict();
+
+function deferredWebhookResponse() {
+  operationalLogger.warn("sendgrid.webhook_deferred", {
+    code: "acceptance_pending",
+    provider: "sendgrid",
+    route: "/api/webhooks/sendgrid",
+    status: 503,
+  });
+  return NextResponse.json(
+    { error: "Webhookverwerking wordt opnieuw geprobeerd." },
+    {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": "30",
+      },
+    },
+  );
+}
 
 function logWebhookRejection(code: string, status: number) {
   operationalLogger.warn("sendgrid.webhook_rejected", {
@@ -100,22 +120,7 @@ export async function POST(request: Request) {
       { p_events: readinessEvents },
     );
   if (readinessError?.code === "40001") {
-    operationalLogger.warn("sendgrid.webhook_deferred", {
-      code: "acceptance_pending",
-      provider: "sendgrid",
-      route: "/api/webhooks/sendgrid",
-      status: 503,
-    });
-    return NextResponse.json(
-      { error: "Webhookverwerking wordt opnieuw geprobeerd." },
-      {
-        status: 503,
-        headers: {
-          "Cache-Control": "no-store",
-          "Retry-After": "30",
-        },
-      },
-    );
+    return deferredWebhookResponse();
   }
   if (readinessError) {
     logWebhookRejection("readiness_invalid", 422);
@@ -125,6 +130,9 @@ export async function POST(request: Request) {
     );
   }
   const readiness = readinessSchema.safeParse(readinessData);
+  if (readiness.success && readiness.data.ready < events.length) {
+    return deferredWebhookResponse();
+  }
   if (!readiness.success || readiness.data.ready !== events.length) {
     return NextResponse.json(
       { error: "Ongeldig antwoord van de database." },
@@ -204,6 +212,7 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
+    if (parsed.data.pending) return deferredWebhookResponse();
     results.push(parsed.data);
   }
   const aggregate = results.reduce(

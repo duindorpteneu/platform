@@ -155,6 +155,34 @@ describe("POST /api/webhooks/sendgrid", () => {
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
 
+  it("stelt ook een testevent-race zonder serialization exception uit", async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({ data: { ready: 1 }, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          recorded: 0,
+          ignored: 0,
+          quarantined: 0,
+          pending: true,
+        },
+        error: null,
+      });
+    const rawBody = new TextEncoder().encode(JSON.stringify([{
+      event: "bounce",
+      delivery_kind: "admin_test",
+      test_delivery_id:
+        "44444444-4444-4444-8444-444444444444",
+      sg_event_id: "event-test-before-acceptance",
+      timestamp: 1_785_680_000,
+    }]));
+
+    const response = await POST(signedRequest(rawBody));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+
   it("vraagt SendGrid om retry als de HTTP-acceptatie nog niet duurzaam is", async () => {
     mocks.rpc.mockResolvedValueOnce({
       data: null,
@@ -187,6 +215,34 @@ describe("POST /api/webhooks/sendgrid", () => {
         }],
       },
     );
+    expect(mocks.warn).toHaveBeenCalledWith(
+      "sendgrid.webhook_deferred",
+      expect.objectContaining({
+        code: "acceptance_pending",
+        status: 503,
+      }),
+    );
+  });
+
+  it("vraagt zonder retrybare database-exception om retry bij een pending readiness", async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: { ready: 0 },
+      error: null,
+    });
+    const rawBody = new TextEncoder().encode(JSON.stringify([{
+      event: "delivered",
+      email_job_id: "11111111-1111-4111-8111-111111111111",
+      delivery_attempt_id: "22222222-2222-4222-8222-222222222222",
+      sg_event_id: "event-before-acceptance-result",
+      sg_message_id: "message-before-acceptance-result",
+      timestamp: 1_785_680_000,
+    }]));
+
+    const response = await POST(signedRequest(rawBody));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(mocks.rpc).toHaveBeenCalledOnce();
     expect(mocks.warn).toHaveBeenCalledWith(
       "sendgrid.webhook_deferred",
       expect.objectContaining({

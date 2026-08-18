@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import ParentLoginPage from "@/app/(public)/login/page";
+import ParentLoginPage from "@/app/(parent)/login/page";
 import { getParentSession } from "@/server/auth/parent-session";
 
 export default async function Home() {

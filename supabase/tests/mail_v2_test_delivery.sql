@@ -209,21 +209,18 @@ select is(
   'de eerste voorbereiding is verzendbaar'
 );
 reset role;
-select throws_ok(
-  format(
-    $sql$select app.assert_sendgrid_events_ready_v1(
-      jsonb_build_array(
-        jsonb_build_object(
-          'target', 'mail_test',
-          'delivery_id', %L
-        )
+select is(
+  app.assert_sendgrid_events_ready_v1(
+    jsonb_build_array(
+      jsonb_build_object(
+        'target', 'mail_test',
+        'delivery_id',
+          (select result->>'deliveryId' from prepared_test_delivery)
       )
-    )$sql$,
-    (select result->>'deliveryId' from prepared_test_delivery)
-  ),
-  '40001',
-  'SENDGRID_EVENT_ACCEPTANCE_PENDING',
-  'signed testevent vóór HTTP-acceptatie is retrybaar'
+    )
+  )->>'ready',
+  '0',
+  'signed testevent vóór HTTP-acceptatie wordt zonder retrybare SQLSTATE uitgesteld'
 );
 select is(
   (
