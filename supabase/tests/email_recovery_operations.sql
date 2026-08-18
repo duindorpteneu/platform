@@ -243,6 +243,57 @@ select is((select result #>> '{operations,emailWorker,runningStale}' from recove
   'health detecteert ook een oudere vastgelopen workerrun');
 select is((select result->>'recentDeliveryFailures' from recovery_health), '0',
   'health houdt afleverfouten als niet-PII telling bij');
+select is(
+  app.get_operational_health_v13(
+    repeat('a', 64),
+    1,
+    null,
+    null
+  ) #>> '{operations,emailWorker,runningStale}',
+  'false',
+  'releasehealth herkent een vastgelopen run als een latere run slaagt'
+);
+insert into private.email_jobs(
+  id,
+  kind,
+  recipient_email,
+  template_key,
+  template_id,
+  order_id,
+  idempotency_key,
+  payload,
+  status,
+  attempts,
+  completed_at,
+  updated_at
+)
+select
+  'a4000000-0000-4000-8000-000000000006',
+  'transactional',
+  'recovery@example.invalid',
+  'payment_received',
+  template.id,
+  'a3000000-0000-4000-8000-000000000001',
+  'recovery-operation-6',
+  '{}'::jsonb,
+  'failed',
+  1,
+  statement_timestamp(),
+  statement_timestamp()
+from app.email_templates template
+where template.template_key = 'payment_received';
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  1,
+  'een nieuwe mailfailure na de herstelgrens blijft releaseblokkerend'
+);
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
 

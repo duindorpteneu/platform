@@ -434,3 +434,8 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Vijf bewaarde HTTP-providerafwijzingen hielden de releasehealth nog 24 uur rood, terwijl de daadwerkelijke OTP-payloadfix achter diezelfde releasepoort stond; alle overige database-readinessassen waren gezond.
 - De forward-only healthcorrectie bewaart de append-only historie, maar beschouwt een providerafwijzing na een latere echte acceptatie niet meer als een actueel systeembreed incident. Renderfouten en alle afzonderlijke uncertainty-, callback- en quarantainepoorten blijven fail-closed.
 - Omdat de daadwerkelijke OTP-payloadfix nog achter dezelfde releasepoort stond, markeert een tweede forward-only migratiereconciliatie uitsluitend de vóór-de-fix afwijzingen als erkend. Nieuwe afwijzingen blijven vanaf dat exacte tijdstip volledig fail-closed.
+
+## Herstelde schedulerhealth na mailincident — 2026-08-18
+
+- De kandidaatapp en alle schedulerjobs waren gezond, maar interne health bleef rood op 113 oude failures, drie oude onzekere afleveringen, drie oude providerfailures en één door de rollback onderbroken e-mailworkerrun.
+- Een forward-only, auditbare herstelgrens bewaart alle feiten en telt daarna alleen nieuwe mailincidenten. De onderbroken run is uitsluitend hersteld voor health wanneer een latere worker-run werkelijk succesvol is afgerond.

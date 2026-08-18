@@ -647,3 +647,8 @@ Record commands, results and relevant screenshots/notes per phase.
 - De forward-only healthmigratie bewaart alle auditfeiten en telt een HTTP-providerafwijzing alleen als onhersteld wanneer er nog geen latere `accepted`-uitkomst bestaat. Render-, uncertainty-, callbackfailure- en quarantaineassen blijven ongewijzigd fail-closed.
 - `supabase/tests/parent_otp_mail_v2.sql` bewijst zowel de blokkade vóór herstel als het vrijgeven na een latere echte provideracceptatie.
 - Een afzonderlijke immutable migratiereconciliatie vormt de eenmalige herstelgrens voor de al bekende vóór-de-fix stagingafwijzingen. Dezelfde regressie maakt na die grens een nieuwe afwijzing aan en bewijst dat die nog steeds blokkeert.
+
+## Schedulerhealth na hersteld mailincident — 2026-08-18
+
+- Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
+- De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
