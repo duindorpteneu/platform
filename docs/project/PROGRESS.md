@@ -459,3 +459,8 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.
 - De ouderworkspace adverteert geen globale pakketten meer. Zonder assignment ziet het gezin een beheerinstructie; met assignment uitsluitend de snapshotproducten van dat pakket. Bevestigde maten zijn read-only.
 - Betaling blijft mogelijk vóór maatbevestiging; reservering blijft geblokkeerd tot een geldige maat én betaling samenkomen. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.
+
+## Same-SHA stagingrollbackidentiteit — 2026-08-19
+
+- De vorige manifestgebonden image wordt voortaan volledig gevalideerd en onder een unieke, omgevings- en workflowpoginggebonden rollbackalias vastgezet voordat de kandidaat via `docker load` binnenkomt.
+- Automatisch herstel gebruikt uitsluitend die alias, zodat een handmatige redeploy van dezelfde SHA de rollbacktarget niet kan verplaatsen. Oude aliases worden pas na volledige releaseacceptatie per omgeving opgeruimd, met behoud van de onmiddellijk vorige target.

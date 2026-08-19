@@ -2,7 +2,17 @@
 
 ## Applicatierollback
 
-Bij mislukte health- of routechecks probeert `scripts/deploy-vps.sh` de vorige `duindorpteneu-app:<PREVIOUS_REVISION>` terug te zetten en herstelt het vorige runtimebestand. De vorige image wordt behouden. Daarna moeten lokaal en publiek `/api/health`, `/`, `/admin` en `/uitgifte` opnieuw worden gecontroleerd.
+Vóór het laden van een kandidaat valideert `scripts/deploy-vps.sh` het manifest en
+de OCI-/configdigest van de actieve vorige image. Het script geeft die image
+vervolgens een unieke, omgevingsgebonden `rollback-<omgeving>-<SHA>-<run>-<poging>`-
+alias. Bij mislukte health- of routechecks gebruikt iedere automatische
+herstelactie uitsluitend deze alias en herstelt zij het vorige runtimebestand.
+Daardoor blijft de rollbackimage ook bij een redeploy van exact dezelfde SHA
+ongewijzigd wanneer `docker load` de gewone SHA-tag naar de kandidaat verplaatst.
+Oudere aliases van dezelfde omgeving worden pas na volledige acceptatie
+opgeruimd; de onmiddellijk vorige rollbacktarget blijft behouden. Daarna moeten
+lokaal en publiek `/api/health`, `/`, `/admin` en `/uitgifte` opnieuw worden
+gecontroleerd.
 
 Voor de eerste overgang vanaf production-SHA `a79c8d8…` is uitsluitend de
 aparte workflow `Adopt exact legacy production rollback target` toegestaan.

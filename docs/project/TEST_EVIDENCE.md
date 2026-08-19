@@ -694,3 +694,8 @@ Record commands, results and relevant screenshots/notes per phase.
 - De volledige Vitestsuite is groen, inclusief regressies voor de onafhankelijke betaal- en maatassen, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
 - ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
 - Reviewherstel: de extra bevestigingsguard is verwijderd zodat de bestaande domeinworkflow vóór reservering vrij herbevestigt en na reservering een wijzigingsverzoek/actiepunt vastlegt. Profielen zonder assignment behouden hun bestaande artikelprojectie en betaling blijft canoniek onafhankelijk van maatbevestiging.
+
+## Same-SHA stagingrollbackidentiteit — 2026-08-19
+
+- De deploymentcontracttest bewaakt dat vorige manifest- en imagedigestvalidatie plus de geverifieerde rollbackalias vóór `docker load` staan, dat kandidaat- en rollbacktags ook bij dezelfde SHA gescheiden blijven en dat automatische rollback uitsluitend de alias gebruikt.
+- Dezelfde regressie bewaakt dat een digestafwijking vóór aliascreatie en candidate-load fail-closed stopt, dat kandidaat-schedulerlogs behouden blijven en dat aliascleanup pas na volledige acceptatie gebeurt met behoud van de onmiddellijk vorige target.

@@ -784,6 +784,75 @@ describe("fail-closed release chain", () => {
     );
   });
 
+  it("pins the validated previous image before loading even a same-SHA candidate", () => {
+    const deployScript = readFileSync(
+      path.join(repositoryRoot, "scripts/deploy-vps.sh"),
+      "utf8",
+    );
+    const previousBlock = deployScript.indexOf(
+      '[[ -f "${runtime_directory}/RELEASE_MANIFEST" ]]',
+    );
+    const previousManifestVerification = deployScript.indexOf(
+      "node scripts/deploy/release-manifest.mjs verify",
+      previousBlock,
+    );
+    const previousDigestGate = deployScript.indexOf(
+      '[[ "$previous_loaded_digest" == "$previous_digest"',
+      previousManifestVerification,
+    );
+    const rollbackAlias = deployScript.indexOf(
+      'rollback_image="${repository_image}:rollback-${environment}-${previous_revision}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
+    );
+    const rollbackTag = deployScript.indexOf(
+      'docker image tag "$previous_image" "$rollback_image"',
+    );
+    const rollbackDigestGate = deployScript.indexOf(
+      `[[ "$(docker image inspect --format '{{.Id}}' "$rollback_image")" == "$previous_loaded_digest" ]]`,
+    );
+    const candidateLoad = deployScript.indexOf(
+      'gzip -dc "$RELEASE_ARTIFACT" | docker load',
+    );
+
+    expect(previousManifestVerification).toBeGreaterThan(previousBlock);
+    expect(previousDigestGate).toBeGreaterThan(previousManifestVerification);
+    expect(rollbackAlias).toBeGreaterThan(
+      deployScript.indexOf('if valid_sha "$previous_revision"; then'),
+    );
+    expect(rollbackAlias).toBeLessThan(previousManifestVerification);
+    expect(rollbackTag).toBeGreaterThan(previousDigestGate);
+    expect(rollbackDigestGate).toBeGreaterThan(rollbackTag);
+    expect(candidateLoad).toBeGreaterThan(rollbackDigestGate);
+    expect(deployScript.slice(previousDigestGate, rollbackTag)).toContain(
+      '|| die "Vorige release-image wijkt af van het herstelmanifest."',
+    );
+    expect(deployScript).toContain(
+      'local image_tag="${repository_image}:${RELEASE_SHA}"',
+    );
+
+    const rollbackStart = deployScript.indexOf("  rollback() {");
+    const rollbackEnd = deployScript.indexOf("  signal_abort()", rollbackStart);
+    const rollback = deployScript.slice(rollbackStart, rollbackEnd);
+    expect(rollback).toContain('APP_IMAGE="$rollback_image"');
+    expect(rollback).toContain('check_scheduler_with_retries "$rollback_image"');
+    expect(rollback).not.toContain('APP_IMAGE="$previous_image"');
+
+    const accepted = deployScript.indexOf("  activated=false", candidateLoad);
+    const cleanup = deployScript.indexOf("  local rollback_tag", accepted);
+    expect(accepted).toBeGreaterThan(
+      deployScript.indexOf(
+        'mv -f -- "$temp_manifest" "${runtime_directory}/RELEASE_MANIFEST"',
+        candidateLoad,
+      ),
+    );
+    expect(cleanup).toBeGreaterThan(accepted);
+    expect(deployScript.slice(cleanup)).toContain(
+      '"$rollback_tag" != "$rollback_image"',
+    );
+    expect(deployScript.slice(cleanup)).toContain(
+      'rollback-${environment}-[a-f0-9]{40}',
+    );
+  });
+
   it("keeps the one-time legacy rollback contract evidence-bound", () => {
     const deployScript = readFileSync(
       path.join(repositoryRoot, "scripts/deploy-vps.sh"),
