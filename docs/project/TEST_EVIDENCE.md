@@ -1,5 +1,17 @@
 # Test evidence
 
+## PR 115 pakketmaten en Mollie-fixtureherstel — 2026-08-19
+
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed.
+- `pnpm vitest run src/app/api/parent/packages/select/route.test.ts src/app/api/parent/members/route.test.ts src/components/member/member-dashboard.test.ts` — passed; de verwachte negatieve `parent.workspace_schema_invalid`-log blijft beperkt tot de schematest.
+- `node scripts/check-migrations.mjs` — passed.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 213 Vitest-bestanden en 1304 tests groen.
+- `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
+- `pnpm test:db:mollie-fixture` — passed; cleanup houdt rekening met pakketassignments vóór orderverwijdering.
+- Gerichte DB-concurrencyharnassen voor fulfilment, package, payment, refund, inventory, delivery-notification, mail-projection, mail-supersession en email-attempt zijn lokaal groen.
+- `pnpm test:db:staging-cleanup` — passed; cleanupcontract bevat nu 107 expliciete operationele tabellen inclusief pakketassignments en behoudt staff/Auth/config.
+
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
 - `pnpm test` — 39 Vitest-bestanden en 177 tests passed; omvat expliciete Mollie `public`/`app`-schemaroutering, SendGrid job-UUID-correlatie, ontbrekende `sg_message_id`, global/EU API-hostselectie en strikte invite-fragmentvalidatie.
@@ -652,3 +664,9 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
 - De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
+
+## Assignmentgebonden kledingmaten — 2026-08-19
+
+- De volledige Vitestsuite is groen, inclusief regressies voor de onafhankelijke betaal- en maatassen, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
+- ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
+- Reviewherstel: de extra bevestigingsguard is verwijderd zodat de bestaande domeinworkflow vóór reservering vrij herbevestigt en na reservering een wijzigingsverzoek/actiepunt vastlegt. Profielen zonder assignment behouden hun bestaande artikelprojectie en betaling blijft canoniek onafhankelijk van maatbevestiging.

@@ -136,8 +136,14 @@ delete from app.order_lines
 where order_id = 'ca400000-0000-4000-8000-000000000001';
 delete from private.inventory_allocation_queue
 where article_variant_id = 'ca200000-0000-4000-8000-000000000001';
-delete from app.member_orders
-where id = 'ca400000-0000-4000-8000-000000000001';
+delete from app.member_package_size_selections
+where assignment_id in (
+  select id
+  from app.member_package_assignments
+  where order_id = 'ca400000-0000-4000-8000-000000000001'
+);
+delete from app.member_package_assignments
+where order_id = 'ca400000-0000-4000-8000-000000000001';
 delete from app.order_package_snapshot_items
 where snapshot_id in (
   select id
@@ -146,6 +152,8 @@ where snapshot_id in (
 );
 delete from app.order_package_snapshots
 where order_id = 'ca400000-0000-4000-8000-000000000001';
+delete from app.member_orders
+where id = 'ca400000-0000-4000-8000-000000000001';
 delete from app.member_seasons
 where member_id = 'ca300000-0000-4000-8000-000000000001';
 delete from private.member_sensitive_identity

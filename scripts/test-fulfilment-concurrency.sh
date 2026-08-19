@@ -64,6 +64,13 @@ delete from app.inventory_reservations
 where order_line_id = '46000000-0000-4000-8000-000000000001';
 delete from app.payments
 where order_id = '45000000-0000-4000-8000-000000000001';
+delete from app.member_package_size_selections
+where assignment_id in (
+  select id from app.member_package_assignments
+  where order_id = '45000000-0000-4000-8000-000000000001'
+);
+delete from app.member_package_assignments
+where order_id = '45000000-0000-4000-8000-000000000001';
 delete from app.order_package_snapshot_items
 where snapshot_id in (
   select id from app.order_package_snapshots

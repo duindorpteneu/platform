@@ -20,10 +20,7 @@ const privateHeaders = {
   Vary: "Cookie",
 };
 
-function response(
-  body: unknown,
-  status = 200,
-) {
+function response(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: privateHeaders });
 }
 
@@ -34,18 +31,18 @@ async function qrDataUrl(
     ? [order.qrVersion, order.qrKeyVersion, order.qrNonce]
     : [];
   if (
-    qrIdentityParts.some((part) => part !== null)
-    && qrIdentityParts.some((part) => part === null)
+    qrIdentityParts.some((part) => part !== null) &&
+    qrIdentityParts.some((part) => part === null)
   ) {
     throw new Error("QR_IDENTITY_INCOMPLETE");
   }
   if (
-    !order
-    || !["paid", "duplicate_paid"].includes(order.paymentStatus ?? "")
-    || !order.qrVersion
-    || !order.qrKeyVersion
-    || !order.qrNonce
-    || !order.articleLines.some((line) => line.status === "ready_for_pickup")
+    !order ||
+    !["paid", "duplicate_paid"].includes(order.paymentStatus ?? "") ||
+    !order.qrVersion ||
+    !order.qrKeyVersion ||
+    !order.qrNonce ||
+    !order.articleLines.some((line) => line.status === "ready_for_pickup")
   ) {
     return null;
   }
@@ -71,7 +68,7 @@ export async function GET() {
     return response({ error: "Oudersessie vereist." }, 401);
   }
 
-  const { data, error } = await admin.rpc("get_parent_package_workspace_v6", {
+  const { data, error } = await admin.rpc("get_parent_package_workspace_v7", {
     p_token_hash: session.tokenHash,
   });
   if (error) {
@@ -97,24 +94,22 @@ export async function GET() {
 
   let members: ParentPackageWorkspace["members"];
   try {
-    members = await Promise.all(parsed.data.members.map(async (member) => {
-      if (!member.order) return { ...member, order: null };
-      const {
-        qrKeyVersion,
-        qrNonce,
-        ...publicOrder
-      } = member.order;
-      if ((qrKeyVersion === null) !== (qrNonce === null)) {
-        throw new Error("QR_IDENTITY_INCOMPLETE");
-      }
-      return {
-        ...member,
-        order: {
-          ...publicOrder,
-          qrDataUrl: await qrDataUrl(member.order),
-        },
-      };
-    }));
+    members = await Promise.all(
+      parsed.data.members.map(async (member) => {
+        if (!member.order) return { ...member, order: null };
+        const { qrKeyVersion, qrNonce, ...publicOrder } = member.order;
+        if ((qrKeyVersion === null) !== (qrNonce === null)) {
+          throw new Error("QR_IDENTITY_INCOMPLETE");
+        }
+        return {
+          ...member,
+          order: {
+            ...publicOrder,
+            qrDataUrl: await qrDataUrl(member.order),
+          },
+        };
+      }),
+    );
   } catch {
     return response(
       { error: "De afhaalcode kon niet veilig worden opgebouwd." },

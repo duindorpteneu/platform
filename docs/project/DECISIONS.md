@@ -211,3 +211,10 @@
 - Een immutable migratiereconciliatie erkent uitsluitend mailjobs, onzekere afleveringen en providerfailures van vóór het herstelde verzendpad. De records blijven intact; iedere nieuwe failure na de grens blijft intern fail-closed blokkeren.
 - Een oude `running` e-mailworkerrun blijft zichtbaar in de ledger, maar is niet meer actueel wanneer een latere run van dezelfde worker aantoonbaar `succeeded` is. Zonder later succes blijft `runningStale` ongewijzigd blokkeren.
 - Publieke en interne health blijven alle overige integriteits-, queue-, provider-, runtime-, QR-, import-, reminder- en supplierassen ongewijzigd afdwingen.
+
+## D-108 — De immutable pakketsnapshot is de identiteit van een pakkettoewijzing
+
+- Een globaal pakket en zijn revisies blijven catalogusdefinities; pas de geauditeerde toewijzing aan een lid-seizoen maakt een `member_package_assignment` met de bestaande immutable orderpakketsnapshot als identiteit.
+- Maatbevestigingen worden per assignment geprojecteerd naar `member_package_size_selections`. Bevestigingsitems, eerdere assignments, orderregels en betalingen blijven immutable historie; een pakketwissel maakt via de bestaande snapshotworkflow een nieuwe assignment.
+- Ouders kunnen geen pakket meer kiezen of wisselen. Alleen de beheerder gebruikt de bestaande directe of gewaarschuwde pakketwisselflow. Een bevestigde assignment is voor de ouder read-only; admincorrecties blijven geautoriseerd en geaudit.
+- Betaling en maatbevestiging blijven onafhankelijke assen. De actieve assignment bepaalt het exacte bedrag en de betaalidentiteit; pas reservering vereist daarnaast een geldige bevestigde maat.
