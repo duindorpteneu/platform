@@ -444,4 +444,4 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.
 - De ouderworkspace adverteert geen globale pakketten meer. Zonder assignment ziet het gezin een beheerinstructie; met assignment uitsluitend de snapshotproducten van dat pakket. Bevestigde maten zijn read-only.
-- Nieuwe betalingen worden server-side geblokkeerd tot exact de actieve pakketsnapshot volledig is bevestigd. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.
+- Betaling blijft mogelijk vóór maatbevestiging; reservering blijft geblokkeerd tot een geldige maat én betaling samenkomen. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.

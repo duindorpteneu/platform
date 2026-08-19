@@ -655,6 +655,6 @@ Record commands, results and relevant screenshots/notes per phase.
 
 ## Assignmentgebonden kledingmaten — 2026-08-19
 
-- De volledige Vitestsuite is groen, inclusief aangepaste regressies voor betaling pas na maatbevestiging, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
+- De volledige Vitestsuite is groen, inclusief regressies voor de onafhankelijke betaal- en maatassen, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
 - ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
-- Reviewherstel: de bevestigingsguard kijkt pas naar een eerdere request-ID zodra een pakketregel een harde reservering (`reserved` of `fulfilled`) heeft. Daardoor blijft een nieuwe maatbevestiging vóór reservering toegestaan; migrationlint en `git diff --check` zijn na deze correctie opnieuw groen.
+- Reviewherstel: de extra bevestigingsguard is verwijderd zodat de bestaande domeinworkflow vóór reservering vrij herbevestigt en na reservering een wijzigingsverzoek/actiepunt vastlegt. Profielen zonder assignment behouden hun bestaande artikelprojectie en betaling blijft canoniek onafhankelijk van maatbevestiging.

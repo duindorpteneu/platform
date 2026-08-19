@@ -155,7 +155,6 @@ export function canStartPayment(member: ParentPackageMember) {
   return Boolean(
     order &&
     !order.legacy &&
-    order.sizesConfirmed &&
     !["paid", "pending", "refunded", "duplicate_paid"].includes(
       order.paymentStatus ?? "open",
     ),

@@ -126,6 +126,17 @@ set search_path = app, private, pg_temp as $$
 declare target app.package_size_confirmations%rowtype;
 begin
   select * into target from app.package_size_confirmations where id = new.confirmation_id;
+  -- A parent request after reservation records the requested alternative in the
+  -- immutable ledger, but the effective assignment choice remains the reserved
+  -- variant until staff resolves that request.
+  if exists(
+    select 1 from app.member_article_sizes size_profile
+    where size_profile.member_season_id = target.member_season_id
+      and size_profile.article_id = new.article_id
+      and size_profile.selection_status = 'change_requested'
+  ) then
+    return new;
+  end if;
   insert into app.member_package_size_selections(
     assignment_id, member_season_id, snapshot_item_id, article_id,
     confirmation_id, selection_kind, selected_variant_id, other_note,
@@ -181,60 +192,10 @@ $$;
 revoke all on function private.package_sizes_complete(uuid, uuid)
 from public, anon, authenticated, service_role;
 
--- Parents can reconfirm until stock has actually been reserved. Exact retries
--- retain the established idempotency path after reservation, while a different
--- request cannot silently rewrite sizes that have entered the logistics flow.
-alter function public.confirm_parent_package_sizes_v5(
-  text, uuid, jsonb, text, uuid, uuid
-) rename to confirm_parent_package_sizes_v5_legacy;
-
-create function public.confirm_parent_package_sizes_v5(
-  p_token_hash text, p_member_season_id uuid, p_selections jsonb,
-  p_expected_revision text, p_request_id uuid, p_correlation_id uuid default null
-) returns jsonb language plpgsql security definer
-set search_path = app, private, public, pg_temp as $$
-declare target_order app.member_orders%rowtype;
-begin
-  select orders.* into target_order
-  from app.member_orders orders
-  where orders.member_season_id = p_member_season_id;
-  if exists(
-    select 1 from app.package_size_confirmations confirmation
-    where confirmation.order_id = target_order.id
-      and confirmation.package_snapshot_id = target_order.active_package_snapshot_id
-      and confirmation.request_id is distinct from p_request_id
-      and exists(
-        select 1
-        from app.order_lines line
-        join app.order_package_snapshot_items snapshot_item
-          on snapshot_item.snapshot_id = target_order.active_package_snapshot_id
-          and snapshot_item.template_item_id = line.package_template_item_id
-          and snapshot_item.article_id = line.article_id
-        join app.inventory_reservations reservation
-          on reservation.order_line_id = line.id
-          and reservation.status in ('reserved', 'fulfilled')
-        where line.order_id = target_order.id
-          and line.status <> 'cancelled'
-      )
-  ) then
-    raise exception 'PACKAGE_SIZES_ALREADY_CONFIRMED' using errcode = '23514';
-  end if;
-  return public.confirm_parent_package_sizes_v5_legacy(
-    p_token_hash, p_member_season_id, p_selections, p_expected_revision,
-    p_request_id, p_correlation_id
-  );
-end;
-$$;
-
-revoke all on function public.confirm_parent_package_sizes_v5_legacy(
-  text, uuid, jsonb, text, uuid, uuid
-) from public, anon, authenticated, service_role;
-revoke all on function public.confirm_parent_package_sizes_v5(
-  text, uuid, jsonb, text, uuid, uuid
-) from public, anon, authenticated;
-grant execute on function public.confirm_parent_package_sizes_v5(
-  text, uuid, jsonb, text, uuid, uuid
-) to service_role;
+-- The established confirmation workflow already distinguishes freely editable
+-- pre-reservation sizes from post-reservation change requests. Keep that workflow
+-- authoritative so a reserved-size correction creates its audited action item
+-- instead of being rejected before the domain transition can run.
 
 -- The parent projection never advertises globally published alternatives.
 create or replace function public.get_parent_package_workspace_v7(p_token_hash text)
@@ -276,11 +237,12 @@ set search_path = app, private, pg_temp as $$
     select jsonb_agg(article.value order by article.ordinality)
     from jsonb_array_elements(profile.result->'articles')
       with ordinality article(value, ordinality)
-    join active_assignment assignment on true
-    where exists(
+    where not exists(select 1 from active_assignment)
+      or exists(
       select 1 from app.order_package_snapshot_items snapshot_item
-      where snapshot_item.snapshot_id = assignment.snapshot_id
-        and snapshot_item.article_id = (article.value->>'id')::uuid
+      join active_assignment assignment
+        on assignment.snapshot_id = snapshot_item.snapshot_id
+      where snapshot_item.article_id = (article.value->>'id')::uuid
     )
   ), '[]'::jsonb), true) from profile;
 $$;
@@ -288,37 +250,12 @@ revoke all on function private.member_size_profile_json_v3_global(uuid),
   private.member_size_profile_json_v3(uuid)
 from public, anon, authenticated, service_role;
 
--- New payment attempts for a commercial assignment require its immutable
--- assignment confirmation. Existing payment rows are not changed by migration.
-create or replace function private.require_confirmed_package_before_payment()
-returns trigger language plpgsql security definer
-set search_path = app, private, pg_temp as $$
-begin
-  if exists(
-    select 1 from app.member_orders orders
-    where orders.id = new.order_id
-      and orders.package_revision_id is not null
-      and orders.active_package_snapshot_id = coalesce(
-        new.package_snapshot_id, orders.active_package_snapshot_id
-      )
-      and not private.package_sizes_complete(orders.id, orders.active_package_snapshot_id)
-  ) then
-    raise exception 'PACKAGE_SIZES_CONFIRMATION_REQUIRED' using errcode = '23514';
-  end if;
-  return new;
-end;
-$$;
-create trigger payments_require_confirmed_package
-before insert on app.payments for each row
-execute function private.require_confirmed_package_before_payment();
-
 alter table app.member_package_assignments enable row level security;
 alter table app.member_package_size_selections enable row level security;
 revoke all on table app.member_package_assignments,
   app.member_package_size_selections from public, anon, authenticated, service_role;
 revoke all on function private.sync_member_package_assignment(),
-  private.project_assignment_size_selection(),
-  private.require_confirmed_package_before_payment()
+  private.project_assignment_size_selection()
 from public, anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';

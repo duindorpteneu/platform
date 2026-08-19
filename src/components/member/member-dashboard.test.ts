@@ -116,8 +116,8 @@ describe("MemberDashboard package sizes", () => {
     ]);
   });
 
-  it("blokkeert betaling totdat de maten van het toegewezen pakket zijn bevestigd", () => {
-    expect(canStartPayment(member)).toBe(false);
+  it("houdt betaling onafhankelijk van de maatbevestiging", () => {
+    expect(canStartPayment(member)).toBe(true);
     expect(
       canStartPayment({
         ...member,
