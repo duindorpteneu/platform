@@ -524,6 +524,33 @@ describe("deployment environment isolation", () => {
     expect(invalid.status).toBe(1);
     expect(invalid.stderr).toContain("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
   });
+
+  it("uses the existing smoke inbox for temporary SMTP staging deploys", () => {
+    const env = {
+      ...runtimeEnvironment("staging"),
+      EMAIL_ENABLED: "true",
+      EMAIL_PROVIDER: "smtp",
+      SMTP_HOST: "mail.voetbalassist.nl",
+      SMTP_PORT: "587",
+      SMTP_SECURE: "false",
+      SMTP_USERNAME: "smtp-user@example.invalid",
+      SMTP_PASSWORD: "smtp-password",
+      SMTP_FROM_NAME: "Kledingcommissie Duindorp SV",
+      SMTP_FROM_EMAIL: "kleding@duindorpsv.nl",
+      SMTP_REPLY_TO_EMAIL: "kleding@duindorpsv.nl",
+      EMAIL_SMOKE_RECIPIENT: "",
+      SENDGRID_SMOKE_RECIPIENT: "testinbox@example.invalid",
+    };
+    expect(() => execFileSync(process.execPath, [configureRuntime, "validate"], {
+      env,
+      stdio: "pipe",
+    })).not.toThrow();
+    const configureRuntimeSource = readFileSync(configureRuntime, "utf8");
+    expect(configureRuntimeSource)
+      .toContain('const emailSmokeRecipient = optional("EMAIL_SMOKE_RECIPIENT") || smokeRecipient;');
+    expect(configureRuntimeSource)
+      .toContain('["EMAIL_SMOKE_RECIPIENT", emailSmokeRecipient]');
+  });
 });
 
 describe("fail-closed release chain", () => {
