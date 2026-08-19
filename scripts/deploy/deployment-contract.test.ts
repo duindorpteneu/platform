@@ -358,15 +358,16 @@ describe("deployment environment isolation", () => {
     expect(runtimeGateway).toContain('pathname === "/api/email/v2/campaigns"');
     expect(runtimeGatewayIntegration).toContain("await assertEdgeBodyLimits");
     expect(runtimeGatewayIntegration).toContain("body_limit_gateway_started");
-    for (const workflowName of ["ci.yml", "deploy.yml"]) {
-      const workflowSource = readFileSync(
-        path.join(repositoryRoot, ".github/workflows", workflowName),
-        "utf8",
-      );
-      expect(workflowSource).toContain("pnpm test:edge-runtime");
-      expect(workflowSource.indexOf("pnpm build"))
-        .toBeLessThan(workflowSource.indexOf("pnpm test:edge-runtime"));
-    }
+    const ciWorkflow = readFileSync(
+      path.join(repositoryRoot, ".github/workflows/ci.yml"),
+      "utf8",
+    );
+    expect(ciWorkflow).toContain("pnpm test:edge-runtime");
+    expect(ciWorkflow.indexOf("pnpm build"))
+      .toBeLessThan(ciWorkflow.indexOf("pnpm test:edge-runtime"));
+    expect(deployScript).toContain(
+      'node scripts/deploy/check-edge-body-limits.mjs "$environment"',
+    );
   });
 
   it("refreshes the service-only staff session RPC without mutating business data", () => {
@@ -630,8 +631,24 @@ describe("fail-closed release chain", () => {
     const staging = workflow("deploy.yml");
     const production = workflow("promote-production.yml");
     expect(staging).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}");
+    expect(staging).toContain("SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME || vars.SENDGRID_FROM_NAME || 'Kledingcommissie Duindorp SV' }}");
+    expect(staging).toContain("SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL || vars.SENDGRID_FROM_EMAIL || 'kleding@duindorpsv.nl' }}");
+    expect(staging).toContain("SMTP_REPLY_TO_EMAIL: ${{ vars.SMTP_REPLY_TO_EMAIL || vars.SENDGRID_REPLY_TO_EMAIL || 'kleding@duindorpsv.nl' }}");
     expect(production).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
     expect(production).toContain("EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}");
+  });
+
+  it("rerunt repository gates niet opnieuw in deploy-preflight na exacte main-CI", () => {
+    const staging = workflow("deploy.yml");
+    const preflight = staging.slice(
+      staging.indexOf("preflight:"),
+      staging.indexOf("build-release:"),
+    );
+    expect(preflight).toContain("Require successful full CI on exact release SHA");
+    expect(preflight).not.toContain("Install locked dependencies");
+    expect(preflight).not.toContain("Run repository gates");
+    expect(preflight).not.toContain("pnpm lint");
+    expect(preflight).not.toContain("pnpm build");
   });
 
   it("serializes every staging mutation or acceptance on the deployment lock", () => {
