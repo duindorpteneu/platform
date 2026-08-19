@@ -17,6 +17,7 @@ size_request_id="f8000000-0000-4000-8000-000000000008"
 cleanup() {
   set +e
   psql "${db_url}" --no-psqlrc --quiet --set=ON_ERROR_STOP=1 <<SQL
+set session_replication_role = replica;
 delete from app.audit_logs
 where correlation_id in ('${rollback_run_id}'::uuid, '${commit_run_id}'::uuid);
 delete from app.audit_logs where correlation_id = '${second_commit_run_id}'::uuid;
@@ -26,11 +27,13 @@ delete from app.members where id = '${member_id}'::uuid;
 delete from app.articles where id = '${article_id}'::uuid;
 delete from app.staff_profiles where auth_user_id = '${auth_user_id}'::uuid;
 delete from auth.users where id = '${auth_user_id}'::uuid;
+set session_replication_role = origin;
 SQL
 }
 trap cleanup EXIT INT TERM
 
 psql "${db_url}" --no-psqlrc --quiet --set=ON_ERROR_STOP=1 <<SQL
+set session_replication_role = replica;
 delete from app.audit_logs
 where correlation_id in ('${rollback_run_id}'::uuid, '${commit_run_id}'::uuid);
 delete from app.audit_logs where correlation_id = '${second_commit_run_id}'::uuid;
@@ -40,6 +43,7 @@ delete from app.members where id = '${member_id}'::uuid;
 delete from app.articles where id = '${article_id}'::uuid;
 delete from app.staff_profiles where auth_user_id = '${auth_user_id}'::uuid;
 delete from auth.users where id = '${auth_user_id}'::uuid;
+set session_replication_role = origin;
 
 insert into auth.users (
   id,
@@ -220,4 +224,4 @@ SECOND_RESULT="${second_result}" node -e '
   if (value.result !== "committed" || value.removed_rows !== 0 || value.remaining_operational_rows !== 0) process.exit(1);
 '
 
-echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 105 tabellen en behield staff/Auth/config."
+echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 106 tabellen en behield staff/Auth/config."

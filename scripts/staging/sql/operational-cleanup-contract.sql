@@ -52,6 +52,7 @@ as $$
     'private.dynamic_import_run_leases',
     'private.dynamic_import_selected_identity_keys',
     'private.dynamic_import_selected_rows',
+    'private.email_bulk_rate_limit',
     'private.email_delivery_attempt_outcomes',
     'private.email_delivery_attempt_provider_messages',
     'private.email_delivery_attempts',
@@ -382,7 +383,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 105
+  if cardinality(pg_temp.cleanup_tables()) <> 106
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

@@ -10,6 +10,7 @@
 - `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
 - `pnpm test:db:email-attempt-concurrency`, `pnpm test:db:mail-campaign-concurrency`, `pnpm test:db:mail-projection-concurrency` en `pnpm test:db:mail-supersession-concurrency` — passed.
 - `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 215 Vitest-bestanden en 1317 tests groen.
+- `pnpm test:db:staging-cleanup` — passed na schone reset; cleanupcontract bevat nu 106 expliciete operationele tabellen inclusief `private.email_bulk_rate_limit`.
 
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
