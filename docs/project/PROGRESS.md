@@ -439,3 +439,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - De kandidaatapp en alle schedulerjobs waren gezond, maar interne health bleef rood op 113 oude failures, drie oude onzekere afleveringen, drie oude providerfailures en één door de rollback onderbroken e-mailworkerrun.
 - Een forward-only, auditbare herstelgrens bewaart alle feiten en telt daarna alleen nieuwe mailincidenten. De onderbroken run is uitsluitend hersteld voor health wanneer een latere worker-run werkelijk succesvol is afgerond.
+
+## Assignmentgebonden kledingmaten — 2026-08-19
+
+- Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.
+- De ouderworkspace adverteert geen globale pakketten meer. Zonder assignment ziet het gezin een beheerinstructie; met assignment uitsluitend de snapshotproducten van dat pakket. Bevestigde maten zijn read-only.
+- Nieuwe betalingen worden server-side geblokkeerd tot exact de actieve pakketsnapshot volledig is bevestigd. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.

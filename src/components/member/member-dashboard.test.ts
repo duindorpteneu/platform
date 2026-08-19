@@ -78,59 +78,85 @@ describe("MemberDashboard package sizes", () => {
   });
 
   it("bouwt alleen een volledig pakketbreed selectiecontract", () => {
-    expect(buildPackageSizeSelections(member, {
-      [articleId]: { kind: "variant", variantId, note: "" },
-    })).toEqual([{
-      articleId,
-      kind: "variant",
-      variantId,
-      note: null,
-    }]);
-    expect(buildPackageSizeSelections(member, {
-      [articleId]: { kind: "", variantId: null, note: "" },
-    })).toBeNull();
+    expect(
+      buildPackageSizeSelections(member, {
+        [articleId]: { kind: "variant", variantId, note: "" },
+      }),
+    ).toEqual([
+      {
+        articleId,
+        kind: "variant",
+        variantId,
+        note: null,
+      },
+    ]);
+    expect(
+      buildPackageSizeSelections(member, {
+        [articleId]: { kind: "", variantId: null, note: "" },
+      }),
+    ).toBeNull();
   });
 
   it("vereist een toelichting voor Anders en maakt geen variant", () => {
-    expect(buildPackageSizeSelections(member, {
-      [articleId]: {
+    expect(
+      buildPackageSizeSelections(member, {
+        [articleId]: {
+          kind: "other",
+          variantId: null,
+          note: "Valt buiten de maattabel",
+        },
+      }),
+    ).toEqual([
+      {
+        articleId,
         kind: "other",
         variantId: null,
         note: "Valt buiten de maattabel",
       },
-    })).toEqual([{
-      articleId,
-      kind: "other",
-      variantId: null,
-      note: "Valt buiten de maattabel",
-    }]);
+    ]);
   });
 
-  it("laat een toegewezen pakket betalen zonder maten, regels of voorraad", () => {
-    expect(canStartPayment(member)).toBe(true);
-    expect(canStartPayment({
-      ...member,
-      order: member.order ? { ...member.order, legacy: true } : null,
-    })).toBe(false);
+  it("blokkeert betaling totdat de maten van het toegewezen pakket zijn bevestigd", () => {
+    expect(canStartPayment(member)).toBe(false);
+    expect(
+      canStartPayment({
+        ...member,
+        order: member.order ? { ...member.order, sizesConfirmed: true } : null,
+      }),
+    ).toBe(true);
+    expect(
+      canStartPayment({
+        ...member,
+        order: member.order ? { ...member.order, legacy: true } : null,
+      }),
+    ).toBe(false);
   });
 
   it("onderscheidt invullen van geïmporteerde maten controleren", () => {
     expect(packageSizeAction(member)).toBe("review");
-    expect(packageSizeAction({
-      ...member,
-      order: member.order ? {
-        ...member.order,
-        items: [{
-          ...item,
-          selectedVariantId: null,
-          selectionStatus: null,
-          selectionSource: null,
-        }],
-      } : null,
-    })).toBe("fill");
-    expect(packageSizeAction({
-      ...member,
-      order: member.order ? { ...member.order, sizesConfirmed: true } : null,
-    })).toBeNull();
+    expect(
+      packageSizeAction({
+        ...member,
+        order: member.order
+          ? {
+              ...member.order,
+              items: [
+                {
+                  ...item,
+                  selectedVariantId: null,
+                  selectionStatus: null,
+                  selectionSource: null,
+                },
+              ],
+            }
+          : null,
+      }),
+    ).toBe("fill");
+    expect(
+      packageSizeAction({
+        ...member,
+        order: member.order ? { ...member.order, sizesConfirmed: true } : null,
+      }),
+    ).toBeNull();
   });
 });

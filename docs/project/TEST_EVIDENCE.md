@@ -652,3 +652,8 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
 - De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
+
+## Assignmentgebonden kledingmaten — 2026-08-19
+
+- De volledige Vitestsuite is groen, inclusief aangepaste regressies voor betaling pas na maatbevestiging, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
+- ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
