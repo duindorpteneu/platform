@@ -532,15 +532,29 @@ begin
     select line.id from app.order_lines line
       where line.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
   );
+  delete from app.member_package_size_selections selection
+  where selection.assignment_id in (
+    select assignment.id from app.member_package_assignments assignment
+    where assignment.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
+  );
+  delete from app.member_package_assignments assignment
+  where assignment.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id);
   delete from private.inventory_allocation_queue queue
   where queue.article_variant_id = fixture_input.readiness_variant_id
     and queue.season_id = (
       select orders.season_id
       from app.member_orders orders
       where orders.id = fixture_input.paid_order_id
-    );
+  );
   delete from app.order_lines line
   where line.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id);
+  delete from app.member_package_size_selections selection
+  where selection.assignment_id in (
+    select assignment.id from app.member_package_assignments assignment
+    where assignment.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
+  );
+  delete from app.member_package_assignments assignment
+  where assignment.order_id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id);
   delete from app.member_orders orders
   where orders.id in (fixture_input.paid_order_id, fixture_input.mismatch_order_id)
     and orders.member_id in (fixture_input.paid_member_id, fixture_input.mismatch_member_id);

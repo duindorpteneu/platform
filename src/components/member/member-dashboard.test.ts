@@ -157,6 +157,18 @@ describe("MemberDashboard package sizes", () => {
         ...member,
         order: member.order ? { ...member.order, sizesConfirmed: true } : null,
       }),
+    ).toBe("review");
+    expect(
+      packageSizeAction({
+        ...member,
+        order: member.order
+          ? {
+              ...member.order,
+              sizesConfirmed: true,
+              items: [{ ...item, selectionStatus: "locked" }],
+            }
+          : null,
+      }),
     ).toBeNull();
   });
 });

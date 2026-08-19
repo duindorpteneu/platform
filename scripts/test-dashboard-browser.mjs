@@ -110,6 +110,8 @@ function cleanupSql(userId) {
     delete from app.inventory_reservations where order_line_id in (select id from app.order_lines where order_id in (${sqlList(orderIds)}));
     delete from private.qr_tokens where order_id in (${sqlList(orderIds)});
     delete from app.payments where order_id in (${sqlList(orderIds)});
+    delete from app.member_package_size_selections where assignment_id in (select id from app.member_package_assignments where order_id in (${sqlList(orderIds)}));
+    delete from app.member_package_assignments where order_id in (${sqlList(orderIds)});
     delete from app.order_lines where order_id in (${sqlList(orderIds)});
     delete from app.member_orders where id in (${sqlList(orderIds)});
     delete from app.member_article_sizes

@@ -163,7 +163,15 @@ export function canStartPayment(member: ParentPackageMember) {
 
 export function packageSizeAction(member: ParentPackageMember) {
   const order = member.order;
-  if (!order || order.legacy || order.sizesConfirmed) return null;
+  if (
+    !order ||
+    order.legacy ||
+    !order.items.some(
+      (item) => !item.issued && item.selectionStatus !== "locked",
+    )
+  ) {
+    return null;
+  }
   if (
     order.items.some(
       (item) =>
@@ -232,6 +240,110 @@ function QrPanel({ member }: { member: ParentPackageMember }) {
           : "Wordt actief zodra minimaal één product af te halen is"}
       </p>
     </div>
+  );
+}
+
+function PackageChoice({
+  member,
+  selectedRevisionId,
+  busy,
+  onSelect,
+  onSubmit,
+}: {
+  member: ParentPackageMember;
+  selectedRevisionId: string;
+  busy: boolean;
+  onSelect: (revisionId: string) => void;
+  onSubmit: () => void;
+}) {
+  if (member.availablePackages.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-line bg-slate-50 p-5 text-center">
+        <PackageCheck className="mx-auto size-6 text-slate-300" />
+        <p className="mt-3 text-xs font-semibold text-slate-600">
+          Nog geen kledingpakket beschikbaar
+        </p>
+        <p className="mt-1 text-[11px] text-slate-400">
+          De beheerder stelt eerst de pakketinhoud en prijs samen.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <fieldset disabled={busy}>
+      <legend className="text-sm font-bold text-brand-900">
+        Kies het kledingpakket
+      </legend>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Bekijk de volledige inhoud en kies daarna één pakket voor dit seizoen.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {member.availablePackages.map((option) => {
+          const selected = selectedRevisionId === option.revisionId;
+          return (
+            <label
+              key={option.revisionId}
+              className={`cursor-pointer rounded-xl border p-4 transition ${
+                selected
+                  ? "border-brand-500 bg-brand-50/50 ring-2 ring-brand-100"
+                  : "border-line bg-white hover:border-brand-200"
+              }`}
+            >
+              <span className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name={`package-${member.memberSeasonId}`}
+                  value={option.revisionId}
+                  checked={selected}
+                  onChange={() => onSelect(option.revisionId)}
+                  className="mt-1 size-4 accent-brand-700"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-bold text-brand-900">
+                      {option.name}
+                    </span>
+                    <span className="text-xs font-bold text-brand-700">
+                      {amount.format(option.priceCents / 100)}
+                    </span>
+                  </span>
+                  {option.description && (
+                    <span className="mt-1 block text-[11px] leading-4 text-slate-500">
+                      {option.description}
+                    </span>
+                  )}
+                  <span className="mt-3 block space-y-1 border-t border-line pt-3">
+                    {option.items.map((item) => (
+                      <span
+                        key={item.articleId}
+                        className="flex justify-between gap-3 text-[10px] text-slate-500"
+                      >
+                        <span>{item.name}</span>
+                        <span>× {item.quantity}</span>
+                      </span>
+                    ))}
+                  </span>
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={!selectedRevisionId || busy}
+        className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+      >
+        {busy ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <PackageCheck className="size-4" />
+        )}
+        Pakket kiezen
+      </button>
+    </fieldset>
   );
 }
 
@@ -356,6 +468,8 @@ export function MemberDashboard() {
     members: [],
   });
   const [drafts, setDrafts] = useState<MemberDrafts>({});
+  const [packageChoices, setPackageChoices] = useState<StringMap>({});
+  const [selectionRequestIds, setSelectionRequestIds] = useState<StringMap>({});
   const [sizeRequestIds, setSizeRequestIds] = useState<StringMap>({});
   const [busyMember, setBusyMember] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -393,6 +507,18 @@ export function MemberDashboard() {
           ]),
         ),
       );
+      setPackageChoices(
+        Object.fromEntries(
+          payload.members.map((member) => [
+            member.memberSeasonId,
+            member.order?.packageRevisionId ??
+              member.availablePackages.find((option) => option.isDefault)
+                ?.revisionId ??
+              member.availablePackages[0]?.revisionId ??
+              "",
+          ]),
+        ),
+      );
       setUnauthorized(false);
     } catch {
       setError("De leden konden niet worden geladen.");
@@ -411,6 +537,73 @@ export function MemberDashboard() {
       headers: { "X-Duindorp-CSRF": "same-origin" },
     });
     window.location.assign("/login");
+  }
+
+  function choosePackage(memberSeasonId: string, revisionId: string) {
+    setPackageChoices((current) => ({
+      ...current,
+      [memberSeasonId]: revisionId,
+    }));
+    setSelectionRequestIds((current) => {
+      const next = { ...current };
+      delete next[memberSeasonId];
+      return next;
+    });
+  }
+
+  async function submitPackage(member: ParentPackageMember) {
+    const packageRevisionId = packageChoices[member.memberSeasonId];
+    if (!packageRevisionId) return;
+    const requestId =
+      selectionRequestIds[member.memberSeasonId] ?? crypto.randomUUID();
+    setSelectionRequestIds((current) => ({
+      ...current,
+      [member.memberSeasonId]: requestId,
+    }));
+    setBusyMember(member.memberSeasonId);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/parent/packages/select", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Duindorp-CSRF": "same-origin",
+        },
+        body: JSON.stringify({
+          memberSeasonId: member.memberSeasonId,
+          packageRevisionId,
+          revision: member.revision,
+          requestId,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        if (response.status < 500) {
+          setSelectionRequestIds((current) => {
+            const next = { ...current };
+            delete next[member.memberSeasonId];
+            return next;
+          });
+        }
+        throw new Error(payload.error ?? "Het pakket kon niet worden gekozen.");
+      }
+      setSelectionRequestIds((current) => {
+        const next = { ...current };
+        delete next[member.memberSeasonId];
+        return next;
+      });
+      setNotice("Het kledingpakket is opgeslagen. Controleer nu alle maten.");
+      await load();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Het pakket kon niet worden gekozen.",
+      );
+    } finally {
+      setBusyMember(null);
+    }
   }
 
   function updateSizeDraft(
@@ -640,7 +833,6 @@ export function MemberDashboard() {
             const memberDraft = drafts[member.memberSeasonId] ?? {};
             const selections = buildPackageSizeSelections(member, memberDraft);
             const hasEditableItems = Boolean(
-              !order?.sizesConfirmed &&
               order?.items.some(
                 (item) => !item.issued && item.selectionStatus !== "locked",
               ),
@@ -695,17 +887,17 @@ export function MemberDashboard() {
 
                 <div className="p-5 sm:p-6">
                   {!order && workspace.enabled && (
-                    <div className="rounded-xl border border-dashed border-line bg-slate-50 p-5 text-center">
-                      <PackageCheck className="mx-auto size-6 text-brand-500" />
-                      <p className="mt-3 text-xs font-semibold text-brand-900">
-                        Nog geen kledingpakket toegewezen
-                      </p>
-                      <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                        De kledingcommissie wijst het juiste pakket aan dit lid
-                        toe. Een nieuw pakket in de catalogus verandert niets
-                        voor dit lid.
-                      </p>
-                    </div>
+                    <PackageChoice
+                      member={member}
+                      selectedRevisionId={
+                        packageChoices[member.memberSeasonId] ?? ""
+                      }
+                      busy={busy}
+                      onSelect={(revisionId) =>
+                        choosePackage(member.memberSeasonId, revisionId)
+                      }
+                      onSubmit={() => void submitPackage(member)}
+                    />
                   )}
 
                   {!order && !workspace.enabled && (
@@ -744,6 +936,33 @@ export function MemberDashboard() {
                         </p>
                       </div>
 
+                      {order.canSwitchPackage &&
+                        member.availablePackages.length > 1 && (
+                          <details className="mt-5 rounded-xl border border-line bg-slate-50 p-4">
+                            <summary className="cursor-pointer text-xs font-bold text-brand-800">
+                              Ander pakket kiezen
+                            </summary>
+                            <div className="mt-4">
+                              <PackageChoice
+                                member={member}
+                                selectedRevisionId={
+                                  packageChoices[member.memberSeasonId] ??
+                                  order.packageRevisionId ??
+                                  ""
+                                }
+                                busy={busy}
+                                onSelect={(revisionId) =>
+                                  choosePackage(
+                                    member.memberSeasonId,
+                                    revisionId,
+                                  )
+                                }
+                                onSubmit={() => void submitPackage(member)}
+                              />
+                            </div>
+                          </details>
+                        )}
+
                       {packageSizeAction(member) && (
                         <a
                           href={`#maten-${member.memberSeasonId}`}
@@ -752,14 +971,18 @@ export function MemberDashboard() {
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                           <span>
                             <strong className="block text-xs">
-                              {packageSizeAction(member) === "fill"
-                                ? "Het is verplicht om de maten in te vullen."
-                                : "Maten controleren en bevestigen"}
+                              {order.sizesConfirmed
+                                ? "Maten aanpassen en opnieuw bevestigen"
+                                : packageSizeAction(member) === "fill"
+                                  ? "Het is verplicht om de maten in te vullen."
+                                  : "Maten controleren en bevestigen"}
                             </strong>
                             <span className="mt-1 block text-xs leading-5">
-                              {packageSizeAction(member) === "fill"
-                                ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
-                                : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                              {order.sizesConfirmed
+                                ? "Vóór reservering kun je een correctie doorgeven en het pakket opnieuw bevestigen."
+                                : packageSizeAction(member) === "fill"
+                                  ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
+                                  : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
                             </span>
                           </span>
                         </a>
@@ -797,7 +1020,6 @@ export function MemberDashboard() {
                               }
                               disabled={
                                 busy ||
-                                order.sizesConfirmed ||
                                 item.issued ||
                                 item.selectionStatus === "locked"
                               }
@@ -877,12 +1099,6 @@ export function MemberDashboard() {
                                 Je kunt direct betalen. De QR wordt pas actief
                                 wanneer één of meerdere producten af te halen
                                 zijn.
-                              </p>
-                            )}
-                            {!order.sizesConfirmed && (
-                              <p className="mt-1 max-w-sm text-[10px] font-medium leading-4 text-amber-700">
-                                Vul alle verplichte maten van dit kledingpakket
-                                in en bevestig ze voordat je betaalt.
                               </p>
                             )}
                           </div>

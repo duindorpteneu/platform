@@ -37,6 +37,19 @@ where order_id in (
   'f2500000-0000-4000-8000-000000000001',
   'f2500000-0000-4000-8000-000000000002'
 );
+delete from app.member_package_size_selections
+where assignment_id in (
+  select id from app.member_package_assignments
+  where order_id in (
+    'f2500000-0000-4000-8000-000000000001',
+    'f2500000-0000-4000-8000-000000000002'
+  )
+);
+delete from app.member_package_assignments
+where order_id in (
+  'f2500000-0000-4000-8000-000000000001',
+  'f2500000-0000-4000-8000-000000000002'
+);
 delete from app.order_package_snapshot_items
 where snapshot_id in (
   select id from app.order_package_snapshots

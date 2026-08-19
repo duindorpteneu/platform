@@ -1,5 +1,16 @@
 # Test evidence
 
+## PR 115 pakketmaten en Mollie-fixtureherstel — 2026-08-19
+
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed.
+- `pnpm vitest run src/app/api/parent/packages/select/route.test.ts src/app/api/parent/members/route.test.ts src/components/member/member-dashboard.test.ts` — passed; de verwachte negatieve `parent.workspace_schema_invalid`-log blijft beperkt tot de schematest.
+- `node scripts/check-migrations.mjs` — passed.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 213 Vitest-bestanden en 1304 tests groen.
+- `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
+- `pnpm test:db:mollie-fixture` — passed; cleanup houdt rekening met pakketassignments vóór orderverwijdering.
+- Gerichte DB-concurrencyharnassen voor fulfilment, package, payment, refund, inventory, delivery-notification, mail-projection, mail-supersession en email-attempt zijn lokaal groen.
+
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
 - `pnpm test` — 39 Vitest-bestanden en 177 tests passed; omvat expliciete Mollie `public`/`app`-schemaroutering, SendGrid job-UUID-correlatie, ontbrekende `sg_message_id`, global/EU API-hostselectie en strikte invite-fragmentvalidatie.

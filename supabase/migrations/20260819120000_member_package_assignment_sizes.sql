@@ -197,22 +197,12 @@ from public, anon, authenticated, service_role;
 -- authoritative so a reserved-size correction creates its audited action item
 -- instead of being rejected before the domain transition can run.
 
--- The parent projection never advertises globally published alternatives.
+-- Keep the existing server-validated package switching contract. Size duties
+-- are still scoped by the active immutable snapshot through the item projection.
 create or replace function public.get_parent_package_workspace_v7(p_token_hash text)
 returns jsonb language sql stable security definer
 set search_path = app, private, public, pg_temp as $$
-  with workspace as (select public.get_parent_package_workspace_v6(p_token_hash) result)
-  select jsonb_set(workspace.result, '{members}', coalesce((
-    select jsonb_agg(
-      jsonb_set(
-        case when member.value->'order' <> 'null'::jsonb
-          then jsonb_set(member.value, '{order,canSwitchPackage}', 'false'::jsonb, true)
-          else member.value end,
-        '{availablePackages}', '[]'::jsonb, true
-      ) order by member.ordinality
-    ) from jsonb_array_elements(workspace.result->'members')
-      with ordinality member(value, ordinality)
-  ), '[]'::jsonb), true) from workspace;
+  select public.get_parent_package_workspace_v6(p_token_hash);
 $$;
 revoke all on function public.get_parent_package_workspace_v7(text)
 from public, anon, authenticated;
