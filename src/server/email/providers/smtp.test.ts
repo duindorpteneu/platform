@@ -42,7 +42,8 @@ describe("VoetbalAssist SMTP-adapter", () => {
   });
 
   it("onderscheidt pre-DATA timeout van onzekere DATA-disconnect", () => {
-    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ETIMEDOUT", command: "CONN" }))).toMatchObject({ reason: "configuration_error", outcome: "failed" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ETIMEDOUT", command: "CONN" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "EHLO" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
     expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "DATA" }))).toMatchObject({ reason: "delivery_uncertain", outcome: "delivery_uncertain" });
   });
 

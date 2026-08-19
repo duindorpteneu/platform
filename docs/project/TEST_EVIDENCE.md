@@ -1,5 +1,15 @@
 # Test evidence
 
+## PR 116 tijdelijke SMTP-fallback — 2026-08-19
+
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed na lockfileherstel voor `@types/node@22.19.15`, `@types/nodemailer@7.0.1` en `nodemailer@7.0.6`.
+- `pnpm vitest run src/server/email/providers/smtp.test.ts src/app/api/internal/jobs/email/route.test.ts scripts/deploy/deployment-contract.test.ts` — passed; 56 gerichte tests groen.
+- `node scripts/check-migrations.mjs` — passed.
+- `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
+- `pnpm test:db:email-attempt-concurrency`, `pnpm test:db:mail-campaign-concurrency`, `pnpm test:db:mail-projection-concurrency` en `pnpm test:db:mail-supersession-concurrency` — passed.
+- `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 215 Vitest-bestanden en 1317 tests groen.
+
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
 - `pnpm test` — 39 Vitest-bestanden en 177 tests passed; omvat expliciete Mollie `public`/`app`-schemaroutering, SendGrid job-UUID-correlatie, ontbrekende `sg_message_id`, global/EU API-hostselectie en strikte invite-fragmentvalidatie.

@@ -26,24 +26,9 @@ begin
   end if;
   safe_limit := least(p_limit, 25);
   if p_allow_bulk then
-  insert into private.email_bulk_rate_limit(singleton, next_slot_at)
-  values (true, '-infinity') on conflict (singleton) do nothing;
-  update private.email_bulk_rate_limit
-  set next_slot_at = statement_timestamp() + interval '30 seconds'
-  where singleton and next_slot_at <= statement_timestamp()
-    and exists (
-      select 1 from private.email_jobs pending
-      where pending.status in ('queued', 'retry')
-        and pending.attempts < 5 and pending.available_at <= statement_timestamp()
-        and (pending.kind = 'bulk' or (
-          pending.context_kind = 'portal_access' and exists (
-            select 1 from private.parent_access_batches batch
-            where batch.id = pending.parent_access_batch_id and batch.selected_count > 1
-          )
-        ))
-    )
-  returning true into allow_bulk;
-  allow_bulk := coalesce(allow_bulk, false);
+    insert into private.email_bulk_rate_limit(singleton, next_slot_at)
+    values (true, '-infinity') on conflict (singleton) do nothing;
+    allow_bulk := true;
   end if;
 
   update private.email_jobs invite_job
@@ -77,7 +62,12 @@ begin
         not (job.kind = 'bulk' or (job.context_kind = 'portal_access' and exists (
           select 1 from private.parent_access_batches priority_batch
           where priority_batch.id = job.parent_access_batch_id and priority_batch.selected_count > 1
-        ))) or allow_bulk
+        ))) or (
+          allow_bulk and exists (
+            select 1 from private.email_bulk_rate_limit slot
+            where slot.singleton and slot.next_slot_at <= statement_timestamp()
+          )
+        )
       )
       and (
         not (job.kind = 'bulk' or (job.context_kind = 'portal_access' and exists (
@@ -90,7 +80,7 @@ begin
             and bulk_job.available_at <= timezone('utc', now())
             and (bulk_job.kind = 'bulk' or (bulk_job.context_kind = 'portal_access' and exists (
               select 1 from private.parent_access_batches bulk_batch where bulk_batch.id = bulk_job.parent_access_batch_id and bulk_batch.selected_count > 1
-            ))
+            )))
           order by bulk_job.available_at, bulk_job.created_at limit 1
         )
       )
@@ -160,6 +150,25 @@ begin
     from candidates
     where job.id = candidates.id
     returning job.*
+  ),
+  bulk_slot as (
+    update private.email_bulk_rate_limit slot
+    set next_slot_at = statement_timestamp() + interval '30 seconds'
+    where slot.singleton
+      and slot.next_slot_at <= statement_timestamp()
+      and exists (
+        select 1 from claimed
+        where claimed.kind = 'bulk'
+          or (
+            claimed.context_kind = 'portal_access'
+            and exists (
+              select 1 from private.parent_access_batches batch
+              where batch.id = claimed.parent_access_batch_id
+                and batch.selected_count > 1
+            )
+          )
+      )
+    returning true
   )
   select jsonb_build_object(
     'claimToken',

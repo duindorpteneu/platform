@@ -48,6 +48,13 @@ function configuration() {
 }
 
 type SmtpError = Error & { code?: string; responseCode?: number; command?: string };
+const transientTransportCodes = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "ESOCKET",
+  "EPIPE",
+]);
 
 export function classifySmtpError(error: unknown): EmailDeliveryResult {
   const smtp = error as SmtpError;
@@ -65,6 +72,9 @@ export function classifySmtpError(error: unknown): EmailDeliveryResult {
   const duringData = smtp?.command === "DATA" || smtp?.command === "DOT";
   if (duringData) {
     return { delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain", providerCode };
+  }
+  if (smtp?.code && transientTransportCodes.has(smtp.code)) {
+    return { delivered: false, reason: "provider_rejected", outcome: "retry", providerCode };
   }
   return { delivered: false, reason: "configuration_error", outcome: "failed", providerCode };
 }
