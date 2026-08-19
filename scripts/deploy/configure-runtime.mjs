@@ -182,7 +182,6 @@ const smtpPassword = optional("SMTP_PASSWORD");
 const smtpFromName = optional("SMTP_FROM_NAME");
 const smtpFromEmail = optional("SMTP_FROM_EMAIL");
 const smtpReplyEmail = optional("SMTP_REPLY_TO_EMAIL");
-const emailSmokeRecipient = optional("EMAIL_SMOKE_RECIPIENT");
 const sendgridKey = optional("SENDGRID_API_KEY");
 const sendgridKeyFingerprint =
   optional("SENDGRID_API_KEY_FINGERPRINT");
@@ -191,6 +190,7 @@ const fromName = optional("SENDGRID_FROM_NAME");
 const fromEmail = optional("SENDGRID_FROM_EMAIL");
 const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
 const smokeRecipient = optional("SENDGRID_SMOKE_RECIPIENT");
+const emailSmokeRecipient = optional("EMAIL_SMOKE_RECIPIENT") || smokeRecipient;
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
 if (!["true", "false"].includes(emailBulkEnabled)) invalid("EMAIL_BULK_ENABLED");
@@ -233,7 +233,7 @@ if (emailEnabled === "true") {
   if (!webhookKey) invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
   }
 }
-for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail], ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient]]) {
+for (const [name, value] of [["EMAIL_SMOKE_RECIPIENT", emailSmokeRecipient], ["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail], ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient]]) {
   if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
 }
 
