@@ -107,7 +107,7 @@ describe("operations scheduler", () => {
       const state = { lastRetentionAt: "" };
       await expect(
         runSchedulerCycle(config, state, new Date("2026-08-02T20:00:00Z")),
-      ).rejects.toThrow("EMAIL_PROVIDER_DOWN");
+      ).rejects.toThrow("EMAIL_JOB_EMAIL_PROVIDER_DOWN");
       expect(calls).toEqual([
         "http://app:3000/api/internal/jobs/email",
         "http://app:3000/api/internal/jobs/imports",
@@ -155,4 +155,24 @@ describe("operations scheduler", () => {
       expect(writes).toEqual([]);
     },
   );
+
+  it("neemt de falende interne route op in schedulerfouten", async () => {
+    const config = validateSchedulerConfig(base);
+    await expect(invokeInternal(
+      config,
+      "/api/internal/jobs/email",
+      "POST",
+      async () => {
+        throw new Error("HTTP_503");
+      },
+    )).rejects.toThrow("EMAIL_JOB_HTTP_503");
+    await expect(invokeInternal(
+      config,
+      "/api/internal/health",
+      "GET",
+      async () => {
+        throw new Error("HTTP_503");
+      },
+    )).rejects.toThrow("INTERNAL_HEALTH_HTTP_503");
+  });
 });

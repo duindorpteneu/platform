@@ -47,11 +47,28 @@ async function fetchJson(url, init, timeoutMs = 55_000) {
   return body;
 }
 
+function internalRouteCode(path) {
+  if (path.endsWith("/email")) return "EMAIL_JOB";
+  if (path.endsWith("/imports")) return "IMPORT_JOB";
+  if (path.endsWith("/inventory")) return "INVENTORY_JOB";
+  if (path.endsWith("/retention")) return "RETENTION_JOB";
+  if (path.endsWith("/health")) return "INTERNAL_HEALTH";
+  return "INTERNAL_JOB";
+}
+
 export async function invokeInternal(config, path, method, fetcher = fetchJson) {
-  const body = await fetcher(`${config.internalBaseUrl}${path}`, {
-    method,
-    headers: { authorization: `Bearer ${config.cronSecret}`, accept: "application/json" },
-  });
+  let body;
+  try {
+    body = await fetcher(`${config.internalBaseUrl}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${config.cronSecret}`, accept: "application/json" },
+    });
+  } catch (error) {
+    const detail = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message)
+      ? error.message
+      : "REQUEST_FAILED";
+    throw new Error(`${internalRouteCode(path)}_${detail}`);
+  }
   if (path.endsWith("/email")) {
     if (!new Set(["processed", "paused"]).has(body.status)) throw new Error("EMAIL_RESPONSE_INVALID");
     if (config.emailEnabled && body.status === "paused") throw new Error("EMAIL_UNEXPECTEDLY_PAUSED");

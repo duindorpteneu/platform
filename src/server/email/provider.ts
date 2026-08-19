@@ -37,7 +37,9 @@ export async function sendParentOtpV2Email(message: EmailMessage & { deliveryAtt
 export async function sendMailV2TestEmail(message: Omit<EmailMessage, "recipientEmail"> & { testDeliveryId: string }): Promise<EmailDeliveryResult> {
   const provider = selectedProvider();
   if (provider === "smtp") {
-    const recipientEmail = process.env.EMAIL_SMOKE_RECIPIENT ?? "";
+    const recipientEmail = process.env.EMAIL_SMOKE_RECIPIENT
+      || process.env.SENDGRID_SMOKE_RECIPIENT
+      || "";
     return smtpMessage({ ...message, recipientEmail, headers: { "X-Duindorp-Acceptance": message.testDeliveryId } });
   }
   if (provider === "sendgrid") return sendGridTest(message);
