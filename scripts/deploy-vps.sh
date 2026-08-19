@@ -252,7 +252,13 @@ deploy_environment() {
           "$scheduler_container"
       )" || return 1
       [[ "$scheduler_health" == healthy ]] && return 0
-      [[ "$attempt" == 100 ]] && return 1
+      if [[ "$attempt" == 100 ]]; then
+        echo "Scheduler werd niet gezond voor image ${image}; kandidaatlogs volgen." >&2
+        APP_IMAGE="$image" docker compose -p "$compose_project" \
+          -f "$compose_file" logs --no-color --tail 120 app scheduler \
+          2>&1 | node scripts/deploy/redact-logs.mjs || true
+        return 1
+      fi
       sleep 3
     done
   }

@@ -317,7 +317,9 @@ describe("deployment environment isolation", () => {
     expect(edgeGate).toBeLessThan(deactivation);
     expect(deployScript.indexOf("trap 'rollback $?' ERR")).toBeLessThan(edgeGate);
     expect(deployScript).toContain("for attempt in $(seq 1 100); do");
-    expect(deployScript).toContain('[[ "$attempt" == 100 ]] && return 1');
+    expect(deployScript).toContain('if [[ "$attempt" == 100 ]]; then');
+    expect(deployScript).toContain("kandidaatlogs volgen");
+    expect(deployScript).toContain("node scripts/deploy/redact-logs.mjs || true");
     expect(probeScript).toContain('"Content-Type": "application/octet-stream"');
     expect(probeScript).toContain('duplex: "half"');
     expect(probeScript).not.toContain("Authorization");
