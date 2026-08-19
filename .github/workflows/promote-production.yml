@@ -583,6 +583,8 @@ jobs:
           SUPABASE_JWKS: ${{ vars.SUPABASE_JWKS }}
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}
           DYNAMIC_IMPORT_ENABLED: ${{ vars.DYNAMIC_IMPORT_ENABLED || 'false' }}
           IMPORT_RAW_RETENTION_HOURS: ${{ vars.IMPORT_RAW_RETENTION_HOURS || '24' }}
           QR_TOKEN_PEPPER_VERSION: ${{ vars.QR_TOKEN_PEPPER_VERSION }}

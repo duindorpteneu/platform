@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/server/operations/internal-auth", () => ({ hasInternalBearer: mocks.bearer }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 vi.mock("@/server/operations/feature-flags", () => ({ isOperationalFeatureEnabled: mocks.feature }));
-vi.mock("@/server/email/sendgrid", () => ({ sendEmailJob: mocks.send }));
+vi.mock("@/server/email/provider", () => ({ sendEmailJob: mocks.send }));
 vi.mock("@/server/email/workspace", () => ({ renderClaimedEmailJob: mocks.render }));
 vi.mock("@/server/email/mail-v2-projector", () => ({
   projectFulfilmentMail: mocks.project,
@@ -111,9 +111,14 @@ const domainJob = {
 describe("POST /api/internal/jobs/email", () => {
   beforeEach(() => {
     process.env.EMAIL_ENABLED = "true";
+    process.env.EMAIL_PROVIDER = "sendgrid";
+    process.env.EMAIL_BULK_ENABLED = "true";
     process.env.SENDGRID_FROM_NAME = "Kledingcommissie Duindorp SV";
     process.env.SENDGRID_FROM_EMAIL = "kleding@duindorpsv.nl";
     process.env.SENDGRID_REPLY_TO_EMAIL = "kleding@duindorpsv.nl";
+    process.env.SMTP_FROM_NAME = "Verkeerde SMTP-afzender";
+    process.env.SMTP_FROM_EMAIL = "smtp@example.invalid";
+    process.env.SMTP_REPLY_TO_EMAIL = "smtp-reply@example.invalid";
     process.env.SENDGRID_SMOKE_RECIPIENT = "testinbox@example.invalid";
     process.env.SENDGRID_API_KEY = "SG.test-key";
     process.env.SENDGRID_API_KEY_FINGERPRINT =
@@ -152,7 +157,7 @@ describe("POST /api/internal/jobs/email", () => {
     mocks.send.mockReset().mockResolvedValue({ delivered: false, reason: "delivery_uncertain", outcome: "delivery_uncertain" });
     mocks.rpc.mockReset().mockImplementation((name: string, args: Record<string, unknown>) => {
       if (name === "get_email_worker_preflight_v2") return Promise.resolve({ data: { ready: true, brandingMatchCount: 1, senderDriftCount: 0, brandingProjectionBlockers: 0 }, error: null });
-      if (name === "claim_email_jobs_v4") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
+      if (name === "claim_email_jobs_v5") return Promise.resolve({ data: { claimToken: args.p_claim_token, jobs: [job] }, error: null });
       if (name === "authorize_claimed_email_job_v4") return Promise.resolve({ data: true, error: null });
       if (name === "complete_email_job_v2") return Promise.resolve({ data: { jobId: args.p_job_id, status: args.p_outcome, attempts: 1, availableAt: "2026-07-21T10:00:00.000Z" }, error: null });
       return Promise.resolve({ data: null, error: { code: "PGRST202" } });
@@ -222,7 +227,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(response.status).toBe(503);
     expect(mocks.project).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "claim_email_jobs_v4",
+      "claim_email_jobs_v5",
       expect.anything(),
     );
     expect(mocks.finishRun).toHaveBeenCalledWith(
@@ -243,7 +248,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v4") {
+      if (name === "claim_email_jobs_v5") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [portalJob] },
           error: null,
@@ -315,7 +320,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v4") {
+      if (name === "claim_email_jobs_v5") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [portalJob] },
           error: null,
@@ -357,7 +362,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v4") {
+      if (name === "claim_email_jobs_v5") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [fulfilmentJob] },
           error: null,
@@ -412,7 +417,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v4") {
+      if (name === "claim_email_jobs_v5") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [domainJob] },
           error: null,
@@ -467,7 +472,7 @@ describe("POST /api/internal/jobs/email", () => {
           error: null,
         });
       }
-      if (name === "claim_email_jobs_v4") {
+      if (name === "claim_email_jobs_v5") {
         return Promise.resolve({
           data: { claimToken: args.p_claim_token, jobs: [domainJob] },
           error: null,
@@ -502,7 +507,7 @@ describe("POST /api/internal/jobs/email", () => {
     mocks.startRun.mockResolvedValueOnce(false);
     const response = await POST(new Request("https://tenue.example/api/internal/jobs/email", { method: "POST" }));
     expect(response.status).toBe(503);
-    expect(mocks.rpc).not.toHaveBeenCalledWith("claim_email_jobs_v4", expect.anything());
+    expect(mocks.rpc).not.toHaveBeenCalledWith("claim_email_jobs_v5", expect.anything());
     expect(mocks.project).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
   });
@@ -540,7 +545,7 @@ describe("POST /api/internal/jobs/email", () => {
     expect(await response.text()).not.toContain("gevoelige plannercontext");
     expect(mocks.project).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "claim_email_jobs_v4",
+      "claim_email_jobs_v5",
       expect.anything(),
     );
     expect(mocks.finishRun).toHaveBeenCalledWith(

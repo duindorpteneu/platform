@@ -57,6 +57,7 @@ function runtimeEnvironment(environment: "staging" | "production") {
     ...(staging ? {} : { OPERATIONS_HEARTBEAT_URL: "https://monitor.example/ping-secret" }),
     MOLLIE_ENABLED: "false",
     EMAIL_ENABLED: "false",
+    EMAIL_PROVIDER: "sendgrid",
   };
 }
 
@@ -594,6 +595,14 @@ describe("fail-closed release chain", () => {
     expect(workflow("promote-production.yml")).toContain(
       "bash scripts/deploy/install-github-cli.sh",
     );
+  });
+
+  it("uses temporary SMTP by default on staging while production stays explicit SendGrid", () => {
+    const staging = workflow("deploy.yml");
+    const production = workflow("promote-production.yml");
+    expect(staging).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}");
+    expect(production).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
+    expect(production).toContain("EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}");
   });
 
   it("serializes every staging mutation or acceptance on the deployment lock", () => {

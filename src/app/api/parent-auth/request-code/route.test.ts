@@ -45,7 +45,7 @@ vi.mock("@/server/email/otp", () => ({
   renderParentOtpEmail: mocks.renderLegacy,
   renderParentOtpV2: mocks.renderV2,
 }));
-vi.mock("@/server/email/sendgrid", () => ({
+vi.mock("@/server/email/provider", () => ({
   sendParentOtpEmail: mocks.sendLegacy,
   sendParentOtpV2Email: mocks.sendV2,
 }));

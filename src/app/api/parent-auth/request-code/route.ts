@@ -5,7 +5,7 @@ import { generateParentCode, hashParentSecret, normalizeParentEmail, parentEmail
 import {
   sendParentOtpEmail,
   sendParentOtpV2Email,
-} from "@/server/email/sendgrid";
+} from "@/server/email/provider";
 import {
   authorizeParentOtpV2,
   completeParentOtpV2,

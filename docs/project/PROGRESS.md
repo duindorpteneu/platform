@@ -440,6 +440,20 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De kandidaatapp en alle schedulerjobs waren gezond, maar interne health bleef rood op 113 oude failures, drie oude onzekere afleveringen, drie oude providerfailures en één door de rollback onderbroken e-mailworkerrun.
 - Een forward-only, auditbare herstelgrens bewaart alle feiten en telt daarna alleen nieuwe mailincidenten. De onderbroken run is uitsluitend hersteld voor health wanneer een latere worker-run werkelijk succesvol is afgerond.
 
+## Tijdelijke VoetbalAssist SMTP-provider (2026-08-19)
+
+- Providerselectie faalt gesloten en ondersteunt `smtp` actief plus `sendgrid` uitsluitend voor expliciete rollback.
+- SMTP 587 gebruikt verplicht STARTTLS; 465 gebruikt implicit TLS. Mail-v2 snapshots, immutable attempts, retries en provider-message-ID blijven behouden.
+- De database claimt direct vóór bulk en reserveert persistent maximaal één bulkmail per 30 seconden; `EMAIL_BULK_ENABLED=false` houdt bulk geblokkeerd tijdens stagingacceptatie.
+- Live staging verify/smoke en activering wachten op de externe `SMTP_USERNAME`/`SMTP_PASSWORD` secrets en deploymenttoegang.
+
+## SMTP-reviewcorrecties (2026-08-19)
+
+- Staging gebruikt tijdelijk SMTP als default zolang SendGrid stuk is; productie blijft standaard expliciet op de canonieke SendGrid-provider.
+- De productiepromotie levert nu altijd provider- en bulkconfiguratie aan de verplichte runtimevalidatie.
+- De v4-claim-RPC blijft tijdens de uitrol- en rollbackcompatibiliteitsperiode uitvoerbaar voor de vorige image.
+- Legacy order- en portaaljobs kiezen hun afzenderidentiteit op basis van de actieve provider, zodat aanwezige SMTP-defaults een SendGrid-rollback niet kunnen breken.
+
 ## Assignmentgebonden kledingmaten — 2026-08-19
 
 - Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.

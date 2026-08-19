@@ -172,6 +172,17 @@ if (
 if (environment === "production" && mollieEnabled === "true" && !mollieKey.startsWith("live_")) invalid("MOLLIE_API_KEY");
 
 const emailEnabled = required("EMAIL_ENABLED");
+const emailBulkEnabled = optional("EMAIL_BULK_ENABLED") || "false";
+const emailProvider = required("EMAIL_PROVIDER");
+const smtpHost = optional("SMTP_HOST");
+const smtpPort = optional("SMTP_PORT");
+const smtpSecure = optional("SMTP_SECURE");
+const smtpUsername = optional("SMTP_USERNAME");
+const smtpPassword = optional("SMTP_PASSWORD");
+const smtpFromName = optional("SMTP_FROM_NAME");
+const smtpFromEmail = optional("SMTP_FROM_EMAIL");
+const smtpReplyEmail = optional("SMTP_REPLY_TO_EMAIL");
+const emailSmokeRecipient = optional("EMAIL_SMOKE_RECIPIENT");
 const sendgridKey = optional("SENDGRID_API_KEY");
 const sendgridKeyFingerprint =
   optional("SENDGRID_API_KEY_FINGERPRINT");
@@ -182,6 +193,8 @@ const replyEmail = optional("SENDGRID_REPLY_TO_EMAIL");
 const smokeRecipient = optional("SENDGRID_SMOKE_RECIPIENT");
 const webhookKey = optional("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
 if (!["true", "false"].includes(emailEnabled)) invalid("EMAIL_ENABLED");
+if (!["true", "false"].includes(emailBulkEnabled)) invalid("EMAIL_BULK_ENABLED");
+if (!["smtp", "sendgrid"].includes(emailProvider)) invalid("EMAIL_PROVIDER");
 if (!["https://api.sendgrid.com", "https://api.eu.sendgrid.com"].includes(sendgridApiBaseUrl)) invalid("SENDGRID_API_BASE_URL");
 if (webhookKey) {
   try {
@@ -192,6 +205,16 @@ if (webhookKey) {
   } catch { invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY"); }
 }
 if (emailEnabled === "true") {
+  if (emailProvider === "smtp") {
+    if (smtpHost !== "mail.voetbalassist.nl") invalid("SMTP_HOST");
+    if (!((smtpPort === "587" && smtpSecure === "false") || (smtpPort === "465" && smtpSecure === "true"))) invalid("SMTP_PORT");
+    if (!smtpUsername || !smtpPassword) invalid("SMTP_USERNAME");
+    if (!smtpFromName || /[\r\n]/.test(smtpFromName)) invalid("SMTP_FROM_NAME");
+    for (const [name, value] of [["SMTP_USERNAME", smtpUsername], ["SMTP_FROM_EMAIL", smtpFromEmail], ["SMTP_REPLY_TO_EMAIL", smtpReplyEmail]]) {
+      if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
+    }
+    if (environment === "staging" && !emailSmokeRecipient) invalid("EMAIL_SMOKE_RECIPIENT");
+  } else {
   if (!sendgridKey.startsWith("SG.")) invalid("SENDGRID_API_KEY");
   if (!/^[a-f0-9]{64}$/.test(sendgridKeyFingerprint)) {
     invalid("SENDGRID_API_KEY_FINGERPRINT");
@@ -208,6 +231,7 @@ if (emailEnabled === "true") {
     invalid("SENDGRID_SMOKE_RECIPIENT");
   }
   if (!webhookKey) invalid("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY");
+  }
 }
 for (const [name, value] of [["SENDGRID_FROM_EMAIL", fromEmail], ["SENDGRID_REPLY_TO_EMAIL", replyEmail], ["SENDGRID_SMOKE_RECIPIENT", smokeRecipient]]) {
   if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) invalid(name);
@@ -255,8 +279,19 @@ const runtime = {
   OPERATIONS_INTERNAL_BASE_URL: "http://app:3000",
   MOLLIE_ENABLED: mollieEnabled,
   EMAIL_ENABLED: emailEnabled,
+  EMAIL_BULK_ENABLED: emailBulkEnabled,
+  EMAIL_PROVIDER: emailProvider,
   ...Object.fromEntries([
     ["MOLLIE_API_KEY", mollieKey],
+    ["SMTP_HOST", smtpHost],
+    ["SMTP_PORT", smtpPort],
+    ["SMTP_SECURE", smtpSecure],
+    ["SMTP_USERNAME", smtpUsername],
+    ["SMTP_PASSWORD", smtpPassword],
+    ["SMTP_FROM_NAME", smtpFromName],
+    ["SMTP_FROM_EMAIL", smtpFromEmail],
+    ["SMTP_REPLY_TO_EMAIL", smtpReplyEmail],
+    ["EMAIL_SMOKE_RECIPIENT", emailSmokeRecipient],
     ["SENDGRID_API_KEY", sendgridKey],
     ["SENDGRID_API_KEY_FINGERPRINT", sendgridKeyFingerprint],
     ["SENDGRID_API_BASE_URL", sendgridApiBaseUrl],

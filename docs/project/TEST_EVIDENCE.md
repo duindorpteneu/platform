@@ -1,5 +1,18 @@
 # Test evidence
 
+## PR 116 tijdelijke SMTP-fallback — 2026-08-19
+
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed na lockfileherstel voor `@types/node@22.19.15`, `@types/nodemailer@7.0.1` en de naar `9.0.5` gepatchte `nodemailer`.
+- `pnpm security:dependencies` — passed; Nodemailer high advisories zijn opgelost door de gepatchte 9.x-versie.
+- `.github/workflows/deploy.yml` gebruikt tijdelijk `EMAIL_PROVIDER=smtp` als stagingdefault zolang SendGrid niet werkt; productionpromotie blijft op SendGrid tenzij expliciet anders geconfigureerd.
+- `pnpm vitest run src/server/email/providers/smtp.test.ts src/app/api/internal/jobs/email/route.test.ts scripts/deploy/deployment-contract.test.ts` — passed; 56 gerichte tests groen.
+- `node scripts/check-migrations.mjs` — passed.
+- `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
+- `pnpm test:db:email-attempt-concurrency`, `pnpm test:db:mail-campaign-concurrency`, `pnpm test:db:mail-projection-concurrency` en `pnpm test:db:mail-supersession-concurrency` — passed.
+- `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 215 Vitest-bestanden en 1317 tests groen.
+- `pnpm test:db:staging-cleanup` — passed na schone reset; cleanupcontract bevat na samenvoegen met PR 115 nu 108 expliciete operationele tabellen inclusief `private.email_bulk_rate_limit` en pakketassignments.
+
 ## PR 115 pakketmaten en Mollie-fixtureherstel — 2026-08-19
 
 - `pnpm install --frozen-lockfile --ignore-scripts` — passed.
@@ -10,7 +23,7 @@
 - `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
 - `pnpm test:db:mollie-fixture` — passed; cleanup houdt rekening met pakketassignments vóór orderverwijdering.
 - Gerichte DB-concurrencyharnassen voor fulfilment, package, payment, refund, inventory, delivery-notification, mail-projection, mail-supersession en email-attempt zijn lokaal groen.
-- `pnpm test:db:staging-cleanup` — passed; cleanupcontract bevat nu 107 expliciete operationele tabellen inclusief pakketassignments en behoudt staff/Auth/config.
+- `pnpm test:db:staging-cleanup` — passed; cleanupcontract bevat na samenvoegen met PR 116 nu 108 expliciete operationele tabellen inclusief pakketassignments, `private.email_bulk_rate_limit` en behoudt staff/Auth/config.
 
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
@@ -664,6 +677,17 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
 - De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
+
+## Tijdelijke SMTP-provider (2026-08-19)
+
+- Lokale adaptertests dekken geldige configuratie, ontbrekende configuratie, 535-auth, 421/450/451/452-retry, 5xx-reject, pre-DATA timeout, DATA-onzekerheid, acceptatie/messageId en fail-closed providerselectie zonder SendGrid-aanroep.
+- Een echte SMTP verify/auth en smoke zijn niet uitgevoerd: de vereiste mailboxcredentials zijn terecht niet aanwezig in de repositoryomgeving.
+
+## SMTP-reviewcorrecties (2026-08-19 lokaal)
+
+- De deploymentcontracttest bewaakt dat staging tijdelijk SMTP als default gebruikt zolang SendGrid stuk is; productie blijft zonder expliciete override SendGrid selecteren en levert de verplichte provider- en bulkvariabelen door.
+- De e-mailworkertest vult bewust zowel SMTP- als SendGrid-afzendervelden en bewijst dat een actieve SendGrid-provider uitsluitend de SendGrid-identiteit gebruikt.
+- De migratie behoudt expliciet `execute` voor `service_role` op zowel claim-v4 (rollbackcompatibiliteit) als claim-v5.
 
 ## Assignmentgebonden kledingmaten — 2026-08-19
 

@@ -1,0 +1,54 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ sendMail: vi.fn(), verify: vi.fn() }));
+vi.mock("nodemailer", () => ({ default: { createTransport: vi.fn(() => mocks) } }));
+
+import { classifySmtpError, sendSmtpEmail, smtpRuntimeHealth } from "@/server/email/providers/smtp";
+
+const message = {
+  recipientEmail: "ouder@example.nl", subject: "Onderwerp", text: "Tekst", html: "<p>Tekst</p>",
+  fromName: "Kledingcommissie Duindorp SV", fromEmail: "kleding@duindorpsv.nl", replyToEmail: "kleding@duindorpsv.nl",
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.assign(process.env, {
+    EMAIL_ENABLED: "true", SMTP_HOST: "mail.voetbalassist.nl", SMTP_PORT: "587", SMTP_SECURE: "false",
+    SMTP_USERNAME: "kleding@duindorpsv.nl", SMTP_PASSWORD: "not-a-real-secret",
+    SMTP_FROM_NAME: message.fromName, SMTP_FROM_EMAIL: message.fromEmail, SMTP_REPLY_TO_EMAIL: message.replyToEmail,
+  });
+});
+
+describe("VoetbalAssist SMTP-adapter", () => {
+  it("accepteert een geldige 587/STARTTLS-configuratie", () => {
+    expect(smtpRuntimeHealth()).toEqual({ provider: "smtp", providerConfigured: true });
+  });
+
+  it("faalt gesloten als configuratie ontbreekt", async () => {
+    delete process.env.SMTP_PASSWORD;
+    await expect(sendSmtpEmail(message)).resolves.toMatchObject({ delivered: false, reason: "configuration_error", outcome: "failed" });
+  });
+
+  it.each([421, 450, 451, 452])("maakt SMTP %i retrybaar", (responseCode) => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode }))).toMatchObject({ delivered: false, outcome: "retry", providerCode: String(responseCode) });
+  });
+
+  it("maakt auth failure definitief", () => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode: 535, code: "EAUTH" }))).toMatchObject({ reason: "configuration_error", outcome: "failed" });
+  });
+
+  it("maakt 5xx-reject definitief", () => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode: 550 }))).toMatchObject({ reason: "provider_rejected", outcome: "failed" });
+  });
+
+  it("onderscheidt pre-DATA timeout van onzekere DATA-disconnect", () => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ETIMEDOUT", command: "CONN" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "EHLO" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "DATA" }))).toMatchObject({ reason: "delivery_uncertain", outcome: "delivery_uncertain" });
+  });
+
+  it("slaat messageId alleen na SMTP-acceptatie op", async () => {
+    mocks.sendMail.mockResolvedValueOnce({ messageId: "smtp-message-1", accepted: ["accepted"] });
+    await expect(sendSmtpEmail(message)).resolves.toEqual({ delivered: true, providerMessageId: "smtp-message-1" });
+  });
+});

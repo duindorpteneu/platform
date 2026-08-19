@@ -212,6 +212,8 @@
 - Een oude `running` e-mailworkerrun blijft zichtbaar in de ledger, maar is niet meer actueel wanneer een latere run van dezelfde worker aantoonbaar `succeeded` is. Zonder later succes blijft `runningStale` ongewijzigd blokkeren.
 - Publieke en interne health blijven alle overige integriteits-, queue-, provider-, runtime-, QR-, import-, reminder- en supplierassen ongewijzigd afdwingen.
 
+| 2026-08-19 | Gebruik tijdelijk expliciet geselecteerde VoetbalAssist SMTP met een database-persistente bulksleuf van 30 seconden. | De geannuleerde SES-route mag niet terugkeren en SendGrid is niet actief op staging. SMTP-acceptatie bewijst alleen provideracceptatie, niet inbox-delivery. | Mail-v2 snapshots, attempts en auditing blijven intact; `sent` vereist een SMTP messageId, zonder een kunstmatige `delivered`-projectie. Directe jobs passeren de bulksleuf; bulk blijft apart schakelbaar tot de staging-smoke slaagt. | Ja, via `EMAIL_PROVIDER=sendgrid` als expliciete rollbackselectie. |
+
 ## D-108 — De immutable pakketsnapshot is de identiteit van een pakkettoewijzing
 
 - Een globaal pakket en zijn revisies blijven catalogusdefinities; pas de geauditeerde toewijzing aan een lid-seizoen maakt een `member_package_assignment` met de bestaande immutable orderpakketsnapshot als identiteit.

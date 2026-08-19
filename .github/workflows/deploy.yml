@@ -249,6 +249,14 @@ jobs:
           SUPABASE_JWKS: ${{ vars.SUPABASE_JWKS }}
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
+          EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'mail.voetbalassist.nl' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_SECURE: ${{ vars.SMTP_SECURE || 'false' }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME || 'Kledingcommissie Duindorp SV' }}
+          SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL || 'kleding@duindorpsv.nl' }}
+          SMTP_REPLY_TO_EMAIL: ${{ vars.SMTP_REPLY_TO_EMAIL || 'kleding@duindorpsv.nl' }}
           DYNAMIC_IMPORT_ENABLED: ${{ vars.DYNAMIC_IMPORT_ENABLED || 'false' }}
           IMPORT_RAW_RETENTION_HOURS: ${{ vars.IMPORT_RAW_RETENTION_HOURS || '24' }}
           QR_TOKEN_PEPPER_VERSION: ${{ vars.QR_TOKEN_PEPPER_VERSION }}
@@ -271,6 +279,9 @@ jobs:
           OPERATIONS_HEARTBEAT_URL: ${{ secrets.OPERATIONS_HEARTBEAT_URL }}
           MOLLIE_API_KEY: ${{ secrets.MOLLIE_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_SMOKE_RECIPIENT: ${{ secrets.EMAIL_SMOKE_RECIPIENT }}
           SENDGRID_SMOKE_RECIPIENT: ${{ secrets.SENDGRID_SMOKE_RECIPIENT }}
           RELEASE_ARTIFACT: ${{ github.workspace }}/.release/duindorpteneu-app.tar.gz
           RELEASE_MANIFEST_SOURCE: ${{ github.workspace }}/.release/RELEASE_MANIFEST
