@@ -2,7 +2,8 @@
 
 ## PR 116 tijdelijke SMTP-fallback — 2026-08-19
 
-- `pnpm install --frozen-lockfile --ignore-scripts` — passed na lockfileherstel voor `@types/node@22.19.15`, `@types/nodemailer@7.0.1` en `nodemailer@7.0.6`.
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed na lockfileherstel voor `@types/node@22.19.15`, `@types/nodemailer@7.0.1` en de naar `9.0.5` gepatchte `nodemailer`.
+- `pnpm security:dependencies` — passed; Nodemailer high advisories zijn opgelost door de gepatchte 9.x-versie.
 - `pnpm vitest run src/server/email/providers/smtp.test.ts src/app/api/internal/jobs/email/route.test.ts scripts/deploy/deployment-contract.test.ts` — passed; 56 gerichte tests groen.
 - `node scripts/check-migrations.mjs` — passed.
 - `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
