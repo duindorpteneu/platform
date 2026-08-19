@@ -597,10 +597,10 @@ describe("fail-closed release chain", () => {
     );
   });
 
-  it("keeps deployment email on SendGrid unless SMTP is explicitly selected", () => {
+  it("uses temporary SMTP by default on staging while production stays explicit SendGrid", () => {
     const staging = workflow("deploy.yml");
     const production = workflow("promote-production.yml");
-    expect(staging).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
+    expect(staging).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}");
     expect(production).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
     expect(production).toContain("EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}");
   });
