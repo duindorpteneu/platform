@@ -4,7 +4,7 @@ import {
   operationalHealthSchema,
 } from "@/lib/operations-contract";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
-import { sendGridRuntimeHealth } from "@/server/email/sendgrid";
+import { emailProviderRuntimeHealth } from "@/server/email/provider";
 import { qrAcceptedKeyMetadata } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const runtimeImportEnabled = runtimeImportValue === "true";
     const importGateMismatch = !["true", "false"].includes(runtimeImportValue ?? "")
       || runtimeImportEnabled !== parsed.data.importControl.processingEnabled;
-    const emailRuntime = sendGridRuntimeHealth();
+    const emailRuntime = emailProviderRuntimeHealth();
     const emailGateMismatch = !emailRuntime.runtimeValueValid
       || emailRuntime.runtimeEnabled
         !== parsed.data.emailControl.processingEnabled;

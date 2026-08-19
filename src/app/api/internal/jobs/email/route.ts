@@ -8,7 +8,7 @@ import {
   projectMailV2DomainEvents,
 } from "@/server/email/mail-v2-projector";
 import { runDueMailReminders } from "@/server/email/mail-v2-reminders";
-import { sendEmailJob } from "@/server/email/sendgrid";
+import { selectedEmailSender, sendEmailJob } from "@/server/email/provider";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
@@ -218,9 +218,7 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
         replyToEmail: job.replyToEmail,
       }
       : {
-        fromName: process.env.SENDGRID_FROM_NAME ?? "",
-        fromEmail: process.env.SENDGRID_FROM_EMAIL ?? "",
-        replyToEmail: process.env.SENDGRID_REPLY_TO_EMAIL ?? "",
+        ...selectedEmailSender(),
       };
     const delivery = await sendEmailJob({
       jobId: job.id,

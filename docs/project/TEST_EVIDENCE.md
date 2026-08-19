@@ -652,3 +652,8 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
 - De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
+
+## SES-providerlaag — 2026-08-19
+
+- Lokale tests gebruiken uitsluitend fictieve UUID's, adressen en geïnjecteerde providerresponses; er zijn geen AWS-/SendGrid-credentials, productiegegevens of externe provideracties gebruikt.
+- Live stagingacceptatie blijft verplicht: IAM least privilege, verified identity, SES production access, configuration set → SNS event destination, signed subscription, accepted test, inbox, DELIVERY/BOUNCE/COMPLAINT/REJECT/DELIVERY_DELAY en duplicate replay.

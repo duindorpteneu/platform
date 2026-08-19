@@ -211,3 +211,10 @@
 - Een immutable migratiereconciliatie erkent uitsluitend mailjobs, onzekere afleveringen en providerfailures van vóór het herstelde verzendpad. De records blijven intact; iedere nieuwe failure na de grens blijft intern fail-closed blokkeren.
 - Een oude `running` e-mailworkerrun blijft zichtbaar in de ledger, maar is niet meer actueel wanneer een latere run van dezelfde worker aantoonbaar `succeeded` is. Zonder later succes blijft `runningStale` ongewijzigd blokkeren.
 - Publieke en interne health blijven alle overige integriteits-, queue-, provider-, runtime-, QR-, import-, reminder- en supplierassen ongewijzigd afdwingen.
+
+## D-108 — SES wordt via een expliciete generieke providergrens ingevoerd
+
+- `EMAIL_PROVIDER` is verplicht zodra e-mail actief is; een ontbrekende of onbekende keuze valt fail-closed en kiest nooit stil een provider.
+- Amazon SES v2 is de primaire adapter. SendGrid blijft ongewijzigd beschikbaar als expliciet rollbackpad. Mail-v2-snapshots, pogingen, episode-/retrylogica en bestaande event-RPC's blijven intact.
+- SES Configuration Set-events komen via een aan `SES_SNS_TOPIC_ARN` gebonden, cryptografisch geverifieerde SNS-callback binnen. `COMPLAINT` en `REJECT` projecteren op het bestaande veilige `dropped`-contract; `SEND` geldt niet als bezorgd.
+- De bestaande, intern SendGrid-genaamde RPC's verwerken al providerneutrale eventvelden en worden voorlopig hergebruikt. Een naamgevingsmigratie zonder semantische winst is bewust vermeden.

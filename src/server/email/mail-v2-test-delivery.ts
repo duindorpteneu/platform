@@ -12,16 +12,17 @@ import {
   renderMailV2,
 } from "@/server/email/mail-v2";
 import {
+  emailSmokeRecipient,
   sendMailV2TestEmail,
-  type SendGridDeliveryResult,
-} from "@/server/email/sendgrid";
+  type EmailDeliveryResult,
+} from "@/server/email/provider";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
 const fixedRecipientSchema = z.string().trim().email().max(320);
 
 type TestOutcome = Exclude<MailV2TestResponse["status"], "prepared">;
 
-function providerOutcome(result: SendGridDeliveryResult): TestOutcome {
+function providerOutcome(result: EmailDeliveryResult): TestOutcome {
   if (result.delivered) return "accepted";
   if (result.reason === "delivery_uncertain") return "delivery_uncertain";
   if (result.reason === "configuration_error") return "configuration_error";
@@ -68,7 +69,7 @@ export async function sendMailV2TestDelivery(
 }> {
   await requireStaffRole(["beheerder"]);
   const recipient = fixedRecipientSchema.safeParse(
-    process.env.SENDGRID_SMOKE_RECIPIENT,
+    emailSmokeRecipient(),
   );
   if (!recipient.success) {
     throw new Error("MAIL_V2_TEST_RECIPIENT_UNAVAILABLE");

@@ -32,6 +32,17 @@ const serverEnvSchema = z.object({
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
   MOLLIE_API_KEY: optionalText(),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
+  EMAIL_PROVIDER: z.enum(["ses", "sendgrid"]).optional(),
+  AWS_REGION: optionalText(),
+  AWS_ACCESS_KEY_ID: optionalText(),
+  AWS_SECRET_ACCESS_KEY: optionalText(),
+  SES_FROM_NAME: optionalText(3),
+  SES_FROM_EMAIL: optionalEmail,
+  SES_REPLY_TO_EMAIL: optionalEmail,
+  SES_CONFIGURATION_SET: optionalText(),
+  SES_SMOKE_RECIPIENT: optionalEmail,
+  SES_SNS_TOPIC_ARN: optionalText(),
+  SES_SNS_AUTO_CONFIRM: z.enum(["true", "false"]).default("false"),
   SENDGRID_API_KEY: optionalText(),
   SENDGRID_API_KEY_FINGERPRINT: z.preprocess(
     emptyStringToUndefined,
@@ -115,7 +126,10 @@ const serverEnvSchema = z.object({
     if (!env.APP_BASE_URL.startsWith("https://")) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["APP_BASE_URL"], message: "E-mailverzending vereist een publieke HTTPS-basis-URL." });
     }
-    const required = ["SENDGRID_API_KEY", "SENDGRID_API_KEY_FINGERPRINT", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
+    if (!env.EMAIL_PROVIDER) context.addIssue({ code: z.ZodIssueCode.custom, path: ["EMAIL_PROVIDER"], message: "EMAIL_PROVIDER is verplicht wanneer e-mail actief is." });
+    const required = env.EMAIL_PROVIDER === "ses"
+      ? ["AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "SES_FROM_NAME", "SES_FROM_EMAIL", "SES_REPLY_TO_EMAIL", "SES_CONFIGURATION_SET", "SES_SNS_TOPIC_ARN", "CRON_SECRET"] as const
+      : ["SENDGRID_API_KEY", "SENDGRID_API_KEY_FINGERPRINT", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
     for (const key of required) {
       if (!env[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is verplicht wanneer e-mail actief is.` });
     }
@@ -146,6 +160,17 @@ export function getServerEnv() {
     MOLLIE_ENABLED: process.env.MOLLIE_ENABLED,
     MOLLIE_API_KEY: process.env.MOLLIE_API_KEY,
     EMAIL_ENABLED: process.env.EMAIL_ENABLED,
+    EMAIL_PROVIDER: process.env.EMAIL_PROVIDER,
+    AWS_REGION: process.env.AWS_REGION,
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+    SES_FROM_NAME: process.env.SES_FROM_NAME,
+    SES_FROM_EMAIL: process.env.SES_FROM_EMAIL,
+    SES_REPLY_TO_EMAIL: process.env.SES_REPLY_TO_EMAIL,
+    SES_CONFIGURATION_SET: process.env.SES_CONFIGURATION_SET,
+    SES_SMOKE_RECIPIENT: process.env.SES_SMOKE_RECIPIENT,
+    SES_SNS_TOPIC_ARN: process.env.SES_SNS_TOPIC_ARN,
+    SES_SNS_AUTO_CONFIRM: process.env.SES_SNS_AUTO_CONFIRM,
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
     SENDGRID_API_KEY_FINGERPRINT:
       process.env.SENDGRID_API_KEY_FINGERPRINT,

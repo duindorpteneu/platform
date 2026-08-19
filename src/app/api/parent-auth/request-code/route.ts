@@ -4,8 +4,8 @@ import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { generateParentCode, hashParentSecret, normalizeParentEmail, parentEmailSchema, sealParentChallengeEmail } from "@/server/auth/parent";
 import {
   sendParentOtpEmail,
-  sendParentOtpV2Email,
 } from "@/server/email/sendgrid";
+import { sendParentOtpV2Email } from "@/server/email/provider";
 import {
   authorizeParentOtpV2,
   completeParentOtpV2,

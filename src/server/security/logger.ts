@@ -2,7 +2,7 @@ import { normalizeCorrelationId } from "./correlation";
 
 const SAFE_IDENTIFIER = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const SAFE_ROUTE = /^\/[a-z0-9_./:[\]-]{0,127}$/;
-const PROVIDERS = new Set(["mollie", "sendgrid", "supabase"]);
+const PROVIDERS = new Set(["mollie", "ses", "sendgrid", "supabase"]);
 
 export type OperationalLogLevel = "info" | "warn" | "error";
 
@@ -11,7 +11,12 @@ export interface OperationalLogFields {
   correlationId?: string;
   count?: number;
   durationMs?: number;
-  provider?: "mollie" | "sendgrid" | "supabase";
+  provider?: "mollie" | "ses" | "sendgrid" | "supabase";
+  operation?: string;
+  providerCode?: string;
+  retryable?: boolean;
+  jobId?: string;
+  deliveryAttemptId?: string;
   route?: string;
   status?: number;
 }
@@ -35,6 +40,11 @@ function sanitizeFields(fields: OperationalLogFields & Record<string, unknown>) 
   const durationMs = boundedInteger(fields.durationMs, 0, 86_400_000);
   if (durationMs !== undefined) safe.durationMs = durationMs;
   if (typeof fields.provider === "string" && PROVIDERS.has(fields.provider)) safe.provider = fields.provider;
+  if (typeof fields.operation === "string" && SAFE_IDENTIFIER.test(fields.operation)) safe.operation = fields.operation;
+  if (typeof fields.providerCode === "string" && SAFE_IDENTIFIER.test(fields.providerCode)) safe.providerCode = fields.providerCode;
+  if (typeof fields.retryable === "boolean") safe.retryable = fields.retryable ? 1 : 0;
+  if (typeof fields.jobId === "string" && /^[0-9a-f-]{36}$/u.test(fields.jobId)) safe.jobId = fields.jobId;
+  if (typeof fields.deliveryAttemptId === "string" && /^[0-9a-f-]{36}$/u.test(fields.deliveryAttemptId)) safe.deliveryAttemptId = fields.deliveryAttemptId;
   if (typeof fields.route === "string" && SAFE_ROUTE.test(fields.route)) safe.route = fields.route;
   const status = boundedInteger(fields.status, 100, 599);
   if (status !== undefined) safe.status = status;

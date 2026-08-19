@@ -47,8 +47,8 @@ vi.mock("@/server/email/otp", () => ({
 }));
 vi.mock("@/server/email/sendgrid", () => ({
   sendParentOtpEmail: mocks.sendLegacy,
-  sendParentOtpV2Email: mocks.sendV2,
 }));
+vi.mock("@/server/email/provider", () => ({ sendParentOtpV2Email: mocks.sendV2 }));
 
 import { POST } from "./route";
 

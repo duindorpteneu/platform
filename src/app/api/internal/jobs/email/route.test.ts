@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/server/operations/internal-auth", () => ({ hasInternalBearer: mocks.bearer }));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 vi.mock("@/server/operations/feature-flags", () => ({ isOperationalFeatureEnabled: mocks.feature }));
-vi.mock("@/server/email/sendgrid", () => ({ sendEmailJob: mocks.send }));
+vi.mock("@/server/email/provider", () => ({ sendEmailJob: mocks.send, selectedEmailSender: () => ({ fromName: "Kledingcommissie Duindorp SV", fromEmail: "kleding@duindorpsv.nl", replyToEmail: "kleding@duindorpsv.nl" }) }));
 vi.mock("@/server/email/workspace", () => ({ renderClaimedEmailJob: mocks.render }));
 vi.mock("@/server/email/mail-v2-projector", () => ({
   projectFulfilmentMail: mocks.project,
@@ -111,6 +111,7 @@ const domainJob = {
 describe("POST /api/internal/jobs/email", () => {
   beforeEach(() => {
     process.env.EMAIL_ENABLED = "true";
+  process.env.EMAIL_PROVIDER = "sendgrid";
     process.env.SENDGRID_FROM_NAME = "Kledingcommissie Duindorp SV";
     process.env.SENDGRID_FROM_EMAIL = "kleding@duindorpsv.nl";
     process.env.SENDGRID_REPLY_TO_EMAIL = "kleding@duindorpsv.nl";

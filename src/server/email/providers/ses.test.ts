@@ -1,0 +1,12 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendEmailJob, setSesSenderForTests } from "./ses";
+const original={...process.env}; const input={jobId:"11111111-1111-4111-8111-111111111111",deliveryAttemptId:"11111111-1111-4111-8111-111111111112",recipientEmail:"ouder@example.nl",subject:"Test",text:"Tekst",html:"<p>Tekst</p>",fromName:"Duindorp SV",fromEmail:"mail@example.nl",replyToEmail:"reply@example.nl"};
+beforeEach(()=>Object.assign(process.env,{EMAIL_ENABLED:"true",AWS_REGION:"eu-west-1",AWS_ACCESS_KEY_ID:"example",AWS_SECRET_ACCESS_KEY:"example",SES_FROM_NAME:input.fromName,SES_FROM_EMAIL:input.fromEmail,SES_REPLY_TO_EMAIL:input.replyToEmail,SES_CONFIGURATION_SET:"duindorp"}));
+afterEach(()=>{process.env={...original};setSesSenderForTests(null);});
+describe("SES adapter",()=>{
+ it("bouwt SendEmail v2 en gebruikt MessageId",async()=>{const sender=vi.fn().mockResolvedValue({MessageId:"ses-1"});setSesSenderForTests(sender);await expect(sendEmailJob(input)).resolves.toEqual({delivered:true,providerMessageId:"ses-1"});expect(sender.mock.calls[0][0]).toMatchObject({Destination:{ToAddresses:["ouder@example.nl"]},ConfigurationSetName:"duindorp",EmailTags:[{Name:"delivery_kind",Value:"email_job"},{Name:"email_job_id",Value:input.jobId},{Name:"delivery_attempt_id",Value:input.deliveryAttemptId}]});});
+ it("mapt MessageRejected permanent",async()=>{setSesSenderForTests(vi.fn().mockRejectedValue(Object.assign(new Error(),{name:"MessageRejected"})));await expect(sendEmailJob(input)).resolves.toMatchObject({reason:"provider_rejected",outcome:"failed",providerCode:"messagerejected"});});
+ it("mapt throttling naar retry",async()=>{setSesSenderForTests(vi.fn().mockRejectedValue(Object.assign(new Error(),{name:"TooManyRequestsException"})));await expect(sendEmailJob(input)).resolves.toMatchObject({outcome:"retry"});});
+ it("mapt netwerk-timeout als onzeker",async()=>{setSesSenderForTests(vi.fn().mockRejectedValue(Object.assign(new Error(),{name:"TimeoutError"})));await expect(sendEmailJob(input)).resolves.toMatchObject({reason:"delivery_uncertain",outcome:"delivery_uncertain"});});
+ it("weigert ontbrekende of afwijkende configuratie",async()=>{delete process.env.AWS_REGION;await expect(sendEmailJob(input)).resolves.toMatchObject({reason:"configuration_error"});process.env.AWS_REGION="eu-west-1";await expect(sendEmailJob({...input,replyToEmail:"other@example.nl"})).resolves.toMatchObject({reason:"configuration_error"});});
+});

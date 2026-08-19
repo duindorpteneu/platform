@@ -439,3 +439,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - De kandidaatapp en alle schedulerjobs waren gezond, maar interne health bleef rood op 113 oude failures, drie oude onzekere afleveringen, drie oude providerfailures en één door de rollback onderbroken e-mailworkerrun.
 - Een forward-only, auditbare herstelgrens bewaart alle feiten en telt daarna alleen nieuwe mailincidenten. De onderbroken run is uitsluitend hersteld voor health wanneer een latere worker-run werkelijk succesvol is afgerond.
+
+## Generieke e-mailproviderlaag en Amazon SES — 2026-08-19
+
+- Mail-v2 verzendt nu via één expliciete providerselector met SES v2 als beoogde primaire provider en SendGrid als rollbackadapter; immutable render-/sender-snapshots en delivery-attempts zijn niet herschreven.
+- SES gebruikt `SendEmailCommand`, configuration sets en PII-vrije UUID-tags voor jobs, OTP en beheertests. AWS-fouten worden genormaliseerd naar retry, permanent/configuratiefout of onzekere aflevering en veilig gestructureerd gelogd.
+- De nieuwe SNS-route valideert topic, AWS-certificaat-URL en RSA-handtekening vóór parsing of databasegebruik, ondersteunt gecontroleerde subscription confirmation en hergebruikt de idempotente eventprojecties.
