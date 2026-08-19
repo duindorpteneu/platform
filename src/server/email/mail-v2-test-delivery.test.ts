@@ -14,7 +14,7 @@ vi.mock("@/server/supabase/server", () => ({
     schema: () => ({ rpc: mocks.rpc }),
   })),
 }));
-vi.mock("@/server/email/sendgrid", () => ({
+vi.mock("@/server/email/provider", () => ({
   sendMailV2TestEmail: mocks.send,
 }));
 

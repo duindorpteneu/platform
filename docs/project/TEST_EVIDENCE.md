@@ -652,3 +652,8 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Read-only stagingdiagnose na deploypoging 3: email-, inventory- en retentionjobs slaagden; import was bewust paused/200. Alleen `/api/internal/health` retourneerde 503 op 113 pre-fix failed jobs, drie pre-fix uncertain jobs, drie pre-fix providerfailures en één oude running-run waar meerdere latere successen op volgden.
 - De gerichte pgTAP-regressie bewijst dat een later succes de stale-runstatus herstelt en dat een nieuwe failed job ná de migratiegrens nog steeds releaseblokkerend zichtbaar is.
+
+## Tijdelijke SMTP-provider (2026-08-19)
+
+- Lokale adaptertests dekken geldige configuratie, ontbrekende configuratie, 535-auth, 421/450/451/452-retry, 5xx-reject, pre-DATA timeout, DATA-onzekerheid, acceptatie/messageId en fail-closed providerselectie zonder SendGrid-aanroep.
+- Een echte SMTP verify/auth en smoke zijn niet uitgevoerd: de vereiste mailboxcredentials zijn terecht niet aanwezig in de repositoryomgeving.

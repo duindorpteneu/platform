@@ -439,3 +439,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - De kandidaatapp en alle schedulerjobs waren gezond, maar interne health bleef rood op 113 oude failures, drie oude onzekere afleveringen, drie oude providerfailures en één door de rollback onderbroken e-mailworkerrun.
 - Een forward-only, auditbare herstelgrens bewaart alle feiten en telt daarna alleen nieuwe mailincidenten. De onderbroken run is uitsluitend hersteld voor health wanneer een latere worker-run werkelijk succesvol is afgerond.
+
+## Tijdelijke VoetbalAssist SMTP-provider (2026-08-19)
+
+- Providerselectie faalt gesloten en ondersteunt `smtp` actief plus `sendgrid` uitsluitend voor expliciete rollback.
+- SMTP 587 gebruikt verplicht STARTTLS; 465 gebruikt implicit TLS. Mail-v2 snapshots, immutable attempts, retries en provider-message-ID blijven behouden.
+- De database claimt direct vóór bulk en reserveert persistent maximaal één bulkmail per 30 seconden; `EMAIL_BULK_ENABLED=false` houdt bulk geblokkeerd tijdens stagingacceptatie.
+- Live staging verify/smoke en activering wachten op de externe `SMTP_USERNAME`/`SMTP_PASSWORD` secrets en deploymenttoegang.

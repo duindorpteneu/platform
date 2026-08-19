@@ -3,7 +3,7 @@ import {
   emailDeliveryAttemptHealthHasIntegrityBlocker,
   operationalHealthSchema,
 } from "@/lib/operations-contract";
-import { sendGridRuntimeHealth } from "@/server/email/sendgrid";
+import { emailRuntimeHealth } from "@/server/email/provider";
 import { qrAcceptedKeyMetadata } from "@/server/qr/tokens";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 
@@ -88,7 +88,7 @@ export async function GET() {
       },
     );
     const parsed = operationalHealthSchema.safeParse(data);
-    const emailRuntime = sendGridRuntimeHealth();
+    const emailRuntime = emailRuntimeHealth();
     const valid = !error
       && parsed.success
       && emailRuntime.runtimeValueValid

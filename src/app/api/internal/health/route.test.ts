@@ -134,6 +134,7 @@ describe("GET /api/internal/health", () => {
 
   it("bevestigt dezelfde e-mailpoort en exact dezelfde Mail Send-keybinding", async () => {
     process.env.EMAIL_ENABLED = "true";
+    process.env.EMAIL_PROVIDER = "sendgrid";
     process.env.SENDGRID_API_KEY = "SG.runtime-key";
     process.env.SENDGRID_API_KEY_FINGERPRINT =
       createHash("sha256")

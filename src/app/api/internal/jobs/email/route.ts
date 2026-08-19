@@ -8,7 +8,7 @@ import {
   projectMailV2DomainEvents,
 } from "@/server/email/mail-v2-projector";
 import { runDueMailReminders } from "@/server/email/mail-v2-reminders";
-import { sendEmailJob } from "@/server/email/sendgrid";
+import { sendEmailJob } from "@/server/email/provider";
 import { renderClaimedEmailJob } from "@/server/email/workspace";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
 import { hasInternalBearer } from "@/server/operations/internal-auth";
@@ -68,9 +68,9 @@ export async function POST(request: Request) {
   const preflightResult = await admin.schema("app").rpc(
     "get_email_worker_preflight_v2",
     {
-      p_from_name: env.SENDGRID_FROM_NAME,
-      p_from_email: env.SENDGRID_FROM_EMAIL,
-      p_reply_to_email: env.SENDGRID_REPLY_TO_EMAIL,
+      p_from_name: env.EMAIL_PROVIDER === "smtp" ? env.SMTP_FROM_NAME : env.SENDGRID_FROM_NAME,
+      p_from_email: env.EMAIL_PROVIDER === "smtp" ? env.SMTP_FROM_EMAIL : env.SENDGRID_FROM_EMAIL,
+      p_reply_to_email: env.EMAIL_PROVIDER === "smtp" ? env.SMTP_REPLY_TO_EMAIL : env.SENDGRID_REPLY_TO_EMAIL,
     },
   );
   const preflight = workerPreflightResponseSchema.safeParse(
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
     );
   }
   const claimToken = randomUUID();
-  const { data, error } = await admin.schema("app").rpc("claim_email_jobs_v4", { p_claim_token: claimToken, p_limit: 25 });
+  const { data, error } = await admin.schema("app").rpc("claim_email_jobs_v5", { p_claim_token: claimToken, p_limit: 25, p_allow_bulk: env.EMAIL_BULK_ENABLED === "true" });
   if (error) {
     await finishOperationRun(admin, "email_worker", runId, "failed", 0, "claim_failed");
     return NextResponse.json({ error: "E-mailjobs konden niet worden geclaimd." }, { status: 503 });
@@ -218,9 +218,9 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
         replyToEmail: job.replyToEmail,
       }
       : {
-        fromName: process.env.SENDGRID_FROM_NAME ?? "",
-        fromEmail: process.env.SENDGRID_FROM_EMAIL ?? "",
-        replyToEmail: process.env.SENDGRID_REPLY_TO_EMAIL ?? "",
+        fromName: process.env.SMTP_FROM_NAME ?? process.env.SENDGRID_FROM_NAME ?? "",
+        fromEmail: process.env.SMTP_FROM_EMAIL ?? process.env.SENDGRID_FROM_EMAIL ?? "",
+        replyToEmail: process.env.SMTP_REPLY_TO_EMAIL ?? process.env.SENDGRID_REPLY_TO_EMAIL ?? "",
       };
     const delivery = await sendEmailJob({
       jobId: job.id,

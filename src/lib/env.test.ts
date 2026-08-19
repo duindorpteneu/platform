@@ -105,6 +105,7 @@ describe("server provider configuration", () => {
   it("vereist bij actieve e-mail een keyfingerprint maar geen productie-smokeontvanger", () => {
     const env = parseServerEnv({
       EMAIL_ENABLED: "true",
+      EMAIL_PROVIDER: "sendgrid",
       APP_BASE_URL: "https://duindorp.dgwebservices.nl",
       SENDGRID_API_KEY: "SG.test",
       SENDGRID_API_KEY_FINGERPRINT: "a".repeat(64),

@@ -57,6 +57,7 @@ function runtimeEnvironment(environment: "staging" | "production") {
     ...(staging ? {} : { OPERATIONS_HEARTBEAT_URL: "https://monitor.example/ping-secret" }),
     MOLLIE_ENABLED: "false",
     EMAIL_ENABLED: "false",
+    EMAIL_PROVIDER: "sendgrid",
   };
 }
 

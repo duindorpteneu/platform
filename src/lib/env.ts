@@ -32,6 +32,17 @@ const serverEnvSchema = z.object({
   MOLLIE_ENABLED: z.enum(["true", "false"]).default("false"),
   MOLLIE_API_KEY: optionalText(),
   EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
+  EMAIL_BULK_ENABLED: z.enum(["true", "false"]).default("false"),
+  EMAIL_PROVIDER: z.enum(["smtp", "sendgrid"]).optional(),
+  SMTP_HOST: optionalText(),
+  SMTP_PORT: z.preprocess(emptyStringToUndefined, z.string().regex(/^(465|587)$/).transform(Number).optional()),
+  SMTP_SECURE: z.enum(["true", "false"]).optional(),
+  SMTP_USERNAME: optionalEmail,
+  SMTP_PASSWORD: optionalText(),
+  SMTP_FROM_NAME: optionalText(3),
+  SMTP_FROM_EMAIL: optionalEmail,
+  SMTP_REPLY_TO_EMAIL: optionalEmail,
+  EMAIL_SMOKE_RECIPIENT: optionalEmail,
   SENDGRID_API_KEY: optionalText(),
   SENDGRID_API_KEY_FINGERPRINT: z.preprocess(
     emptyStringToUndefined,
@@ -115,9 +126,15 @@ const serverEnvSchema = z.object({
     if (!env.APP_BASE_URL.startsWith("https://")) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["APP_BASE_URL"], message: "E-mailverzending vereist een publieke HTTPS-basis-URL." });
     }
-    const required = ["SENDGRID_API_KEY", "SENDGRID_API_KEY_FINGERPRINT", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const;
+    if (!env.EMAIL_PROVIDER) context.addIssue({ code: z.ZodIssueCode.custom, path: ["EMAIL_PROVIDER"], message: "EMAIL_PROVIDER is verplicht wanneer e-mail actief is." });
+    const required = env.EMAIL_PROVIDER === "smtp"
+      ? (["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM_NAME", "SMTP_FROM_EMAIL", "SMTP_REPLY_TO_EMAIL", "CRON_SECRET"] as const)
+      : (["SENDGRID_API_KEY", "SENDGRID_API_KEY_FINGERPRINT", "SENDGRID_FROM_NAME", "SENDGRID_FROM_EMAIL", "SENDGRID_REPLY_TO_EMAIL", "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY", "CRON_SECRET"] as const);
     for (const key of required) {
       if (!env[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is verplicht wanneer e-mail actief is.` });
+    }
+    if (env.EMAIL_PROVIDER === "smtp" && (env.SMTP_HOST !== "mail.voetbalassist.nl" || (env.SMTP_PORT === 587 && env.SMTP_SECURE !== "false") || (env.SMTP_PORT === 465 && env.SMTP_SECURE !== "true"))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["SMTP_HOST"], message: "SMTP vereist VoetbalAssist met de juiste TLS-instelling." });
     }
   }
 });
@@ -146,6 +163,17 @@ export function getServerEnv() {
     MOLLIE_ENABLED: process.env.MOLLIE_ENABLED,
     MOLLIE_API_KEY: process.env.MOLLIE_API_KEY,
     EMAIL_ENABLED: process.env.EMAIL_ENABLED,
+    EMAIL_BULK_ENABLED: process.env.EMAIL_BULK_ENABLED,
+    EMAIL_PROVIDER: process.env.EMAIL_PROVIDER,
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT,
+    SMTP_SECURE: process.env.SMTP_SECURE,
+    SMTP_USERNAME: process.env.SMTP_USERNAME,
+    SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+    SMTP_FROM_NAME: process.env.SMTP_FROM_NAME,
+    SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL,
+    SMTP_REPLY_TO_EMAIL: process.env.SMTP_REPLY_TO_EMAIL,
+    EMAIL_SMOKE_RECIPIENT: process.env.EMAIL_SMOKE_RECIPIENT,
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
     SENDGRID_API_KEY_FINGERPRINT:
       process.env.SENDGRID_API_KEY_FINGERPRINT,
