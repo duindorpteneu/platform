@@ -10,6 +10,7 @@
 - `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
 - `pnpm test:db:mollie-fixture` — passed; cleanup houdt rekening met pakketassignments vóór orderverwijdering.
 - Gerichte DB-concurrencyharnassen voor fulfilment, package, payment, refund, inventory, delivery-notification, mail-projection, mail-supersession en email-attempt zijn lokaal groen.
+- `pnpm test:db:staging-cleanup` — passed; cleanupcontract bevat nu 107 expliciete operationele tabellen inclusief pakketassignments en behoudt staff/Auth/config.
 
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
