@@ -657,3 +657,9 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - Lokale adaptertests dekken geldige configuratie, ontbrekende configuratie, 535-auth, 421/450/451/452-retry, 5xx-reject, pre-DATA timeout, DATA-onzekerheid, acceptatie/messageId en fail-closed providerselectie zonder SendGrid-aanroep.
 - Een echte SMTP verify/auth en smoke zijn niet uitgevoerd: de vereiste mailboxcredentials zijn terecht niet aanwezig in de repositoryomgeving.
+
+## SMTP-reviewcorrecties (2026-08-19 lokaal)
+
+- De deploymentcontracttest bewaakt dat staging en productie zonder expliciete override SendGrid selecteren en dat productie de verplichte provider- en bulkvariabelen doorgeeft.
+- De e-mailworkertest vult bewust zowel SMTP- als SendGrid-afzendervelden en bewijst dat een actieve SendGrid-provider uitsluitend de SendGrid-identiteit gebruikt.
+- De migratie behoudt expliciet `execute` voor `service_role` op zowel claim-v4 (rollbackcompatibiliteit) als claim-v5.

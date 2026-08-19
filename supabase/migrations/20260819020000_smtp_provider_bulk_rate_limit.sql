@@ -332,8 +332,9 @@ $$;
 
 
 revoke all on function app.claim_email_jobs_priority_v3(uuid, integer, boolean) from public, anon, authenticated;
-revoke all on function app.claim_email_jobs_v4(uuid, integer) from service_role;
+revoke all on function app.claim_email_jobs_v4(uuid, integer) from public, anon, authenticated;
 revoke all on function app.claim_email_jobs_v5(uuid, integer, boolean) from public, anon, authenticated;
+grant execute on function app.claim_email_jobs_v4(uuid, integer) to service_role;
 grant execute on function app.claim_email_jobs_v5(uuid, integer, boolean) to service_role;
 comment on function app.claim_email_jobs_v5(uuid, integer, boolean) is 'Claims direct mail first and at most one bulk send per persistent 30-second slot.';
 notify pgrst, 'reload schema';

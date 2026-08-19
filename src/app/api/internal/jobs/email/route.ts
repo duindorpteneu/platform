@@ -218,9 +218,21 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
         replyToEmail: job.replyToEmail,
       }
       : {
-        fromName: process.env.SMTP_FROM_NAME ?? process.env.SENDGRID_FROM_NAME ?? "",
-        fromEmail: process.env.SMTP_FROM_EMAIL ?? process.env.SENDGRID_FROM_EMAIL ?? "",
-        replyToEmail: process.env.SMTP_REPLY_TO_EMAIL ?? process.env.SENDGRID_REPLY_TO_EMAIL ?? "",
+        fromName: process.env.EMAIL_PROVIDER === "smtp"
+          ? process.env.SMTP_FROM_NAME ?? ""
+          : process.env.EMAIL_PROVIDER === "sendgrid"
+            ? process.env.SENDGRID_FROM_NAME ?? ""
+            : "",
+        fromEmail: process.env.EMAIL_PROVIDER === "smtp"
+          ? process.env.SMTP_FROM_EMAIL ?? ""
+          : process.env.EMAIL_PROVIDER === "sendgrid"
+            ? process.env.SENDGRID_FROM_EMAIL ?? ""
+            : "",
+        replyToEmail: process.env.EMAIL_PROVIDER === "smtp"
+          ? process.env.SMTP_REPLY_TO_EMAIL ?? ""
+          : process.env.EMAIL_PROVIDER === "sendgrid"
+            ? process.env.SENDGRID_REPLY_TO_EMAIL ?? ""
+            : "",
       };
     const delivery = await sendEmailJob({
       jobId: job.id,

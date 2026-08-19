@@ -446,3 +446,10 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - SMTP 587 gebruikt verplicht STARTTLS; 465 gebruikt implicit TLS. Mail-v2 snapshots, immutable attempts, retries en provider-message-ID blijven behouden.
 - De database claimt direct vóór bulk en reserveert persistent maximaal één bulkmail per 30 seconden; `EMAIL_BULK_ENABLED=false` houdt bulk geblokkeerd tijdens stagingacceptatie.
 - Live staging verify/smoke en activering wachten op de externe `SMTP_USERNAME`/`SMTP_PASSWORD` secrets en deploymenttoegang.
+
+## SMTP-reviewcorrecties (2026-08-19)
+
+- Staging en productie blijven standaard expliciet op de canonieke SendGrid-provider; SMTP vereist een bewuste repositoryvariabele.
+- De productiepromotie levert nu altijd provider- en bulkconfiguratie aan de verplichte runtimevalidatie.
+- De v4-claim-RPC blijft tijdens de uitrol- en rollbackcompatibiliteitsperiode uitvoerbaar voor de vorige image.
+- Legacy order- en portaaljobs kiezen hun afzenderidentiteit op basis van de actieve provider, zodat aanwezige SMTP-defaults een SendGrid-rollback niet kunnen breken.

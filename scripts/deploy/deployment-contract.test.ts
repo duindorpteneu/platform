@@ -597,6 +597,14 @@ describe("fail-closed release chain", () => {
     );
   });
 
+  it("keeps deployment email on SendGrid unless SMTP is explicitly selected", () => {
+    const staging = workflow("deploy.yml");
+    const production = workflow("promote-production.yml");
+    expect(staging).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
+    expect(production).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}");
+    expect(production).toContain("EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}");
+  });
+
   it("serializes every staging mutation or acceptance on the deployment lock", () => {
     for (const name of [
       "adopt-legacy-production.yml",

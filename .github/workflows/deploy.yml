@@ -250,7 +250,7 @@ jobs:
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
           EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}
-          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'sendgrid' }}
           SMTP_HOST: ${{ vars.SMTP_HOST || 'mail.voetbalassist.nl' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_SECURE: ${{ vars.SMTP_SECURE || 'false' }}
