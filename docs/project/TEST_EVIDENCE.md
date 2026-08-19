@@ -657,3 +657,4 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - De volledige Vitestsuite is groen, inclusief aangepaste regressies voor betaling pas na maatbevestiging, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
 - ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
+- Reviewherstel: de bevestigingsguard kijkt pas naar een eerdere request-ID zodra een pakketregel een harde reservering (`reserved` of `fulfilled`) heeft. Daardoor blijft een nieuwe maatbevestiging vóór reservering toegestaan; migrationlint en `git diff --check` zijn na deze correctie opnieuw groen.

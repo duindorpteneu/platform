@@ -181,8 +181,9 @@ $$;
 revoke all on function private.package_sizes_complete(uuid, uuid)
 from public, anon, authenticated, service_role;
 
--- Parents can confirm an assignment once. Exact retries retain the established
--- idempotency path; a different request cannot silently rewrite confirmed sizes.
+-- Parents can reconfirm until stock has actually been reserved. Exact retries
+-- retain the established idempotency path after reservation, while a different
+-- request cannot silently rewrite sizes that have entered the logistics flow.
 alter function public.confirm_parent_package_sizes_v5(
   text, uuid, jsonb, text, uuid, uuid
 ) rename to confirm_parent_package_sizes_v5_legacy;
@@ -202,6 +203,19 @@ begin
     where confirmation.order_id = target_order.id
       and confirmation.package_snapshot_id = target_order.active_package_snapshot_id
       and confirmation.request_id is distinct from p_request_id
+      and exists(
+        select 1
+        from app.order_lines line
+        join app.order_package_snapshot_items snapshot_item
+          on snapshot_item.snapshot_id = target_order.active_package_snapshot_id
+          and snapshot_item.template_item_id = line.package_template_item_id
+          and snapshot_item.article_id = line.article_id
+        join app.inventory_reservations reservation
+          on reservation.order_line_id = line.id
+          and reservation.status in ('reserved', 'fulfilled')
+        where line.order_id = target_order.id
+          and line.status <> 'cancelled'
+      )
   ) then
     raise exception 'PACKAGE_SIZES_ALREADY_CONFIRMED' using errcode = '23514';
   end if;
