@@ -108,3 +108,9 @@
 - **SMTP stagingacceptatie nog extern geblokkeerd (2026-08-19):** de repository bevat geen stagingcredentials of geauthenticeerde deploymenttoegang. Houd `EMAIL_BULK_ENABLED=false` totdat SMTP verify, beheer-testmail, OTP en individuele uitnodiging aantoonbaar zijn geaccepteerd; SMTP-acceptatie is geen inbox-deliverybewijs.
 
 | R-106 | Globale maatregels per lid, seizoen en artikel konden bij pakketwissels als actuele keuze worden hergebruikt en globale cataloguspakketten waren door ouders selecteerbaar. | Een veldspeler kon keeperproducten zien of een nieuwe assignment kon een oude bevestiging als actuele pakketkeuze erven. | Gebruik de immutable pakketsnapshot als assignment-ID, projecteer iedere bevestiging assignmentgebonden, maak ouderkeuze onmogelijk, filter backoffice op de actieve snapshot en laat reservering pas bij zowel geldige maat als betaling ontstaan. | Closed in code; lokale databaseacceptatie vereist Docker |
+
+## Pakketlifecycle-reconciliatie — 2026-08-19
+
+- Live/staging aantallen worden bewust niet in code verankerd. De forward-only reconciliatie detecteert paid actieve pakketten met ontbrekende componentregels op invariant en legt de werkelijke aantallen per categorie vast.
+- Provider-paid blijft leidend bij ontbrekende maten; dit voorkomt betalingsverlies maar laat een expliciete operationele `Nalevering` staan totdat geldige varianten zijn gekozen.
+- Lokale database-/pgTAP-validatie vereist Docker; zonder Docker blijft de migratie-uitvoering een omgevingsbeperking en moet CI de volledige schone reset, upgrade- en concurrencygate bewijzen.

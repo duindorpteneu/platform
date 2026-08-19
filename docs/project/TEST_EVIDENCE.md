@@ -699,3 +699,27 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - De deploymentcontracttest bewaakt dat vorige manifest- en imagedigestvalidatie plus de geverifieerde rollbackalias vóór `docker load` staan, dat kandidaat- en rollbacktags ook bij dezelfde SHA gescheiden blijven en dat automatische rollback uitsluitend de alias gebruikt.
 - Dezelfde regressie bewaakt dat een digestafwijking vóór aliascreatie en candidate-load fail-closed stopt, dat kandidaat-schedulerlogs behouden blijven en dat aliascleanup pas na volledige acceptatie gebeurt met behoud van de onmiddellijk vorige target.
+
+## Pakketmaat-/betaallifecycle — 2026-08-19
+
+Stagingcontrole na deploy (uitsluitend lezen):
+
+```sql
+select o.id, private.package_fulfilment_quantities(o.id)
+from app.member_orders o
+where o.package_assignment_state = 'active'
+  and exists (select 1 from app.payments p where p.order_id=o.id and p.status='paid')
+  and o.order_status = 'Afgerond'
+  and (private.package_fulfilment_quantities(o.id)->>'pickedUpQuantity')::int
+      < (private.package_fulfilment_quantities(o.id)->>'expectedQuantity')::int;
+
+select i.snapshot_id, i.id, count(l.id)
+from app.order_package_snapshot_items i
+left join app.order_lines l on l.id=i.order_line_id and l.status <> 'cancelled'
+group by i.snapshot_id, i.id having count(l.id) > 1;
+
+select metrics from private.migration_reconciliations
+where migration_key='20260819130000_package_size_payment_lifecycle';
+```
+
+De eerste twee queries moeten nul rijen opleveren. De metrics bewijzen `paidBrokenOrdersDetected`, `completePrefilledSizesRepaired`, `missingSizesLeftForMemberAction`, `orderLinesMaterialized`, `sizeSelectionsConfirmed`, `sizeSelectionsLocked` en `statusesRefreshed`. Voor de bekende Dani-controle wordt op `member_id = '23ccae6f-cd2d-4559-87b5-8d36a8df51cb'` dezelfde quantity-helper gecombineerd met snapshotitems, assignmentselecties, regels en paymentprojectie; verwacht zijn paid, expected 3, drie locked selecties en drie actieve componentregels, maar alleen `Afgerond` bij pickedUp 3.

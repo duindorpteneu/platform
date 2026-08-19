@@ -116,7 +116,7 @@ describe("MemberDashboard package sizes", () => {
     ]);
   });
 
-  it("houdt betaling onafhankelijk van de maatbevestiging", () => {
+  it("staat betaling toe met complete geldige vooringevulde maten", () => {
     expect(canStartPayment(member)).toBe(true);
     expect(
       canStartPayment({
@@ -130,10 +130,11 @@ describe("MemberDashboard package sizes", () => {
         order: member.order ? { ...member.order, legacy: true } : null,
       }),
     ).toBe(false);
+    expect(canStartPayment({ ...member, order: member.order ? { ...member.order, items: [{ ...item, selectedVariantId: null }] } : null })).toBe(false);
   });
 
   it("onderscheidt invullen van geïmporteerde maten controleren", () => {
-    expect(packageSizeAction(member)).toBe("review");
+    expect(packageSizeAction(member)).toBeNull();
     expect(
       packageSizeAction({
         ...member,
@@ -157,7 +158,7 @@ describe("MemberDashboard package sizes", () => {
         ...member,
         order: member.order ? { ...member.order, sizesConfirmed: true } : null,
       }),
-    ).toBe("review");
+    ).toBeNull();
     expect(
       packageSizeAction({
         ...member,

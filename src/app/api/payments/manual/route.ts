@@ -26,6 +26,7 @@ export async function POST(request: Request) {
       p_request_id: parsed.data.requestId,
     });
     if (error) {
+      if (error.message.includes("PACKAGE_SIZES_REQUIRED")) return NextResponse.json({ error: "Vul eerst alle verplichte pakketmaten in.", code: "PACKAGE_SIZES_REQUIRED" }, { status: 409 });
       if (error.code === "42501") return NextResponse.json({ error: "Geen toegang tot deze betaling." }, { status: 403 });
       if (error.code === "P0002") return NextResponse.json({ error: "Bestelling niet gevonden." }, { status: 404 });
       if (error.message.includes("LEGACY_CARD_PAYMENT_DISABLED")) return NextResponse.json({ error: "Pinregistratie is uitgeschakeld; gebruik Mollie of registreer kas." }, { status: 409 });

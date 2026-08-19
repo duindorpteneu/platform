@@ -157,6 +157,15 @@ export function canStartPayment(member: ParentPackageMember) {
     !order.legacy &&
     !["paid", "pending", "refunded", "duplicate_paid"].includes(
       order.paymentStatus ?? "open",
+    ) &&
+    order.items.length > 0 &&
+    order.items.every(
+      (item) =>
+        item.selectedVariantId &&
+        !["conflict", "change_requested"].includes(item.selectionStatus ?? "") &&
+        item.variants.some(
+          (variant) => variant.id === item.selectedVariantId && variant.active,
+        ),
     ),
   );
 }
@@ -181,7 +190,9 @@ export function packageSizeAction(member: ParentPackageMember) {
   ) {
     return "fill" as const;
   }
-  return "review" as const;
+  return order.items.every((item) => item.selectedVariantId)
+    ? null
+    : ("fill" as const);
 }
 
 function itemStatus(item: PackageItem) {
@@ -973,16 +984,12 @@ export function MemberDashboard() {
                             <strong className="block text-xs">
                               {order.sizesConfirmed
                                 ? "Maten aanpassen en opnieuw bevestigen"
-                                : packageSizeAction(member) === "fill"
-                                  ? "Het is verplicht om de maten in te vullen."
-                                  : "Maten controleren en bevestigen"}
+                                : "Het is verplicht om de ontbrekende maten in te vullen."}
                             </strong>
                             <span className="mt-1 block text-xs leading-5">
                               {order.sizesConfirmed
                                 ? "Vóór reservering kun je een correctie doorgeven en het pakket opnieuw bevestigen."
-                                : packageSizeAction(member) === "fill"
-                                  ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
-                                  : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                                : "Kies voor ieder ontbrekend product een geldige maat. Vooraf ingevulde geldige maten worden bij betaling automatisch bevestigd."}
                             </span>
                           </span>
                         </a>
@@ -1124,6 +1131,15 @@ export function MemberDashboard() {
                               <CreditCard className="size-4" />
                               Betaal {amount.format(order.amountDueCents / 100)}
                             </Link>
+                          )}
+                          {!canStartPayment(member) &&
+                            !["paid", "pending", "refunded", "duplicate_paid"].includes(order.paymentStatus ?? "") && (
+                              <a href={`#maten-${member.memberSeasonId}`} className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">
+                                Maten invullen
+                              </a>
+                            )}
+                          {["paid", "duplicate_paid"].includes(order.paymentStatus ?? "") && !order.sizesConfirmed && (
+                            <p className="w-full text-xs font-semibold text-amber-800">Je kledingpakket is betaald. Vul eerst de ontbrekende maten in.</p>
                           )}
                         </div>
                       </div>

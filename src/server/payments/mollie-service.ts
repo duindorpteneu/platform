@@ -41,6 +41,7 @@ export class MollieServiceError extends Error {
       | "INVALID_ORIGIN"
       | "ORDER_ALREADY_PAID"
       | "ORDER_NOT_AVAILABLE"
+      | "PACKAGE_SIZES_REQUIRED"
       | "PROVIDER_UNAVAILABLE"
       | "INVALID_PROVIDER_RESPONSE"
       | "RECONCILIATION_REJECTED"
@@ -88,6 +89,7 @@ function mapPrepareError(error: RpcError) {
   const message = error.message ?? "";
   if (message.includes("ORDER_ALREADY_PAID")) return new MollieServiceError("ORDER_ALREADY_PAID");
   if (message.includes("PARENT_ORDER_ACCESS_DENIED")) return new MollieServiceError("ORDER_NOT_AVAILABLE");
+  if (message.includes("PACKAGE_SIZES_REQUIRED")) return new MollieServiceError("PACKAGE_SIZES_REQUIRED");
   return new MollieServiceError("DATABASE_UNAVAILABLE", true);
 }
 
