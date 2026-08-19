@@ -71,7 +71,8 @@ const sourceLabel = {
   staff: "Door beheer aangepast",
   order: "Bestaande bestelling",
 };
-const fieldClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+const fieldClass =
+  "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
 function fullName(member: ParentPackageMember) {
   return [member.firstName, member.insertion, member.lastName]
@@ -94,8 +95,9 @@ export function initialSizeDraft(item: PackageItem): SizeDraft {
     return {
       kind: "other",
       variantId: null,
-      note: item.memberNote
-        ?? (item.rawValue ? `Geïmporteerde maat: ${item.rawValue}` : ""),
+      note:
+        item.memberNote ??
+        (item.rawValue ? `Geïmporteerde maat: ${item.rawValue}` : ""),
     };
   }
   if (item.selectedVariantId) {
@@ -151,9 +153,9 @@ function paymentBadge(status: string | null) {
 export function canStartPayment(member: ParentPackageMember) {
   const order = member.order;
   return Boolean(
-    order
-    && !order.legacy
-    && !["paid", "pending", "refunded", "duplicate_paid"].includes(
+    order &&
+    !order.legacy &&
+    !["paid", "pending", "refunded", "duplicate_paid"].includes(
       order.paymentStatus ?? "open",
     ),
   );
@@ -161,11 +163,22 @@ export function canStartPayment(member: ParentPackageMember) {
 
 export function packageSizeAction(member: ParentPackageMember) {
   const order = member.order;
-  if (!order || order.legacy || order.sizesConfirmed) return null;
-  if (order.items.some((item) => (
-    !item.selectedVariantId
-    && item.selectionStatus !== "imported_unconfirmed"
-  ))) {
+  if (
+    !order ||
+    order.legacy ||
+    !order.items.some(
+      (item) => !item.issued && item.selectionStatus !== "locked",
+    )
+  ) {
+    return null;
+  }
+  if (
+    order.items.some(
+      (item) =>
+        !item.selectedVariantId &&
+        item.selectionStatus !== "imported_unconfirmed",
+    )
+  ) {
     return "fill" as const;
   }
   return "review" as const;
@@ -173,10 +186,16 @@ export function packageSizeAction(member: ParentPackageMember) {
 
 function itemStatus(item: PackageItem) {
   if (item.issued || item.selectionStatus === "locked") {
-    return { label: "Uitgegeven · vergrendeld", style: "bg-slate-100 text-slate-600" };
+    return {
+      label: "Uitgegeven · vergrendeld",
+      style: "bg-slate-100 text-slate-600",
+    };
   }
   if (item.selectionStatus === "change_requested") {
-    return { label: "Wijziging wacht op beheer", style: "bg-amber-50 text-warning" };
+    return {
+      label: "Wijziging wacht op beheer",
+      style: "bg-amber-50 text-warning",
+    };
   }
   if (item.selectionStatus === "imported_unconfirmed") {
     return { label: "Nog controleren", style: "bg-brand-50 text-brand-700" };
@@ -317,7 +336,11 @@ function PackageChoice({
         disabled={!selectedRevisionId || busy}
         className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
       >
-        {busy ? <Loader2 className="size-4 animate-spin" /> : <PackageCheck className="size-4" />}
+        {busy ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <PackageCheck className="size-4" />
+        )}
         Pakket kiezen
       </button>
     </fieldset>
@@ -336,17 +359,25 @@ function SizeItem({
   onChange: (draft: SizeDraft) => void;
 }) {
   const status = itemStatus(item);
-  const selectValue = draft.kind === "variant"
-    ? draft.variantId ?? ""
-    : draft.kind === "other" ? "__other__" : "";
+  const selectValue =
+    draft.kind === "variant"
+      ? (draft.variantId ?? "")
+      : draft.kind === "other"
+        ? "__other__"
+        : "";
   return (
     <div className="rounded-xl border border-line bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-bold text-brand-900">
-            <ArticleIcon type={item.iconType} className="size-4 text-brand-500" />
+            <ArticleIcon
+              type={item.iconType}
+              className="size-4 text-brand-500"
+            />
             {item.name}
-            {item.quantity > 1 && <span className="text-xs text-slate-400">× {item.quantity}</span>}
+            {item.quantity > 1 && (
+              <span className="text-xs text-slate-400">× {item.quantity}</span>
+            )}
           </p>
           <p className="mt-1 text-[10px] text-slate-400">
             {item.code}
@@ -355,7 +386,9 @@ function SizeItem({
               : ""}
           </p>
         </div>
-        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${status.style}`}>
+        <span
+          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${status.style}`}
+        >
           {status.label}
         </span>
       </div>
@@ -368,8 +401,8 @@ function SizeItem({
       )}
       {item.selectionStatus === "change_requested" && (
         <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800">
-          De huidige reservering blijft staan totdat de kledingcommissie jouw verzoek
-          goedkeurt of afwijst.
+          De huidige reservering blijft staan totdat de kledingcommissie jouw
+          verzoek goedkeurt of afwijst.
         </div>
       )}
 
@@ -396,7 +429,8 @@ function SizeItem({
           <option value="">Kies een maat</option>
           {item.variants.map((variant) => (
             <option key={variant.id} value={variant.id}>
-              {variant.label}{variant.active ? "" : " · niet meer actief"}
+              {variant.label}
+              {variant.active ? "" : " · niet meer actief"}
             </option>
           ))}
           <option value="__other__">Anders…</option>
@@ -408,7 +442,9 @@ function SizeItem({
           <textarea
             value={draft.note}
             disabled={disabled}
-            onChange={(event) => onChange({ ...draft, note: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...draft, note: event.target.value })
+            }
             minLength={1}
             maxLength={500}
             rows={3}
@@ -455,25 +491,34 @@ export function MemberDashboard() {
         return;
       }
       if (!response.ok) throw new Error();
-      const payload = await response.json() as ParentPackageWorkspace;
+      const payload = (await response.json()) as ParentPackageWorkspace;
       setWorkspace(payload);
       setLoadedSuccessfully(true);
-      setDrafts(Object.fromEntries(payload.members.map((member) => [
-        member.memberSeasonId,
+      setDrafts(
         Object.fromEntries(
-          (member.order?.items ?? []).map((item) => [
-            item.articleId,
-            initialSizeDraft(item),
+          payload.members.map((member) => [
+            member.memberSeasonId,
+            Object.fromEntries(
+              (member.order?.items ?? []).map((item) => [
+                item.articleId,
+                initialSizeDraft(item),
+              ]),
+            ),
           ]),
         ),
-      ])));
-      setPackageChoices(Object.fromEntries(payload.members.map((member) => [
-        member.memberSeasonId,
-        member.order?.packageRevisionId
-          ?? member.availablePackages.find((option) => option.isDefault)?.revisionId
-          ?? member.availablePackages[0]?.revisionId
-          ?? "",
-      ])));
+      );
+      setPackageChoices(
+        Object.fromEntries(
+          payload.members.map((member) => [
+            member.memberSeasonId,
+            member.order?.packageRevisionId ??
+              member.availablePackages.find((option) => option.isDefault)
+                ?.revisionId ??
+              member.availablePackages[0]?.revisionId ??
+              "",
+          ]),
+        ),
+      );
       setUnauthorized(false);
     } catch {
       setError("De leden konden niet worden geladen.");
@@ -509,8 +554,8 @@ export function MemberDashboard() {
   async function submitPackage(member: ParentPackageMember) {
     const packageRevisionId = packageChoices[member.memberSeasonId];
     if (!packageRevisionId) return;
-    const requestId = selectionRequestIds[member.memberSeasonId]
-      ?? crypto.randomUUID();
+    const requestId =
+      selectionRequestIds[member.memberSeasonId] ?? crypto.randomUUID();
     setSelectionRequestIds((current) => ({
       ...current,
       [member.memberSeasonId]: requestId,
@@ -532,7 +577,7 @@ export function MemberDashboard() {
           requestId,
         }),
       });
-      const payload = await response.json() as { error?: string };
+      const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         if (response.status < 500) {
           setSelectionRequestIds((current) => {
@@ -589,8 +634,8 @@ export function MemberDashboard() {
       setError("Kies voor ieder product een maat of licht toe.");
       return;
     }
-    const requestId = sizeRequestIds[member.memberSeasonId]
-      ?? crypto.randomUUID();
+    const requestId =
+      sizeRequestIds[member.memberSeasonId] ?? crypto.randomUUID();
     setSizeRequestIds((current) => ({
       ...current,
       [member.memberSeasonId]: requestId,
@@ -613,7 +658,7 @@ export function MemberDashboard() {
           selections,
         }),
       });
-      const payload = await response.json() as {
+      const payload = (await response.json()) as {
         error?: string;
         changeRequestCount?: number;
         conflictCount?: number;
@@ -655,9 +700,10 @@ export function MemberDashboard() {
   }
 
   const memberCountLabel = useMemo(
-    () => workspace.members.length === 1
-      ? "1 lid"
-      : `${workspace.members.length} leden`,
+    () =>
+      workspace.members.length === 1
+        ? "1 lid"
+        : `${workspace.members.length} leden`,
     [workspace.members.length],
   );
 
@@ -703,7 +749,10 @@ export function MemberDashboard() {
             Jouw kledingpakketten
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            {loadedSuccessfully ? memberCountLabel : "Leden konden niet worden geladen"}. Je oude gegevens worden per seizoen opnieuw gebruikt.
+            {loadedSuccessfully
+              ? memberCountLabel
+              : "Leden konden niet worden geladen"}
+            . Je oude gegevens worden per seizoen opnieuw gebruikt.
           </p>
         </div>
         <div className="flex gap-2">
@@ -723,15 +772,24 @@ export function MemberDashboard() {
       </div>
 
       {notice && (
-        <div role="status" className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+        <div
+          role="status"
+          className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800"
+        >
           {notice}
         </div>
       )}
       {error && (
-        <div role="alert" className="mt-5 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div
+          role="alert"
+          className="mt-5 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-800"
+        >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="font-bold underline">
+          <button
+            onClick={() => setError(null)}
+            className="font-bold underline"
+          >
             Sluiten
           </button>
         </div>
@@ -744,8 +802,8 @@ export function MemberDashboard() {
             Portaalgegevens tijdelijk niet beschikbaar
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
-            Je bestaande toegang en koppelingen zijn niet verwijderd. Probeer
-            de gegevens opnieuw te laden.
+            Je bestaande toegang en koppelingen zijn niet verwijderd. Probeer de
+            gegevens opnieuw te laden.
           </p>
           <button
             type="button"
@@ -801,10 +859,12 @@ export function MemberDashboard() {
                         </p>
                       </div>
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(order?.paymentStatus ?? null)}`}>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${paymentBadge(order?.paymentStatus ?? null)}`}
+                    >
                       {order
-                        ? paymentLabel[order.paymentStatus ?? "open"]
-                          ?? "Nog te betalen"
+                        ? (paymentLabel[order.paymentStatus ?? "open"] ??
+                          "Nog te betalen")
                         : "Nog geen pakket"}
                     </span>
                   </div>
@@ -833,10 +893,9 @@ export function MemberDashboard() {
                         packageChoices[member.memberSeasonId] ?? ""
                       }
                       busy={busy}
-                      onSelect={(revisionId) => choosePackage(
-                        member.memberSeasonId,
-                        revisionId,
-                      )}
+                      onSelect={(revisionId) =>
+                        choosePackage(member.memberSeasonId, revisionId)
+                      }
                       onSubmit={() => void submitPackage(member)}
                     />
                   )}
@@ -871,34 +930,38 @@ export function MemberDashboard() {
                         </div>
                         <p className="text-lg font-bold text-brand-900">
                           {amount.format(
-                            (order.packagePriceCents ?? order.amountDueCents) / 100,
+                            (order.packagePriceCents ?? order.amountDueCents) /
+                              100,
                           )}
                         </p>
                       </div>
 
-                      {order.canSwitchPackage && member.availablePackages.length > 1 && (
-                        <details className="mt-5 rounded-xl border border-line bg-slate-50 p-4">
-                          <summary className="cursor-pointer text-xs font-bold text-brand-800">
-                            Ander pakket kiezen
-                          </summary>
-                          <div className="mt-4">
-                            <PackageChoice
-                              member={member}
-                              selectedRevisionId={
-                                packageChoices[member.memberSeasonId]
-                                  ?? order.packageRevisionId
-                                  ?? ""
-                              }
-                              busy={busy}
-                              onSelect={(revisionId) => choosePackage(
-                                member.memberSeasonId,
-                                revisionId,
-                              )}
-                              onSubmit={() => void submitPackage(member)}
-                            />
-                          </div>
-                        </details>
-                      )}
+                      {order.canSwitchPackage &&
+                        member.availablePackages.length > 1 && (
+                          <details className="mt-5 rounded-xl border border-line bg-slate-50 p-4">
+                            <summary className="cursor-pointer text-xs font-bold text-brand-800">
+                              Ander pakket kiezen
+                            </summary>
+                            <div className="mt-4">
+                              <PackageChoice
+                                member={member}
+                                selectedRevisionId={
+                                  packageChoices[member.memberSeasonId] ??
+                                  order.packageRevisionId ??
+                                  ""
+                                }
+                                busy={busy}
+                                onSelect={(revisionId) =>
+                                  choosePackage(
+                                    member.memberSeasonId,
+                                    revisionId,
+                                  )
+                                }
+                                onSubmit={() => void submitPackage(member)}
+                              />
+                            </div>
+                          </details>
+                        )}
 
                       {packageSizeAction(member) && (
                         <a
@@ -908,14 +971,18 @@ export function MemberDashboard() {
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                           <span>
                             <strong className="block text-xs">
-                              {packageSizeAction(member) === "fill"
-                                ? "Het is verplicht om de maten in te vullen."
-                                : "Maten controleren en bevestigen"}
+                              {order.sizesConfirmed
+                                ? "Maten aanpassen en opnieuw bevestigen"
+                                : packageSizeAction(member) === "fill"
+                                  ? "Het is verplicht om de maten in te vullen."
+                                  : "Maten controleren en bevestigen"}
                             </strong>
                             <span className="mt-1 block text-xs leading-5">
-                              {packageSizeAction(member) === "fill"
-                                ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
-                                : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                              {order.sizesConfirmed
+                                ? "Vóór reservering kun je een correctie doorgeven en het pakket opnieuw bevestigen."
+                                : packageSizeAction(member) === "fill"
+                                  ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
+                                  : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
                             </span>
                           </span>
                         </a>
@@ -931,8 +998,8 @@ export function MemberDashboard() {
                               Maten per product
                             </h3>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Controleer alle vooraf ingevulde maten
-                              en bevestig het pakket in één keer.
+                              Controleer alle vooraf ingevulde maten en bevestig
+                              het pakket in één keer.
                             </p>
                           </div>
                           {order.sizesConfirmed && (
@@ -948,19 +1015,21 @@ export function MemberDashboard() {
                               key={item.snapshotItemId}
                               item={item}
                               draft={
-                                memberDraft[item.articleId]
-                                  ?? initialSizeDraft(item)
+                                memberDraft[item.articleId] ??
+                                initialSizeDraft(item)
                               }
                               disabled={
-                                busy
-                                || item.issued
-                                || item.selectionStatus === "locked"
+                                busy ||
+                                item.issued ||
+                                item.selectionStatus === "locked"
                               }
-                              onChange={(draft) => updateSizeDraft(
-                                member.memberSeasonId,
-                                item.articleId,
-                                draft,
-                              )}
+                              onChange={(draft) =>
+                                updateSizeDraft(
+                                  member.memberSeasonId,
+                                  item.articleId,
+                                  draft,
+                                )
+                              }
                             />
                           ))}
                         </div>
@@ -976,9 +1045,11 @@ export function MemberDashboard() {
                               disabled={!selections || busy}
                               className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                             >
-                              {busy
-                                ? <Loader2 className="size-4 animate-spin" />
-                                : <CheckCircle2 className="size-4" />}
+                              {busy ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="size-4" />
+                              )}
                               Alle maten bevestigen
                             </button>
                           </div>
@@ -1003,7 +1074,9 @@ export function MemberDashboard() {
                                 >
                                   <span className="text-xs font-medium text-ink">
                                     {line.article} · {line.size}
-                                    {line.quantity > 1 ? ` × ${line.quantity}` : ""}
+                                    {line.quantity > 1
+                                      ? ` × ${line.quantity}`
+                                      : ""}
                                   </span>
                                   <span className="text-[10px] font-semibold text-slate-500">
                                     {lineStatusLabel[line.status]}
@@ -1024,7 +1097,8 @@ export function MemberDashboard() {
                             {canStartPayment(member) && (
                               <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
                                 Je kunt direct betalen. De QR wordt pas actief
-                                wanneer één of meerdere producten af te halen zijn.
+                                wanneer één of meerdere producten af te halen
+                                zijn.
                               </p>
                             )}
                           </div>

@@ -32,6 +32,8 @@ as $$
     'app.inventory_reservations',
     'app.member_article_sizes',
     'app.member_external_identities',
+    'app.member_package_assignments',
+    'app.member_package_size_selections',
     'app.member_orders',
     'app.member_seasons',
     'app.member_size_selection_history',
@@ -383,7 +385,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 106
+  if cardinality(pg_temp.cleanup_tables()) <> 108
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

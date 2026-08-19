@@ -11,7 +11,19 @@
 - `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
 - `pnpm test:db:email-attempt-concurrency`, `pnpm test:db:mail-campaign-concurrency`, `pnpm test:db:mail-projection-concurrency` en `pnpm test:db:mail-supersession-concurrency` — passed.
 - `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 215 Vitest-bestanden en 1317 tests groen.
-- `pnpm test:db:staging-cleanup` — passed na schone reset; cleanupcontract bevat nu 106 expliciete operationele tabellen inclusief `private.email_bulk_rate_limit`.
+- `pnpm test:db:staging-cleanup` — passed na schone reset; cleanupcontract bevat na samenvoegen met PR 115 nu 108 expliciete operationele tabellen inclusief `private.email_bulk_rate_limit` en pakketassignments.
+
+## PR 115 pakketmaten en Mollie-fixtureherstel — 2026-08-19
+
+- `pnpm install --frozen-lockfile --ignore-scripts` — passed.
+- `pnpm vitest run src/app/api/parent/packages/select/route.test.ts src/app/api/parent/members/route.test.ts src/components/member/member-dashboard.test.ts` — passed; de verwachte negatieve `parent.workspace_schema_invalid`-log blijft beperkt tot de schematest.
+- `node scripts/check-migrations.mjs` — passed.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` en `pnpm build` — passed; 213 Vitest-bestanden en 1304 tests groen.
+- `pnpm db:reset` — passed vanaf een schone lokale PostgreSQL 17-database.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1879 assertions groen.
+- `pnpm test:db:mollie-fixture` — passed; cleanup houdt rekening met pakketassignments vóór orderverwijdering.
+- Gerichte DB-concurrencyharnassen voor fulfilment, package, payment, refund, inventory, delivery-notification, mail-projection, mail-supersession en email-attempt zijn lokaal groen.
+- `pnpm test:db:staging-cleanup` — passed; cleanupcontract bevat na samenvoegen met PR 116 nu 108 expliciete operationele tabellen inclusief pakketassignments, `private.email_bulk_rate_limit` en behoudt staff/Auth/config.
 
 ## Stagingprovider- en staffonboardingfixes — 2026-07-19
 
@@ -673,6 +685,12 @@ Record commands, results and relevant screenshots/notes per phase.
 
 ## SMTP-reviewcorrecties (2026-08-19 lokaal)
 
-- De deploymentcontracttest bewaakt dat staging en productie zonder expliciete override SendGrid selecteren en dat productie de verplichte provider- en bulkvariabelen doorgeeft.
+- De deploymentcontracttest bewaakt dat staging tijdelijk SMTP als default gebruikt zolang SendGrid stuk is; productie blijft zonder expliciete override SendGrid selecteren en levert de verplichte provider- en bulkvariabelen door.
 - De e-mailworkertest vult bewust zowel SMTP- als SendGrid-afzendervelden en bewijst dat een actieve SendGrid-provider uitsluitend de SendGrid-identiteit gebruikt.
 - De migratie behoudt expliciet `execute` voor `service_role` op zowel claim-v4 (rollbackcompatibiliteit) als claim-v5.
+
+## Assignmentgebonden kledingmaten — 2026-08-19
+
+- De volledige Vitestsuite is groen, inclusief regressies voor de onafhankelijke betaal- en maatassen, een permanent geweigerde ouderpakketmutatie en de parent-workspace v7-binding.
+- ESLint, TypeScript en migrationlint zijn groen. De lokale Supabase-start kon in deze omgeving niet worden uitgevoerd omdat geen Docker-daemon beschikbaar is; de database-/pgTAPacceptatie blijft daarom een omgevingsbeperking en geen uitgevoerde productieactie.
+- Reviewherstel: de extra bevestigingsguard is verwijderd zodat de bestaande domeinworkflow vóór reservering vrij herbevestigt en na reservering een wijzigingsverzoek/actiepunt vastlegt. Profielen zonder assignment behouden hun bestaande artikelprojectie en betaling blijft canoniek onafhankelijk van maatbevestiging.

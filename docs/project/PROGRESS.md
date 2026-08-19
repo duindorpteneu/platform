@@ -449,7 +449,13 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 ## SMTP-reviewcorrecties (2026-08-19)
 
-- Staging en productie blijven standaard expliciet op de canonieke SendGrid-provider; SMTP vereist een bewuste repositoryvariabele.
+- Staging gebruikt tijdelijk SMTP als default zolang SendGrid stuk is; productie blijft standaard expliciet op de canonieke SendGrid-provider.
 - De productiepromotie levert nu altijd provider- en bulkconfiguratie aan de verplichte runtimevalidatie.
 - De v4-claim-RPC blijft tijdens de uitrol- en rollbackcompatibiliteitsperiode uitvoerbaar voor de vorige image.
 - Legacy order- en portaaljobs kiezen hun afzenderidentiteit op basis van de actieve provider, zodat aanwezige SMTP-defaults een SendGrid-rollback niet kunnen breken.
+
+## Assignmentgebonden kledingmaten — 2026-08-19
+
+- Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.
+- De ouderworkspace adverteert geen globale pakketten meer. Zonder assignment ziet het gezin een beheerinstructie; met assignment uitsluitend de snapshotproducten van dat pakket. Bevestigde maten zijn read-only.
+- Betaling blijft mogelijk vóór maatbevestiging; reservering blijft geblokkeerd tot een geldige maat én betaling samenkomen. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.

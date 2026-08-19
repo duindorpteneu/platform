@@ -62,6 +62,13 @@ where confirmation_id in (
     'cc510000-0000-4000-8000-000000000003'
   )
 );
+delete from app.member_package_size_selections
+where member_season_id in (
+  'cc510000-0000-4000-8000-000000000001',
+  'cc510000-0000-4000-8000-000000000002',
+  'cc510000-0000-4000-8000-000000000003',
+  'cc510000-0000-4000-8000-000000000004'
+);
 delete from app.package_size_confirmations
 where member_season_id in (
   'cc510000-0000-4000-8000-000000000001',
@@ -137,6 +144,13 @@ where actor_user_id in (
   'cc000000-0000-4000-8000-000000000002'
 )
 or metadata::text like '%cc510000-0000-4000-8000-%';
+delete from app.member_package_assignments
+where member_season_id in (
+  'cc510000-0000-4000-8000-000000000001',
+  'cc510000-0000-4000-8000-000000000002',
+  'cc510000-0000-4000-8000-000000000003',
+  'cc510000-0000-4000-8000-000000000004'
+);
 delete from app.order_package_snapshot_items
 where snapshot_id in (
   select snapshot.id from app.order_package_snapshots snapshot

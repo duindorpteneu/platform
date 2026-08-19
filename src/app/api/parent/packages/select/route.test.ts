@@ -81,7 +81,7 @@ describe("POST /api/parent/packages/select", () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("weigert cross-site pakketkeuze vóór sessie- of databasegebruik", async () => {
+  it("weigert cross-site verzoeken al bij de mutatiegrens", async () => {
     const response = await POST(request(validBody, "https://aanvaller.example"));
     expect(response.status).toBe(403);
     expect(mocks.getParentSession).not.toHaveBeenCalled();

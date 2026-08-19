@@ -213,3 +213,10 @@
 - Publieke en interne health blijven alle overige integriteits-, queue-, provider-, runtime-, QR-, import-, reminder- en supplierassen ongewijzigd afdwingen.
 
 | 2026-08-19 | Gebruik tijdelijk expliciet geselecteerde VoetbalAssist SMTP met een database-persistente bulksleuf van 30 seconden. | De geannuleerde SES-route mag niet terugkeren en SendGrid is niet actief op staging. SMTP-acceptatie bewijst alleen provideracceptatie, niet inbox-delivery. | Mail-v2 snapshots, attempts en auditing blijven intact; `sent` vereist een SMTP messageId, zonder een kunstmatige `delivered`-projectie. Directe jobs passeren de bulksleuf; bulk blijft apart schakelbaar tot de staging-smoke slaagt. | Ja, via `EMAIL_PROVIDER=sendgrid` als expliciete rollbackselectie. |
+
+## D-108 — De immutable pakketsnapshot is de identiteit van een pakkettoewijzing
+
+- Een globaal pakket en zijn revisies blijven catalogusdefinities; pas de geauditeerde toewijzing aan een lid-seizoen maakt een `member_package_assignment` met de bestaande immutable orderpakketsnapshot als identiteit.
+- Maatbevestigingen worden per assignment geprojecteerd naar `member_package_size_selections`. Bevestigingsitems, eerdere assignments, orderregels en betalingen blijven immutable historie; een pakketwissel maakt via de bestaande snapshotworkflow een nieuwe assignment.
+- Ouders kunnen geen pakket meer kiezen of wisselen. Alleen de beheerder gebruikt de bestaande directe of gewaarschuwde pakketwisselflow. Een bevestigde assignment is voor de ouder read-only; admincorrecties blijven geautoriseerd en geaudit.
+- Betaling en maatbevestiging blijven onafhankelijke assen. De actieve assignment bepaalt het exacte bedrag en de betaalidentiteit; pas reservering vereist daarnaast een geldige bevestigde maat.
