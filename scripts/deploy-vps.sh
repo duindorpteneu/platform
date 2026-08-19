@@ -123,29 +123,17 @@ deploy_environment() {
   [[ "$current_main" == "$RELEASE_SHA" && "${GITHUB_SHA:-}" == "$RELEASE_SHA" ]] \
     || die "Release is verouderd ten opzichte van main."
 
-  gzip -dc "$RELEASE_ARTIFACT" | docker load >/dev/null
-  loaded_digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
-  loaded_label="$(docker image inspect --format '{{index .Config.Labels "nl.dgwebservices.duindorpteneu.sha"}}' "$image_tag")"
-  [[ "$loaded_digest" == "$expected_digest" || "$loaded_digest" == "$expected_config_digest" ]] || die "Geladen image-identiteit wijkt af van zowel OCI-manifest als imageconfig."
-  [[ "$loaded_label" == "$RELEASE_SHA" ]] || die "Geladen image heeft niet het verwachte releaselabel."
-
   local runtime_env_file="${runtime_directory}/.env.runtime"
   [[ ! -L "$runtime_env_file" ]] || die "Runtimebestand mag geen symlink zijn."
-  export APP_IMAGE="$image_tag" RUNTIME_ENV_FILE=/dev/null
-  local rendered_compose
-  rendered_compose="$(mktemp "${runtime_directory}/compose.XXXXXX")"
-  trap 'rm -f -- "${rendered_compose:-}"' EXIT INT TERM HUP
-  docker compose -p "$compose_project" -f "$compose_file" config > "$rendered_compose"
-  ! grep -F 'host_ip: 0.0.0.0' "$rendered_compose" >/dev/null || die "Compose publiceert op 0.0.0.0."
-  grep -F 'host_ip: 127.0.0.1' "$rendered_compose" >/dev/null || die "Compose-loopbackbinding ontbreekt."
-  grep -F "published: \"${expected_port}\"" "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde hostpoort."
-  grep -F 'target: 3000' "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde containerpoort."
-
-  local previous_revision="" previous_image="" previous_digest="" previous_config_digest="" previous_artifact_digest="" previous_health_contract="artifact-v2" previous_app_compatible=true runtime_backup="${runtime_directory}/.env.runtime.previous" legacy_runtime_backup="" runtime_existed=false
+  local previous_revision="" previous_image="" rollback_image="" previous_digest="" previous_config_digest="" previous_artifact_digest="" previous_health_contract="artifact-v2" previous_app_compatible=true runtime_backup="${runtime_directory}/.env.runtime.previous" legacy_runtime_backup="" runtime_existed=false
   export RUNTIME_ENV_FILE="$runtime_env_file"
   [[ -f "${runtime_directory}/REVISION" ]] && previous_revision="$(tr -d '\r\n' < "${runtime_directory}/REVISION")"
   if valid_sha "$previous_revision"; then
     previous_image="${repository_image}:${previous_revision}"
+    [[ "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ \
+      && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]] \
+      || die "GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT ontbreekt of is ongeldig voor het rollbackalias."
+    rollback_image="${repository_image}:rollback-${environment}-${previous_revision}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
     [[ -f "$RUNTIME_ENV_FILE" ]] \
       || die "Vorige release heeft geen herstelbaar runtimebestand."
     [[ -f "${runtime_directory}/RELEASE_MANIFEST" ]] \
@@ -166,6 +154,9 @@ deploy_environment() {
     )"
     [[ "$previous_loaded_digest" == "$previous_digest" || "$previous_loaded_digest" == "$previous_config_digest" ]] \
       || die "Vorige release-image wijkt af van het herstelmanifest."
+    docker image tag "$previous_image" "$rollback_image"
+    [[ "$(docker image inspect --format '{{.Id}}' "$rollback_image")" == "$previous_loaded_digest" ]] \
+      || die "Rollbackalias wijkt af van de geverifieerde vorige release-image."
     if [[ "$environment" == staging \
       && "$previous_revision" == "$incompatible_staging_rollback_revision" ]]
     then
@@ -212,6 +203,22 @@ deploy_environment() {
         "$previous_revision" "$previous_artifact_digest"
     fi
   fi
+
+  gzip -dc "$RELEASE_ARTIFACT" | docker load >/dev/null
+  loaded_digest="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+  loaded_label="$(docker image inspect --format '{{index .Config.Labels "nl.dgwebservices.duindorpteneu.sha"}}' "$image_tag")"
+  [[ "$loaded_digest" == "$expected_digest" || "$loaded_digest" == "$expected_config_digest" ]] || die "Geladen image-identiteit wijkt af van zowel OCI-manifest als imageconfig."
+  [[ "$loaded_label" == "$RELEASE_SHA" ]] || die "Geladen image heeft niet het verwachte releaselabel."
+
+  export APP_IMAGE="$image_tag"
+  local rendered_compose
+  rendered_compose="$(mktemp "${runtime_directory}/compose.XXXXXX")"
+  trap 'rm -f -- "${rendered_compose:-}"' EXIT INT TERM HUP
+  docker compose -p "$compose_project" -f "$compose_file" config > "$rendered_compose"
+  ! grep -F 'host_ip: 0.0.0.0' "$rendered_compose" >/dev/null || die "Compose publiceert op 0.0.0.0."
+  grep -F 'host_ip: 127.0.0.1' "$rendered_compose" >/dev/null || die "Compose-loopbackbinding ontbreekt."
+  grep -F "published: \"${expected_port}\"" "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde hostpoort."
+  grep -F 'target: 3000' "$rendered_compose" >/dev/null || die "Compose publiceert de verkeerde containerpoort."
 
   pnpm security:migrations
   echo "Controleer remote migratievolgorde en drift."
@@ -323,7 +330,7 @@ deploy_environment() {
             -f "$compose_file" ps --status running -q app scheduler
         )" ]] || rollback_failed=true
       else
-        [[ -n "$previous_image" ]] || rollback_failed=true
+        [[ -n "$rollback_image" ]] || rollback_failed=true
         echo "Applicatiehealth faalde; vorige image wordt teruggezet. Databasemigraties worden niet teruggedraaid." >&2
       fi
       if [[ "$rollback_failed" == false \
@@ -332,15 +339,15 @@ deploy_environment() {
         if [[ "$previous_health_contract" == \
           "legacy-v1-exact-four-fields" ]]
         then
-          stop_scheduler_for_legacy "$previous_image" \
+          stop_scheduler_for_legacy "$rollback_image" \
             || rollback_failed=true
           if [[ "$rollback_failed" == false ]]; then
-            APP_IMAGE="$previous_image" docker compose -p "$compose_project" \
+            APP_IMAGE="$rollback_image" docker compose -p "$compose_project" \
               -f "$compose_file" up -d --no-build app \
               || rollback_failed=true
           fi
         else
-          APP_IMAGE="$previous_image" docker compose -p "$compose_project" \
+          APP_IMAGE="$rollback_image" docker compose -p "$compose_project" \
             -f "$compose_file" up -d --no-build --remove-orphans \
             || rollback_failed=true
         fi
@@ -356,10 +363,10 @@ deploy_environment() {
         if [[ "$previous_health_contract" == \
           "legacy-v1-exact-four-fields" ]]
         then
-          stop_scheduler_for_legacy "$previous_image" \
+          stop_scheduler_for_legacy "$rollback_image" \
             || rollback_failed=true
         else
-          check_scheduler_with_retries "$previous_image" \
+          check_scheduler_with_retries "$rollback_image" \
             || rollback_failed=true
         fi
       fi
@@ -467,6 +474,17 @@ deploy_environment() {
     || rm -f -- "$legacy_runtime_backup"
   activated=false
   trap - ERR EXIT INT TERM HUP
+
+  local rollback_tag
+  while IFS= read -r rollback_tag; do
+    [[ -n "$rollback_tag" && "$rollback_tag" != "$rollback_image" ]] || continue
+    docker image rm "$rollback_tag" >/dev/null \
+      || echo "Waarschuwing: oud rollbackalias kon niet worden opgeruimd: ${rollback_tag}" >&2
+  done < <(
+    docker image ls --format '{{.Repository}}:{{.Tag}}' \
+      | grep -E "^${repository_image}:rollback-${environment}-[a-f0-9]{40}-[1-9][0-9]*-[1-9][0-9]*$" \
+      || true
+  )
 
   echo "Deploy van ${RELEASE_SHA} naar ${environment} is volledig geverifieerd."
 }
