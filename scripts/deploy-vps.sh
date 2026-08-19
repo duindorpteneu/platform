@@ -245,14 +245,14 @@ deploy_environment() {
         -f "$compose_file" ps -q scheduler
     )" || return 1
     [[ -n "$scheduler_container" ]] || return 1
-    for attempt in $(seq 1 20); do
+    for attempt in $(seq 1 100); do
       scheduler_health="$(
         docker inspect \
           --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' \
           "$scheduler_container"
       )" || return 1
       [[ "$scheduler_health" == healthy ]] && return 0
-      [[ "$attempt" == 20 ]] && return 1
+      [[ "$attempt" == 100 ]] && return 1
       sleep 3
     done
   }
