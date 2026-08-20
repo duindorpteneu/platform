@@ -761,3 +761,9 @@ Lokale acceptatie op 20 augustus 2026:
 - Deployrun `32380056799` bewees een gezonde app, toegepaste migration `20260820141000`, HTTP 200 op exact kandidaat-SHA en uitsluitend `emailJobs.failed = 1`; de workflow rolde fail-closed terug en wijzigde de databasemigraties niet terug.
 - De aanvullende pgTAP-regressie legt één exacte job-ID/`updated_at`-versie vast: alleen die versie blijft bewaard met health nul; een latere failureversie van dezelfde job telt weer één. Uncertain/providerassen behouden hun eerdere grens en de vijf benoemde pre-send stops blijven afzonderlijk uitgesloten.
 - Lokale gates: schone reset met alle 163 migrations en seed groen; 58 pgTAP-bestanden/1.901 assertions groen; Phase-B legacy-upgradehashes en reconciliaties groen; ESLint, TypeScript, 215 Vitest-bestanden/1.326 tests, productiebuild, migrationlint, secretscan en `git diff --check` groen.
+
+## Retention-runhealth — 2026-08-20
+
+- Deployrun `32387896670` paste de gevalideerde mailjobreconciliatie toe en rapporteerde daarna `emailJobs.failed = 0`; uitsluitend `operations.retention.runningStale = true` bleef rood terwijl `lastStatus = succeeded` en `stale = false` waren.
+- De gerichte pgTAP-regressie bewaart een oude running-run en bewijst health `false` na een later gestarte succesvolle run; een tweede running-run blijft bij een overlappende, eerder gestarte succesrun opnieuw `true`.
+- Lokale gates: schone reset met alle 164 migrations en seed groen; 58 pgTAP-bestanden/1.903 assertions groen; Phase-B legacy-upgradehashes en reconciliaties groen; ESLint, TypeScript, 215 Vitest-bestanden/1.326 tests, productiebuild, migrationlint, secretscan en `git diff --check` groen.
