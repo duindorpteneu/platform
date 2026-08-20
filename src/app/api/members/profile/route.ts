@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     }
     const supabase = await getSupabaseServerClient();
     if (!supabase) return fail("Databaseverbinding ontbreekt.", 503);
-    const { data, error } = await supabase.schema("app").rpc("update_member_profile_v1", {
+    const { data, error } = await supabase.schema("app").rpc("update_member_profile_v2", {
       p_member_id: parsed.data.memberId,
       p_member_season_id: parsed.data.memberSeasonId,
       p_first_name: parsed.data.firstName,
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
       p_gender: parsed.data.gender,
       p_team: parsed.data.team,
       p_expected_revision: parsed.data.revision,
+      p_expected_family_revision: parsed.data.familyRevision ?? null,
       p_reason: parsed.data.reason,
       p_request_id: parsed.data.requestId,
       p_correlation_id: normalizeCorrelationId(request.headers.get("x-correlation-id")),
@@ -52,8 +53,9 @@ export async function POST(request: Request) {
     if (error) {
       if (error.code === "42501") return fail("Alleen een beheerder met MFA kan persoonsgegevens wijzigen.", 403);
       if (error.code === "P0002") return fail("Dit lid of lid-seizoen bestaat niet meer.", 404);
-      if (error.code === "40001") return fail("De lidgegevens zijn intussen gewijzigd. Vernieuw en probeer opnieuw.", 409);
-      if (error.code === "22023" || error.code === "23514") return fail("De lidgegevens zijn niet geldig voor dit seizoen.", 400);
+      if (error.code === "40001") return fail("De leden- of portaltoegang is intussen gewijzigd. Voer de controle opnieuw uit.", 409);
+      if (error.code === "22023") return fail("De lidgegevens zijn niet geldig voor dit seizoen.", 400);
+      if (error.code === "23514") return fail("De gezinsbrede e-mailwijziging kan niet veilig worden uitgevoerd.", 409);
       return fail("De lidgegevens konden niet veilig worden opgeslagen.", 422);
     }
     const result = memberProfileUpdateResponseSchema.safeParse(data);

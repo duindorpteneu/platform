@@ -21,8 +21,8 @@ describe("staging domain cleanup contract", () => {
         /'((?:app|private)\.[a-z][a-z0-9_]*)'/gu,
       ),
     ].map((match) => match[1]);
-    expect(cleanupTables).toHaveLength(108);
-    expect(new Set(cleanupTables)).toHaveLength(108);
+    expect(cleanupTables).toHaveLength(110);
+    expect(new Set(cleanupTables)).toHaveLength(110);
     expect(cleanupTables).toContain("app.member_package_assignments");
     expect(cleanupTables).toContain("app.member_package_size_selections");
     expect(cleanupTables).toContain("private.email_bulk_rate_limit");
@@ -30,8 +30,10 @@ describe("staging domain cleanup contract", () => {
     expect(cleanupTables).toContain("private.member_package_bulk_requests");
     expect(cleanupTables).toContain("private.member_profile_edit_requests");
     expect(cleanupTables).toContain("private.member_size_edit_requests");
+    expect(cleanupTables).toContain("private.parent_family_email_transfers");
+    expect(cleanupTables).toContain("private.parent_family_email_transfer_items");
     expect(cleanupTables).toContain("private.loose_order_line_removal_requests");
-    expect(contract).toContain("cardinality(pg_temp.cleanup_tables()) <> 108");
+    expect(contract).toContain("cardinality(pg_temp.cleanup_tables()) <> 110");
     expect(contract).toContain("cardinality(pg_temp.preserved_tables()) <> 28");
     expect(contract).toContain("actual_tables is distinct from contracted_tables");
     expect(contract).toContain("'app.staff_profiles' = any(pg_temp.cleanup_tables())");

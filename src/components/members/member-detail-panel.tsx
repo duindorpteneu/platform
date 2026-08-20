@@ -120,6 +120,10 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
 
         <section className="p-5">
           <div className="flex items-center gap-2"><Link2 className="size-4 text-brand-500" /><h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Gekoppelde ouders</h3></div>
+          {detail.portalAccess && <div className={`mt-3 rounded-lg border p-3 ${detail.portalAccess.active ? "border-emerald-100 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
+            <div className="flex items-center justify-between gap-3"><span className="text-[10px] text-slate-500">Portaltoegang</span><span className={`text-[10px] font-bold ${detail.portalAccess.active ? "text-success" : "text-slate-500"}`}>{detail.portalAccess.active ? "Actief" : "Niet actief"}</span></div>
+            {detail.portalAccess.active && <dl className="mt-2 space-y-1.5 text-[10px]"><div className="flex justify-between gap-3"><dt className="text-slate-500">Loginadres</dt><dd className="break-all text-right font-semibold text-ink">{detail.portalAccess.loginEmail}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Gekoppelde kinderen</dt><dd className="font-semibold text-ink">{detail.portalAccess.linkedChildrenCount}</dd></div></dl>}
+          </div>}
           {detail.parentLinks.length === 0 ? <p className="mt-3 text-xs leading-5 text-slate-500">Nog geen ouderaccount expliciet gekoppeld.</p> : <div className="mt-3 space-y-2">{detail.parentLinks.map((link) => <div key={link.id} className="rounded-lg bg-slate-50 p-3"><p className="break-all text-xs font-semibold text-ink">{link.email}</p><p className="mt-1 text-[10px] text-slate-400">Gekoppeld {moment(link.linkedAt)}</p></div>)}</div>}
         </section>
 

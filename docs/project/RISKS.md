@@ -123,3 +123,5 @@
 
 - De eerste lifecycle-migratie kon een reeds bestaande maar nog niet gelinkte pakketregel als losse regel zien. De follow-up adopteert alleen een unieke, exact passende componentregel; duplicaten, geannuleerde links en variant-/quantityafwijkingen worden nooit automatisch herschreven.
 - De legacy-upgradefixture reproduceerde een PL/pgSQL-naambotsing tussen een `record`-variabele en SQL-alias. De lifecyclefunctie gebruikt nu onderscheidende namen en wordt zowel via een schone reset als de Phase-B-upgradegate gevalideerd.
+
+| R-111 | Een gewone profielwijziging kon `app.members.email` los wijzigen van het autoritatieve ouderaccount en de actuele portalgrants. | Het nieuwe adres kon geen OTP krijgen, het oude adres behield toegang en meerdere kinderen van hetzelfde ouderaccount konden verschillende contactidentiteiten tonen. | Leid de actieve familie uitsluitend af uit echte grants, vereis een gezinsbrede revisiepreflight, wijzig member-e-mails en grantoverdracht atomair, serialiseer met activatie/revocatie/import/OTP/sessies en hergebruik de bestaande Mail-v2-activatieproducent. | Closed in code; exact-main CI en stagingacceptatie pending |
