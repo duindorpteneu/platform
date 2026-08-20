@@ -253,6 +253,52 @@ select is(
   'false',
   'releasehealth herkent een vastgelopen run als een latere run slaagt'
 );
+insert into private.operation_runs(
+  id,
+  operation,
+  status,
+  started_at
+) values (
+  'a7000000-0000-4000-8000-000000000005',
+  'retention',
+  'running',
+  statement_timestamp() - interval '30 minutes'
+);
+select is(
+  app.get_operational_health_v13(
+    repeat('a', 64),
+    1,
+    null,
+    null
+  ) #>> '{operations,retention,runningStale}',
+  'false',
+  'releasehealth herkent een oude retentionrun als een latere run slaagt'
+);
+insert into private.operation_runs(
+  id,
+  operation,
+  status,
+  started_at
+) values (
+  'a7000000-0000-4000-8000-000000000006',
+  'retention',
+  'running',
+  statement_timestamp() - interval '16 minutes'
+);
+update private.operation_runs
+set finished_at = statement_timestamp() - interval '5 minutes',
+    started_at = statement_timestamp() - interval '21 minutes'
+where id = 'a7000000-0000-4000-8000-000000000002';
+select is(
+  app.get_operational_health_v13(
+    repeat('a', 64),
+    1,
+    null,
+    null
+  ) #>> '{operations,retention,runningStale}',
+  'true',
+  'een later gestarte retentionrun blijft bij overlappende oudere successen fail-closed blokkeren'
+);
 insert into private.email_jobs(
   id,
   kind,

@@ -494,3 +494,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Deployrun `32380056799` paste beide gerichte classificaties correct toe, maar bewees daarna dat één echte, reeds bestaande mailfailure de scheduler nog blokkeerde; alle overige readinessassen en de kandidaatapp waren gezond.
 - Forward-only migration `20260820152000_acknowledge_preexisting_email_failure.sql` bewaart de job, afleverhistorie en het operationele actiepunt ongewijzigd en legt alleen de gevalideerde failed-jobidentiteit plus diens exacte versie auditbaar vast.
 - Nieuwe mail-, provider-, render- en deliveryfailures na die grens blijven volledig fail-closed. Er wordt geen e-mail opnieuw verzonden en geen operationele historie afgesloten.
+
+## Herstelde retention-runhealth — 2026-08-20
+
+- Deployrun `32387896670` bewees dat de exacte mailjobcorrectie werkte (`emailJobs.failed = 0`) en alle overige assen groen waren behalve één oude `retention`-run met een aantoonbaar later succes.
+- Forward-only migration `20260820183000_recover_stale_retention_health.sql` bewaart de volledige runledger en leidt `runningStale` uitsluitend af van vastgelopen runs zonder een later gestarte én succesvol geëindigde run van dezelfde operation.
+- Een nieuwere vastgelopen retentionrun blijft na vijftien minuten volledig fail-closed blokkeren.
