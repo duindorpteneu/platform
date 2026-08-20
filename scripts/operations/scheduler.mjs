@@ -3,6 +3,86 @@ import { pathToFileURL } from "node:url";
 
 const STAGING_BASE = "http://app:3000";
 const ALLOWED_ENVIRONMENTS = new Set(["staging", "production"]);
+const HEALTH_DIAGNOSTIC_PATHS = [
+  "status",
+  "error",
+  "importGateMatches",
+  "emailJobs.processingStale",
+  "emailJobs.deliveryUncertain",
+  "emailJobs.failed",
+  "emailDeliveryAttempts.legacyAmbiguous",
+  "emailDeliveryAttempts.quarantinedEvents",
+  "emailDeliveryAttempts.unboundLegacyEvents",
+  "emailDeliveryAttempts.processingWithoutCurrentAttempt",
+  "reminderPlanner.failedRunsRecent",
+  "reminderPlanner.activeRulesNeverRun",
+  "parentOtpDelivery.stalePrepared",
+  "parentOtpDelivery.deliveryUncertainRecent",
+  "parentOtpDelivery.sendFailuresRecent",
+  "parentOtpDelivery.quarantinedEvents",
+  "parentOtpDelivery.providerFailuresRecent",
+  "supplierPlanning.activePrincipalsWithoutOpenSeason",
+  "supplierPlanning.unauthorizedActiveSessions",
+  "supplierPlanning.expiredUnrevokedSessions",
+  "supplierPlanning.recentLoginFailures",
+  "supplierPlanning.staleCredentials",
+  "recentDeliveryFailures",
+  "reconciliationIssues",
+  "recentWebhookFailures",
+  "brandingProjection.blockers",
+  "operations.emailWorker.stale",
+  "operations.emailWorker.runningStale",
+  "operations.emailWorker.lastStatus",
+  "operations.importWorker.stale",
+  "operations.importWorker.runningStale",
+  "operations.importWorker.lastStatus",
+  "operations.inventoryAllocator.stale",
+  "operations.inventoryAllocator.runningStale",
+  "operations.inventoryAllocator.lastStatus",
+  "operations.retention.stale",
+  "operations.retention.runningStale",
+  "operations.retention.lastStatus",
+  "importControl.processingEnabled",
+  "importControl.cutoverActive",
+  "importStaging.expired",
+  "importRuns.processingStale",
+  "importRuns.failed",
+  "importRuns.reconciliationRequired",
+  "importRuns.expiredSelectedRows",
+  "importRuns.backlogStale",
+  "qrControl.cutoverActive",
+  "qrControl.scannerActive",
+  "qrControl.candidateOrders",
+  "qrControl.activeLegacyQr",
+  "qrControl.expiredOpenGrants",
+  "qrControl.keyMismatchActiveLocators",
+  "qrControl.keyMismatchOpenGrants",
+  "emailControl.gateMatches",
+  "emailControl.providerConfigured",
+  "emailControl.keyFingerprintMatches",
+  "emailControl.testEventQuarantined",
+];
+
+export function operationalHealthDiagnostic(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { response: "invalid" };
+  }
+  const diagnostic = {};
+  for (const path of HEALTH_DIAGNOSTIC_PATHS) {
+    let value = body;
+    for (const segment of path.split(".")) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        value = undefined;
+        break;
+      }
+      value = value[segment];
+    }
+    if (value === null || ["boolean", "number", "string"].includes(typeof value)) {
+      diagnostic[path] = value;
+    }
+  }
+  return diagnostic;
+}
 
 export function validateSchedulerConfig(environment = process.env) {
   const appEnvironment = environment.APP_ENVIRONMENT?.trim() ?? "";
@@ -43,7 +123,16 @@ export function shouldRunRetention(now, lastRetentionAt) {
 async function fetchJson(url, init, timeoutMs = 55_000) {
   const response = await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
   const body = await response.json().catch(() => null);
-  if (!response.ok || !body || typeof body !== "object") throw new Error(`HTTP_${response.status}`);
+  if (!response.ok || !body || typeof body !== "object") {
+    if (url.endsWith("/api/internal/health")) {
+      console.error(JSON.stringify({
+        event: "scheduler_health_degraded",
+        httpStatus: response.status,
+        fields: operationalHealthDiagnostic(body),
+      }));
+    }
+    throw new Error(`HTTP_${response.status}`);
+  }
   return body;
 }
 
