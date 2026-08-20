@@ -44,6 +44,30 @@ where order_id in (
   select orders.id from app.member_orders orders
   where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
 );
+delete from private.package_refund_events
+where refund_id in (
+  select refund.id from app.package_refunds refund
+  join app.member_orders orders on orders.id = refund.order_id
+  where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
+delete from app.package_refunds
+where order_id in (
+  select orders.id from app.member_orders orders
+  where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
+delete from app.package_credit_allocations
+where adjustment_id in (
+  select adjustment.id from app.package_financial_adjustments adjustment
+  where adjustment.order_id in (
+    select orders.id from app.member_orders orders
+    where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+  )
+);
+delete from app.package_financial_adjustments
+where order_id in (
+  select orders.id from app.member_orders orders
+  where orders.season_id = 'cc100000-0000-4000-8000-000000000001'
+);
 delete from app.package_change_requests
 where season_id = 'cc100000-0000-4000-8000-000000000001';
 delete from private.parent_package_selection_requests
@@ -1124,7 +1148,7 @@ select set_config(
   true
 )
 \gset
-select app.preflight_package_change_v1(
+select app.preflight_package_change_v2(
   '$change_order_id',
   'cc410000-0000-4000-8000-000000000002',
   'Concurrencytest revisie-archivering',
@@ -1177,7 +1201,7 @@ select set_config(
   '{"sub":"cc000000-0000-4000-8000-000000000001","aal":"aal2"}',
   true
 );
-select app.apply_package_change_v1(
+select app.apply_package_change_v2(
   'cc830000-0000-4000-8000-000000000001',
   '$change_revision',
   'SWITCH_PACKAGE',

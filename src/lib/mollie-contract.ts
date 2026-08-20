@@ -14,6 +14,32 @@ export const mollieCheckoutResponseSchema = z.object({
   checkoutUrl: httpsUrlSchema,
 }).strict();
 
+export const mollieRefundRequestSchema = z.object({
+  refundId: uuidSchema,
+  requestId: uuidSchema,
+}).strict();
+
+export const preparedMollieRefundSchema = z.object({
+  refundId: uuidSchema,
+  paymentId: uuidSchema,
+  providerPaymentId: z.string().regex(/^tr_[A-Za-z0-9]+$/),
+  providerRefundId: z.string().regex(/^re_[A-Za-z0-9]+$/).nullable(),
+  amountCents: z.number().int().positive(),
+  currency: z.literal("EUR"),
+  status: z.enum(["requesting", "queued", "pending", "processing", "completed", "failed"]),
+  idempotencyKey: z.string().min(8).max(160),
+  reused: z.boolean(),
+}).strict();
+
+export const mollieRefundResponseSchema = z.object({
+  refundId: uuidSchema,
+  providerRefundId: z.string().regex(/^re_[A-Za-z0-9]+$/),
+  status: z.enum(["queued", "pending", "processing", "completed", "failed", "canceled"]),
+  providerStatus: z.enum(["queued", "pending", "processing", "refunded", "failed", "canceled"]),
+  amountCents: z.number().int().positive(),
+  currency: z.literal("EUR"),
+}).strict();
+
 export const preparedMolliePaymentSchema = z.object({
   paymentId: uuidSchema,
   orderId: uuidSchema,
@@ -75,4 +101,5 @@ export const mollieReconciliationResultSchema = z.union([
 
 export type MollieCreateRequest = z.infer<typeof mollieCreateRequestSchema>;
 export type PreparedMolliePayment = z.infer<typeof preparedMolliePaymentSchema>;
+export type PreparedMollieRefund = z.infer<typeof preparedMollieRefundSchema>;
 export type MollieReconciliationContext = z.infer<typeof mollieReconciliationContextSchema>;

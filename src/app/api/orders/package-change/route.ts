@@ -11,6 +11,8 @@ import {
   readJsonRequest,
 } from "@/server/security/route-guard";
 import { getSupabaseServerClient } from "@/server/supabase/server";
+import { getSupabaseAdminClient } from "@/server/supabase/admin";
+import { startMollieRefund } from "@/server/payments/mollie-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
     );
     const result = parsed.data.action === "preflight"
       ? await supabase.schema("app").rpc(
-        "preflight_package_change_v1",
+        "preflight_package_change_v2",
         {
           p_order_id: parsed.data.orderId,
           p_target_revision_id:
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
         },
       )
       : await supabase.schema("app").rpc(
-        "apply_package_change_v1",
+        "apply_package_change_v2",
         {
           p_request_id: parsed.data.requestId,
           p_expected_revision: parsed.data.revision,
@@ -104,6 +106,26 @@ export async function POST(request: Request) {
     const output = packageChangeResponseSchema.safeParse(result.data);
     if (!output.success) {
       return fail("Ongeldig antwoord van de database.", 502);
+    }
+    if (parsed.data.action === "apply" && output.data.result) {
+      const admin = getSupabaseAdminClient();
+      if (admin) {
+        for (const refund of output.data.result.refunds) {
+          if (refund.method !== "mollie") continue;
+          try {
+            await startMollieRefund({
+              refundId: refund.refundId,
+              requestId: refund.refundId,
+              correlationId,
+            }, { database: admin });
+          } catch {
+            return fail(
+              "Het pakket is gecorrigeerd, maar Mollie kon de duurzame refund nog niet starten. Probeer hetzelfde verzoek opnieuw of gebruik Betalingen.",
+              503,
+            );
+          }
+        }
+      }
     }
     return NextResponse.json(output.data, {
       headers: privateHeaders,

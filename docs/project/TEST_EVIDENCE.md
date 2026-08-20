@@ -1,5 +1,16 @@
 # Test evidence
 
+## Pakketcorrectie, prijsverschil en refunds — 2026-08-20
+
+- `pnpm db:reset` — passed; alle 166 forward-only migrations en seed zijn vanaf nul toegepast op de lokale PostgreSQL 17-stack.
+- `pnpm test:db` — passed; 58 pgTAP-bestanden en 1937 assertions groen, inclusief immutable financiële historie, creditallocatie, actieve pakketbalans, delta-betalingen, partial refunds, rollen/RLS en legacyprojecties.
+- `pnpm test:db:package-finance-concurrency` — passed; echte concurrerende RPC/providerfixtures dekken pakketwissel versus betaalwebhook, tweede wissel, allocatieworker, dubbele refund en refundreconciliatie versus vervolgwissel. De fixture ruimt uitsluitend eigen data op en laat mailtemplates/staffconfig intact.
+- Bestaande `pnpm test:db:package-concurrency`, `pnpm test:db:payment-concurrency`, `pnpm test:db:refund-concurrency` en `pnpm test:db:mollie-fixture` — passed.
+- `pnpm test` — passed; 216 Vitest-bestanden en 1332 tests groen, inclusief package-changeboundary, Mollie partial-refund/idempotency, webhookreconciliatie, handmatige refund en restore/cleanupcontracten.
+- `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, `pnpm test:edge-proxy`, `pnpm build` en `pnpm test:edge-runtime` — passed. De buildwaarschuwing over meerdere lockfiles/output-tracing is bestaand en niet blokkerend.
+- `node scripts/check-migrations.mjs` — passed; 166 migrations uitsluitend vooruitrollend. `node scripts/check-secrets.mjs` en `git diff --check` — passed.
+- Geen live providercredentials of productiegegevens gebruikt. Mollie-testmode roundtrip, webhookreplay en handmatige kas/pin-terugbetalingsacceptatie blijven expliciete stagingstappen.
+
 ## PR 116 tijdelijke SMTP-fallback — 2026-08-19
 
 - `pnpm install --frozen-lockfile --ignore-scripts` — passed na lockfileherstel voor `@types/node@22.19.15`, `@types/nodemailer@7.0.1` en de naar `9.0.5` gepatchte `nodemailer`.

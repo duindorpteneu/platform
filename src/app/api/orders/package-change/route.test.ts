@@ -49,17 +49,22 @@ const response = {
   toPriceCents: 12500,
   toCurrency: "EUR",
   priceDeltaCents: 2500,
-  paymentStatus: "paid",
+  effectivePaidCents: 10000,
+  creditAvailableCents: 10000,
+  creditAppliedCents: 10000,
+  additionalDueCents: 2500,
+  refundDueCents: 0,
+  paymentMethod: "mollie",
+  paymentSources: [{ paymentId: "70000000-0000-4000-8000-000000000001", method: "mollie", amountCents: 10000, paidAt: "2026-08-20T12:00:00Z" }],
   unresolvedPaymentCount: 1,
-  paidHistoryCount: 1,
-  refundedPaymentCount: 0,
   reservedAllocationCount: 0,
   fulfilledAllocationCount: 0,
-  requiresPaymentResolution: true,
-  requiresExternalRefund: true,
   requiresAllocationRelease: false,
   blockedByFulfilment: false,
   blockedByReconciliation: false,
+  targetPackageRequiredSizeCount: 2,
+  targetPackageKnownSizeCount: 1,
+  targetPackageMissingSizeCount: 1,
   canApply: false,
   status: "blocked",
   revision: "a".repeat(64),
@@ -93,7 +98,7 @@ describe("POST /api/orders/package-change", () => {
     expect(result.status).toBe(200);
     expect(mocks.requireRole).toHaveBeenCalledWith(["beheerder"]);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "preflight_package_change_v1",
+      "preflight_package_change_v2",
       expect.objectContaining({
         p_order_id: orderId,
         p_target_revision_id: targetId,
@@ -111,7 +116,7 @@ describe("POST /api/orders/package-change", () => {
     }));
     expect(result.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "apply_package_change_v1",
+      "apply_package_change_v2",
       expect.objectContaining({
         p_confirmation: "SWITCH_PACKAGE",
       }),

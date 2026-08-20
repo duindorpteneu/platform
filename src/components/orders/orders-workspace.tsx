@@ -320,10 +320,7 @@ function PackageOrderEditor({
             : "SWITCH_PACKAGE",
         },
       );
-      if (
-        response.result?.paymentTransferred !== false
-        || response.result?.refundCreated !== false
-      ) {
+      if (response.result?.paymentTransferred !== false) {
         throw new Error("Onveilig financieel antwoord geweigerd.");
       }
       onChanged(
@@ -372,7 +369,8 @@ function PackageOrderEditor({
         <div className="border-b border-brand-100 bg-brand-50 px-6 py-4 text-xs leading-5 text-brand-800">
           Dit pakket is betaald, gereserveerd of deels uitgegeven. Een gewone
           pakketwissel is daarom geblokkeerd. Maak hieronder eerst een
-          geaudite preflight; een refund gebeurt nooit automatisch.
+          geaudite preflight. Alleen het berekende prijsverschil wordt betaald
+          of als terugbetaling verwerkt.
         </div>
       )}
       {error && (
@@ -383,44 +381,58 @@ function PackageOrderEditor({
 
       {changePreflight && (
         <div className="border-b border-line bg-slate-50 px-6 py-5 text-xs">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div>
-              <p className="font-semibold text-slate-500">Prijsverschil</p>
+              <p className="font-semibold text-slate-500">Huidig pakket</p>
               <p className="mt-1 font-bold text-brand-900">
-                {(changePreflight.priceDeltaCents / 100).toLocaleString(
+                {changePreflight.fromPackageName}<br />
+                {(changePreflight.fromPriceCents / 100).toLocaleString(
                   "nl-NL",
                   { style: "currency", currency: changePreflight.toCurrency },
                 )}
               </p>
             </div>
             <div>
-              <p className="font-semibold text-slate-500">Betaling</p>
+              <p className="font-semibold text-slate-500">Nieuw pakket</p>
               <p className="mt-1 font-bold text-brand-900">
-                {changePreflight.requiresPaymentResolution
-                  ? "Eerst extern oplossen"
-                  : changePreflight.paidHistoryCount > 0
-                    ? "Historie blijft gekoppeld"
-                    : "Geen blokkade"}
+                {changePreflight.toPackageName}<br />
+                {(changePreflight.toPriceCents / 100).toLocaleString("nl-NL", {
+                  style: "currency", currency: changePreflight.toCurrency,
+                })}
               </p>
             </div>
             <div>
-              <p className="font-semibold text-slate-500">Voorraad</p>
+              <p className="font-semibold text-slate-500">Betaald tegoed</p>
               <p className="mt-1 font-bold text-brand-900">
-                {changePreflight.blockedByFulfilment
-                  ? "Uitgifte blokkeert"
-                  : changePreflight.requiresAllocationRelease
-                    ? `${changePreflight.reservedAllocationCount} reservering(en) vrijgeven`
-                    : "Geen blokkade"}
+                {(changePreflight.creditAppliedCents / 100).toLocaleString("nl-NL", {
+                  style: "currency", currency: changePreflight.toCurrency,
+                })}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-500">Nog te betalen</p>
+              <p className="mt-1 font-bold text-brand-900">
+                {(changePreflight.additionalDueCents / 100).toLocaleString("nl-NL", {
+                  style: "currency", currency: changePreflight.toCurrency,
+                })}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-500">Terug te betalen</p>
+              <p className="mt-1 font-bold text-brand-900">
+                {(changePreflight.refundDueCents / 100).toLocaleString("nl-NL", {
+                  style: "currency", currency: changePreflight.toCurrency,
+                })}
               </p>
             </div>
           </div>
-          {changePreflight.requiresExternalRefund && (
-            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 leading-5 text-amber-900">
-              Registreer of verifieer eerst de externe refund via de bestaande
-              betaalcorrectie. Deze workflow maakt zelf geen refund en boekt
-              geen betaling over.
-            </p>
-          )}
+          <p className="mt-4 rounded-lg border border-line bg-white p-3 leading-5 text-slate-700">
+            Voorraad: {changePreflight.blockedByFulfilment
+              ? "uitgifte blokkeert de correctie"
+              : changePreflight.requiresAllocationRelease
+                ? `${changePreflight.reservedAllocationCount} reservering(en) worden vrijgegeven`
+                : "geen reserveringen vrij te geven"}. Maten: {changePreflight.targetPackageKnownSizeCount} bekend · {changePreflight.targetPackageMissingSizeCount} nog nodig.
+          </p>
           {changePreflight.blockedByReconciliation && (
             <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-danger">
               Een historische reservering is nog niet gereconcilieerd.
@@ -438,9 +450,11 @@ function PackageOrderEditor({
                 {saving
                   ? <Loader2 className="size-4 animate-spin" />
                   : <LockKeyhole className="size-4" />}
-                {changePreflight.requiresAllocationRelease
-                  ? "Reserveringen vrijgeven en wijzigen"
-                  : "Gecontroleerd wijzigen"}
+                {changePreflight.refundDueCents > 0 && changePreflight.paymentMethod === "mollie"
+                  ? `Pakket wijzigen en ${(changePreflight.refundDueCents / 100).toLocaleString("nl-NL", { style: "currency", currency: "EUR" })} terugbetalen`
+                  : changePreflight.requiresAllocationRelease
+                    ? "Reserveringen vrijgeven en pakket corrigeren"
+                    : "Pakket corrigeren"}
               </button>
             </div>
           )}

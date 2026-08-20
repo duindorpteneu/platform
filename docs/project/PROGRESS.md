@@ -544,3 +544,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Addendum v1.1 legt het pakke
 - Forward-only migration `20260820190000_inventory_allocation_queue_state_machine.sql` maakt `queued` databasebreed selecteerbaar, onderscheidt voorraadtekort van echte lockcontention, terminaliseert de laatste lockretry en bewaart overlappende enqueues met een monotone generatie.
 - Vrijgave van een reservering plant de opnieuw beschikbare variant nu expliciet in. Mail-v2 wacht voor `payment_received_waiting_stock` uitsluitend op processing of retrybaar werk en projecteert bestaande events daarna via de bestaande idempotentiecontracten.
 - De worker rapporteert `completed`, `retryable`, `exhausted` en echte `failed` aantallen. Exhaustion opent een PII-vrij actiepunt, maar maakt schedulerliveness bewust niet afhankelijk van businessherstel.
+
+## Pakketcorrectie, prijsverschil en refunds — 2026-08-20
+
+- Forward-only migration `20260820200000_package_financial_adjustment_refunds.sql` introduceert immutable correcties, creditallocaties, duurzame refundverplichtingen en één actieve-pakketbalans zonder historische betalingen te muteren.
+- Pakketwissel-v2 ondersteunt gelijk geprijsd, duurder en goedkoper: geen nieuwe geldbeweging, uitsluitend het resterende verschil betalen, of exact het overschot terugbetalen. Maat-, voorraad-, uitgifte-, MFA-, revisie- en reconciliatiegrenzen blijven fail-closed.
+- Mollie gebruikt een provider-idempotente partial-refundoperatie en webhook-first statusreconciliatie; een partial refund verandert de oorspronkelijke payment niet in een volledige refund. De betaalworkspace toont provider-, handmatige en bijbetaalstatus met pakketcontext.

@@ -4,11 +4,14 @@ import { getServerEnv } from "@/lib/env";
 import {
   mollieReconciliationContextSchema,
   mollieReconciliationResultSchema,
+  mollieRefundResponseSchema,
   preparedMolliePaymentSchema,
+  preparedMollieRefundSchema,
   type PreparedMolliePayment,
 } from "@/lib/mollie-contract";
 import {
   createMolliePayment,
+  createMollieRefund,
   getMolliePayment,
   MollieRequestError,
   parseMollieMetadata,
@@ -185,7 +188,15 @@ function parseProviderAmountCents(value: string) {
 function paymentEventKey(payment: MolliePayment, status: string) {
   const statusMoment = payment.paidAt ?? payment.canceledAt ?? payment.failedAt ?? payment.expiresAt ?? "current";
   const digest = createHash("sha256")
-    .update(`${payment.id}:${status}:${statusMoment}:${payment.amount.value}:${payment.amount.currency}`)
+    .update(JSON.stringify({
+      id: payment.id,
+      status,
+      statusMoment,
+      amount: payment.amount,
+      refunds: [...(payment._embedded?.refunds ?? [])]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((refund) => ({ id: refund.id, status: refund.status, amount: refund.amount })),
+    }))
     .digest("hex");
   return `mollie:${digest}`;
 }
@@ -259,20 +270,9 @@ export async function reconcileMollieWebhook(
   const metadataInspection = inspectProviderMetadata(providerPayment.metadata);
   const metadata = metadataInspection.metadata;
 
-  let status;
-  try {
-    status = toLocalMollieStatus(providerPayment);
-  } catch {
-    // Een refundveld dat niet exact kan worden geïnterpreteerd mag nooit als paid doorstromen.
-    const embeddedRefund = providerPayment._embedded?.refunds?.some((refund) => {
-      return refund.status === "processing" || refund.status === "refunded";
-    });
-    status = providerPayment.amountRefunded || embeddedRefund
-      ? "refunded"
-      : providerPayment.status === "authorized" ? "pending" : providerPayment.status;
-  }
+  const status = toLocalMollieStatus(providerPayment);
   const receivedAt = (dependencies.receivedAt ?? new Date()).toISOString();
-  const { data: resultData, error: resultError } = await appDatabase.rpc("reconcile_mollie_payment_v2", {
+  const { data: resultData, error: resultError } = await appDatabase.rpc("reconcile_mollie_payment_v3", {
     p_event_key: paymentEventKey(providerPayment, status),
     p_provider_id: providerPayment.id,
     p_local_payment_id: context.data.paymentId,
@@ -290,7 +290,7 @@ export async function reconcileMollieWebhook(
     p_provider_updated_at: receivedAt,
     p_provider_expires_at: providerPayment.expiresAt ?? null,
     p_paid_at: providerPayment.paidAt ?? null,
-    p_refunded_at: status === "refunded" ? receivedAt : null,
+    p_refunded_at: null,
     p_validation_issue: metadataInspection.validationIssue,
     p_observation: metadata ? { schema_version: metadata.schema_version } : {},
   });
@@ -300,5 +300,85 @@ export async function reconcileMollieWebhook(
   }
   const result = mollieReconciliationResultSchema.safeParse(resultData);
   if (!result.success) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
+  if ((providerPayment._embedded?.refunds?.length ?? 0) > 0) {
+    const refundReconciliation = await appDatabase.rpc("reconcile_mollie_refunds_v1", {
+      p_provider_payment_id: providerPayment.id,
+      p_refunds: providerPayment._embedded?.refunds ?? [],
+      p_observed_at: receivedAt,
+    });
+    if (!refundReconciliation || refundReconciliation.error) {
+      throw new MollieServiceError("RECONCILIATION_REJECTED", true);
+    }
+  }
   return result.data;
+}
+
+export async function startMollieRefund(
+  input: { refundId: string; requestId: string; correlationId?: string | null },
+  dependencies: {
+    database: MollieRpcClient;
+    config?: MollieRuntimeConfig;
+    createRefund?: typeof createMollieRefund;
+    now?: Date;
+  },
+) {
+  const config = dependencies.config ?? getMollieRuntimeConfig();
+  assertProviderRuntime(config);
+  const appDatabase = dependencies.database.schema("app");
+  const { data, error } = await appDatabase.rpc("prepare_mollie_refund_v1", {
+    p_refund_id: input.refundId,
+    p_operation_request_id: input.requestId,
+    p_correlation_id: input.correlationId ?? null,
+  });
+  if (error) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
+  const prepared = preparedMollieRefundSchema.safeParse(data);
+  if (!prepared.success) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
+  if (prepared.data.providerRefundId) {
+    return {
+      refundId: prepared.data.refundId,
+      providerRefundId: prepared.data.providerRefundId,
+      status: prepared.data.status,
+      reused: true,
+    };
+  }
+  const observedAt = (dependencies.now ?? new Date()).toISOString();
+  try {
+    const providerRefund = await (dependencies.createRefund ?? createMollieRefund)({
+      apiKey: config.apiKey!,
+      providerPaymentId: prepared.data.providerPaymentId,
+      idempotencyKey: prepared.data.idempotencyKey,
+      amountCents: prepared.data.amountCents,
+      description: "Duindorp SV pakketcorrectie",
+      metadata: { package_refund_id: prepared.data.refundId, schema_version: 1 },
+    });
+    const { data: bound, error: bindError } = await appDatabase.rpc("bind_mollie_refund_v1", {
+      p_refund_id: prepared.data.refundId,
+      p_provider_refund_id: providerRefund.id,
+      p_provider_status: providerRefund.status,
+      p_observed_at: observedAt,
+    });
+    if (bindError) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
+    const parsed = mollieRefundResponseSchema.safeParse(bound);
+    if (!parsed.success) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
+    return { ...parsed.data, reused: false };
+  } catch (cause) {
+    const retryable = cause instanceof MollieRequestError
+      ? cause.retryable
+      : cause instanceof MollieServiceError && cause.retryable;
+    await appDatabase.rpc("fail_mollie_refund_v1", {
+      p_refund_id: prepared.data.refundId,
+      p_failure_code: cause instanceof MollieServiceError
+        ? "MOLLIE_REFUND_BIND_UNAVAILABLE"
+        : retryable
+          ? "MOLLIE_PROVIDER_UNAVAILABLE"
+          : "MOLLIE_REFUND_RESPONSE_INVALID",
+      p_retryable: retryable,
+      p_observed_at: observedAt,
+    });
+    if (cause instanceof MollieServiceError) throw cause;
+    if (cause instanceof MollieRequestError) {
+      throw new MollieServiceError("PROVIDER_UNAVAILABLE", cause.retryable);
+    }
+    throw new MollieServiceError("INVALID_PROVIDER_RESPONSE");
+  }
 }
