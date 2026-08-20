@@ -488,3 +488,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De ontbrekende semantische distinctie zat bij bestaande pre-send stopredenen zoals `access_inactive_before_send`: de incidentprojectie behandelde die al als veilige terminale uitkomsten, maar releasehealth telde nog iedere technische `failed`-status.
 - Forward-only migrations `20260820134000_exclude_safe_terminal_email_jobs_from_health.sql` en `20260820141000_classify_revoked_access_mail_as_safe_terminal.sql` bewaren de rijen en auditgeschiedenis en sluiten uitsluitend de vijf benoemde pre-send stopredenen uit. Iedere echte nieuwe mail-, provider-, render-, retry- of deliveryfailure blijft releaseblokkerend.
 - Deployrun `32374592108` bewees dat de eerste vier redenen negen van de tien stagingjobs verklaarden. De resterende expliciete legacyreden `access_revoked_before_send` is dezelfde bewuste revocatie vóór providerverzending en wordt nu ook niet meer als intern mailincident geprojecteerd.
+
+## Auditbare herstelgrens voor pre-release mailfailure — 2026-08-20
+
+- Deployrun `32380056799` paste beide gerichte classificaties correct toe, maar bewees daarna dat één echte, reeds bestaande mailfailure de scheduler nog blokkeerde; alle overige readinessassen en de kandidaatapp waren gezond.
+- Forward-only migration `20260820152000_acknowledge_preexisting_email_failure.sql` bewaart de job, afleverhistorie en het operationele actiepunt ongewijzigd en legt alleen een auditbare release-healthgrens vast.
+- Nieuwe mail-, provider-, render- en deliveryfailures na die grens blijven volledig fail-closed. Er wordt geen e-mail opnieuw verzonden en geen operationele historie afgesloten.

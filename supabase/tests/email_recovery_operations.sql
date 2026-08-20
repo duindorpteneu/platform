@@ -355,6 +355,51 @@ select is(
   1,
   'health negeert alle benoemde pre-send stops maar blokkeert een echte nieuwe mailfailure'
 );
+select is(
+  (
+    select metrics->>'strategy'
+    from private.migration_reconciliations
+    where migration_key =
+      '20260820152000_acknowledge_preexisting_email_failure'
+  ),
+  'acknowledge pre-release mail failures without mutating jobs or incidents',
+  'de eenmalige pre-release herstelgrens is expliciet en auditbaar'
+);
+update private.email_jobs
+set updated_at = (
+  select reconciliation.reconciled_at - interval '1 second'
+  from private.migration_reconciliations reconciliation
+  where reconciliation.migration_key =
+    '20260820152000_acknowledge_preexisting_email_failure'
+)
+where id = 'a4000000-0000-4000-8000-000000000006';
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  0,
+  'een echte failure van voor de expliciete herstelgrens blijft bewaard maar blokkeert de release niet'
+);
+update private.email_jobs
+set updated_at = statement_timestamp()
+where id = 'a4000000-0000-4000-8000-000000000006';
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  1,
+  'dezelfde echte failure na de herstelgrens blijft fail-closed blokkeren'
+);
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
 
