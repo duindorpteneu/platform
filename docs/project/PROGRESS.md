@@ -481,3 +481,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - De package-migraties zijn op staging toegepast en PostgREST-contract/appstart slaagden. De release bleef terecht geblokkeerd doordat de bestaande private operationele health 503 retourneerde.
 - De scheduler publiceert voortaan bij die fout uitsluitend gewhiteliste readinessvelden. Daarmee kan de concrete as gericht worden hersteld zonder databasecredentials, secrets of persoonsgegevens in logs te plaatsen.
+
+## Operationele mailhealth na bewuste pre-send stops — 2026-08-20
+
+- Hosted diagnose-run `32369319530` is fail-closed teruggerold en wees uitsluitend `emailJobs.failed = 10` aan; alle provider-, worker-, OTP-, QR-, import- en reconciliatieassen waren groen.
+- De ontbrekende semantische distinctie zat bij bestaande pre-send stopredenen zoals `access_inactive_before_send`: de incidentprojectie behandelde die al als veilige terminale uitkomsten, maar releasehealth telde nog iedere technische `failed`-status.
+- Forward-only migration `20260820134000_exclude_safe_terminal_email_jobs_from_health.sql` bewaart de rijen en auditgeschiedenis en sluit uitsluitend de vier reeds canoniek erkende pre-send stopredenen uit. Iedere echte nieuwe mail-, provider-, render-, retry- of deliveryfailure blijft releaseblokkerend.

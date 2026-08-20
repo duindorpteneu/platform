@@ -282,6 +282,44 @@ select
   statement_timestamp()
 from app.email_templates template
 where template.template_key = 'payment_received';
+insert into private.email_jobs(
+  id,
+  kind,
+  recipient_email,
+  template_key,
+  template_id,
+  order_id,
+  idempotency_key,
+  payload,
+  status,
+  attempts,
+  completed_at,
+  last_error,
+  updated_at
+)
+select
+  safe_job.id,
+  'transactional',
+  'safe-terminal@example.invalid',
+  'payment_received',
+  template.id,
+  'a3000000-0000-4000-8000-000000000001',
+  'recovery-operation-' || safe_job.slot,
+  '{}'::jsonb,
+  'failed',
+  0,
+  statement_timestamp(),
+  safe_job.reason,
+  statement_timestamp()
+from app.email_templates template
+cross join (
+  values
+    ('a4000000-0000-4000-8000-000000000007'::uuid, '7', 'access_inactive_before_send'),
+    ('a4000000-0000-4000-8000-000000000008'::uuid, '8', 'eligibility_changed_before_send'),
+    ('a4000000-0000-4000-8000-000000000009'::uuid, '9', 'mail_v2_paused'),
+    ('a4000000-0000-4000-8000-000000000010'::uuid, '10', 'superseded_by_back_in_stock')
+) safe_job(id, slot, reason)
+where template.template_key = 'payment_received';
 select is(
   (
     app.get_operational_health_v13(
@@ -292,7 +330,7 @@ select is(
     ) #>> '{emailJobs,failed}'
   )::integer,
   1,
-  'een nieuwe mailfailure na de herstelgrens blijft releaseblokkerend'
+  'health negeert een bewuste pre-send stop maar blokkeert een echte nieuwe mailfailure'
 );
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
