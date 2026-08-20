@@ -77,6 +77,13 @@ describe("Mollie create-route", () => {
     expect(mocks.start).not.toHaveBeenCalled();
   });
 
+  it("stuurt ontbrekende pakketmaten herkenbaar terug zonder checkout", async () => {
+    mocks.start.mockRejectedValue(new MollieServiceError("PACKAGE_SIZES_REQUIRED"));
+    const response = await POST(request({ orderId }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Vul eerst alle verplichte pakketmaten in.", code: "PACKAGE_SIZES_REQUIRED" });
+  });
+
   it("rapporteert uitsluitend een veilige sessiefase bij een geweigerde oudersessie", async () => {
     mocks.session.mockResolvedValue({ session: null, phase: "rpc_error" });
     const response = await POST(request({ orderId }));

@@ -157,6 +157,16 @@ export function canStartPayment(member: ParentPackageMember) {
     !order.legacy &&
     !["paid", "pending", "refunded", "duplicate_paid"].includes(
       order.paymentStatus ?? "open",
+    ) &&
+    order.sizesConfirmed &&
+    order.items.length > 0 &&
+    order.items.every(
+      (item) =>
+        item.selectedVariantId &&
+        !["conflict", "change_requested"].includes(item.selectionStatus ?? "") &&
+        item.variants.some(
+          (variant) => variant.id === item.selectedVariantId && variant.active,
+        ),
     ),
   );
 }
@@ -172,13 +182,7 @@ export function packageSizeAction(member: ParentPackageMember) {
   ) {
     return null;
   }
-  if (
-    order.items.some(
-      (item) =>
-        !item.selectedVariantId &&
-        item.selectionStatus !== "imported_unconfirmed",
-    )
-  ) {
+  if (order.items.some((item) => !item.selectedVariantId)) {
     return "fill" as const;
   }
   return "review" as const;
@@ -981,8 +985,8 @@ export function MemberDashboard() {
                               {order.sizesConfirmed
                                 ? "Vóór reservering kun je een correctie doorgeven en het pakket opnieuw bevestigen."
                                 : packageSizeAction(member) === "fill"
-                                  ? "Kies voor ieder product een maat. Daarna bevestig je alles in één keer."
-                                  : "De maten zijn vooraf ingevuld, maar nog niet bevestigd. Controleer ze en bevestig het hele pakket."}
+                                  ? "Kies voor ieder product een geldige maat en bevestig daarna het volledige pakket."
+                                  : "Controleer alle vooraf ingevulde maten en bevestig daarna het volledige pakket."}
                             </span>
                           </span>
                         </a>
@@ -1124,6 +1128,20 @@ export function MemberDashboard() {
                               <CreditCard className="size-4" />
                               Betaal {amount.format(order.amountDueCents / 100)}
                             </Link>
+                          )}
+                          {!canStartPayment(member) &&
+                            !["paid", "pending", "refunded", "duplicate_paid"].includes(order.paymentStatus ?? "") && (
+                              <a href={`#maten-${member.memberSeasonId}`} className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">
+                                {packageSizeAction(member) === "review"
+                                  ? "Maten controleren"
+                                  : "Maten invullen"}
+                              </a>
+                            )}
+                          {["paid", "duplicate_paid"].includes(order.paymentStatus ?? "") && !order.sizesConfirmed && (
+                            <p className="w-full text-xs font-semibold text-amber-800">
+                              Je kledingpakket is betaald. Controleer en bevestig
+                              eerst alle maten.
+                            </p>
                           )}
                         </div>
                       </div>

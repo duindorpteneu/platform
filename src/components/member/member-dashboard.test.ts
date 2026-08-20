@@ -116,8 +116,8 @@ describe("MemberDashboard package sizes", () => {
     ]);
   });
 
-  it("houdt betaling onafhankelijk van de maatbevestiging", () => {
-    expect(canStartPayment(member)).toBe(true);
+  it("vereist expliciete pakketbrede maatbevestiging voor betaling", () => {
+    expect(canStartPayment(member)).toBe(false);
     expect(
       canStartPayment({
         ...member,
@@ -128,6 +128,18 @@ describe("MemberDashboard package sizes", () => {
       canStartPayment({
         ...member,
         order: member.order ? { ...member.order, legacy: true } : null,
+      }),
+    ).toBe(false);
+    expect(
+      canStartPayment({
+        ...member,
+        order: member.order
+          ? {
+              ...member.order,
+              sizesConfirmed: true,
+              items: [{ ...item, selectedVariantId: null }],
+            }
+          : null,
       }),
     ).toBe(false);
   });

@@ -110,6 +110,13 @@ describe("POST /api/payments/manual", () => {
     });
   });
 
+  it("registreert geen handmatige betaling zonder complete pakketmaten", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "23514", message: "PACKAGE_SIZES_REQUIRED" } });
+    const response = await POST(request(validBody));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Vul eerst alle verplichte pakketmaten in.", code: "PACKAGE_SIZES_REQUIRED" });
+  });
+
   it("lekt bij een conflict geen database- of redeninhoud", async () => {
     mocks.rpc.mockResolvedValueOnce({
       data: null,

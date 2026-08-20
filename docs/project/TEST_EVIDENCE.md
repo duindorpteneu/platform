@@ -699,3 +699,42 @@ Record commands, results and relevant screenshots/notes per phase.
 
 - De deploymentcontracttest bewaakt dat vorige manifest- en imagedigestvalidatie plus de geverifieerde rollbackalias vóór `docker load` staan, dat kandidaat- en rollbacktags ook bij dezelfde SHA gescheiden blijven en dat automatische rollback uitsluitend de alias gebruikt.
 - Dezelfde regressie bewaakt dat een digestafwijking vóór aliascreatie en candidate-load fail-closed stopt, dat kandidaat-schedulerlogs behouden blijven en dat aliascleanup pas na volledige acceptatie gebeurt met behoud van de onmiddellijk vorige target.
+
+## Pakketmaat-/betaallifecycle — 2026-08-19
+
+Stagingcontrole na deploy (uitsluitend lezen):
+
+```sql
+select o.id, private.package_fulfilment_quantities(o.id)
+from app.member_orders o
+where o.package_assignment_state = 'active'
+  and exists (select 1 from app.payments p where p.order_id=o.id and p.status='paid')
+  and o.order_status = 'Afgerond'
+  and (private.package_fulfilment_quantities(o.id)->>'pickedUpQuantity')::int
+      < (private.package_fulfilment_quantities(o.id)->>'expectedQuantity')::int;
+
+select i.snapshot_id, i.id, count(l.id)
+from app.order_package_snapshot_items i
+left join app.order_lines l on l.id=i.order_line_id and l.status <> 'cancelled'
+group by i.snapshot_id, i.id having count(l.id) > 1;
+
+select metrics from private.migration_reconciliations
+where migration_key='20260819130000_package_size_payment_lifecycle';
+```
+
+De eerste twee queries moeten nul rijen opleveren. De metrics bewijzen `paidOrdersDetected`, `paidOrdersReconciled`, `paidOrdersReviewRequired`, `orderLinesMaterialized` en `snapshotItemsLinked`. Iedere review vereist beoordeling van de ordergebonden `package_lifecycle.review_required`-audit vóór rolloutacceptatie.
+
+## Database-review regressies — 2026-08-20
+
+- `member_package_bulk_assignment.sql` verwacht `PACKAGE_SIZES_REQUIRED` en nul payments/regels bij ontbrekende én bij complete maar onbevestigde imports. Na expliciete ouderbevestiging bewijst dezelfde test echte ouderprovenance, twee assignmentselecties, componentregels met totale entitlementquantity drie, snapshotlinks en retry zonder dubbele confirmation/payment.
+- De follow-up bewaart bestaande provider-, export- en manual-paymenttests voor loose orders en de brede `other`-remindersemantiek, terwijl de parent workspace de strikte variantgereedheid projecteert.
+- Reconciliatiemetrics staan onder `20260820100000_package_lifecycle_db_review_fixes`: `paidOrdersDetected`, `paidOrdersReconciled`, `paidOrdersReviewRequired`, `orderLinesMaterialized` en `snapshotItemsLinked`.
+
+Lokale acceptatie op 20 augustus 2026:
+
+- `pnpm db:reset`: groen; alle 160 forward-only migrations en seed zijn op een schone database toegepast.
+- `pnpm test:db:upgrade:phase-b`: groen; legacyfingerprints voor geld, voorraad, uitgifte en toegang bleven exact gelijk.
+- `pnpm test:db`: groen; 58 pgTAP-bestanden met 1.897 assertions.
+- Package-, payment- en inventory-action-upgradeconcurrency: groen.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` (215 bestanden, 1.325 tests) en `pnpm build`: groen.
+- Migratie- en secretscan: groen. De aanvullende lokale `supabase db lint` meldt één reeds bestaande fout in `app.assign_legacy_inventory_balance` uit migratie `20260802264000`; de lifecyclewijzigingen zelf leveren geen lintbevinding op en de inventory-upgradegate blijft groen.

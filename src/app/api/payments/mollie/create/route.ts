@@ -75,6 +75,12 @@ export async function POST(request: Request) {
     if (error instanceof MollieServiceError) {
       if (error.code === "ORDER_ALREADY_PAID") return failure("Deze bestelling is al betaald.", 409);
       if (error.code === "ORDER_NOT_AVAILABLE") return failure("Deze bestelling is niet beschikbaar.", 404);
+      if (error.code === "PACKAGE_SIZES_REQUIRED") {
+        return NextResponse.json(
+          { error: "Vul eerst alle verplichte pakketmaten in.", code: "PACKAGE_SIZES_REQUIRED" },
+          { status: 409, headers: responseHeaders },
+        );
+      }
       if (error.code === "NOT_CONFIGURED") return unavailable("Online betalen is tijdelijk niet beschikbaar.", "configuration");
       if (error.code === "DATABASE_UNAVAILABLE") return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "database");
       if (error.code === "PROVIDER_UNAVAILABLE") return unavailable("De betaalomgeving is tijdelijk niet bereikbaar. Probeer het later opnieuw.", "provider");

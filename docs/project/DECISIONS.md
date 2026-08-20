@@ -219,4 +219,16 @@
 - Een globaal pakket en zijn revisies blijven catalogusdefinities; pas de geauditeerde toewijzing aan een lid-seizoen maakt een `member_package_assignment` met de bestaande immutable orderpakketsnapshot als identiteit.
 - Maatbevestigingen worden per assignment geprojecteerd naar `member_package_size_selections`. Bevestigingsitems, eerdere assignments, orderregels en betalingen blijven immutable historie; een pakketwissel maakt via de bestaande snapshotworkflow een nieuwe assignment.
 - Ouders kunnen geen pakket meer kiezen of wisselen. Alleen de beheerder gebruikt de bestaande directe of gewaarschuwde pakketwisselflow. Een bevestigde assignment is voor de ouder read-only; admincorrecties blijven geautoriseerd en geaudit.
-- Betaling en maatbevestiging blijven onafhankelijke assen. De actieve assignment bepaalt het exacte bedrag en de betaalidentiteit; pas reservering vereist daarnaast een geldige bevestigde maat.
+- De actieve assignment bepaalt bedrag, betaalidentiteit en vereiste maten. Een nieuwe betaling vereist een expliciete pakketbrede ouderbevestiging met geldige varianten; betaling maakt of vervalst die bevestiging nooit. Provider-paid historie blijft altijd gezaghebbend.
+
+## D-109 — Pakketmaten vormen één transactionele betaalgrens
+
+- De actieve pakketsnapshot bepaalt wat een lid ontvangt; expliciet bevestigde assignmentgebonden maatselecties bepalen de concrete varianten; orderregels voeren die aanspraak uit. Ontbrekende orderregels verlagen de aanspraaknoemer nooit.
+- Een betaling materialiseert uitsluitend uitvoering voor al expliciet bevestigde, geldige pakketmaten. Een onbevestigde, ontbrekende, conflicterende, `other`, inactieve of artikelvreemde variant blokkeert een nieuwe betaling met `PACKAGE_SIZES_REQUIRED`.
+- Een echte providerbetaling blijft gezaghebbend: ontbrekende legacymaatdata kan de paid-projectie niet terugdraaien en houdt de order op `Nalevering` totdat de ouder alle maten expliciet bevestigt.
+
+## D-110 — Strikte betaalgereedheid is niet hetzelfde als brede maatbevestiging
+
+- `package_sizes_complete` behoudt zijn bestaande betekenis voor reminder- en conflictworkflows: een expliciete pakketbrede keuze, inclusief `other`, stopt herhaalde invulverzoeken.
+- De nieuwe `package_variant_sizes_complete` is de strengere betaal-/uitvoeringsgrens en accepteert uitsluitend actieve, seizoensgebonden varianten voor ieder item van de actieve assignment.
+- Losse historische orders blijven betaalbaar via hun bestaande lifecycle. Alleen een actieve pakkettoewijzing activeert de pakketmaatpreflight; de order wordt vóór deze beslissing vergrendeld.

@@ -458,9 +458,21 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 
 - Forward-only migration `20260819120000_member_package_assignment_sizes.sql` introduceert expliciete historische pakkettoewijzingen en per-toewijzing geprojecteerde maatkeuzes, met veilige backfill uit bestaande snapshots en immutable bevestigingsitems.
 - De ouderworkspace adverteert geen globale pakketten meer. Zonder assignment ziet het gezin een beheerinstructie; met assignment uitsluitend de snapshotproducten van dat pakket. Bevestigde maten zijn read-only.
-- Betaling blijft mogelijk vóór maatbevestiging; reservering blijft geblokkeerd tot een geldige maat én betaling samenkomen. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.
+- Een nieuwe betaling vereist expliciet bevestigde, geldige assignmentmaten; geïmporteerde prefills blijven tot ouderbevestiging `Nog controleren`. Reservering blijft geblokkeerd tot geldige maten én betaling samenkomen. De bestaande geauditeerde beheerflows voor toewijzen, wisselen en corrigeren blijven behouden.
 
 ## Same-SHA stagingrollbackidentiteit — 2026-08-19
 
 - De vorige manifestgebonden image wordt voortaan volledig gevalideerd en onder een unieke, omgevings- en workflowpoginggebonden rollbackalias vastgezet voordat de kandidaat via `docker load` binnenkomt.
 - Automatisch herstel gebruikt uitsluitend die alias, zodat een handmatige redeploy van dezelfde SHA de rollbacktarget niet kan verplaatsen. Oude aliases worden pas na volledige releaseacceptatie per omgeving opgeruimd, met behoud van de onmiddellijk vorige target.
+
+## Canonieke pakketmaat-/betaallifecycle — 2026-08-19
+
+- Forward-only migratie `20260819130000_package_size_payment_lifecycle.sql` centraliseert strikte pakketmaatcontrole, veilige uitvoeringsmaterialisatie, voorraadqueueing, quantity-aware orderstatus en entitlement-aware ledenvoortgang.
+- De ouder- en handmatige betaalgrenzen geven `PACKAGE_SIZES_REQUIRED` gestructureerd terug; de ouder-UI onderscheidt ontbrekende maten van complete maar nog te controleren imports en vereist steeds pakketbrede bevestiging.
+- De invariantgedreven reconciliatie materialiseert uitsluitend reeds expliciet bevestigde selecties. Ontbrekende of ambigue paid historie blijft onaangetast en krijgt een ordergebonden audit- en reviewstatus.
+
+## Database-reviewherstel pakketlifecycle — 2026-08-20
+
+- Forward-only follow-up `20260820100000_package_lifecycle_db_review_fixes.sql` scheidt reminder-completeness van strikte betaalgereedheid, bewaart losse-ordercompatibiliteit en laat validatie/idempotente retries vóór een uitsluitend nieuwe-paymentpreflight beslissen.
+- Historische pakketregels worden via snapshotlink of immutable templatecomponent exact één keer geteld. De migratie annuleert of herschrijft geen ambigue historie; afwijkingen worden per order auditbaar ter review aangeboden.
+- Paid inserts én updates starten best-effort materialisatie/statusrefresh zonder provider-paid waarheid te verwerpen. Ouderwijzigingen van reeds uitgegeven componenten blijven via de bestaande correctieflow beschermd.
