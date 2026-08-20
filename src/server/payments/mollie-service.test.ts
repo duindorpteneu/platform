@@ -124,6 +124,19 @@ describe("Mollie-applicatieservice", () => {
     }));
   });
 
+  it("start geen providerbetaling wanneer pakketmaten ontbreken", async () => {
+    const publicRpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "23514", message: "PACKAGE_SIZES_REQUIRED" },
+    });
+    const createPayment = vi.fn();
+    await expect(startMollieCheckout(
+      { tokenHash: "a".repeat(64), orderId: ids.order, idempotencyKey: "missing-sizes" },
+      { database: { rpc: publicRpc, schema: vi.fn() } as MollieRpcClient, config, createPayment },
+    )).rejects.toMatchObject({ code: "PACKAGE_SIZES_REQUIRED", retryable: false });
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
   it("weigert een onveilige provider-checkout", async () => {
     const { database } = databaseWith();
     const createPayment = vi.fn().mockResolvedValue({

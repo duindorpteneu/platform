@@ -114,3 +114,8 @@
 - Live/staging aantallen worden bewust niet in code verankerd. De forward-only reconciliatie detecteert paid actieve pakketten met ontbrekende componentregels op invariant en legt de werkelijke aantallen per categorie vast.
 - Provider-paid blijft leidend bij ontbrekende maten; dit voorkomt betalingsverlies maar laat een expliciete operationele `Nalevering` staan totdat geldige varianten zijn gekozen.
 - Lokale database-/pgTAP-validatie vereist Docker; zonder Docker blijft de migratie-uitvoering een omgevingsbeperking en moet CI de volledige schone reset, upgrade- en concurrencygate bewijzen.
+
+## Follow-up databasecompatibiliteit — 2026-08-20
+
+- De eerste lifecycle-migratie kon een reeds bestaande maar nog niet gelinkte pakketregel als losse regel zien. De follow-up adopteert unieke componentmatches en annuleert duplicaten alleen zonder reserverings-, allocatie- of fulfilmenthistorie; meer dan één historische kandidaat wordt nooit automatisch herschreven.
+- De lokale omgeving heeft geen PostgreSQL/Docker-runtime. SQL-uitvoering blijft daarom door CI te bewijzen; de gerapporteerde pgTAP-contractbreuken zijn wel expliciet teruggedraaid en de tegenstrijdige zero-line-paymenttest is vervangen door de canonieke ontbrekende/compleet-importflow.

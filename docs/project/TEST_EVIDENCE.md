@@ -723,3 +723,9 @@ where migration_key='20260819130000_package_size_payment_lifecycle';
 ```
 
 De eerste twee queries moeten nul rijen opleveren. De metrics bewijzen `paidBrokenOrdersDetected`, `completePrefilledSizesRepaired`, `missingSizesLeftForMemberAction`, `orderLinesMaterialized`, `sizeSelectionsConfirmed`, `sizeSelectionsLocked` en `statusesRefreshed`. Voor de bekende Dani-controle wordt op `member_id = '23ccae6f-cd2d-4559-87b5-8d36a8df51cb'` dezelfde quantity-helper gecombineerd met snapshotitems, assignmentselecties, regels en paymentprojectie; verwacht zijn paid, expected 3, drie locked selecties en drie actieve componentregels, maar alleen `Afgerond` bij pickedUp 3.
+
+## Database-review regressies — 2026-08-20
+
+- `member_package_bulk_assignment.sql` verwacht nu `PACKAGE_SIZES_REQUIRED` en nul payments/regels bij één ontbrekende component. Na de laatste geldige import bewijst dezelfde test automatische confirmation, twee componentregels met totale entitlementquantity drie, snapshotlinks en retry zonder dubbele confirmation/payment.
+- De follow-up bewaart bestaande provider-, export- en manual-paymenttests voor loose orders en de brede `other`-remindersemantiek, terwijl de parent workspace de strikte variantgereedheid projecteert.
+- Reconciliatiemetrics staan onder `20260820100000_package_lifecycle_db_review_fixes`: `historicalLinesLinked`, `historyFreeDuplicatesCancelled`, `ambiguousComponentsLeftForReview`, `paidOrdersReconciled` en `paidOrdersMissingSizes`.

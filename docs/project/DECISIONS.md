@@ -226,3 +226,9 @@
 - De actieve pakketsnapshot bepaalt wat een lid ontvangt; assignmentgebonden maatselecties bepalen de concrete varianten; betaling vergrendelt de bevestigde selecties; orderregels voeren die aanspraak uit. Ontbrekende orderregels verlagen de aanspraaknoemer nooit.
 - Een betaling bevestigt complete, geldige vooringevulde pakketmaten automatisch. Een ontbrekende, conflicterende, `other`, inactieve of artikelvreemde variant blokkeert uitsluitend een nieuwe betaling met `PACKAGE_SIZES_REQUIRED`.
 - Een echte providerbetaling blijft gezaghebbend: ontbrekende legacymaatdata kan de paid-projectie niet terugdraaien en houdt de order op `Nalevering` totdat het lid de ontbrekende maten invult.
+
+## D-110 — Strikte betaalgereedheid is niet hetzelfde als brede maatbevestiging
+
+- `package_sizes_complete` behoudt zijn bestaande betekenis voor reminder- en conflictworkflows: een expliciete pakketbrede keuze, inclusief `other`, stopt herhaalde invulverzoeken.
+- De nieuwe `package_variant_sizes_complete` is de strengere betaal-/uitvoeringsgrens en accepteert uitsluitend actieve, seizoensgebonden varianten voor ieder item van de actieve assignment.
+- Losse historische orders blijven betaalbaar via hun bestaande lifecycle. Alleen een actieve pakkettoewijzing activeert de pakketmaatpreflight; de order wordt vóór deze beslissing vergrendeld.

@@ -470,3 +470,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Forward-only migratie `20260819130000_package_size_payment_lifecycle.sql` centraliseert strikte pakketmaatcontrole, idempotente bevestiging/materialisatie, betaalvergrendeling, voorraadqueueing, quantity-aware orderstatus en entitlement-aware ledenvoortgang.
 - De ouder- en handmatige betaalgrenzen geven `PACKAGE_SIZES_REQUIRED` gestructureerd terug; de ouder-UI biedt bij ontbrekende maten `Maten invullen` en vraagt bij complete imports geen redundante bevestigingsstap.
 - De invariantgedreven reparatie onderscheidt complete prefills van werkelijk ontbrekende maten en bewaart aggregaatmetrics in de migratiereconciliatie en auditlog.
+
+## Database-reviewherstel pakketlifecycle — 2026-08-20
+
+- Forward-only follow-up `20260820100000_package_lifecycle_db_review_fixes.sql` scheidt reminder-completeness van strikte betaalgereedheid, bewaart losse-ordercompatibiliteit en laat validatie/idempotente retries vóór een uitsluitend nieuwe-paymentpreflight beslissen.
+- Historische pakketregels worden via snapshotlink of immutable templatecomponent exact één keer geteld. History-free duplicaten worden veilig soft-geannuleerd; ambigue fulfilmenthistorie blijft behouden en wordt als reviewmetric vastgelegd.
+- Paid inserts én updates starten best-effort locking/statusrefresh zonder provider-paid waarheid te verwerpen. Ouderwijzigingen van reeds locked componenten worden vóór het confirmation ledger geweigerd, terwijl ontbrekende paid componenten nog ingevuld kunnen worden.

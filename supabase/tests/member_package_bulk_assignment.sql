@@ -90,6 +90,34 @@ select is(
   'true', 'retry retourneert duurzaam hetzelfde resultaat'
 );
 
+insert into app.payments(order_id, method, status, amount_cents, idempotency_key, paid_at)
+select orders.id, 'cash', 'paid', orders.amount_due_cents,
+  'paid-package-with-missing-sizes', timezone('utc', now())
+from app.member_orders orders
+where orders.member_id = 'ac500000-0000-4000-8000-000000000003';
+select is(
+  (select orders.order_status from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000003'),
+  'Nalevering',
+  'paid pakket zonder maten of regels wordt nooit Afgerond'
+);
+select is(
+  (private.package_fulfilment_quantities(
+    (select orders.id from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000003')
+  )->>'expectedQuantity')::integer,
+  3,
+  'paid pakket zonder regels behoudt snapshotquantity drie'
+);
+select is(
+  (private.package_fulfilment_quantities(
+    (select orders.id from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000003')
+  )->>'pickedUpQuantity')::integer,
+  0,
+  'ontbrekende regels leveren nul voortgang op'
+);
+
 reset role;
 insert into private.parent_accounts(id, email_normalized)
 values('ac700000-0000-4000-8000-000000000001', 'bulk-parent@example.invalid');
@@ -117,9 +145,8 @@ where grant_row.parent_account_id = 'ac700000-0000-4000-8000-000000000001'
     where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
   );
 
-select is(
-  (
-    public.prepare_mollie_payment(
+select throws_ok(
+  $$select public.prepare_mollie_payment(
       repeat('d', 64),
       (
         select orders.id
@@ -127,10 +154,10 @@ select is(
         where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
       ),
       'package-zero-lines-payment'
-    )->>'amountCents'
-  )::integer,
-  12000,
-  'een actief pakket kan zonder bevestigde maten, regels, voorraad of allocatie betalen'
+    )$$,
+  '23514',
+  'PACKAGE_SIZES_REQUIRED',
+  'een actief pakket kan niet betalen zolang een vereiste pakketmaat ontbreekt'
 );
 select is(
   (
@@ -141,7 +168,14 @@ select is(
       and line.status <> 'cancelled'
   ),
   0::bigint,
-  'payment prepare materialiseert geen logistieke regels en reserveert geen voorraad'
+  'geweigerde payment prepare maakt geen logistieke regels of betaalpoging'
+);
+select is(
+  (select count(*) from app.payments payment
+    join app.member_orders orders on orders.id = payment.order_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'),
+  0::bigint,
+  'ontbrekende maten maken geen payment'
 );
 select is(
   private.mail_v2_size_segment((
@@ -295,6 +329,67 @@ select is(
 );
 
 reset role;
+create temporary table complete_import_payment as
+select public.prepare_mollie_payment(
+  repeat('d', 64),
+  (select orders.id from app.member_orders orders
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'),
+  'package-zero-lines-payment'
+) result;
+select is(
+  (select (result->>'amountCents')::integer from complete_import_payment),
+  12000,
+  'complete geldige imports starten de exacte pakketbetaling'
+);
+select is(
+  (select count(*) from app.order_lines line
+    join app.member_orders orders on orders.id = line.order_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      and line.status <> 'cancelled'),
+  2::bigint,
+  'payment prepare bevestigt imports en materialiseert elk pakketcomponent exact één keer'
+);
+select is(
+  (select sum(line.quantity) from app.order_lines line
+    join app.member_orders orders on orders.id = line.order_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      and line.status <> 'cancelled'),
+  3::bigint,
+  'gematerialiseerde regels behouden de entitlementquantity drie'
+);
+select is(
+  (private.package_fulfilment_quantities(
+    (select orders.id from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000002')
+  )->>'expectedQuantity')::integer,
+  3,
+  'de actieve snapshot blijft de entitlementnoemer'
+);
+select is(
+  (select count(*) from app.order_package_snapshot_items item
+    join app.member_orders orders on orders.active_package_snapshot_id = item.snapshot_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'
+      and item.order_line_id is not null),
+  2::bigint,
+  'ieder gematerialiseerd component is aan zijn snapshotitem gekoppeld'
+);
+select is(
+  (public.prepare_mollie_payment(
+    repeat('d', 64),
+    (select orders.id from app.member_orders orders
+      where orders.member_id = 'ac500000-0000-4000-8000-000000000002'),
+    'package-complete-retry'
+  )->>'paymentId'),
+  (select result->>'paymentId' from complete_import_payment),
+  'een tweede checkoutrequest hergebruikt de open payment'
+);
+select is(
+  (select count(*) from app.package_size_confirmations confirmation
+    join app.member_orders orders on orders.id = confirmation.order_id
+    where orders.member_id = 'ac500000-0000-4000-8000-000000000002'),
+  1::bigint,
+  'checkoutretry dupliceert de pakketbevestiging niet'
+);
 insert into app.articles(id, name, code, icon_type, sort_order)
 values('ac200000-0000-4000-8000-000000000003', 'Los trainingsshirt', 'LOS-TRAIN', 'shirt', 30);
 insert into app.article_variants(id, article_id, size, sku, sort_order)
@@ -406,7 +501,7 @@ select ok(
 );
 
 delete from app.payments
-where idempotency_key = 'package-zero-lines-payment';
+where idempotency_key in ('package-zero-lines-payment', 'paid-package-with-missing-sizes');
 select set_config('request.jwt.claims', '{"sub":"ac000000-0000-4000-8000-000000000001","aal":"aal2"}', true);
 set local role authenticated;
 
