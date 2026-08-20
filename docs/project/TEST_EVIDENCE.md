@@ -744,3 +744,11 @@ Lokale acceptatie op 20 augustus 2026:
 - `pnpm vitest run scripts/operations/scheduler.test.mjs`: groen; 10 tests bewijzen onder meer dat een private health-503 de vaste operationele velden logt en onbekende velden, e-mailadressen en secrets uitsluit.
 - `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (215 bestanden, 1.326 tests), `pnpm build` en `git diff --check`: groen.
 - Hosted deployrun `32363318920` bewees tweemaal dat migraties en appstart slagen maar de scheduler fail-closed blijft op `INTERNAL_HEALTH_HTTP_503`. De vorige publieke app werd teruggezet; de diagnosehotfix muteert geen stagingdata.
+
+## Veilige terminale mailjobs en releasehealth — 2026-08-20
+
+- Hosted diagnose-run `32369319530`: migrations, PostgREST-contract, appstart en publieke routeprobes groen; kandidaat daarna correct teruggerold op private health. De gewhiteliste snapshot toonde uitsluitend `emailJobs.failed = 10`, met alle overige operationele tellers/booleans gezond.
+- `pnpm db:reset`: groen; alle 161 forward-only migrations plus seed zijn op een schone database toegepast.
+- `pnpm test:db`: groen; 58 pgTAP-bestanden en 1.897 assertions. De gerichte `email_recovery_operations.sql`-regressie bewijst dat alle vier bestaande veilige pre-send stopredenen niet blokkeren en een gewone nieuwe `failed`-job na de herstelgrens wel blijft blokkeren.
+- `pnpm test:db:upgrade:phase-b`: groen; legacyhashes en alle reconciliatieasserties bleven gelijk.
+- `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (215 bestanden, 1.326 tests), `pnpm build`, migrationlint voor 161 migrations, secretscan en `git diff --check`: groen.
