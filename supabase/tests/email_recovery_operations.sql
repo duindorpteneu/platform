@@ -355,6 +355,62 @@ select is(
   1,
   'health negeert alle benoemde pre-send stops maar blokkeert een echte nieuwe mailfailure'
 );
+select is(
+  (
+    select metrics->>'acknowledgedFailedJobCount'
+    from private.migration_reconciliations
+    where migration_key =
+      '20260820152000_acknowledge_preexisting_email_failure'
+  ),
+  '0',
+  'een schone database legt expliciet nul erkende failed-jobidentiteiten vast'
+);
+update private.migration_reconciliations reconciliation
+set metrics = jsonb_set(
+  reconciliation.metrics,
+  '{acknowledgedFailedJobs}',
+  (
+    select jsonb_build_array(
+      jsonb_build_object(
+        'jobId',
+        job.id,
+        'updatedAt',
+        job.updated_at
+      )
+    )
+    from private.email_jobs job
+    where job.id = 'a4000000-0000-4000-8000-000000000006'
+  )
+)
+where reconciliation.migration_key =
+  '20260820152000_acknowledge_preexisting_email_failure';
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  0,
+  'uitsluitend de exact vastgelegde failed-jobversie blijft bewaard zonder de release te blokkeren'
+);
+update private.email_jobs
+set updated_at = statement_timestamp() + interval '1 second'
+where id = 'a4000000-0000-4000-8000-000000000006';
+select is(
+  (
+    app.get_operational_health_v13(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  1,
+  'een latere failureversie van dezelfde job blijft fail-closed blokkeren'
+);
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
 
