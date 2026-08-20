@@ -10,6 +10,7 @@ set search_path = app, private, pg_temp as $$
     and exists(
       select 1 from app.member_package_assignments assignment
       where assignment.id = p_snapshot_id and assignment.order_id = p_order_id
+        and assignment.status = 'active'
     )
     and exists(
       select 1 from app.order_package_snapshot_items item
@@ -93,6 +94,13 @@ set search_path = app, private, pg_temp as $$
         and line.status <> 'cancelled'
         and line.package_template_item_id = item.template_item_id
         and line.article_id = item.article_id
+        and 1 = (
+          select count(*) from app.order_lines candidate
+          where candidate.order_id = target.order_id
+            and candidate.status <> 'cancelled'
+            and candidate.package_template_item_id = item.template_item_id
+            and candidate.article_id = item.article_id
+        )
       order by line.created_at, line.id
       limit 1
     ) matched on true
@@ -124,101 +132,34 @@ set search_path = app, private, pg_temp as $$
   ) from package_totals cross join loose;
 $$;
 
-create or replace function private.ensure_package_size_lifecycle(
-  p_order_id uuid,
-  p_source text default 'system_reconciliation',
-  p_lock boolean default false,
-  p_parent_account_id uuid default null
-) returns jsonb language plpgsql security definer
+create or replace function private.ensure_package_size_lifecycle(p_order_id uuid)
+returns jsonb language plpgsql security definer
 set search_path = app, private, extensions, pg_temp as $$
 declare
   target_order app.member_orders%rowtype;
-  confirmation_id uuid;
-  confirmation_revision integer;
-  item record;
+  component record;
   target_line app.order_lines%rowtype;
   matching_line_count integer;
   materialized integer := 0;
-  confirmed integer := 0;
-  locked integer := 0;
+  linked integer := 0;
 begin
   select * into target_order from app.member_orders where id = p_order_id for update;
-  if not found or target_order.package_assignment_state <> 'active'
+  if not found then raise exception 'ORDER_NOT_FOUND' using errcode = 'P0002'; end if;
+  if target_order.package_revision_id is null then
+    return jsonb_build_object('orderLinesMaterialized', 0, 'snapshotItemsLinked', 0);
+  end if;
+  if target_order.package_assignment_state <> 'active'
     or target_order.active_package_snapshot_id is null
   then raise exception 'PACKAGE_SIZES_REQUIRED' using errcode = '23514'; end if;
 
   perform pg_advisory_xact_lock(hashtextextended('package-lifecycle:' || target_order.id::text, 0));
-  if not exists(
-    select 1 from app.order_package_snapshot_items item
-    where item.snapshot_id = target_order.active_package_snapshot_id
-  ) or exists(
-    select 1
-    from app.order_package_snapshot_items item
-    left join app.member_article_sizes size_profile
-      on size_profile.member_season_id = target_order.member_season_id
-      and size_profile.article_id = item.article_id
-    left join app.article_variants variant
-      on variant.id = size_profile.article_variant_id
-      and variant.article_id = item.article_id
-      and variant.active
-    left join app.article_seasons article_season
-      on article_season.article_id = item.article_id
-      and article_season.season_id = target_order.season_id
-    where item.snapshot_id = target_order.active_package_snapshot_id
-      and (variant.id is null or article_season.article_id is null
-        or size_profile.selection_status not in ('imported_unconfirmed', 'confirmed', 'locked'))
+  if not private.package_variant_sizes_complete(
+    target_order.id, target_order.active_package_snapshot_id
   ) then
     raise exception 'PACKAGE_SIZES_REQUIRED' using errcode = '23514';
   end if;
 
-  if not private.package_variant_sizes_complete(target_order.id, target_order.active_package_snapshot_id) then
-    select coalesce(max(revision), 0) + 1 into confirmation_revision
-    from app.package_size_confirmations where order_id = target_order.id;
-    insert into app.package_size_confirmations(
-      order_id, member_season_id, revision, source, parent_account_id,
-      staff_user_id, selected_count, conflict_count, change_request_count,
-      package_snapshot_id, schema_version
-    ) values (
-      target_order.id, target_order.member_season_id, confirmation_revision, p_source,
-      case when p_source = 'parent' then p_parent_account_id else null end,
-      case when p_source = 'staff' then auth.uid() else null end,
-      (select count(*) from app.order_package_snapshot_items
-        where snapshot_id = target_order.active_package_snapshot_id),
-      0, 0, target_order.active_package_snapshot_id, 2
-    ) returning id into confirmation_id;
-    insert into app.package_size_confirmation_items(
-      confirmation_id, snapshot_item_id, article_id, selection_kind,
-      selected_variant_id, other_note, quantity_snapshot,
-      product_name_snapshot, product_code_snapshot
-    )
-    select confirmation_id, item.id, item.article_id, 'variant',
-      size_profile.article_variant_id, null, item.quantity,
-      item.product_name_snapshot, item.product_code_snapshot
-    from app.order_package_snapshot_items item
-    join app.member_article_sizes size_profile
-      on size_profile.member_season_id = target_order.member_season_id
-      and size_profile.article_id = item.article_id
-    where item.snapshot_id = target_order.active_package_snapshot_id;
-    get diagnostics confirmed = row_count;
-  end if;
-
-  perform set_config('app.package_size_internal', 'on', true);
-  update app.member_article_sizes size_profile
-  set selection_status = case
-      when p_lock or size_profile.selection_status = 'locked' then 'locked'
-      else 'confirmed'
-    end,
-    confirmed_at = coalesce(size_profile.confirmed_at, timezone('utc', now())),
-    updated_at = timezone('utc', now())
-  where size_profile.member_season_id = target_order.member_season_id
-    and exists(
-      select 1 from app.order_package_snapshot_items item
-      where item.snapshot_id = target_order.active_package_snapshot_id
-        and item.article_id = size_profile.article_id
-    );
-  if p_lock then get diagnostics locked = row_count; end if;
-
-  for item in
+  for component in
     select snapshot_item.*, selection.selected_variant_id
     from app.order_package_snapshot_items snapshot_item
     join app.member_package_size_selections selection
@@ -230,56 +171,57 @@ begin
   loop
     target_line := null;
     select * into target_line from app.order_lines line
-    where line.id = item.order_line_id and line.status <> 'cancelled' for update;
+    where line.id = component.order_line_id and line.status <> 'cancelled' for update;
+    if component.order_line_id is not null and target_line.id is null then
+      raise exception 'PACKAGE_LINE_STATE_REQUIRES_CORRECTION' using errcode = '23514';
+    end if;
     if target_line.id is null then
       select count(*), (array_agg(line.id order by line.created_at, line.id))[1]
       into matching_line_count, target_line.id
       from app.order_lines line
       where line.order_id = target_order.id and line.status <> 'cancelled'
-        and line.package_template_item_id = item.template_item_id
-        and line.article_id = item.article_id;
+        and line.package_template_item_id = component.template_item_id
+        and line.article_id = component.article_id;
       if matching_line_count > 1 then
         raise exception 'PACKAGE_ACTIVE_LINE_DUPLICATE' using errcode = '23514';
       elsif matching_line_count = 1 then
         select * into target_line from app.order_lines line
         where line.id = target_line.id for update;
-        update app.order_package_snapshot_items
-        set order_line_id = target_line.id where id = item.id;
       end if;
     end if;
 
     if target_line.id is null then
       insert into app.order_lines(order_id, article_variant_id, quantity, package_template_item_id)
-      values(target_order.id, item.selected_variant_id, item.quantity, item.template_item_id)
+      values(target_order.id, component.selected_variant_id, component.quantity, component.template_item_id)
       returning * into target_line;
-      update app.order_package_snapshot_items
-      set order_line_id = target_line.id,
-          article_variant_id = item.selected_variant_id,
-          variant_label_snapshot = target_line.size_snapshot,
-          size_snapshot = target_line.size_snapshot
-      where id = item.id;
       materialized := materialized + 1;
-    elsif target_line.article_variant_id is distinct from item.selected_variant_id
-      or target_line.quantity is distinct from item.quantity
-      or target_line.package_template_item_id is distinct from item.template_item_id
+    elsif target_line.order_id is distinct from target_order.id
+      or target_line.article_variant_id is distinct from component.selected_variant_id
+      or target_line.quantity is distinct from component.quantity
+      or target_line.package_template_item_id is distinct from component.template_item_id
     then
-      if exists(select 1 from app.inventory_reservations reservation where reservation.order_line_id = target_line.id)
-        or exists(select 1 from app.fulfilment_lines fulfilment_line where fulfilment_line.order_line_id = target_line.id)
-      then raise exception 'PACKAGE_LINE_HISTORY_REQUIRES_CORRECTION' using errcode = '23514'; end if;
-      update app.order_lines set article_variant_id = item.selected_variant_id,
-        quantity = item.quantity, package_template_item_id = item.template_item_id,
-        updated_at = timezone('utc', now()) where id = target_line.id;
+      raise exception 'PACKAGE_LINE_STATE_REQUIRES_CORRECTION' using errcode = '23514';
     end if;
-    perform private.enqueue_inventory_variant(target_order.season_id, item.selected_variant_id, 'package_size_materialized');
+    update app.order_package_snapshot_items
+    set order_line_id = target_line.id,
+        article_variant_id = component.selected_variant_id,
+        variant_label_snapshot = target_line.size_snapshot,
+        size_snapshot = target_line.size_snapshot
+    where id = component.id and order_line_id is null;
+    if found then linked := linked + 1; end if;
+    perform private.enqueue_inventory_variant(
+      target_order.season_id, component.selected_variant_id, 'package_size_materialized'
+    );
   end loop;
-  perform set_config('app.package_size_internal', 'off', true);
   return jsonb_build_object('orderLinesMaterialized', materialized,
-    'sizeSelectionsConfirmed', confirmed, 'sizeSelectionsLocked', locked);
+    'snapshotItemsLinked', linked);
 end;
 $$;
+revoke all on function private.ensure_package_size_lifecycle(uuid)
+from public, anon, authenticated, service_role;
 
 -- Preserve established validation and retry errors. Package preflight runs only
--- for a genuinely new payment on a locked active-package order.
+-- for a genuinely new payment on an explicitly confirmed active-package order.
 alter function public.prepare_mollie_payment(text, uuid, text)
 rename to prepare_mollie_payment_before_db_review;
 revoke all on function public.prepare_mollie_payment_before_db_review(text, uuid, text)
@@ -298,6 +240,7 @@ begin
   end if;
   select * into target_order from app.member_orders where id = p_order_id for update;
   if target_order.package_assignment_state = 'active'
+    and target_order.package_revision_id is not null
     and target_order.active_package_snapshot_id is not null
     and not exists(select 1 from app.payments where idempotency_key = btrim(p_idempotency_key) and order_id <> p_order_id)
     and not exists(select 1 from app.payments where order_id = p_order_id and status in ('paid', 'duplicate_paid'))
@@ -312,7 +255,7 @@ begin
           and payment.created_at + interval '1 hour' > timezone('utc', now())
       )
     )
-  then perform private.ensure_package_size_lifecycle(p_order_id, 'parent', false, account_id); end if;
+  then perform private.ensure_package_size_lifecycle(p_order_id); end if;
   return public.prepare_mollie_payment_before_package_sizes(p_token_hash, p_order_id, p_idempotency_key);
 end;
 $$;
@@ -335,6 +278,7 @@ begin
   select * into target_order from app.member_orders where id = p_order_id for update;
   select enabled into card_enabled from app.release_feature_flags where key = 'legacy_card_payment';
   if target_order.package_assignment_state = 'active'
+    and target_order.package_revision_id is not null
     and target_order.active_package_snapshot_id is not null
     and p_method in ('cash', 'card')
     and (p_method <> 'card' or coalesce(card_enabled, false))
@@ -343,7 +287,7 @@ begin
     and not exists(select 1 from app.payments where order_id = p_order_id and status in ('paid', 'duplicate_paid'))
     and not exists(select 1 from app.payments where order_id = p_order_id and reconciliation_issue is not null)
     and not exists(select 1 from app.payments where order_id = p_order_id and method = 'mollie' and status in ('open', 'pending'))
-  then perform private.ensure_package_size_lifecycle(p_order_id, 'staff', true); end if;
+  then perform private.ensure_package_size_lifecycle(p_order_id); end if;
   return app.record_manual_payment_v2_before_package_sizes(
     p_order_id, p_method, p_amount_cents, p_reason, p_request_id, p_correlation_id
   );
@@ -352,37 +296,6 @@ $$;
 revoke all on function app.record_manual_payment_v2(uuid, app.payment_method, integer, text, uuid, uuid)
 from public, anon, authenticated, service_role;
 grant execute on function app.record_manual_payment_v2(uuid, app.payment_method, integer, text, uuid, uuid) to authenticated;
-
-create or replace function private.assert_paid_package_size_submission(
-  p_order_id uuid, p_selections jsonb
-) returns void language plpgsql stable security definer
-set search_path = app, private, pg_temp as $$
-declare target_snapshot uuid;
-begin
-  select active_package_snapshot_id into target_snapshot
-  from app.member_orders where id = p_order_id;
-  if exists(select 1 from app.payments where order_id = p_order_id and status = 'paid')
-    and exists(
-      select 1
-      from jsonb_array_elements(p_selections) submitted
-      join app.order_package_snapshot_items item
-        on item.snapshot_id = target_snapshot
-        and item.article_id = (submitted.value->>'articleId')::uuid
-      left join app.member_package_size_selections selection
-        on selection.assignment_id = target_snapshot and selection.snapshot_item_id = item.id
-      left join app.member_article_sizes size_profile
-        on size_profile.member_season_id = (select member_season_id from app.member_orders where id = p_order_id)
-        and size_profile.article_id = item.article_id and size_profile.selection_status = 'locked'
-      where (selection.selected_variant_id is not null or size_profile.article_variant_id is not null)
-        and (submitted.value->>'kind' <> 'variant'
-          or (submitted.value->>'variantId')::uuid
-            is distinct from coalesce(selection.selected_variant_id, size_profile.article_variant_id))
-    )
-  then raise exception 'PAID_PACKAGE_SIZES_LOCKED' using errcode = '23514'; end if;
-end;
-$$;
-revoke all on function private.assert_paid_package_size_submission(uuid, jsonb)
-from public, anon, authenticated, service_role;
 
 alter function public.confirm_parent_package_sizes_v5(text, uuid, jsonb, text, uuid, uuid)
 rename to confirm_parent_package_sizes_v5_before_db_review;
@@ -419,19 +332,17 @@ begin
       p_token_hash, p_member_season_id, p_selections, p_expected_revision, p_request_id, p_correlation_id
     );
   end if;
-  perform private.assert_paid_package_size_submission(target_order_id, p_selections);
   result := public.confirm_parent_package_sizes_v5_before_paid_lock(
     p_token_hash, p_member_season_id, p_selections, p_expected_revision, p_request_id, p_correlation_id
   );
   if exists(select 1 from app.payments where order_id = target_order_id and status = 'paid')
+    and exists(select 1 from app.member_orders orders
+      where orders.id = target_order_id and orders.package_revision_id is not null)
     and private.package_variant_sizes_complete(
       target_order_id, (select active_package_snapshot_id from app.member_orders where id = target_order_id)
     )
   then
-    perform private.ensure_package_size_lifecycle(
-      target_order_id, 'parent', true,
-      private.parent_account_for_member_season(p_token_hash, p_member_season_id)
-    );
+    perform private.ensure_package_size_lifecycle(target_order_id);
     perform app.refresh_order_status(target_order_id);
   end if;
   return result;
@@ -450,10 +361,11 @@ begin
     begin
       if exists(
         select 1 from app.member_orders orders where orders.id = new.order_id
+          and orders.package_revision_id is not null
           and orders.package_assignment_state = 'active'
           and orders.active_package_snapshot_id is not null
       ) then
-        perform private.ensure_package_size_lifecycle(new.order_id, 'system_reconciliation', true);
+        perform private.ensure_package_size_lifecycle(new.order_id);
       end if;
     exception when others then
       insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata)
@@ -500,108 +412,50 @@ revoke all on function public.get_parent_package_workspace_v7(text)
 from public, anon, authenticated;
 grant execute on function public.get_parent_package_workspace_v7(text) to service_role;
 
--- Repair pre-link and partial rows invariant-first. A duplicate introduced
--- before component links existed is only cancelled when it has no reservation,
--- allocation or fulfilment fact. Ambiguous historical facts remain untouched.
+-- Reconcile paid orders only when explicit confirmation and execution state are
+-- unambiguous. Historical duplicates and mismatches remain untouched for review.
 do $$
 declare
-  component record;
-  keep_line_id uuid;
-  candidate_count integer;
-  historical_count integer;
-  cancelled_count integer := 0;
-  linked_count integer := 0;
-  ambiguous_count integer := 0;
-  repaired_orders integer := 0;
-  missing_orders integer := 0;
   target_order record;
+  detected_count integer := 0;
+  review_count integer := 0;
 begin
-  for component in
-    select item.id, item.snapshot_id, item.template_item_id, item.article_id,
-      snapshot.order_id
-    from app.order_package_snapshot_items item
-    join app.order_package_snapshots snapshot on snapshot.id = item.snapshot_id
-    join app.member_orders orders
-      on orders.id = snapshot.order_id
-      and orders.active_package_snapshot_id = snapshot.id
-      and orders.package_assignment_state = 'active'
-    where item.order_line_id is null
-    order by snapshot.order_id, item.sort_order, item.id
-  loop
-    select count(*), count(*) filter (where candidate.has_history),
-      (array_agg(candidate.id order by candidate.has_history desc, candidate.created_at, candidate.id))[1]
-    into candidate_count, historical_count, keep_line_id
-    from (
-      select line.id, line.created_at,
-        line.status = 'picked_up'
-        or exists(select 1 from app.inventory_reservations reservation where reservation.order_line_id = line.id)
-        or exists(select 1 from app.inventory_allocations allocation where allocation.order_line_id = line.id)
-        or exists(select 1 from app.fulfilment_lines fulfilment_line where fulfilment_line.order_line_id = line.id)
-          as has_history
-      from app.order_lines line
-      where line.order_id = component.order_id
-        and line.status <> 'cancelled'
-        and line.package_template_item_id = component.template_item_id
-        and line.article_id = component.article_id
-    ) candidate;
-
-    if candidate_count = 0 then continue;
-    elsif historical_count > 1 then
-      ambiguous_count := ambiguous_count + 1;
-      continue;
-    end if;
-
-    perform set_config('app.package_size_internal', 'on', true);
-    update app.order_lines line set status = 'cancelled', updated_at = timezone('utc', now())
-    where line.order_id = component.order_id
-      and line.status <> 'cancelled'
-      and line.package_template_item_id = component.template_item_id
-      and line.article_id = component.article_id
-      and line.id <> keep_line_id
-      and not exists(select 1 from app.inventory_reservations reservation where reservation.order_line_id = line.id)
-      and not exists(select 1 from app.inventory_allocations allocation where allocation.order_line_id = line.id)
-      and not exists(select 1 from app.fulfilment_lines fulfilment_line where fulfilment_line.order_line_id = line.id);
-    get diagnostics candidate_count = row_count;
-    cancelled_count := cancelled_count + candidate_count;
-    update app.order_package_snapshot_items set order_line_id = keep_line_id
-    where id = component.id and order_line_id is null;
-    if found then linked_count := linked_count + 1; end if;
-    perform set_config('app.package_size_internal', 'off', true);
-  end loop;
-
   for target_order in
     select orders.id
     from app.member_orders orders
     where orders.package_assignment_state = 'active'
+      and orders.package_revision_id is not null
       and orders.active_package_snapshot_id is not null
       and exists(select 1 from app.payments payment where payment.order_id = orders.id and payment.status = 'paid')
+      and exists(
+        select 1 from app.order_package_snapshot_items snapshot_item
+        left join app.order_lines line
+          on line.id = snapshot_item.order_line_id and line.status <> 'cancelled'
+        where snapshot_item.snapshot_id = orders.active_package_snapshot_id
+          and line.id is null
+      )
     order by orders.id
   loop
-    begin
-      perform private.ensure_package_size_lifecycle(target_order.id, 'system_reconciliation', true);
-      repaired_orders := repaired_orders + 1;
-    exception when sqlstate '23514' then
-      if sqlerrm = 'PACKAGE_SIZES_REQUIRED' then
-        missing_orders := missing_orders + 1;
-      else
-        ambiguous_count := ambiguous_count + 1;
-      end if;
-    end;
-    perform app.refresh_order_status(target_order.id);
+    detected_count := detected_count + 1;
+    review_count := review_count + 1;
+    insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata)
+    values(null, 'package_lifecycle.review_required', 'member_order', target_order.id,
+      jsonb_build_object('errorCode', 'LEGACY_PACKAGE_EXECUTION_REQUIRES_REVIEW'));
   end loop;
 
   insert into private.migration_reconciliations(migration_key, status, metrics)
   values(
     '20260820100000_package_lifecycle_db_review_fixes',
-    'passed',
+    case when review_count = 0 then 'passed' else 'failed' end,
     jsonb_build_object(
-      'historicalLinesLinked', linked_count,
-      'historyFreeDuplicatesCancelled', cancelled_count,
-      'ambiguousComponentsLeftForReview', ambiguous_count,
-      'paidOrdersReconciled', repaired_orders,
-      'paidOrdersMissingSizes', missing_orders
+      'paidOrdersDetected', detected_count,
+      'paidOrdersReconciled', 0,
+      'paidOrdersReviewRequired', review_count,
+      'orderLinesMaterialized', 0,
+      'snapshotItemsLinked', 0
     )
-  );
+  ) on conflict(migration_key) do update set status = excluded.status,
+    metrics = excluded.metrics, reconciled_at = timezone('utc', now());
 end;
 $$;
 
