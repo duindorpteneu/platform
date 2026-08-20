@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   invokeInternal,
+  operationalHealthDiagnostic,
   runSchedulerCycle,
   shouldRunRetention,
   validateSchedulerConfig,
@@ -174,5 +175,43 @@ describe("operations scheduler", () => {
         throw new Error("HTTP_503");
       },
     )).rejects.toThrow("INTERNAL_HEALTH_HTTP_503");
+  });
+
+  it("logt uitsluitend gewhiteliste operationele healthvelden", async () => {
+    expect(operationalHealthDiagnostic({
+      status: "degraded",
+      emailJobs: { failed: 2, recipient: "persoon@example.test" },
+      operations: { emailWorker: { stale: true, lastStatus: "failed", secret: "verborgen" } },
+      unexpected: { personalData: "niet-loggen" },
+    })).toEqual({
+      status: "degraded",
+      "emailJobs.failed": 2,
+      "operations.emailWorker.stale": true,
+      "operations.emailWorker.lastStatus": "failed",
+    });
+
+    const originalFetch = globalThis.fetch;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      status: "degraded",
+      recentWebhookFailures: 1,
+      secret: "niet-loggen",
+    }), { status: 503, headers: { "content-type": "application/json" } });
+    try {
+      await expect(invokeInternal(
+        validateSchedulerConfig(base),
+        "/api/internal/health",
+        "GET",
+      )).rejects.toThrow("INTERNAL_HEALTH_HTTP_503");
+      expect(error).toHaveBeenCalledWith(JSON.stringify({
+        event: "scheduler_health_degraded",
+        httpStatus: 503,
+        fields: { status: "degraded", recentWebhookFailures: 1 },
+      }));
+      expect(error.mock.calls.flat().join(" ")).not.toContain("niet-loggen");
+    } finally {
+      globalThis.fetch = originalFetch;
+      error.mockRestore();
+    }
   });
 });

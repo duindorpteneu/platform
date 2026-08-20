@@ -108,6 +108,7 @@
 - **SMTP stagingacceptatie nog extern geblokkeerd (2026-08-19):** de repository bevat geen stagingcredentials of geauthenticeerde deploymenttoegang. Houd `EMAIL_BULK_ENABLED=false` totdat SMTP verify, beheer-testmail, OTP en individuele uitnodiging aantoonbaar zijn geaccepteerd; SMTP-acceptatie is geen inbox-deliverybewijs.
 
 | R-106 | Globale maatregels per lid, seizoen en artikel konden bij pakketwissels als actuele keuze worden hergebruikt en globale cataloguspakketten waren door ouders selecteerbaar. | Een veldspeler kon keeperproducten zien of een nieuwe assignment kon een oude bevestiging als actuele pakketkeuze erven. | Gebruik de immutable pakketsnapshot als assignment-ID, projecteer iedere bevestiging assignmentgebonden, maak ouderkeuze onmogelijk, filter backoffice op de actieve snapshot en laat reservering pas bij zowel geldige maat als betaling ontstaan. | Closed in code; lokale databaseacceptatie vereist Docker |
+| R-107 | De staging-scheduler logde bij private health-HTTP 503 alleen de generieke statuscode. | Een fail-closed release kon niet gericht worden hersteld zonder tijdelijk bredere stagingtoegang of herhaalde blinde deploypogingen. | Log uitsluitend een vaste allowlist van operationele status-, boolean- en telvelden; onbekende velden, secrets en persoonsgegevens worden nooit overgenomen. Een unitregressie bewijst zowel de diagnose als de uitsluiting. | Closed in code; hosted diagnose pending |
 
 ## Pakketlifecycle-reconciliatie — 2026-08-19
 

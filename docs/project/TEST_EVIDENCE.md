@@ -738,3 +738,9 @@ Lokale acceptatie op 20 augustus 2026:
 - Package-, payment- en inventory-action-upgradeconcurrency: groen.
 - `pnpm lint`, `pnpm typecheck`, `pnpm test` (215 bestanden, 1.325 tests) en `pnpm build`: groen.
 - Migratie- en secretscan: groen. De aanvullende lokale `supabase db lint` meldt één reeds bestaande fout in `app.assign_legacy_inventory_balance` uit migratie `20260802264000`; de lifecyclewijzigingen zelf leveren geen lintbevinding op en de inventory-upgradegate blijft groen.
+
+## Privacyveilige staging-healthdiagnose — 2026-08-20 lokaal
+
+- `pnpm vitest run scripts/operations/scheduler.test.mjs`: groen; 10 tests bewijzen onder meer dat een private health-503 de vaste operationele velden logt en onbekende velden, e-mailadressen en secrets uitsluit.
+- `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (215 bestanden, 1.326 tests), `pnpm build` en `git diff --check`: groen.
+- Hosted deployrun `32363318920` bewees tweemaal dat migraties en appstart slagen maar de scheduler fail-closed blijft op `INTERNAL_HEALTH_HTTP_503`. De vorige publieke app werd teruggezet; de diagnosehotfix muteert geen stagingdata.

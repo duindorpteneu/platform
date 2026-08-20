@@ -476,3 +476,8 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Forward-only follow-up `20260820100000_package_lifecycle_db_review_fixes.sql` scheidt reminder-completeness van strikte betaalgereedheid, bewaart losse-ordercompatibiliteit en laat validatie/idempotente retries vóór een uitsluitend nieuwe-paymentpreflight beslissen.
 - Historische pakketregels worden via snapshotlink of immutable templatecomponent exact één keer geteld. De migratie annuleert of herschrijft geen ambigue historie; afwijkingen worden per order auditbaar ter review aangeboden.
 - Paid inserts én updates starten best-effort materialisatie/statusrefresh zonder provider-paid waarheid te verwerpen. Ouderwijzigingen van reeds uitgegeven componenten blijven via de bestaande correctieflow beschermd.
+
+## Staging-healthdiagnose na PR122 — 2026-08-20
+
+- De package-migraties zijn op staging toegepast en PostgREST-contract/appstart slaagden. De release bleef terecht geblokkeerd doordat de bestaande private operationele health 503 retourneerde.
+- De scheduler publiceert voortaan bij die fout uitsluitend gewhiteliste readinessvelden. Daarmee kan de concrete as gericht worden hersteld zonder databasecredentials, secrets of persoonsgegevens in logs te plaatsen.
