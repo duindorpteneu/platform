@@ -92,11 +92,41 @@ jobs:
             local path="$2"
             local contract="$3"
             local response="${RUNNER_TEMP}/operation-response.json"
-            curl --fail --silent --show-error --max-time 50 \
-              --request "${method}" \
-              --header "Authorization: Bearer ${CRON_SECRET}" \
-              --output "${response}" \
-              "${APP_BASE_URL}${path}"
+            if [[ "${contract}" == health ]]; then
+              local http_status
+              http_status="$(curl --silent --show-error --max-time 50 \
+                --request "${method}" \
+                --header "Authorization: Bearer ${CRON_SECRET}" \
+                --output "${response}" \
+                --write-out '%{http_code}' \
+                "${APP_BASE_URL}${path}")"
+              jq '{
+                status,
+                error,
+                emailJobs,
+                emailDeliveryAttempts,
+                reminderPlanner,
+                parentOtpDelivery,
+                supplierPlanning,
+                operations,
+                qrControl,
+                importControl,
+                emailControl,
+                brandingProjection,
+                importStaging,
+                importRuns,
+                recentDeliveryFailures,
+                reconciliationIssues,
+                recentWebhookFailures
+              }' "${response}"
+              [[ "${http_status}" == 200 ]]
+            else
+              curl --fail --silent --show-error --max-time 50 \
+                --request "${method}" \
+                --header "Authorization: Bearer ${CRON_SECRET}" \
+                --output "${response}" \
+                "${APP_BASE_URL}${path}"
+            fi
             case "${contract}" in
               email)
                 jq -e '
