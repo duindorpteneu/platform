@@ -500,3 +500,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - Deployrun `32387896670` bewees dat de exacte mailjobcorrectie werkte (`emailJobs.failed = 0`) en alle overige assen groen waren behalve één oude `retention`-run met een aantoonbaar later succes.
 - Forward-only migration `20260820183000_recover_stale_retention_health.sql` bewaart de volledige runledger en leidt `runningStale` uitsluitend af van vastgelopen runs zonder een later gestarte én succesvol geëindigde run van dezelfde operation.
 - Een nieuwere vastgelopen retentionrun blijft na vijftien minuten volledig fail-closed blokkeren.
+
+## Gezinsbrede ouder-e-mailtransfer — 2026-08-20
+
+- De ledeneditor gebruikt een beheerder+AAL2-preflight die het gezin uitsluitend uit actuele portalautorisatie afleidt, alle betrokken namen/teams toont en een misleidende enkel-kindoptie uitsluit.
+- De nieuwe profiel-RPC houdt profielvelden, alle gezins-e-mails, oude/nieuwe grantgeschiedenis, legacyprojecties, sessie-/OTP-intrekking, PII-vrije audit en de bestaande `portal_access_invite`-domeinevents in één idempotente transactie. Een bestaand doelaccount en open doelgrant worden hergebruikt; een bestaande doelsessie ziet de kinderen direct.
+- Een AAL2-beveiligd reconciliatierapport groepeert actuele member-/grantafwijkingen per ouderaccount zonder gegevens te muteren. De twee private transferledgers zijn opgenomen in het gesloten stagingcleanupcontract van 110 operationele tabellen.

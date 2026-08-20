@@ -238,6 +238,12 @@ export const memberDetailResponseSchema = z.object({
     reconciliationStatus: z.enum(["resolved", "legacy_unknown"]),
   }).strict()).max(100),
   sizeProfile: memberSizeProfileSchema.nullable(),
+  portalAccess: z.object({
+    active: z.boolean(),
+    parentAccountId: uuid.nullable(),
+    loginEmail: z.string().email().max(320).nullable(),
+    linkedChildrenCount: nonNegativeInteger,
+  }).strict().optional(),
   parentLinks: z.array(z.object({
     id: z.string().uuid(),
     email: z.string().email().max(320),

@@ -232,3 +232,9 @@
 - `package_sizes_complete` behoudt zijn bestaande betekenis voor reminder- en conflictworkflows: een expliciete pakketbrede keuze, inclusief `other`, stopt herhaalde invulverzoeken.
 - De nieuwe `package_variant_sizes_complete` is de strengere betaal-/uitvoeringsgrens en accepteert uitsluitend actieve, seizoensgebonden varianten voor ieder item van de actieve assignment.
 - Losse historische orders blijven betaalbaar via hun bestaande lifecycle. Alleen een actieve pakkettoewijzing activeert de pakketmaatpreflight; de order wordt vóór deze beslissing vergrendeld.
+
+## D-111 — Eén actief ouderaccount vertegenwoordigt één gezins-e-mailidentiteit
+
+- Voor normale ledenadministratie bestaat een gezin uit de unieke leden in het actieve seizoen die via `private.parent_authorized_member_seasons` werkelijk door hetzelfde ouderaccount zijn geautoriseerd. Gelijke tekst in `app.members.email` vormt nooit een gezins- of autorisatiebewijs.
+- Wijzigt een beheerder het e-mailadres van één van die leden, dan toont een revisiegebonden preflight alle betrokken kinderen en wijzigt één transactie hun member-e-mail. Bij een nieuwe loginidentiteit worden de oude actuele grants alleen ingetrokken, nieuwe grants aan het hergebruikte of nieuw aangemaakte doelaccount geactiveerd en oude sessies/OTP-uitdagingen uitsluitend zonder resterende autorisatie ongeldig gemaakt.
+- Historische en buiten het actieve seizoen vallende grants worden niet herschreven. De bestaande Mail-v2-producent voor `portal_access_invite` ontvangt één cohort voor het doelaccount, zodat de normale gezinsgroepering, retries en notification episodes behouden blijven. Er ontstaat geen nieuw template en geen directe `email_jobs`-insert.

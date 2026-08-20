@@ -22,6 +22,7 @@
     "test:db:mollie-fixture": "bash scripts/test-mollie-fixture-sql.sh",
     "test:db:concurrency": "bash scripts/test-fulfilment-concurrency.sh",
     "test:db:access-concurrency": "bash scripts/test-parent-access-concurrency.sh",
+    "test:db:family-email-concurrency": "bash scripts/test-family-email-transfer-concurrency.sh",
     "test:db:variant-concurrency": "bash scripts/test-variant-alias-concurrency.sh",
     "test:db:action-concurrency": "bash scripts/test-action-item-concurrency.sh",
     "test:db:import-concurrency": "bash scripts/test-dynamic-import-concurrency.sh",

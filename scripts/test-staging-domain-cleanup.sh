@@ -224,4 +224,4 @@ SECOND_RESULT="${second_result}" node -e '
   if (value.result !== "committed" || value.removed_rows !== 0 || value.remaining_operational_rows !== 0) process.exit(1);
 '
 
-echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 108 tabellen en behield staff/Auth/config."
+echo "Staging-cleanupcontract geslaagd: rollback behield data; commit wiste 110 tabellen en behield staff/Auth/config."

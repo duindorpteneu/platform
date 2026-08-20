@@ -35,6 +35,17 @@ const profile = {
   order: null,
   activities: [],
   reused: false,
+  familyEmailTransfer: {
+    portalAccessActive: false,
+    accessTransferred: false,
+    affectedMemberCount: 1,
+    affectedMemberSeasonCount: 1,
+    targetAccountReused: false,
+    sessionsRevoked: 0,
+    otpChallengesInvalidated: 0,
+    oldAuthorizedMemberSeasonCount: 0,
+    activationMailQueued: false,
+  },
 };
 
 function request(overrides: Record<string, unknown> = {}) {
@@ -77,11 +88,21 @@ describe("POST /api/members/profile", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(mocks.requireRole).toHaveBeenCalledWith(["beheerder"]);
-    expect(mocks.rpc).toHaveBeenCalledWith("update_member_profile_v1", expect.objectContaining({
+    expect(mocks.rpc).toHaveBeenCalledWith("update_member_profile_v2", expect.objectContaining({
       p_member_id: memberId,
       p_member_season_id: memberSeasonId,
       p_date_of_birth: "2014-02-03",
       p_request_id: requestId,
+      p_expected_family_revision: null,
+    }));
+  });
+
+  it("bindt een bevestigde gezinsrevision aan dezelfde profielmutatie", async () => {
+    const familyRevision = "c".repeat(64);
+    const response = await POST(request({ familyRevision }));
+    expect(response.status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith("update_member_profile_v2", expect.objectContaining({
+      p_expected_family_revision: familyRevision,
     }));
   });
 

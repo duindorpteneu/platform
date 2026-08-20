@@ -93,6 +93,8 @@ as $$
     'private.member_profile_edit_requests',
     'private.member_sensitive_identity',
     'private.member_size_edit_requests',
+    'private.parent_family_email_transfer_items',
+    'private.parent_family_email_transfers',
     'private.parent_access_batch_items',
     'private.parent_access_batches',
     'private.parent_accounts',
@@ -385,7 +387,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 108
+  if cardinality(pg_temp.cleanup_tables()) <> 110
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then
