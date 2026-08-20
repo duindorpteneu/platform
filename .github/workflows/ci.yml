@@ -122,6 +122,9 @@ jobs:
       - name: Run parent OTP delivery-gap upgrade reconciliation
         run: pnpm test:db:parent-otp-delivery-gap-upgrade
 
+      - name: Run inventory queue upgrade reconciliation
+        run: pnpm test:db:inventory-queue-upgrade
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
@@ -151,6 +154,9 @@ jobs:
 
       - name: Run package concurrency test
         run: pnpm test:db:package-concurrency
+
+      - name: Run package financial-adjustment concurrency test
+        run: pnpm test:db:package-finance-concurrency
 
       - name: Run payment concurrency test
         run: pnpm test:db:payment-concurrency
