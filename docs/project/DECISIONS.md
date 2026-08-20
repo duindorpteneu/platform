@@ -253,3 +253,11 @@
 - Onvoldoende voorraad is een succesvolle reconciliatie en eindigt `completed`. Alleen een echte overlappende order-/regelmutatie gebruikt de door schedulerfrequentie begrensde retrycyclus; poging tien eindigt `failed` met `concurrent_mutation_exhausted`.
 - Re-enqueue reset uitsluitend completed of exhausted werk. Mail-v2 beschouwt alleen `processing` of `queued|failed` met `attempts < max` als actief.
 - PR122 introduceerde deze fout niet: canonieke pakketmaterialisatie leverde legitieme extra enqueues en maakte de oudere classificatie- en resetfout zichtbaar.
+
+## D-112 — Pakketcorrecties herschrijven nooit financiële historie
+
+- Historische betalingen blijven immutable en houden hun oorspronkelijke bedrag, provider-ID en pakketsnapshot. Een betaald bedrag kan uitsluitend via een expliciete, geauditeerde `package_financial_adjustment` en immutable creditallocaties als tegoed voor de vervangende assignment dienen.
+- De actieve pakketbalans is canoniek: actieve pakketprijs minus toegewezen tegoed minus succesvolle betalingen op de nieuwe snapshot. Alleen het resterende verschil wordt geïnd; een overschot wordt een afzonderlijke refundverplichting.
+- Mollie-refunds zijn echte, idempotente provideroperaties met een eigen status- en eventledger. Alleen providerstatus `refunded` voltooit de verplichting. Kas/pin vereist reden plus bewijs van een reeds extern uitgevoerde terugbetaling.
+- Iedere correctie maakt een nieuwe immutable pakketassignment en maathistorie. Een uitstaande refund maakt het vervangende pakket niet onbetaald, maar blijft zichtbaar en blokkeert een volgende correctie totdat zij is opgelost.
+- Open financiële correcties worden direct uit deze canonieke ledgers geprojecteerd in lid-, bestelling- en betaalworkspaces. Er wordt geen tweede actiepuntrecord met een eigen lifecycle aangemaakt; oplossen van betaling, refund of maatdata verwijdert de operationele aandacht daardoor automatisch zonder synchronisatierisico.

@@ -27,6 +27,7 @@
     "test:db:action-concurrency": "bash scripts/test-action-item-concurrency.sh",
     "test:db:import-concurrency": "bash scripts/test-dynamic-import-concurrency.sh",
     "test:db:package-concurrency": "bash scripts/test-package-concurrency.sh",
+    "test:db:package-finance-concurrency": "bash scripts/test-package-financial-adjustment-concurrency.sh",
     "test:db:payment-concurrency": "bash scripts/test-payment-concurrency.sh",
     "test:db:refund-concurrency": "bash scripts/test-manual-refund-concurrency.sh",
     "test:db:inventory-concurrency": "bash scripts/test-inventory-concurrency.sh",

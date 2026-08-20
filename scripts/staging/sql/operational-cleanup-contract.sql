@@ -42,6 +42,9 @@ as $$
     'app.order_package_snapshot_items',
     'app.order_package_snapshots',
     'app.package_change_requests',
+    'app.package_credit_allocations',
+    'app.package_financial_adjustments',
+    'app.package_refunds',
     'app.package_size_change_requests',
     'app.package_size_confirmation_items',
     'app.package_size_confirmations',
@@ -113,6 +116,7 @@ as $$
     'private.parent_package_selection_requests',
     'private.parent_portal_grants',
     'private.parent_sessions',
+    'private.package_refund_events',
     'private.payment_events',
     'private.payment_reconciliation_resolutions',
     'private.qr_identity_commands',
@@ -392,7 +396,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 115
+  if cardinality(pg_temp.cleanup_tables()) <> 119
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

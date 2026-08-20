@@ -1093,7 +1093,9 @@ export function MemberDashboard() {
                         <div className="mt-5 flex flex-wrap items-center gap-3">
                           <div className="mr-auto">
                             <p className="text-[10px] text-slate-400">
-                              Verschuldigd bedrag
+                              {(order.appliedCreditCents ?? 0) > 0
+                                ? "Nog te betalen"
+                                : "Verschuldigd bedrag"}
                             </p>
                             <p className="mt-1 text-sm font-bold text-ink">
                               {amount.format(order.amountDueCents / 100)}
@@ -1139,8 +1141,12 @@ export function MemberDashboard() {
                             )}
                           {["paid", "duplicate_paid"].includes(order.paymentStatus ?? "") && !order.sizesConfirmed && (
                             <p className="w-full text-xs font-semibold text-amber-800">
-                              Je kledingpakket is betaald. Controleer en bevestig
-                              eerst alle maten.
+                              Je pakket is betaald. Vul de ontbrekende maten in.
+                            </p>
+                          )}
+                          {(order.refundOutstandingCents ?? 0) > 0 && (
+                            <p className="w-full text-xs font-semibold text-brand-800">
+                              De club verwerkt nog een terugbetaling van {amount.format((order.refundOutstandingCents ?? 0) / 100)}. Je pakket blijft betaald.
                             </p>
                           )}
                         </div>

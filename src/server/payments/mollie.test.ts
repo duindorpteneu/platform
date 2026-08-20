@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMolliePayment, extractMollieWebhookPaymentId, formatMollieAmount, getMolliePayment, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
+import { createMolliePayment, createMollieRefund, extractMollieWebhookPaymentId, formatMollieAmount, getMolliePayment, molliePaymentSchema, parseMollieAmountCents, parseMollieMetadata, requireHostedCheckoutUrl, toLocalMollieStatus } from "@/server/payments/mollie";
 
 const metadata = { payment_id: "10000000-0000-4000-8000-000000000001", order_id: "10000000-0000-4000-8000-000000000002", member_id: "10000000-0000-4000-8000-000000000003", member_season_id: "10000000-0000-4000-8000-000000000005", season_id: "10000000-0000-4000-8000-000000000004", schema_version: 2 as const };
 
@@ -45,23 +45,41 @@ describe("Mollie provider boundary", () => {
     await expect(extractMollieWebhookPaymentId(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: '{"id":"tr_abc123"}' }))).rejects.toThrow("MOLLIE_WEBHOOK_CONTENT_TYPE_INVALID");
   });
 
-  it("maps authorized and refunded provider observations to safe local states", () => {
+  it("keeps partial refund resources separate from the factual payment status", () => {
     const base = { id: "tr_test123", status: "authorized", amount: { currency: "EUR", value: "125.00" }, metadata, _links: {} };
     const authorized = molliePaymentSchema.parse(base);
     const refunded = molliePaymentSchema.parse({ ...base, status: "paid", amountRefunded: { currency: "EUR", value: "125.00" } });
     expect(toLocalMollieStatus(authorized)).toBe("pending");
-    expect(toLocalMollieStatus(refunded)).toBe("refunded");
+    expect(toLocalMollieStatus(refunded)).toBe("paid");
   });
 
-  it("maps embedded processing and completed refunds fail-closed while ignoring cancelable refunds", () => {
+  it("never turns a partial embedded refund into a whole-payment refund", () => {
     const base = { id: "tr_test123", status: "paid", amount: { currency: "EUR", value: "125.00" }, metadata, _links: {} };
     const withRefund = (status: "queued" | "processing" | "refunded") => molliePaymentSchema.parse({
       ...base,
       _embedded: { refunds: [{ id: "re_test123", status, amount: { currency: "EUR", value: "125.00" } }] },
     });
     expect(toLocalMollieStatus(withRefund("queued"))).toBe("paid");
-    expect(toLocalMollieStatus(withRefund("processing"))).toBe("refunded");
-    expect(toLocalMollieStatus(withRefund("refunded"))).toBe("refunded");
+    expect(toLocalMollieStatus(withRefund("processing"))).toBe("paid");
+    expect(toLocalMollieStatus(withRefund("refunded"))).toBe("paid");
+  });
+
+  it("creates an exact idempotent partial refund with package metadata", async () => {
+    const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(init?.headers).toMatchObject({ "Idempotency-Key": "package-refund:key" });
+      expect(body.amount).toEqual({ currency: "EUR", value: "7.50" });
+      return new Response(JSON.stringify({
+        id: "re_test123", status: "pending", paymentId: "tr_test123",
+        amount: body.amount, metadata: body.metadata,
+      }), { status: 201 });
+    });
+    await expect(createMollieRefund({
+      apiKey: "test_key", providerPaymentId: "tr_test123",
+      idempotencyKey: "package-refund:key", amountCents: 750,
+      description: "Pakketcorrectie",
+      metadata: { package_refund_id: metadata.payment_id, schema_version: 1 },
+    }, fetcher as typeof fetch)).resolves.toMatchObject({ id: "re_test123", status: "pending" });
   });
 
   it("fetches the payment together with authoritative refund resources", async () => {

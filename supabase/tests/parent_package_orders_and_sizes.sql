@@ -2255,6 +2255,162 @@ from app.member_orders orders
 where orders.member_season_id =
   current_setting('test.package.staff_member_season')::uuid;
 
+savepoint package_finance_v2_equal_price;
+insert into app.package_templates(id,season_id,template_key,created_by)
+values('ea400000-0000-4000-8000-000000000004','ea100000-0000-4000-8000-000000000001',
+  'keeper-gelijke-prijs','ea000000-0000-4000-8000-000000000001');
+insert into app.package_template_revisions(id,template_id,season_id,revision_number,name,
+  description,price_cents,status,active,is_default,created_by,published_by,published_at)
+values('ea410000-0000-4000-8000-000000000004','ea400000-0000-4000-8000-000000000004',
+  'ea100000-0000-4000-8000-000000000001',1,'Keeper gelijk','Keeperpakket gelijke prijs',
+  12500,'draft',false,false,'ea000000-0000-4000-8000-000000000001',null,null);
+insert into app.package_template_items(id,revision_id,article_id,quantity,
+  product_name_snapshot,product_code_snapshot,sort_order,season_id)
+select case item.sort_order when 10 then 'ea420000-0000-4000-8000-000000000021'::uuid
+    else 'ea420000-0000-4000-8000-000000000022'::uuid end,
+  'ea410000-0000-4000-8000-000000000004'::uuid,item.article_id,item.quantity,
+  item.product_name_snapshot,item.product_code_snapshot,item.sort_order,item.season_id
+from app.package_template_items item
+where item.revision_id='ea410000-0000-4000-8000-000000000002';
+update app.package_template_revisions set status='published',active=true,
+  published_by='ea000000-0000-4000-8000-000000000001',published_at=timezone('utc',now())
+where id='ea410000-0000-4000-8000-000000000004';
+select set_config('request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',true);
+set local role authenticated;
+select set_config('test.package.finance_v2_equal',app.preflight_package_change_v2(
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid),
+  'ea410000-0000-4000-8000-000000000004','Gelijk geprijsd keeperpakket corrigeren',
+  'eaf40000-0000-4000-8000-000000000013',null)::text,true);
+select is(current_setting('test.package.finance_v2_equal')::jsonb->>'creditAppliedCents','12500',
+  'gelijk geprijsd pakket gebruikt exact de bestaande betaling als tegoed');
+select is(current_setting('test.package.finance_v2_equal')::jsonb->>'additionalDueCents','0',
+  'gelijk geprijsd pakket vraagt geen nieuwe betaling');
+select is(current_setting('test.package.finance_v2_equal')::jsonb->>'refundDueCents','0',
+  'gelijk geprijsd pakket maakt geen refundverplichting');
+select set_config('test.package.finance_v2_equal_applied',app.apply_package_change_v2(
+  'eaf40000-0000-4000-8000-000000000013',
+  current_setting('test.package.finance_v2_equal')::jsonb->>'revision',
+  'SWITCH_PACKAGE',null)::text,true);
+reset role;
+select is((select count(*)::integer from app.package_credit_allocations allocation
+  where allocation.adjustment_id=(current_setting('test.package.finance_v2_equal_applied')::jsonb
+    #>>'{result,adjustmentId}')::uuid),1,
+  'gelijk geprijsde correctie legt exact één creditallocatie vast');
+select is((select count(*)::integer from app.package_refunds refund
+  where refund.adjustment_id=(current_setting('test.package.finance_v2_equal_applied')::jsonb
+    #>>'{result,adjustmentId}')::uuid),0,
+  'gelijk geprijsde correctie fabriceert geen refund');
+select is((select count(*)::integer from app.payments payment where payment.order_id=
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid)),1,
+  'gelijk geprijsde correctie maakt geen tweede betaling');
+select is((select payment.amount_cents from app.payments payment
+  where payment.idempotency_key='package-change-paid-001'),12500,
+  'gelijk geprijsde correctie behoudt het historische betaalbedrag');
+rollback to savepoint package_finance_v2_equal_price;
+
+savepoint package_finance_v2_more_expensive;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select set_config(
+  'test.package.finance_v2',
+  app.preflight_package_change_v2(
+    (select orders.id from app.member_orders orders where orders.member_season_id=
+      current_setting('test.package.staff_member_season')::uuid),
+    'ea410000-0000-4000-8000-000000000002',
+    'Keeperpakket met alleen het prijsverschil',
+    'eaf40000-0000-4000-8000-000000000011',
+    'eaf30000-0000-4000-8000-000000000011'
+  )::text,
+  true
+);
+select is(current_setting('test.package.finance_v2')::jsonb->>'creditAppliedCents','12500',
+  'v2 gebruikt de historische betaling als expliciet pakkettegoed');
+select is(current_setting('test.package.finance_v2')::jsonb->>'additionalDueCents','2000',
+  'v2 brengt uitsluitend het prijsverschil van het duurdere pakket in rekening');
+select is(current_setting('test.package.finance_v2')::jsonb->>'refundDueCents','0',
+  'v2 maakt bij een duurder pakket geen refundverplichting');
+select lives_ok(format($sql$select app.apply_package_change_v2(
+  'eaf40000-0000-4000-8000-000000000011',%L,'SWITCH_PACKAGE',
+  'eaf30000-0000-4000-8000-000000000011')$sql$,
+  current_setting('test.package.finance_v2')::jsonb->>'revision'),
+  'v2 past een betaalde pakketcorrectie atomair toe');
+reset role;
+select is((select balance.remaining_due_cents from private.order_financial_balance(
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid)) balance),2000,
+  'de canonieke actieve balans bevat na de correctie alleen 20 euro verschil');
+select is((select payment.amount_cents from app.payments payment
+  where payment.idempotency_key='package-change-paid-001'),12500,
+  'de oorspronkelijke betaling en het oorspronkelijke bedrag blijven ongewijzigd');
+rollback to savepoint package_finance_v2_more_expensive;
+
+savepoint package_finance_v2_cheaper;
+insert into app.package_templates(id,season_id,template_key,created_by)
+values('ea400000-0000-4000-8000-000000000003','ea100000-0000-4000-8000-000000000001',
+  'keeper-goedkoper','ea000000-0000-4000-8000-000000000001');
+insert into app.package_template_revisions(id,template_id,season_id,revision_number,name,
+  description,price_cents,status,active,is_default,created_by,published_by,published_at)
+values('ea410000-0000-4000-8000-000000000003','ea400000-0000-4000-8000-000000000003',
+  'ea100000-0000-4000-8000-000000000001',1,'Keeper compact','Keeperpakket goedkoper',
+  10000,'draft',false,false,'ea000000-0000-4000-8000-000000000001',null,null);
+insert into app.package_template_items(id,revision_id,article_id,quantity,
+  product_name_snapshot,product_code_snapshot,sort_order,season_id)
+select case item.sort_order when 10 then 'ea420000-0000-4000-8000-000000000011'::uuid
+    else 'ea420000-0000-4000-8000-000000000012'::uuid end,
+  'ea410000-0000-4000-8000-000000000003'::uuid,item.article_id,item.quantity,
+  item.product_name_snapshot,item.product_code_snapshot,item.sort_order,item.season_id
+from app.package_template_items item
+where item.revision_id='ea410000-0000-4000-8000-000000000002';
+update app.package_template_revisions set status='published',active=true,
+  published_by='ea000000-0000-4000-8000-000000000001',published_at=timezone('utc',now())
+where id='ea410000-0000-4000-8000-000000000003';
+select set_config('request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',true);
+set local role authenticated;
+select set_config('test.package.finance_v2_cheaper',app.preflight_package_change_v2(
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid),
+  'ea410000-0000-4000-8000-000000000003','Goedkoper keeperpakket corrigeren',
+  'eaf40000-0000-4000-8000-000000000012',null)::text,true);
+select is(current_setting('test.package.finance_v2_cheaper')::jsonb->>'creditAppliedCents','10000',
+  'goedkoper pakket gebruikt niet meer tegoed dan de nieuwe pakketprijs');
+select is(current_setting('test.package.finance_v2_cheaper')::jsonb->>'refundDueCents','2500',
+  'goedkoper pakket maakt exact het verschil als refund verschuldigd');
+select set_config('test.package.finance_v2_cheaper_applied',app.apply_package_change_v2(
+  'eaf40000-0000-4000-8000-000000000012',
+  current_setting('test.package.finance_v2_cheaper')::jsonb->>'revision',
+  'SWITCH_PACKAGE',null)::text,true);
+reset role;
+select is((select refund.status from app.package_refunds refund where refund.adjustment_id=
+  (current_setting('test.package.finance_v2_cheaper_applied')::jsonb#>>'{result,adjustmentId}')::uuid),
+  'manual_due','een kasbetaling wordt een zichtbare handmatige refundverplichting');
+select set_config('request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',true);
+set local role authenticated;
+select throws_ok(format($sql$select app.record_manual_payment_refund_v2(
+  %L::uuid,%L::uuid,2500,'Extern terugbetaald','x','eaf50000-0000-4000-8000-000000000001',null)$sql$,
+  current_setting('test.package.finance_v2_cheaper_applied')::jsonb#>>'{result,refunds,0,refundId}',
+  current_setting('test.package.finance_v2_cheaper_applied')::jsonb#>>'{result,refunds,0,paymentId}'),
+  '22023','INVALID_MANUAL_PAYMENT_REFUND','handmatige refund vereist een bruikbare bewijsreferentie');
+select is((app.record_manual_payment_refund_v2(
+  (current_setting('test.package.finance_v2_cheaper_applied')::jsonb#>>'{result,refunds,0,refundId}')::uuid,
+  (current_setting('test.package.finance_v2_cheaper_applied')::jsonb#>>'{result,refunds,0,paymentId}')::uuid,
+  2500,'Extern aan ouder terugbetaald','Kasbon K-2044-001',
+  'eaf50000-0000-4000-8000-000000000001',null)->>'status'),
+  'manual_completed','bewijs resolveert alleen de handmatige refundverplichting');
+reset role;
+select is((select payment.status::text from app.payments payment
+  where payment.idempotency_key='package-change-paid-001'),'paid',
+  'handmatige deelrefund herschrijft de historische betaling niet');
+rollback to savepoint package_finance_v2_cheaper;
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',

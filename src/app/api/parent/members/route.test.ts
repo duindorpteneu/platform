@@ -96,7 +96,7 @@ describe("GET /api/parent/members", () => {
     const response = await GET();
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
-    expect(mocks.rpc).toHaveBeenCalledWith("get_parent_package_workspace_v7", {
+    expect(mocks.rpc).toHaveBeenCalledWith("get_parent_package_workspace_v8", {
       p_token_hash: "b".repeat(64),
     });
     expect(await response.json()).toMatchObject({

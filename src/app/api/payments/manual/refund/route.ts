@@ -39,8 +39,12 @@ export async function POST(request: Request) {
     }
     const { data, error } = await supabase
       .schema("app")
-      .rpc("record_manual_payment_refund_v1", {
-        p_order_id: parsed.data.orderId,
+      .rpc(parsed.data.refundId
+        ? "record_manual_payment_refund_v2"
+        : "record_manual_payment_refund_v1", {
+        ...(parsed.data.refundId
+          ? { p_refund_id: parsed.data.refundId }
+          : { p_order_id: parsed.data.orderId }),
         p_payment_id: parsed.data.paymentId,
         p_amount_cents: parsed.data.amountCents,
         p_reason: parsed.data.reason,

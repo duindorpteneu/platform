@@ -2,18 +2,20 @@ import { z } from "zod";
 import { BODY_POLICIES, readBoundedText, RequestBodyError, validateBodyHeaders } from "@/server/security/request";
 
 export const mollieStatusSchema = z.enum(["open", "pending", "authorized", "paid", "failed", "canceled", "expired"]);
-const mollieRefundStatusSchema = z.enum(["queued", "pending", "canceled", "processing", "failed", "refunded"]);
+export const mollieRefundStatusSchema = z.enum(["queued", "pending", "canceled", "processing", "failed", "refunded"]);
 
 const amountSchema = z.object({ currency: z.string(), value: z.string() }).strict();
 const linkSchema = z.object({ href: z.string().url(), type: z.string().optional() }).passthrough();
-const refundSchema = z.object({
+export const mollieRefundSchema = z.object({
   resource: z.literal("refund").optional(),
   id: z.string().regex(/^re_[A-Za-z0-9]+$/),
   status: mollieRefundStatusSchema,
   amount: amountSchema,
+  paymentId: z.string().regex(/^tr_[A-Za-z0-9]+$/).optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
 }).passthrough();
 const refundListSchema = z.object({
-  _embedded: z.object({ refunds: z.array(refundSchema).max(250) }).passthrough(),
+  _embedded: z.object({ refunds: z.array(mollieRefundSchema).max(250) }).passthrough(),
 }).passthrough();
 
 export const molliePaymentSchema = z.object({
@@ -31,7 +33,7 @@ export const molliePaymentSchema = z.object({
   canceledAt: z.string().datetime({ offset: true }).nullable().optional(),
   failedAt: z.string().datetime({ offset: true }).nullable().optional(),
   _links: z.object({ checkout: linkSchema.optional() }).passthrough(),
-  _embedded: z.object({ refunds: z.array(refundSchema).max(250).optional() }).passthrough().optional(),
+  _embedded: z.object({ refunds: z.array(mollieRefundSchema).max(250).optional() }).passthrough().optional(),
 }).passthrough();
 
 const mollieMetadataV1Schema = z.object({
@@ -57,6 +59,7 @@ export const mollieMetadataSchema = z.discriminatedUnion("schema_version", [
 ]);
 
 export type MolliePayment = z.infer<typeof molliePaymentSchema>;
+export type MollieRefund = z.infer<typeof mollieRefundSchema>;
 export type MollieMetadata = z.infer<typeof mollieMetadataSchema>;
 
 export class MollieRequestError extends Error {
@@ -136,12 +139,56 @@ export function parseMollieMetadata(value: unknown) {
 }
 
 export function toLocalMollieStatus(payment: MolliePayment) {
-  if (payment.amountRefunded && parseMollieAmountCents(payment.amountRefunded) > 0) return "refunded" as const;
-  if (payment._embedded?.refunds?.some((refund) => {
-    return ["processing", "refunded"].includes(refund.status) && parseMollieAmountCents(refund.amount) > 0;
-  })) return "refunded" as const;
   if (payment.status === "authorized") return "pending" as const;
   return payment.status;
+}
+
+export async function createMollieRefund(input: {
+  apiKey: string;
+  providerPaymentId: string;
+  idempotencyKey: string;
+  amountCents: number;
+  description: string;
+  metadata: { package_refund_id: string; schema_version: 1 };
+}, fetcher: typeof fetch = fetch) {
+  if (!/^tr_[A-Za-z0-9]+$/.test(input.providerPaymentId)) {
+    throw new Error("MOLLIE_PAYMENT_ID_INVALID");
+  }
+  const response = await fetcher(
+    `https://api.mollie.com/v2/payments/${encodeURIComponent(input.providerPaymentId)}/refunds`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": input.idempotencyKey,
+      },
+      body: JSON.stringify({
+        amount: { currency: "EUR", value: formatMollieAmount(input.amountCents) },
+        description: input.description.slice(0, 255),
+        metadata: input.metadata,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) {
+    throw new MollieRequestError(response.status, response.status === 429 || response.status >= 500);
+  }
+  const raw = await readMollieResponse(response);
+  let parsed;
+  try {
+    parsed = mollieRefundSchema.safeParse(JSON.parse(raw));
+  } catch {
+    throw new Error("MOLLIE_RESPONSE_INVALID");
+  }
+  if (!parsed.success
+    || parseMollieAmountCents(parsed.data.amount) !== input.amountCents
+    || (parsed.data.paymentId && parsed.data.paymentId !== input.providerPaymentId)
+    || parsed.data.metadata?.package_refund_id !== input.metadata.package_refund_id) {
+    throw new Error("MOLLIE_REFUND_RESPONSE_MISMATCH");
+  }
+  return parsed.data;
 }
 
 export function requireHostedCheckoutUrl(payment: MolliePayment) {
