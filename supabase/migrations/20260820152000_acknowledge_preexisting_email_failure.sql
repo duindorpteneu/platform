@@ -4,6 +4,39 @@
 -- unrelated forward deployment. Every failure after this boundary remains
 -- fail-closed.
 
+do $$
+declare
+  candidate_count integer;
+begin
+  select count(*)::integer
+  into candidate_count
+  from private.email_jobs job
+  where job.status = 'failed'
+    and job.updated_at > coalesce(
+      (
+        select reconciliation.reconciled_at
+        from private.migration_reconciliations reconciliation
+        where reconciliation.migration_key =
+          '20260818133600_acknowledge_recovered_email_scheduler_health'
+          and reconciliation.status = 'passed'
+      ),
+      '-infinity'::timestamptz
+    )
+    and coalesce(job.last_error, '') not in (
+      'access_inactive_before_send',
+      'access_revoked_before_send',
+      'eligibility_changed_before_send',
+      'mail_v2_paused',
+      'superseded_by_back_in_stock'
+    );
+
+  if candidate_count > 1 then
+    raise exception 'PREEXISTING_EMAIL_FAILURE_COUNT_MISMATCH'
+      using errcode = '23514';
+  end if;
+end;
+$$;
+
 insert into private.migration_reconciliations(
   migration_key,
   status,
@@ -14,11 +47,21 @@ insert into private.migration_reconciliations(
   jsonb_build_object(
     'strategy',
       'acknowledge pre-release mail failures without mutating jobs or incidents',
-    'acknowledgedFailedJobs',
+    'acknowledgedFailedJobCount',
       (
         select count(*)
         from private.email_jobs job
         where job.status = 'failed'
+          and job.updated_at > coalesce(
+            (
+              select reconciliation.reconciled_at
+              from private.migration_reconciliations reconciliation
+              where reconciliation.migration_key =
+                '20260818133600_acknowledge_recovered_email_scheduler_health'
+                and reconciliation.status = 'passed'
+            ),
+            '-infinity'::timestamptz
+          )
           and coalesce(job.last_error, '') not in (
             'access_inactive_before_send',
             'access_revoked_before_send',
@@ -26,6 +69,40 @@ insert into private.migration_reconciliations(
             'mail_v2_paused',
             'superseded_by_back_in_stock'
           )
+      ),
+    'acknowledgedFailedJobs',
+      coalesce(
+        (
+          select jsonb_agg(
+            jsonb_build_object(
+              'jobId',
+              job.id,
+              'updatedAt',
+              job.updated_at
+            )
+            order by job.id
+          )
+          from private.email_jobs job
+          where job.status = 'failed'
+            and job.updated_at > coalesce(
+              (
+                select reconciliation.reconciled_at
+                from private.migration_reconciliations reconciliation
+                where reconciliation.migration_key =
+                  '20260818133600_acknowledge_recovered_email_scheduler_health'
+                  and reconciliation.status = 'passed'
+              ),
+              '-infinity'::timestamptz
+            )
+            and coalesce(job.last_error, '') not in (
+              'access_inactive_before_send',
+              'access_revoked_before_send',
+              'eligibility_changed_before_send',
+              'mail_v2_paused',
+              'superseded_by_back_in_stock'
+            )
+        ),
+        '[]'::jsonb
       ),
     'preservedEmailFailureActionItems',
       (
@@ -68,12 +145,10 @@ declare
   );
   email_recovery_boundary timestamptz := coalesce(
     (
-      select max(reconciliation.reconciled_at)
+      select reconciliation.reconciled_at
       from private.migration_reconciliations reconciliation
-      where reconciliation.migration_key in (
-        '20260818133600_acknowledge_recovered_email_scheduler_health',
-        '20260820152000_acknowledge_preexisting_email_failure'
-      )
+      where reconciliation.migration_key =
+        '20260818133600_acknowledge_recovered_email_scheduler_health'
         and reconciliation.status = 'passed'
     ),
     '-infinity'::timestamptz
@@ -114,6 +189,21 @@ begin
       'eligibility_changed_before_send',
       'mail_v2_paused',
       'superseded_by_back_in_stock'
+    )
+    and not exists (
+      select 1
+      from private.migration_reconciliations reconciliation
+      cross join lateral jsonb_array_elements(
+        coalesce(
+          reconciliation.metrics->'acknowledgedFailedJobs',
+          '[]'::jsonb
+        )
+      ) acknowledged
+      where reconciliation.migration_key =
+        '20260820152000_acknowledge_preexisting_email_failure'
+        and reconciliation.status = 'passed'
+        and (acknowledged->>'jobId')::uuid = job.id
+        and job.updated_at <= (acknowledged->>'updatedAt')::timestamptz
     );
 
   select count(*)::integer

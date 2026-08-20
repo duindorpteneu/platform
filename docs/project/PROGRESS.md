@@ -492,5 +492,5 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 ## Auditbare herstelgrens voor pre-release mailfailure — 2026-08-20
 
 - Deployrun `32380056799` paste beide gerichte classificaties correct toe, maar bewees daarna dat één echte, reeds bestaande mailfailure de scheduler nog blokkeerde; alle overige readinessassen en de kandidaatapp waren gezond.
-- Forward-only migration `20260820152000_acknowledge_preexisting_email_failure.sql` bewaart de job, afleverhistorie en het operationele actiepunt ongewijzigd en legt alleen een auditbare release-healthgrens vast.
+- Forward-only migration `20260820152000_acknowledge_preexisting_email_failure.sql` bewaart de job, afleverhistorie en het operationele actiepunt ongewijzigd en legt alleen de gevalideerde failed-jobidentiteit plus diens exacte versie auditbaar vast.
 - Nieuwe mail-, provider-, render- en deliveryfailures na die grens blijven volledig fail-closed. Er wordt geen e-mail opnieuw verzonden en geen operationele historie afgesloten.

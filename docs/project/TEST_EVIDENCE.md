@@ -759,5 +759,5 @@ Lokale acceptatie op 20 augustus 2026:
 
 - Exact-main CI-run `32380057053` was volledig groen: applicatiequality, schone migratieketen, 58 pgTAP-bestanden, alle concurrencyharnassen, capaciteit/latentie en Playwright.
 - Deployrun `32380056799` bewees een gezonde app, toegepaste migration `20260820141000`, HTTP 200 op exact kandidaat-SHA en uitsluitend `emailJobs.failed = 1`; de workflow rolde fail-closed terug en wijzigde de databasemigraties niet terug.
-- De aanvullende pgTAP-regressie verplaatst een echte failure gecontroleerd vóór en na de nieuwe auditgrens: vóór de grens blijft de rij bewaard maar telt health nul, na de grens telt health één. De vijf benoemde pre-send stops blijven afzonderlijk uitgesloten.
+- De aanvullende pgTAP-regressie legt één exacte job-ID/`updated_at`-versie vast: alleen die versie blijft bewaard met health nul; een latere failureversie van dezelfde job telt weer één. Uncertain/providerassen behouden hun eerdere grens en de vijf benoemde pre-send stops blijven afzonderlijk uitgesloten.
 - Lokale gates: schone reset met alle 163 migrations en seed groen; 58 pgTAP-bestanden/1.901 assertions groen; Phase-B legacy-upgradehashes en reconciliaties groen; ESLint, TypeScript, 215 Vitest-bestanden/1.326 tests, productiebuild, migrationlint, secretscan en `git diff --check` groen.
