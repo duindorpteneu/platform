@@ -821,3 +821,45 @@ Lokale acceptatie op 20 augustus 2026:
 - De geïsoleerde lokale Supabase-proef voert de exacte nieuwe SQL-blokken uit: fixtureprepare `1`, AAL2/support/Control Center/provider/healthprobe `1:1:1:1:1:1`, always-cleanup `1` en eindtelling member:grant:staff:account `0:0:0:0` na expliciete verwijdering van de uitsluitend lokale safe-recipientaccount. De probe gebruikt geen OTP, proof, sessietoken of echt adres in output.
 - De fail-safe recoverycorrelatie is aanvullend tegen de echte lokale Supabase getest: append-only challengeownership werd in een teruggerolde transactie exact éénmaal gevonden (`1`) en de join van ownership naar het bestaande atomische `parent.login.challenge.consumed`-auditcontract compileerde en voerde zonder mutation buiten de transactie uit. Fixture-identiteiten blijven gelijk over `github.run_attempt`, zodat een rerun persistente voorgangers exact kan herstellen.
 - Migratie `20260822001500_parent_session_acceptance_correlation.sql` is op de geïsoleerde lokale Supabase toegepast; de uitgebreide ouderlogin-pgTAP-suite slaagt `44/44`, inclusief v4-consumptie en exact atomisch opgeslagen sessiecorrelatie. De volledige lokale applicatiesuite slaagt met `225` testbestanden en `1.392` tests; lint, TypeScript, productiebuild, workflowlint, secretscan en `175` forward-only migrations zijn groen.
+
+## Voorraadqueue- en waiting-stock-maillifecycle — 2026-08-20
+
+- `inventory_journal_fifo.sql` bewijst verse/coalescerende enqueue, reset na completed/exhausted, voorraadtekort als completed en de constraint tegen `queued + max attempts`.
+- `mail_v2_notification_episodes.sql` bewijst betaling → pending event → completed voorraadtekort → eligible event → exact één idempotente e-mailjob, zonder handmatige event- of jobinsert.
+- `test-inventory-concurrency.sh` gebruikt echte PostgreSQL-races voor gelijktijdige betaal-/maattriggers, poging tien onder een echte orderregel-`NOWAIT`-lock, één exhaustion-actiepunt en een enqueue die processing overlapt.
+- `test-inventory-queue-upgrade.sh` plant vóór de migration actieve en stale queued-poison plus een onbekende failed-uitkomst en valideert de gerichte reparatie.
+- Volledige lokale gates: schone reset met 165 forward-only migrations plus seed; 58 pgTAP-bestanden/1.918 assertions; Phase-B-upgrade; package-, payment-, inventory- en mailprojectieconcurrency; 215 Vitest-bestanden/1.327 tests; workflowlint, ESLint, TypeScript, productiebuild, beide edge-bodygates, migrationlint en secretscan groen.
+
+Stagingverificatie na deployment, uitsluitend geaggregeerd:
+
+```sql
+select status, attempts, count(*)
+from private.inventory_allocation_queue
+group by status, attempts order by status, attempts;
+
+select count(*) as poisoned_queued
+from private.inventory_allocation_queue
+where status = 'queued'
+  and attempts >= private.inventory_allocation_max_attempts();
+
+select status, metrics
+from private.migration_reconciliations
+where migration_key = '20260820190000_inventory_allocation_queue_state_machine';
+
+select private.mail_v2_event_state(event.id) as state, count(*)
+from private.mail_v2_domain_events event
+where event.template_key = 'payment_received_waiting_stock'
+  and not exists (
+    select 1 from private.mail_v2_event_suppressions suppression
+    where suppression.event_id = event.id
+  )
+group by private.mail_v2_event_state(event.id);
+
+select count(*) as duplicate_projections
+from (
+  select event_id from private.mail_v2_projections
+  group by event_id having count(*) > 1
+) duplicates;
+```
+
+Acceptatie: `poisoned_queued = 0`, reconciliatie `passed`, geen dubbele projecties, de natuurlijke inventoryworker-run is HTTP 200 en events verlaten `pending` zodra geen processing/retrybaar werk resteert.

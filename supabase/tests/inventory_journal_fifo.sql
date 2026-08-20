@@ -529,6 +529,128 @@ select ok(
   'betaalde tweede FIFO-regel krijgt één gededupliceerd actiepunt'
 );
 
+delete from private.inventory_allocation_queue
+where season_id = 'f1100000-0000-4000-8000-000000000001'
+  and article_variant_id = 'f1300000-0000-4000-8000-000000000001';
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.fresh_enqueue'
+);
+select is(
+  (
+    select concat_ws(':', status::text, attempts, requested_generation)
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  'queued:0:1',
+  'een verse enqueue maakt precies één runnable lifecycle'
+);
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.coalesced_enqueue'
+);
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.coalesced_enqueue'
+);
+select is(
+  (
+    select concat_ws(':', count(*), max(requested_generation))
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  '1:3',
+  'herhaalde enqueues coalesceren zonder een vervolgverzoek te verliezen'
+);
+
+update private.inventory_allocation_queue
+set status = 'completed', attempts = 7, completed_at = clock_timestamp()
+where season_id = 'f1100000-0000-4000-8000-000000000001'
+  and article_variant_id = 'f1300000-0000-4000-8000-000000000001';
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.completed_reenqueue'
+);
+select is(
+  (
+    select concat_ws(':', status::text, attempts)
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  'queued:0',
+  'reenqueue na completed start een verse pogingencyclus'
+);
+
+update private.inventory_allocation_queue
+set status = 'failed',
+    attempts = private.inventory_allocation_max_attempts(),
+    last_error_code = 'concurrent_mutation_exhausted'
+where season_id = 'f1100000-0000-4000-8000-000000000001'
+  and article_variant_id = 'f1300000-0000-4000-8000-000000000001';
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.exhausted_reenqueue'
+);
+select is(
+  (
+    select concat_ws(':', status::text, attempts, last_error_code)
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  'queued:0',
+  'reenqueue na exhaustion heropent veilig zonder vergiftigde attemptsteller'
+);
+
+set local role service_role;
+select set_config(
+  'test.inventory.queue_shortage_result',
+  app.process_inventory_allocation_queue(10)::text,
+  true
+);
+reset role;
+select is(
+  (
+    current_setting('test.inventory.queue_shortage_result')::jsonb
+      ->>'completed'
+  ),
+  '1',
+  'gewone onvoldoende voorraad is een voltooide reconciliatie, geen retry'
+);
+select is(
+  (
+    select concat_ws(':', status::text, attempts, last_error_code)
+    from private.inventory_allocation_queue
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'
+  ),
+  'completed:1',
+  'de voorraadtekortrij eindigt aantoonbaar completed'
+);
+select throws_ok(
+  $$update private.inventory_allocation_queue
+    set status = 'queued',
+        attempts = private.inventory_allocation_max_attempts()
+    where season_id = 'f1100000-0000-4000-8000-000000000001'
+      and article_variant_id = 'f1300000-0000-4000-8000-000000000001'$$,
+  '23514',
+  null,
+  'database-invariant verbiedt queued werk dat niet meer selecteerbaar is'
+);
+select private.enqueue_inventory_variant(
+  'f1100000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'test.continue_fifo_fixture'
+);
+
 select throws_ok(
   $$update app.inventory_movements
     set reason_code = 'inventory.tampered'

@@ -19,6 +19,9 @@ export const maxDuration = 60;
 
 const resultSchema = z.object({
   processed: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  retryable: z.number().int().nonnegative(),
+  exhausted: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
   disabled: z.boolean(),
 }).strict();
@@ -156,6 +159,9 @@ export async function POST(request: Request) {
   return NextResponse.json({
     status,
     processed: parsed.data.processed,
+    completed: parsed.data.completed,
+    retryable: parsed.data.retryable,
+    exhausted: parsed.data.exhausted,
     failed: parsed.data.failed,
     qrGrantsExpired: expiredGrants.data.expired,
     qrProvisioned,

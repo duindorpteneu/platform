@@ -34,7 +34,14 @@ describe("POST /api/internal/jobs/inventory", () => {
       }
       if (name === "process_inventory_allocation_queue") {
         return Promise.resolve({
-          data: { processed: 3, failed: 0, disabled: false },
+          data: {
+            processed: 3,
+            completed: 2,
+            retryable: 1,
+            exhausted: 0,
+            failed: 0,
+            disabled: false,
+          },
           error: null,
         });
       }
@@ -64,7 +71,14 @@ describe("POST /api/internal/jobs/inventory", () => {
   it("processes the bounded allocation queue and records monitoring", async () => {
     const response = await POST(new Request("https://portal.test/api/internal/jobs/inventory", { method: "POST" }));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ status: "succeeded", processed: 3, failed: 0 });
+    await expect(response.json()).resolves.toMatchObject({
+      status: "succeeded",
+      processed: 3,
+      completed: 2,
+      retryable: 1,
+      exhausted: 0,
+      failed: 0,
+    });
     expect(mocks.rpc).toHaveBeenCalledWith("process_inventory_allocation_queue", { p_limit: 50 });
     expect(mocks.rpc).toHaveBeenCalledWith(
       "expire_qr_scan_grants",
@@ -81,6 +95,51 @@ describe("POST /api/internal/jobs/inventory", () => {
       expect.any(String),
       "succeeded",
       3,
+      null,
+    );
+  });
+
+  it("reports terminal queue exhaustion without failing scheduler liveness", async () => {
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "expire_qr_scan_grants") {
+        return Promise.resolve({ data: { expired: 0 }, error: null });
+      }
+      if (name === "process_inventory_allocation_queue") {
+        return Promise.resolve({
+          data: {
+            processed: 1,
+            completed: 0,
+            retryable: 0,
+            exhausted: 1,
+            failed: 0,
+            disabled: false,
+          },
+          error: null,
+        });
+      }
+      if (name === "list_order_qr_identity_candidates") {
+        return Promise.resolve({ data: { candidates: [] }, error: null });
+      }
+      return Promise.resolve({ data: null, error: { message: "unexpected" } });
+    });
+
+    const response = await POST(new Request(
+      "https://portal.test/api/internal/jobs/inventory",
+      { method: "POST" },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "succeeded",
+      exhausted: 1,
+      failed: 0,
+    });
+    expect(mocks.finishRun).toHaveBeenCalledWith(
+      expect.anything(),
+      "inventory_allocator",
+      expect.any(String),
+      "succeeded",
+      1,
       null,
     );
   });
@@ -112,7 +171,14 @@ describe("POST /api/internal/jobs/inventory", () => {
       }
       if (name === "process_inventory_allocation_queue") {
         return Promise.resolve({
-          data: { processed: 0, failed: 0, disabled: false },
+          data: {
+            processed: 0,
+            completed: 0,
+            retryable: 0,
+            exhausted: 0,
+            failed: 0,
+            disabled: false,
+          },
           error: null,
         });
       }

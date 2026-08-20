@@ -246,3 +246,10 @@
 - Alleen een beheerder mag onder AAL2 resend of revoke-plus-new uitvoeren naar het geregistreerde ouderadres. De kledingcommissie ziet uitsluitend het gemaskeerde ontvangersoverzicht; alleen de beheerder houdt daarnaast grants, e-mailidentiteit, sessie-intrekking en suppressieopheffing. Daarmee ontstaat geen vierde rol en geen staffimpersonatiepad.
 - SMTP-acceptatie wordt voortaan canoniek als `provider_accepted` zonder afleverbewijs geprojecteerd. Recipientproblemen leven in het Email Control Center en actiepunten; alleen systemische mailproblemen degraderen globale health.
 - Een publieke expliciete nieuwe code is een compare-and-rotate op het challenge-ID uit de sealed browsercontext. Alleen bezit van een oude, nog geldige cookie is onvoldoende om een later door support of een ander tabblad gemaakte challenge in te trekken.
+
+## D-113 — `queued` betekent uitvoerbaar binnen de begrensde allocatiecyclus
+
+- De coalescerende rij per seizoen/variant krijgt `requested_generation` en `processing_generation`; ieder verzoek is aantoonbaar en een lopende completion kan een nieuwer verzoek niet uitwissen.
+- Onvoldoende voorraad is een succesvolle reconciliatie en eindigt `completed`. Alleen een echte overlappende order-/regelmutatie gebruikt de door schedulerfrequentie begrensde retrycyclus; poging tien eindigt `failed` met `concurrent_mutation_exhausted`.
+- Re-enqueue reset uitsluitend completed of exhausted werk. Mail-v2 beschouwt alleen `processing` of `queued|failed` met `attempts < max` als actief.
+- PR122 introduceerde deze fout niet: canonieke pakketmaterialisatie leverde legitieme extra enqueues en maakte de oudere classificatie- en resetfout zichtbaar.
