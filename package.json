@@ -34,6 +34,7 @@
     "test:db:parent-otp-recipient-upgrade": "bash scripts/test-parent-otp-recipient-backfill-upgrade.sh",
     "test:db:email-health-v14-upgrade": "bash scripts/test-email-health-v14-upgrade.sh",
     "test:db:parent-otp-delivery-gap-upgrade": "bash scripts/test-parent-otp-delivery-gap-upgrade.sh",
+    "test:db:inventory-queue-upgrade": "bash scripts/test-inventory-queue-upgrade.sh",
     "test:db:delivery-notification-concurrency": "bash scripts/test-delivery-notification-concurrency.sh",
     "test:db:mail-projection-concurrency": "bash scripts/test-mail-projection-concurrency.sh",
     "test:db:mail-supersession-concurrency": "bash scripts/test-mail-supersession-concurrency.sh",

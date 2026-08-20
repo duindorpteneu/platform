@@ -566,6 +566,79 @@ select
   '{}'::jsonb
 from app.member_orders orders
 where orders.id = '276a1300-0000-4000-8000-000000000001';
+
+insert into app.inventory_movements(
+  id,
+  season_id,
+  article_id,
+  article_variant_id,
+  movement_type,
+  on_hand_delta,
+  source_type,
+  reason_code,
+  idempotency_key
+)
+select
+  '276a3300-0000-4000-8000-000000000002',
+  settings.active_season_id,
+  '276a1000-0000-4000-8000-000000000001',
+  '276a1100-0000-4000-8000-000000000001',
+  'adjustment_out',
+  -1,
+  'episode_test',
+  'episode.stock_exhausted',
+  repeat('7', 64)
+from app.app_settings settings
+where settings.id = true;
+insert into private.release_cutovers(key)
+values ('mail_templates_v2'), ('allocation_qr_v2')
+on conflict (key) do nothing;
+update app.release_feature_flags
+set enabled = true
+where key in ('mail_templates_v2', 'allocation_qr_v2');
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"276a0000-0000-4000-8000-000000000001","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+create temporary table saved_waiting_stock_template as
+select app.save_mail_template_draft_v1(
+  'payment_received_waiting_stock',
+  revision.content_hash,
+  'Betaling ontvangen, wacht op voorraad',
+  'Betaling ontvangen voor {{member_first_name}}',
+  'Pakketbedrag {{package_amount}} ontvangen; voorraad volgt.',
+  '{
+    "type":"doc",
+    "content":[
+      {
+        "type":"paragraph",
+        "content":[
+          {"type":"text","text":"Beste "},
+          {"type":"shortcode","attrs":{"key":"member_first_name"}},
+          {"type":"text","text":". Bedrag "},
+          {"type":"shortcode","attrs":{"key":"package_amount"}}
+        ]
+      },
+      {"type":"protectedBlock","attrs":{"kind":"payment_summary"}},
+      {"type":"protectedBlock","attrs":{"kind":"stock_items"}}
+    ]
+  }'::jsonb,
+  '<p>Uw betaling is ontvangen; de voorraad volgt.</p>',
+  'Uw betaling is ontvangen. [payment_summary] [stock_items]',
+  null
+) result
+from app.mail_template_revisions revision
+where revision.template_key = 'payment_received_waiting_stock'
+  and revision.status = 'draft';
+select app.publish_mail_template_revision_v1(
+  (saved.result->>'revisionId')::uuid,
+  saved.result->>'contentHash',
+  null
+)
+from saved_waiting_stock_template saved;
+reset role;
 insert into app.payments(
   id,
   order_id,
@@ -582,6 +655,147 @@ insert into app.payments(
   10000,
   'episode-payment-paid',
   statement_timestamp()
+);
+select is(
+  (
+    select count(*)::integer
+    from private.mail_v2_domain_events event
+    where event.template_key = 'payment_received_waiting_stock'
+      and event.source_id = '276a5300-0000-4000-8000-000000000001'
+      and event.parent_account_id =
+        '276a1500-0000-4000-8000-000000000001'
+  ),
+  1,
+  'betaling produceert natuurlijk exact één waiting-stock-domeinevent'
+);
+select is(
+  (
+    select private.mail_v2_event_state(event.id)
+    from private.mail_v2_domain_events event
+    where event.template_key = 'payment_received_waiting_stock'
+      and event.source_id = '276a5300-0000-4000-8000-000000000001'
+  ),
+  'pending',
+  'waiting-stock-mail wacht zolang de voorraadqueue echt runnable is'
+);
+select is(
+  (
+    select count(*)::integer
+    from private.mail_v2_projections projection
+    join private.mail_v2_domain_events event on event.id = projection.event_id
+    where event.template_key = 'payment_received_waiting_stock'
+      and event.source_id = '276a5300-0000-4000-8000-000000000001'
+  ),
+  0,
+  'pending event heeft nog geen handmatig geforceerde projectie of job'
+);
+
+set local role service_role;
+select app.process_inventory_allocation_queue(10);
+reset role;
+select is(
+  (
+    select status::text
+    from private.inventory_allocation_queue queue
+    join app.member_orders orders on orders.season_id = queue.season_id
+    where orders.id = '276a1300-0000-4000-8000-000000000001'
+      and queue.article_variant_id =
+        '276a1100-0000-4000-8000-000000000001'
+  ),
+  'completed',
+  'nul voorraad rondt de queue zonder nutteloze retrycyclus af'
+);
+select is(
+  (
+    select private.mail_v2_event_state(event.id)
+    from private.mail_v2_domain_events event
+    where event.template_key = 'payment_received_waiting_stock'
+      and event.source_id = '276a5300-0000-4000-8000-000000000001'
+  ),
+  'eligible',
+  'de bestaande waiting-stock-event wordt vanzelf eligible'
+);
+
+set local role service_role;
+select app.claim_mail_v2_domain_projections_v1(
+  '276a5400-0000-4000-8000-000000000001',
+  10
+);
+reset role;
+create temporary table waiting_stock_render_input as
+select
+  batch.id group_id,
+  eligibility.revision_hash eligibility_revision,
+  batch.template_revision_id,
+  batch.branding_revision_id,
+  'Betaling ontvangen'::text subject,
+  'Uw tenue wacht op voorraad.'::text preheader,
+  '<p>Uw tenue wacht op voorraad.</p>'::text html,
+  'Uw tenue wacht op voorraad.'::text body_text,
+  private.mail_v2_render_hash(
+    batch.id,
+    eligibility.revision_hash,
+    batch.template_revision_id,
+    batch.branding_revision_id,
+    'Betaling ontvangen',
+    'Uw tenue wacht op voorraad.',
+    '<p>Uw tenue wacht op voorraad.</p>',
+    'Uw tenue wacht op voorraad.'
+  ) render_hash
+from private.mail_v2_domain_events event
+join private.mail_v2_projections projection on projection.event_id = event.id
+join private.mail_v2_projection_batches batch
+  on batch.id = projection.projection_batch_id
+cross join lateral private.mail_v2_projection_eligibility(batch.id) eligibility
+where event.template_key = 'payment_received_waiting_stock'
+  and event.source_id = '276a5300-0000-4000-8000-000000000001';
+grant select on waiting_stock_render_input to service_role;
+set local role service_role;
+create temporary table waiting_stock_finalize as
+select app.finalize_mail_v2_domain_projection_v1(
+  input.group_id,
+  '276a5400-0000-4000-8000-000000000001',
+  input.eligibility_revision,
+  input.subject,
+  input.preheader,
+  input.html,
+  input.body_text,
+  input.render_hash
+) result
+from waiting_stock_render_input input;
+create temporary table waiting_stock_finalize_retry as
+select app.finalize_mail_v2_domain_projection_v1(
+  input.group_id,
+  '276a5400-0000-4000-8000-000000000001',
+  input.eligibility_revision,
+  input.subject,
+  input.preheader,
+  input.html,
+  input.body_text,
+  input.render_hash
+) result
+from waiting_stock_render_input input;
+reset role;
+select is(
+  (select result->>'status' from waiting_stock_finalize),
+  'queued',
+  'natuurlijke eligibility maakt één immutable e-mailjob'
+);
+select is(
+  (select result->>'reused' from waiting_stock_finalize_retry),
+  'true',
+  'herhaalde finalize hergebruikt dezelfde waiting-stock-job'
+);
+select is(
+  (
+    select count(*)::integer
+    from private.email_jobs job
+    join private.mail_v2_projection_batches batch
+      on batch.email_job_id = job.id
+    join waiting_stock_render_input input on input.group_id = batch.id
+  ),
+  1,
+  'projectie- en jobconstraints voorkomen dubbele mail'
 );
 select is(
   (

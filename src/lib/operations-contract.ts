@@ -1,6 +1,19 @@
 import { z } from "zod";
 
 export const operationalHealthSchema = z.object({
+  inventoryAllocationQueue: z.object({
+    runnable: z.number().int().nonnegative(),
+    processing: z.number().int().nonnegative(),
+    terminalExhausted: z.number().int().nonnegative(),
+    poisoned: z.number().int().nonnegative(),
+    oldestRunnableAt: z.string().datetime({ offset: true }).nullable(),
+  }).strict().default({
+    runnable: 0,
+    processing: 0,
+    terminalExhausted: 0,
+    poisoned: 0,
+    oldestRunnableAt: null,
+  }),
   emailJobs: z.object({
     queued: z.number().int().nonnegative(),
     retry: z.number().int().nonnegative(),
