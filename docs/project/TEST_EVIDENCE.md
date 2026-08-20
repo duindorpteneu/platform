@@ -748,7 +748,9 @@ Lokale acceptatie op 20 augustus 2026:
 ## Veilige terminale mailjobs en releasehealth — 2026-08-20
 
 - Hosted diagnose-run `32369319530`: migrations, PostgREST-contract, appstart en publieke routeprobes groen; kandidaat daarna correct teruggerold op private health. De gewhiteliste snapshot toonde uitsluitend `emailJobs.failed = 10`, met alle overige operationele tellers/booleans gezond.
-- `pnpm db:reset`: groen; alle 161 forward-only migrations plus seed zijn op een schone database toegepast.
-- `pnpm test:db`: groen; 58 pgTAP-bestanden en 1.897 assertions. De gerichte `email_recovery_operations.sql`-regressie bewijst dat alle vier bestaande veilige pre-send stopredenen niet blokkeren en een gewone nieuwe `failed`-job na de herstelgrens wel blijft blokkeren.
+- `pnpm db:reset`: groen; alle 162 forward-only migrations plus seed zijn op een schone database toegepast.
+- `pnpm test:db`: groen; 58 pgTAP-bestanden en 1.898 assertions. De gerichte `email_recovery_operations.sql`-regressie bewijst dat alle vijf benoemde veilige pre-send stopredenen niet blokkeren, een revocatie geen intern incident opent en een gewone nieuwe `failed`-job na de herstelgrens wel blijft blokkeren.
 - `pnpm test:db:upgrade:phase-b`: groen; legacyhashes en alle reconciliatieasserties bleven gelijk.
 - `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (215 bestanden, 1.326 tests), `pnpm build`, migrationlint voor 161 migrations, secretscan en `git diff --check`: groen.
+- Hosted deployrun `32374592108` reduceerde de privacyveilige teller van tien naar één en rolde terecht terug. De overblijvende code is de expliciete legacy-revocatiereden; de tweede migration wijzigt geen job- of auditrij en houdt onbekende/echte failures blokkerend.
+- Opvolgende lokale gates: `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (215 bestanden, 1.326 tests), migrationlint voor 162 migrations, secretscan en `git diff --check`: groen.

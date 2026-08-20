@@ -315,11 +315,34 @@ from app.email_templates template
 cross join (
   values
     ('a4000000-0000-4000-8000-000000000007'::uuid, '7', 'access_inactive_before_send'),
-    ('a4000000-0000-4000-8000-000000000008'::uuid, '8', 'eligibility_changed_before_send'),
-    ('a4000000-0000-4000-8000-000000000009'::uuid, '9', 'mail_v2_paused'),
-    ('a4000000-0000-4000-8000-000000000010'::uuid, '10', 'superseded_by_back_in_stock')
+    ('a4000000-0000-4000-8000-000000000008'::uuid, '8', 'access_revoked_before_send'),
+    ('a4000000-0000-4000-8000-000000000009'::uuid, '9', 'eligibility_changed_before_send'),
+    ('a4000000-0000-4000-8000-000000000010'::uuid, '10', 'mail_v2_paused'),
+    ('a4000000-0000-4000-8000-000000000011'::uuid, '11', 'superseded_by_back_in_stock')
 ) safe_job(id, slot, reason)
 where template.template_key = 'payment_received';
+update private.email_jobs
+set status = 'queued',
+    completed_at = null,
+    last_error = null,
+    updated_at = statement_timestamp()
+where id = 'a4000000-0000-4000-8000-000000000008';
+update private.email_jobs
+set status = 'failed',
+    completed_at = statement_timestamp(),
+    last_error = 'access_revoked_before_send',
+    updated_at = statement_timestamp()
+where id = 'a4000000-0000-4000-8000-000000000008';
+select is(
+  (
+    select count(*)
+    from app.action_items item
+    where item.type = 'email_failure'
+      and item.object_id = 'a4000000-0000-4000-8000-000000000008'
+  ),
+  0::bigint,
+  'bewuste toegangsintrekking voor verzending opent geen intern mailincident'
+);
 select is(
   (
     app.get_operational_health_v13(
@@ -330,7 +353,7 @@ select is(
     ) #>> '{emailJobs,failed}'
   )::integer,
   1,
-  'health negeert een bewuste pre-send stop maar blokkeert een echte nieuwe mailfailure'
+  'health negeert alle benoemde pre-send stops maar blokkeert een echte nieuwe mailfailure'
 );
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
