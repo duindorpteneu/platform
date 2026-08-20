@@ -31,6 +31,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  health-diagnosis:
+    name: Privacy-safe staging health diagnosis
+    if: inputs.job == 'health'
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - duindorpteneu
+      - staging
+      - deploy
+    timeout-minutes: 5
+    environment: staging
+    steps:
+      - name: Read private health without secrets or personal data
+        env:
+          APP_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -Eeuo pipefail
+          response="${RUNNER_TEMP}/staging-health-diagnosis.json"
+          curl --silent --show-error --max-time 50 \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --output "${response}" \
+            "${APP_BASE_URL}/api/internal/health"
+          jq '{
+            status,
+            error,
+            emailJobs,
+            emailDeliveryAttempts,
+            reminderPlanner,
+            parentOtpDelivery,
+            supplierPlanning,
+            operations,
+            qrControl,
+            importControl,
+            emailControl,
+            brandingProjection,
+            importStaging,
+            importRuns,
+            recentDeliveryFailures,
+            reconciliationIssues,
+            recentWebhookFailures
+          }' "${response}"
+          rm -f -- "${response}"
+
   preflight:
     name: Trusted staging release preflight
     uses: ./.github/workflows/_trusted-staging-preflight.yml
