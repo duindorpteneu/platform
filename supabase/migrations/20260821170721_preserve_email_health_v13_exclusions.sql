@@ -6,7 +6,7 @@
 do $$
 declare
   unresolved_count integer;
-  expected_staging_count integer;
+  audited_staging_count integer;
 begin
   with candidates as (
     select job.*
@@ -55,7 +55,12 @@ begin
   select
     count(*)::integer,
     count(*) filter (
-      where candidate.kind = 'bulk'
+      where candidate.id = 'c0c0686d-e6e6-4778-96de-c38f2effb023'::uuid
+        and candidate.created_at = '2026-08-21 14:21:21.263402+00'::timestamptz
+        and candidate.updated_at = '2026-08-21 16:52:21.986788+00'::timestamptz
+        and candidate.current_delivery_attempt_id =
+          'db33ef34-56fd-4922-b266-dc754f8d2906'::uuid
+        and candidate.kind = 'bulk'
         and candidate.template_key = 'portal_access_reminder'
         and candidate.context_kind = 'mail_v2'
         and candidate.last_error = 'provider_rejected'
@@ -68,11 +73,11 @@ begin
           where event.email_job_id = candidate.id
         )
     )::integer
-  into unresolved_count, expected_staging_count
+  into unresolved_count, audited_staging_count
   from candidates candidate;
 
-  if unresolved_count > 1
-    or (unresolved_count = 1 and expected_staging_count <> 1)
+  if unresolved_count <> audited_staging_count
+    or audited_staging_count > 1
   then
     raise exception 'PRE_RELEASE_EMAIL_FAILURE_SET_REQUIRES_REVIEW'
       using errcode = '23514';
@@ -117,6 +122,11 @@ from (
       ),
       '-infinity'::timestamptz
     )
+    and job.id = 'c0c0686d-e6e6-4778-96de-c38f2effb023'::uuid
+    and job.created_at = '2026-08-21 14:21:21.263402+00'::timestamptz
+    and job.updated_at = '2026-08-21 16:52:21.986788+00'::timestamptz
+    and job.current_delivery_attempt_id =
+      'db33ef34-56fd-4922-b266-dc754f8d2906'::uuid
     and job.kind = 'bulk'
     and job.template_key = 'portal_access_reminder'
     and job.context_kind = 'mail_v2'

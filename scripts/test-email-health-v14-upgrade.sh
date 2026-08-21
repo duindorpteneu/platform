@@ -38,6 +38,11 @@ node scripts/run-supabase.mjs db reset --local \
   --version 20260821163000 --no-seed
 
 "${psql_cmd[@]}" <<'SQL'
+update private.migration_reconciliations
+set reconciled_at = '2026-08-21 13:00:00+00'::timestamptz
+where migration_key =
+  '20260818133600_acknowledge_recovered_email_scheduler_health';
+
 insert into app.seasons(id, name, default_amount_cents, status)
 values (
   'b7072100-0000-4000-8000-000000000010',
@@ -77,10 +82,11 @@ insert into private.email_jobs(
   from_name_snapshot,
   from_email_snapshot,
   reply_to_email_snapshot,
-  render_hash
+  render_hash,
+  created_at
 )
 select
-  'b7072100-0000-4000-8000-000000000001',
+  'c0c0686d-e6e6-4778-96de-c38f2effb023',
   'bulk',
   'email-health-upgrade@example.invalid',
   'portal_access_reminder',
@@ -88,9 +94,9 @@ select
   'failed',
   5,
   'email-health-v14-upgrade',
-  statement_timestamp(),
+  '2026-08-21 16:52:21.986788+00'::timestamptz,
   'provider_rejected',
-  statement_timestamp(),
+  '2026-08-21 16:52:21.986788+00'::timestamptz,
   'mail_v2',
   'b7072100-0000-4000-8000-000000000011',
   'b7072100-0000-4000-8000-000000000010',
@@ -103,7 +109,8 @@ select
   branding.from_name,
   branding.from_email,
   branding.reply_to_email,
-  repeat('a', 64)
+  repeat('a', 64),
+  '2026-08-21 14:21:21.263402+00'::timestamptz
 from app.mail_template_revisions revision
 cross join app.mail_branding_revisions branding
 where revision.status = 'published'
@@ -117,8 +124,8 @@ insert into private.email_delivery_attempts(
   claim_token,
   claimed_at
 ) values (
-  'b7072100-0000-4000-8000-000000000002',
-  'b7072100-0000-4000-8000-000000000001',
+  'db33ef34-56fd-4922-b266-dc754f8d2906',
+  'c0c0686d-e6e6-4778-96de-c38f2effb023',
   5,
   'b7072100-0000-4000-8000-000000000003',
   statement_timestamp()
@@ -126,8 +133,9 @@ insert into private.email_delivery_attempts(
 
 update private.email_jobs
 set current_delivery_attempt_id =
-  'b7072100-0000-4000-8000-000000000002'
-where id = 'b7072100-0000-4000-8000-000000000001';
+  'db33ef34-56fd-4922-b266-dc754f8d2906',
+  updated_at = '2026-08-21 16:52:21.986788+00'::timestamptz
+where id = 'c0c0686d-e6e6-4778-96de-c38f2effb023';
 
 alter table private.email_jobs enable trigger email_jobs_guard_snapshot;
 SQL
@@ -154,7 +162,7 @@ fi
 "${psql_cmd[@]}" -c "
   update private.email_jobs
   set updated_at = updated_at + interval '1 second'
-  where id = 'b7072100-0000-4000-8000-000000000001';
+  where id = 'c0c0686d-e6e6-4778-96de-c38f2effb023';
 "
 
 changed_health="$("${psql_cmd[@]}" -c "
