@@ -114,6 +114,9 @@ jobs:
       - name: Run inventory action-source upgrade reconciliation
         run: pnpm test:db:inventory-action-upgrade
 
+      - name: Run parent OTP recipient-ledger upgrade reconciliation
+        run: pnpm test:db:parent-otp-recipient-upgrade
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
