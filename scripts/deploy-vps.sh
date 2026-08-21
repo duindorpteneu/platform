@@ -222,8 +222,8 @@ deploy_environment() {
 
   pnpm security:migrations
   echo "Controleer remote migratievolgorde en drift."
-  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --dry-run
-  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --yes
+  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --include-all --dry-run
+  "$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --include-all --yes
   node scripts/deploy/check-postgrest-rpcs.mjs
   node scripts/deploy/check-import-staging-key.mjs
 

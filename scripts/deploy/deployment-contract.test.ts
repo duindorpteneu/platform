@@ -255,8 +255,14 @@ describe("deployment environment isolation", () => {
     expect(deployScript).toContain("source scripts/deploy/failure-guard.sh");
     const postgrestGate = deployScript.indexOf("node scripts/deploy/check-postgrest-rpcs.mjs");
     const importKeyGate = deployScript.indexOf("node scripts/deploy/check-import-staging-key.mjs");
+    expect(deployScript).toContain(
+      'db push --db-url "$SUPABASE_DB_URL" --include-all --dry-run',
+    );
+    expect(deployScript).toContain(
+      'db push --db-url "$SUPABASE_DB_URL" --include-all --yes',
+    );
     expect(postgrestGate)
-      .toBeGreaterThan(deployScript.indexOf('"$supabase_cli" db push --db-url "$SUPABASE_DB_URL" --yes'));
+      .toBeGreaterThan(deployScript.indexOf('db push --db-url "$SUPABASE_DB_URL" --include-all --yes'));
     expect(postgrestGate).toBeLessThan(deployScript.indexOf("activated=true"));
     expect(importKeyGate).toBeGreaterThan(postgrestGate);
     expect(importKeyGate).toBeLessThan(deployScript.indexOf("activated=true"));
