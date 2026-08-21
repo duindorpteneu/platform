@@ -17,7 +17,7 @@ export const parentEmailSchema = z.object({
   email: z.string().trim().email().max(320),
 });
 export const parentOtpRequestSchema = z.union([
-  parentEmailSchema.extend({ forceNew: z.boolean().optional() }).strict(),
+  parentEmailSchema.strict(),
   z.object({ resend: z.literal(true), forceNew: z.boolean().optional() }).strict(),
 ]);
 export const parentCodeSchema = z.object({

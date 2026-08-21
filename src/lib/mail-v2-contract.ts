@@ -422,6 +422,7 @@ export const parentOtpV3PreparationSchema = z.discriminatedUnion("status", [
     expiresAt: timestamp,
     cooldownUntil: timestamp,
     reused: z.boolean(),
+    supportRequestReused: z.boolean().optional(),
     deliveryAttemptId: uuid,
     expiresInMinutes: z.number().int().min(1).max(10),
     template: parentOtpTemplateSnapshotSchema,

@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   databaseTargetFromEnvironment,
@@ -84,6 +86,33 @@ describe("parent-login staging acceptance contract", () => {
     expect(source).toContain('"Sec-Fetch-Site": "same-origin"');
     expect(source).toContain('"X-Duindorp-CSRF": "same-origin"');
     expect(source).toContain("Origin: target.baseUrl");
+  });
+
+  it("start de harness met TypeScript-stripping en de repository-aliasresolver", async () => {
+    const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+    const harness = fileURLToPath(new URL("./parent-login-acceptance.mjs", import.meta.url));
+    const loader = fileURLToPath(new URL("./typescript-path-alias-loader.mjs", import.meta.url));
+    const result = spawnSync(process.execPath, [
+      "--experimental-strip-types",
+      "--import",
+      loader,
+      harness,
+    ], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      env: { ...process.env, STAGING_BASE_URL: "" },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("MISSING_STAGING_BASE_URL");
+    expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
+
+    const workflow = await readFile(
+      new URL("../../.github/workflows/staging-parent-login-acceptance.yml", import.meta.url),
+      "utf8",
+    );
+    expect(workflow.match(/--experimental-strip-types/gu)).toHaveLength(3);
+    expect(workflow.match(/--import \.\/scripts\/staging\/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
+    expect(workflow.match(/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
   });
 
   it("maakt een run- en releasegebonden digest zonder ontvanger in evidence", () => {

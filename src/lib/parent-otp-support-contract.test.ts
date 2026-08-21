@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parentOtpSupportActionSchema,
   parentOtpSupportActionResponseSchema,
   parentOtpSupportSchema,
 } from "@/lib/parent-otp-support-contract";
@@ -43,6 +44,19 @@ describe("parent OTP-supportcontract", () => {
     expect(parentOtpSupportActionResponseSchema.safeParse({
       ...safe,
       providerMessageId: "secret-provider-id",
+    }).success).toBe(false);
+  });
+
+  it("vereist een client-request-ID voor resend en reset", () => {
+    const action = {
+      parentAccountId: "11111111-1111-4111-8111-111111111111",
+      mode: "reset",
+      requestId: "44444444-4444-4444-8444-444444444444",
+    };
+    expect(parentOtpSupportActionSchema.safeParse(action).success).toBe(true);
+    expect(parentOtpSupportActionSchema.safeParse({
+      parentAccountId: action.parentAccountId,
+      mode: action.mode,
     }).success).toBe(false);
   });
 });

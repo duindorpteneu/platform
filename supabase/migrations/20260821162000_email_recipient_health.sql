@@ -417,6 +417,22 @@ join private.parent_otp_delivery_attempts attempt
 where event.event_type = 'bounced'
 order by event.occurred_at, event.id;
 
+create or replace function private.smtp_permanent_recipient_address_status(
+  p_enhanced_status_code text
+)
+returns boolean
+language sql
+immutable
+set search_path = pg_catalog, pg_temp
+as $$
+  select coalesce(p_enhanced_status_code = any(array[
+    '5.1.1', '5.1.2', '5.1.3', '5.1.6', '5.1.10'
+  ]), false);
+$$;
+
+revoke all on function private.smtp_permanent_recipient_address_status(text)
+from public, anon, authenticated, service_role;
+
 create or replace function app.complete_email_job_v3(
   p_job_id uuid,
   p_claim_token uuid,
@@ -447,6 +463,16 @@ begin
       'delivery_uncertain', 'configuration_error', 'disabled'
     )
     or p_recipient_failure is null
+    or (
+      p_recipient_failure
+      and p_provider = 'smtp'
+      and (
+        p_provider_state <> 'permanent_rejection'
+        or not private.smtp_permanent_recipient_address_status(
+          nullif(btrim(p_enhanced_status_code), '')
+        )
+      )
+    )
   then
     raise exception 'EMAIL_PROVIDER_EVIDENCE_INVALID' using errcode = '22023';
   end if;
@@ -541,6 +567,16 @@ begin
       'delivery_uncertain', 'configuration_error', 'disabled'
     )
     or p_recipient_failure is null
+    or (
+      p_recipient_failure
+      and p_provider = 'smtp'
+      and (
+        p_provider_state <> 'permanent_rejection'
+        or not private.smtp_permanent_recipient_address_status(
+          nullif(btrim(p_enhanced_status_code), '')
+        )
+      )
+    )
   then
     raise exception 'PARENT_OTP_PROVIDER_EVIDENCE_INVALID'
       using errcode = '22023';
@@ -720,7 +756,9 @@ begin
     select
       attempt.recipient_identity_id recipient_id,
       max(attempt.created_at) last_otp_requested_at,
-      max(outcome.created_at) last_otp_outcome_at,
+      max(outcome.created_at) filter (
+        where outcome.outcome = 'accepted'
+      ) last_otp_accepted_at,
       (array_agg(
         case when outcome.outcome = 'accepted'
           then 'provider_accepted' else outcome.outcome end
@@ -765,7 +803,7 @@ begin
       suppression.id is not null suppressed,
       suppression.reason suppression_reason,
       greatest(job.last_send_at, otp.last_otp_requested_at) last_send_at,
-      greatest(job.last_accepted_at, otp.last_otp_outcome_at)
+      greatest(job.last_accepted_at, otp.last_otp_accepted_at)
         last_accepted_at,
       greatest(event.last_delivered_at, otp_event.last_delivered_at)
         last_delivered_at,
@@ -847,10 +885,17 @@ begin
             'team', coalesce(member_season.team_name, 'Onbekend team')
           ) value
         from private.email_recipient_parent_bindings binding
+        join private.parent_accounts account
+          on account.id = binding.parent_account_id
+          and account.email_normalized = row_data.email_normalized
+        join lateral private.current_parent_family_member_seasons(account.id)
+          family on true
         join private.parent_portal_grants grant_row
-          on grant_row.parent_account_id = binding.parent_account_id
+          on grant_row.id = family.grant_id
+          and grant_row.status = 'active'
+          and grant_row.revoked_at is null
         join app.member_seasons member_season
-          on member_season.id = grant_row.member_season_id
+          on member_season.id = family.member_season_id
         join app.members member on member.id = member_season.member_id
         where binding.recipient_identity_id = row_data.id
       ) child_data

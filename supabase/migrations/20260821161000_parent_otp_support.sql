@@ -2,10 +2,18 @@
 
 create table private.parent_otp_support_events (
   id bigint generated always as identity primary key,
+  request_id uuid not null unique,
   parent_account_id uuid not null
     references private.parent_accounts(id) on delete restrict,
   actor_user_id uuid not null,
   action text not null check (action in ('resend', 'reset')),
+  request_hash text not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  result_snapshot jsonb not null check (
+    jsonb_typeof(result_snapshot) = 'object'
+    and not result_snapshot ?| array[
+      'code', 'codeHash', 'credential', 'directCredential', 'proof'
+    ]
+  ),
   occurred_at timestamptz not null default statement_timestamp()
 );
 
@@ -165,7 +173,8 @@ create or replace function app.prepare_parent_otp_support_delivery_v1(
   p_parent_account_id uuid,
   p_mode text,
   p_challenge_id uuid,
-  p_code_hash text
+  p_code_hash text,
+  p_request_id uuid
 )
 returns jsonb
 language plpgsql
@@ -178,27 +187,36 @@ declare
   now_utc timestamptz := statement_timestamp();
   account private.parent_accounts%rowtype;
   challenge private.parent_otp_challenges%rowtype;
+  previous private.parent_otp_support_events%rowtype;
   reused boolean := false;
+  request_hash text;
+  result jsonb;
 begin
   if p_parent_account_id is null
     or p_mode not in ('resend', 'reset')
     or p_challenge_id is null
     or p_code_hash is null
     or p_code_hash !~ '^[0-9a-f]{64}$'
+    or p_request_id is null
   then
     raise exception 'PARENT_OTP_SUPPORT_INPUT_INVALID' using errcode = '22023';
   end if;
-  if (
-    select count(*)
-    from private.parent_otp_support_events event
-    where event.parent_account_id = p_parent_account_id
-      and event.occurred_at > now_utc - interval '15 minutes'
-  ) >= 5 then
-    raise exception 'PARENT_OTP_SUPPORT_RATE_LIMITED' using errcode = 'P0001';
-  end if;
+
+  request_hash := encode(extensions.digest(convert_to(
+    jsonb_build_object(
+      'parentAccountId', p_parent_account_id,
+      'mode', p_mode
+    )::text,
+    'UTF8'
+  ), 'sha256'), 'hex');
+
+  -- Serialize every decision for one account before inspecting the bounded
+  -- ledger. This makes the fifth accepted action visible to a concurrent
+  -- sixth action and keeps concurrent resets from invalidating each other.
   perform pg_advisory_xact_lock(hashtextextended(
     'parent-auth-account:' || p_parent_account_id::text, 0
   ));
+
   select target.* into account
   from private.parent_accounts target
   where target.id = p_parent_account_id
@@ -208,6 +226,31 @@ begin
   then
     raise exception 'PARENT_OTP_SUPPORT_ACCOUNT_UNAVAILABLE'
       using errcode = 'P0002';
+  end if;
+
+  select event.* into previous
+  from private.parent_otp_support_events event
+  where event.request_id = p_request_id;
+  if previous.id is not null then
+    if previous.parent_account_id <> account.id
+      or previous.actor_user_id <> actor
+      or previous.action <> p_mode
+      or previous.request_hash <> request_hash
+    then
+      raise exception 'PARENT_OTP_SUPPORT_IDEMPOTENCY_CONFLICT'
+        using errcode = '23505';
+    end if;
+    return previous.result_snapshot
+      || jsonb_build_object('supportRequestReused', true);
+  end if;
+
+  if (
+    select count(*)
+    from private.parent_otp_support_events event
+    where event.parent_account_id = p_parent_account_id
+      and event.occurred_at > now_utc - interval '15 minutes'
+  ) >= 5 then
+    raise exception 'PARENT_OTP_SUPPORT_RATE_LIMITED' using errcode = 'P0001';
   end if;
   update private.parent_otp_challenges target
   set closed_at = now_utc,
@@ -256,31 +299,70 @@ begin
   else
     reused := true;
   end if;
-  insert into private.parent_otp_support_events(
-    parent_account_id,
-    actor_user_id,
-    action
-  ) values (
-    account.id,
-    actor,
-    p_mode
-  );
-  return private.prepare_parent_otp_attempt_payload_v1(
+  result := private.prepare_parent_otp_attempt_payload_v1(
     account.id,
     challenge.id,
     reused,
     actor,
     p_mode
+  ) || jsonb_build_object('supportRequestReused', false);
+
+  insert into private.parent_otp_support_events(
+    request_id,
+    parent_account_id,
+    actor_user_id,
+    action,
+    request_hash,
+    result_snapshot
+  ) values (
+    p_request_id,
+    account.id,
+    actor,
+    p_mode,
+    request_hash,
+    result
   );
+  return result;
 end;
 $$;
 
 revoke all on function app.prepare_parent_otp_support_delivery_v1(
-  uuid, text, uuid, text
+  uuid, text, uuid, text, uuid
 ) from public, anon;
 grant execute on function app.prepare_parent_otp_support_delivery_v1(
-  uuid, text, uuid, text
+  uuid, text, uuid, text, uuid
 ) to authenticated;
+
+create or replace function app.get_parent_otp_support_request_outcome_v1(
+  p_request_id uuid
+)
+returns text
+language sql
+stable
+security definer
+set search_path = app, private, pg_temp
+as $$
+  select case outcome.outcome
+    when 'accepted' then 'provider_accepted'
+    when 'provider_rejected' then 'provider_rejected'
+    when 'delivery_uncertain' then 'delivery_uncertain'
+    when 'configuration_error' then 'configuration_error'
+    when 'disabled' then 'disabled'
+    when 'render_failed' then 'render_failed'
+    else 'delivery_uncertain'
+  end
+  from private.parent_otp_support_events event
+  left join private.parent_otp_delivery_outcomes outcome
+    on outcome.delivery_attempt_id = nullif(
+      event.result_snapshot->>'deliveryAttemptId', ''
+    )::uuid
+  where event.request_id = p_request_id;
+$$;
+
+revoke all on function app.get_parent_otp_support_request_outcome_v1(uuid)
+from public, anon, authenticated;
+grant execute on function app.get_parent_otp_support_request_outcome_v1(uuid)
+to service_role;
 
 create or replace function app.get_parent_otp_support_v1(
   p_parent_account_id uuid
@@ -370,9 +452,9 @@ grant execute on function app.get_parent_otp_support_v1(uuid)
 to authenticated;
 
 comment on function app.prepare_parent_otp_support_delivery_v1(
-  uuid, text, uuid, text
+  uuid, text, uuid, text, uuid
 ) is
-  'AAL2 administrator-only resend/reset preparation; returns delivery metadata but never either challenge credential.';
+  'Request-idempotent AAL2 administrator-only resend/reset preparation; returns delivery metadata but never either challenge credential.';
 
 insert into private.migration_reconciliations(
   migration_key,

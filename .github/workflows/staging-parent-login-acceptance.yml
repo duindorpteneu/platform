@@ -102,7 +102,9 @@ jobs:
           EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
         run: >-
           timeout --signal=TERM --kill-after=15s 12m
-          node scripts/staging/parent-login-acceptance.mjs
+          node --experimental-strip-types
+          --import ./scripts/staging/typescript-path-alias-loader.mjs
+          scripts/staging/parent-login-acceptance.mjs
 
       - name: Always remove all run-specific staging fixtures
         if: always()
@@ -111,7 +113,9 @@ jobs:
           EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
         run: >-
           timeout --signal=TERM --kill-after=15s 4m
-          node scripts/staging/parent-login-acceptance.mjs
+          node --experimental-strip-types
+          --import ./scripts/staging/typescript-path-alias-loader.mjs
+          scripts/staging/parent-login-acceptance.mjs
 
       - name: Verify cleanup and write closed evidence
         env:
@@ -119,7 +123,9 @@ jobs:
           EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
         run: >-
           timeout --signal=TERM --kill-after=15s 3m
-          node scripts/staging/parent-login-acceptance.mjs
+          node --experimental-strip-types
+          --import ./scripts/staging/typescript-path-alias-loader.mjs
+          scripts/staging/parent-login-acceptance.mjs
 
       - name: Validate PII- and credential-free evidence contract
         env:

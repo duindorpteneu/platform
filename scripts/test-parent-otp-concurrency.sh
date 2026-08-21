@@ -16,6 +16,8 @@ replay_marker="$test_tmp_dir/replay-holding"
 binding_marker="$test_tmp_dir/binding-holding"
 identity_marker="$test_tmp_dir/identity-holding"
 challenge_marker="$test_tmp_dir/challenge-holding"
+support_replay_marker="$test_tmp_dir/support-replay-holding"
+support_limit_marker="$test_tmp_dir/support-limit-holding"
 replay_first_log="$test_tmp_dir/replay-first.log"
 replay_second_log="$test_tmp_dir/replay-second.log"
 binding_first_log="$test_tmp_dir/binding-first.log"
@@ -24,6 +26,10 @@ identity_first_log="$test_tmp_dir/identity-first.log"
 identity_second_log="$test_tmp_dir/identity-second.log"
 challenge_first_log="$test_tmp_dir/challenge-first.log"
 challenge_second_log="$test_tmp_dir/challenge-second.log"
+support_replay_first_log="$test_tmp_dir/support-replay-first.log"
+support_replay_second_log="$test_tmp_dir/support-replay-second.log"
+support_limit_first_log="$test_tmp_dir/support-limit-first.log"
+support_limit_second_log="$test_tmp_dir/support-limit-second.log"
 
 cleanup_data() {
   "${psql_cmd[@]}" >/dev/null <<'SQL'
@@ -46,20 +52,38 @@ where delivery_attempt_id in (
 );
 delete from private.parent_otp_delivery_outcomes
 where delivery_attempt_id in (
-  'e2791000-0000-4000-8000-000000000001',
-  'e2791000-0000-4000-8000-000000000002'
+  select id from private.parent_otp_delivery_attempts
+  where parent_account_id in (
+    'e2790000-0000-4000-8000-000000000001',
+    'e2790000-0000-4000-8000-000000000003'
+  )
+);
+delete from private.email_provider_sync_evidence
+where parent_otp_delivery_attempt_id in (
+  select id from private.parent_otp_delivery_attempts
+  where parent_account_id in (
+    'e2790000-0000-4000-8000-000000000001',
+    'e2790000-0000-4000-8000-000000000003'
+  )
 );
 delete from private.parent_otp_delivery_attempts
-where id in (
-  'e2791000-0000-4000-8000-000000000001',
-  'e2791000-0000-4000-8000-000000000002'
+where parent_account_id in (
+  'e2790000-0000-4000-8000-000000000001',
+  'e2790000-0000-4000-8000-000000000003'
 );
+delete from private.parent_otp_support_events
+where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
 delete from private.parent_sessions
 where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
 delete from private.parent_otp_challenges
 where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
 delete from private.parent_portal_grants
 where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+delete from private.email_recipient_parent_bindings
+where parent_account_id in (
+  'e2790000-0000-4000-8000-000000000001',
+  'e2790000-0000-4000-8000-000000000003'
+);
 delete from app.audit_logs
 where entity_id = 'e2790000-0000-4000-8000-000000000003';
 delete from app.member_seasons
@@ -71,6 +95,8 @@ where id in (
   'e2790000-0000-4000-8000-000000000001',
   'e2790000-0000-4000-8000-000000000003'
 );
+delete from app.staff_profiles
+where auth_user_id = 'e2795000-0000-4000-8000-000000000003';
 set local session_replication_role = origin;
 commit;
 SQL
@@ -97,6 +123,12 @@ values
     'e2790000-0000-4000-8000-000000000003',
     'otp-challenge-race@example.invalid'
   );
+insert into app.staff_profiles(auth_user_id, display_name, role)
+values (
+  'e2795000-0000-4000-8000-000000000003',
+  'OTP support concurrency',
+  'beheerder'
+);
 insert into app.members(
   id, relation_number, first_name, last_name, email, team
 ) values (
@@ -438,4 +470,177 @@ if [[ "$(grep -c '"status": "verified"' "$challenge_output")" -ne 1 ]] \
   exit 1
 fi
 
-echo "Parent-OTP-concurrency groen: challenge, replay, providerbinding en globale event-ID zijn atomair verwerkt."
+support_request() {
+  local challenge_id="$1"
+  local code_hash="$2"
+  local request_id="$3"
+  "${psql_cmd[@]}" <<SQL
+begin;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"e2795000-0000-4000-8000-000000000003","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select app.prepare_parent_otp_support_delivery_v1(
+  'e2790000-0000-4000-8000-000000000003',
+  'reset',
+  '$challenge_id',
+  '$code_hash',
+  '$request_id'
+);
+commit;
+SQL
+}
+
+support_replay_first() {
+  "${psql_cmd[@]}" <<SQL
+begin;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"e2795000-0000-4000-8000-000000000003","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select app.prepare_parent_otp_support_delivery_v1(
+  'e2790000-0000-4000-8000-000000000003',
+  'reset',
+  'e2797000-0000-4000-8000-000000000001',
+  repeat('1', 64),
+  'e2798000-0000-4000-8000-000000000001'
+);
+\! touch "$support_replay_marker"
+select pg_sleep(2);
+commit;
+SQL
+}
+
+support_replay_first >"$support_replay_first_log" 2>&1 &
+support_replay_first_pid=$!
+for _ in $(seq 1 100); do
+  [[ -f "$support_replay_marker" ]] && break
+  kill -0 "$support_replay_first_pid" 2>/dev/null || break
+  sleep 0.05
+done
+if [[ ! -f "$support_replay_marker" ]]; then
+  echo "De support-idempotentiebarrière werd niet bereikt." >&2
+  exit 1
+fi
+support_request \
+  'e2797000-0000-4000-8000-000000000002' \
+  "$(printf '2%.0s' {1..64})" \
+  'e2798000-0000-4000-8000-000000000001' \
+  >"$support_replay_second_log" 2>&1 &
+support_replay_second_pid=$!
+wait "$support_replay_first_pid"
+wait "$support_replay_second_pid"
+
+support_replay_output="$test_tmp_dir/support-replay-output.log"
+cp "$support_replay_first_log" "$support_replay_output"
+sed -n '1,$p' "$support_replay_second_log" >>"$support_replay_output"
+support_replay_event_count="$("${psql_cmd[@]}" -c "
+  select count(*) from private.parent_otp_support_events
+  where request_id = 'e2798000-0000-4000-8000-000000000001';
+")"
+support_replay_attempt_count="$("${psql_cmd[@]}" -c "
+  select count(*) from private.parent_otp_delivery_attempts
+  where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+")"
+if [[ "$(grep -c '"supportRequestReused": false' "$support_replay_output")" -ne 1 ]] \
+  || [[ "$(grep -c '"supportRequestReused": true' "$support_replay_output")" -ne 1 ]] \
+  || [[ "$support_replay_event_count" != "1" ]] \
+  || [[ "$support_replay_attempt_count" != "1" ]]; then
+  echo "Parallelle supportreplay maakte niet exact één event en afleverpoging." >&2
+  exit 1
+fi
+
+"${psql_cmd[@]}" >/dev/null <<'SQL'
+insert into private.parent_otp_support_events(
+  request_id,
+  parent_account_id,
+  actor_user_id,
+  action,
+  request_hash,
+  result_snapshot
+) values
+  (
+    'e2798000-0000-4000-8000-000000000002',
+    'e2790000-0000-4000-8000-000000000003',
+    'e2795000-0000-4000-8000-000000000003',
+    'resend', repeat('a', 64), '{}'::jsonb
+  ),
+  (
+    'e2798000-0000-4000-8000-000000000003',
+    'e2790000-0000-4000-8000-000000000003',
+    'e2795000-0000-4000-8000-000000000003',
+    'resend', repeat('b', 64), '{}'::jsonb
+  ),
+  (
+    'e2798000-0000-4000-8000-000000000004',
+    'e2790000-0000-4000-8000-000000000003',
+    'e2795000-0000-4000-8000-000000000003',
+    'resend', repeat('c', 64), '{}'::jsonb
+  );
+SQL
+
+support_limit_first() {
+  "${psql_cmd[@]}" <<SQL
+begin;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"e2795000-0000-4000-8000-000000000003","aal":"aal2"}',
+  true
+);
+set local role authenticated;
+select app.prepare_parent_otp_support_delivery_v1(
+  'e2790000-0000-4000-8000-000000000003',
+  'reset',
+  'e2797000-0000-4000-8000-000000000003',
+  repeat('3', 64),
+  'e2798000-0000-4000-8000-000000000005'
+);
+\! touch "$support_limit_marker"
+select pg_sleep(2);
+commit;
+SQL
+}
+
+support_limit_first >"$support_limit_first_log" 2>&1 &
+support_limit_first_pid=$!
+for _ in $(seq 1 100); do
+  [[ -f "$support_limit_marker" ]] && break
+  kill -0 "$support_limit_first_pid" 2>/dev/null || break
+  sleep 0.05
+done
+if [[ ! -f "$support_limit_marker" ]]; then
+  echo "De support-ratelimitbarrière werd niet bereikt." >&2
+  exit 1
+fi
+support_request \
+  'e2797000-0000-4000-8000-000000000004' \
+  "$(printf '4%.0s' {1..64})" \
+  'e2798000-0000-4000-8000-000000000006' \
+  >"$support_limit_second_log" 2>&1 &
+support_limit_second_pid=$!
+support_limit_first_status=0
+support_limit_second_status=0
+wait "$support_limit_first_pid" || support_limit_first_status=$?
+wait "$support_limit_second_pid" || support_limit_second_status=$?
+support_limit_event_count="$("${psql_cmd[@]}" -c "
+  select count(*) from private.parent_otp_support_events
+  where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+")"
+support_limit_attempt_count="$("${psql_cmd[@]}" -c "
+  select count(*) from private.parent_otp_delivery_attempts
+  where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+")"
+if [[ "$support_limit_first_status" -ne 0 ]] \
+  || [[ "$support_limit_second_status" -eq 0 ]] \
+  || ! grep -q 'PARENT_OTP_SUPPORT_RATE_LIMITED' "$support_limit_second_log" \
+  || [[ "$support_limit_event_count" != "5" ]] \
+  || [[ "$support_limit_attempt_count" != "2" ]]; then
+  echo "De accountlock serializeerde de begrensde supportacties niet correct." >&2
+  exit 1
+fi
+
+echo "Parent-OTP-concurrency groen: challenge, replay, providerbinding, globale event-ID, support-idempotentie en support-ratelimit zijn atomair verwerkt."

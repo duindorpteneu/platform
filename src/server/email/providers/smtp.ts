@@ -62,7 +62,23 @@ const transientTransportCodes = new Set([
 ]);
 
 function enhancedStatusCode(value: string | undefined) {
-  return value?.match(/(?:^|\s)([245]\.\d{1,3}\.\d{1,3})(?:\s|$)/u)?.[1];
+  return value?.match(/(?:^|[\s-])([245]\.\d{1,3}\.\d{1,3})(?=$|[\s-])/u)?.[1];
+}
+
+// A three-digit 550-554 response alone does not identify the failing party:
+// it can describe a full mailbox, sender policy or unacceptable content. Only
+// these standardized, permanent destination-address statuses are strong
+// enough evidence to suppress the recipient automatically.
+const permanentRecipientAddressStatuses = new Set([
+  "5.1.1", // Bad destination mailbox address.
+  "5.1.2", // Bad destination system address.
+  "5.1.3", // Bad destination mailbox address syntax.
+  "5.1.6", // Destination mailbox moved without forwarding address.
+  "5.1.10", // Recipient domain explicitly publishes a null MX.
+]);
+
+function isPermanentRecipientAddressFailure(value: string | undefined) {
+  return value !== undefined && permanentRecipientAddressStatuses.has(value);
 }
 
 function transportCode(value: string | undefined) {
@@ -104,7 +120,9 @@ export function classifySmtpError(error: unknown): EmailDeliveryResult {
       deliveryState: "permanent_rejection",
       providerCode,
       enhancedStatusCode: enhancedCode,
-      recipientFailure: responseCode >= 550 && responseCode <= 554,
+      recipientFailure: responseCode >= 550
+        && responseCode <= 554
+        && isPermanentRecipientAddressFailure(enhancedCode),
     };
   }
   const duringData = smtp?.command === "DATA" || smtp?.command === "DOT";

@@ -30,17 +30,20 @@ export const parentOtpSupportSchema = z.object({
 export const parentOtpSupportActionSchema = z.object({
   parentAccountId: uuid,
   mode: z.enum(["resend", "reset"]),
+  requestId: uuid,
 }).strict();
 
+export const parentOtpSupportDeliveryOutcomeSchema = z.enum([
+  "provider_accepted",
+  "provider_rejected",
+  "delivery_uncertain",
+  "configuration_error",
+  "disabled",
+  "render_failed",
+]);
+
 export const parentOtpSupportActionResponseSchema = z.object({
-  outcome: z.enum([
-    "provider_accepted",
-    "provider_rejected",
-    "delivery_uncertain",
-    "configuration_error",
-    "disabled",
-    "render_failed",
-  ]),
+  outcome: parentOtpSupportDeliveryOutcomeSchema,
   reused: z.boolean(),
   expiresAt: timestamp,
 }).strict();

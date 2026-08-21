@@ -315,14 +315,16 @@ function databaseContractProbe(databaseUrl, recipient) {
       (select parent_account_id from probe_context),
       'resend',
       gen_random_uuid(),
-      repeat('7', 64)
+      repeat('7', 64),
+      'a7300000-0000-4000-8000-000000000001'::uuid
     ) result;
     create temporary table support_second on commit drop as
     select app.prepare_parent_otp_support_delivery_v1(
       (select parent_account_id from probe_context),
       'resend',
       gen_random_uuid(),
-      repeat('8', 64)
+      repeat('8', 64),
+      'a7300000-0000-4000-8000-000000000002'::uuid
     ) result;
     reset role;
     create temporary table smtp_acceptance on commit drop as
