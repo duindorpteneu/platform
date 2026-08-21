@@ -43,6 +43,7 @@ export function MemberProfileEditor({ detail }: { detail: MemberDetailResponse }
 
   useEffect(() => {
     setForm(formFrom(detail));
+    setPreflight(null);
   }, [detail]);
 
   function change<K extends keyof FormState>(field: K, value: FormState[K]) {
@@ -54,6 +55,7 @@ export function MemberProfileEditor({ detail }: { detail: MemberDetailResponse }
   function close() {
     setOpen(false);
     setForm(formFrom(detail));
+    setPreflight(null);
     setNotice(null);
     setRequestId(crypto.randomUUID());
   }
@@ -166,6 +168,7 @@ export function MemberProfileEditor({ detail }: { detail: MemberDetailResponse }
       <div className="flex items-center gap-2"><Users className="size-4 text-brand-700" /><p className="text-xs font-bold text-brand-900">Portaaltoegang actief</p></div>
       <div className="flex flex-wrap items-center gap-2 text-xs"><span className="break-all text-slate-500">{preflight.currentPortalEmail}</span><ArrowRight className="size-3.5 text-brand-500" /><span className="break-all font-bold text-brand-900">{preflight.newEmail}</span></div>
       <p className="text-[11px] leading-5 text-slate-600">Dit account geeft toegang tot {preflight.affectedMemberCount} {preflight.affectedMemberCount === 1 ? "kind" : "kinderen"}. Alle onderstaande leden krijgen hetzelfde nieuwe e-mailadres en hun portaltoegang wordt samen overgezet.</p>
+      {preflight.targetAccountReused && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] leading-4 text-amber-900">Het nieuwe e-mailadres hoort al bij een bestaand portaalaccount. Bestaande toegang op dat account blijft behouden.</p>}
       <ul className="space-y-2">{preflight.affectedChildren.map((child) => <li key={child.memberSeasonId} className="flex items-start gap-2 rounded-lg bg-brand-50 px-3 py-2 text-[11px] text-brand-900"><Check className="mt-0.5 size-3.5 shrink-0" /><span><strong>{child.memberName}</strong> — {child.team}</span></li>)}</ul>
       {preflight.transferRequired && <p className="rounded-lg bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-900">Na de wijziging wordt de bestaande bevestigingsmail voor portaltoegang naar {preflight.newEmail} gestuurd.</p>}
     </div> : <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[10px] leading-4 text-slate-600">Bij een actief gedeeld ouderaccount controleert het systeem eerst welke gekoppelde kinderen gezinsbreed moeten worden overgezet.</div>}

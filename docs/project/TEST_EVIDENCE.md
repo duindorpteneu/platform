@@ -777,3 +777,12 @@ Lokale acceptatie op 20 augustus 2026:
 - Alle 19 databaseconcurrencyharnassen zijn groen, inclusief gezins-e-mailtransfer, oudertoegang, OTP, mailprojectie/-supersession, import, voorraad, betaling en refund. Phase-B- en inventory-upgradereconciliaties, de Mollie-fixture, stagingcleanup van 110 operationele tabellen en capaciteit op 1.500 leden/10.000 orderregels zijn eveneens groen.
 - `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (216 bestanden, 1.331 tests), `pnpm test:edge-proxy`, productiebuild met lokale Supabase-buildbinding en `pnpm test:edge-runtime` zijn groen.
 - Echte browseracceptatie is groen voor staff-MFA, wachtwoordherstel, ouderportaaltoegang en de volledige Playwrightreview van backoffice, dynamische import, scanner-PWA, mobiel, toetsenbord, reduced motion en geautomatiseerde toegankelijkheidscontrole.
+
+## Accountloze doelgrant bij gezins-e-mailtransfer — 2026-08-21 lokaal
+
+- De gerichte regressiefixture gebruikt een bestaand doelaccount naast een `pending_account`-grant met hetzelfde doeladres en `parent_account_id = null`; dit is de eerder ontbrekende productie-achtige vorm. De transfer hergebruikt exact die grant-ID, bindt haar aan het doelaccount, behoudt één actieve grant en voltooit de activatiebatch.
+- `pnpm exec supabase migration up --local`: forward-only migration `20260821113000` toegepast op de bestaande lokale keten.
+- `pnpm exec supabase test db --local supabase/tests/family_parent_email_transfer.sql`: groen, 46 assertions, inclusief een echte oude queued uitnodiging die zonder intern incident of actiepunt veilig wordt beëindigd.
+- `pnpm vitest run src/app/api/members/profile/route.test.ts src/app/api/members/profile/email-preflight/route.test.ts src/lib/member-profile-contract.test.ts`: groen, 3 bestanden en 13 tests.
+- Schone `pnpm exec supabase db reset --local`: groen, alle 166 forward-only migrations en seed toegepast. De volledige pgTAP-suite is groen: 59 bestanden en 1.949 assertions; het gezins-e-mailconcurrencyharnas bewijst opnieuw één commit, één stale loser en één consistente familie.
+- `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (216 bestanden, 1.333 tests), productiebuild, `pnpm security:migrations`, `pnpm security:secrets` en `git diff --check`: groen.
