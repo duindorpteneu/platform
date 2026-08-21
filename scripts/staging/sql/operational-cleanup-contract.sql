@@ -60,6 +60,10 @@ as $$
     'private.email_delivery_attempts',
     'private.email_jobs',
     'private.email_provider_event_quarantine',
+    'private.email_provider_sync_evidence',
+    'private.email_recipient_identities',
+    'private.email_recipient_parent_bindings',
+    'private.email_recipient_suppressions',
     'private.fulfilment_command_requests',
     'private.fulfilment_correction_requests',
     'private.fulfilment_mail_projection_batches',
@@ -105,6 +109,7 @@ as $$
     'private.parent_otp_provider_event_quarantine',
     'private.parent_otp_provider_events',
     'private.parent_otp_provider_message_bindings',
+    'private.parent_otp_support_events',
     'private.parent_package_selection_requests',
     'private.parent_portal_grants',
     'private.parent_sessions',
@@ -387,7 +392,7 @@ begin
   into contracted_tables
   from unnest(pg_temp.cleanup_tables() || pg_temp.preserved_tables()) as listed(table_name);
 
-  if cardinality(pg_temp.cleanup_tables()) <> 110
+  if cardinality(pg_temp.cleanup_tables()) <> 115
     or cardinality(pg_temp.preserved_tables()) <> 28
     or actual_tables is distinct from contracted_tables
   then

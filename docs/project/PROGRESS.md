@@ -505,7 +505,7 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Addendum v1.1 legt het pakke
 
 - De ledeneditor gebruikt een beheerder+AAL2-preflight die het gezin uitsluitend uit actuele portalautorisatie afleidt, alle betrokken namen/teams toont en een misleidende enkel-kindoptie uitsluit.
 - De nieuwe profiel-RPC houdt profielvelden, alle gezins-e-mails, oude/nieuwe grantgeschiedenis, legacyprojecties, sessie-/OTP-intrekking, PII-vrije audit en de bestaande `portal_access_invite`-domeinevents in één idempotente transactie. Een bestaand doelaccount en open doelgrant worden hergebruikt; een bestaande doelsessie ziet de kinderen direct.
-- Een AAL2-beveiligd reconciliatierapport groepeert actuele member-/grantafwijkingen per ouderaccount zonder gegevens te muteren. De twee private transferledgers zijn opgenomen in het gesloten stagingcleanupcontract van 110 operationele tabellen.
+- Een AAL2-beveiligd reconciliatierapport groepeert actuele member-/grantafwijkingen per ouderaccount zonder gegevens te muteren. De twee private transferledgers en vijf OTP-/recipienttabellen zijn opgenomen in het gesloten stagingcleanupcontract van 115 operationele tabellen.
 
 ## Herstel accountloze doelgrant — 2026-08-21
 
