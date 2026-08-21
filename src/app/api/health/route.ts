@@ -78,7 +78,7 @@ export async function GET() {
     if (!admin) return NextResponse.json({ status: "degraded", ...release }, { status: 503, headers });
     const qrKeys = qrAcceptedKeyMetadata();
     const { data, error } = await admin.schema("app").rpc(
-      "get_operational_health_v14",
+      "get_operational_health_v15",
       {
         p_current_key_version: qrKeys.current.version,
         p_current_pepper_fingerprint: qrKeys.current.fingerprint,

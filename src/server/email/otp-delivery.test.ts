@@ -89,4 +89,59 @@ describe("deliverPreparedParentOtpV3", () => {
       "ouder@example.nl",
     );
   });
+
+  it("sluit een exceptionpad expliciet als delivery uncertain", async () => {
+    mocks.send.mockRejectedValue(new Error("provider transport failed"));
+    const appClient = { rpc: vi.fn() };
+    const admin = { schema: () => appClient };
+
+    await expect(deliverPreparedParentOtpV3(
+      admin as never,
+      preparation,
+      "ouder@example.nl",
+      "https://tenue.example",
+    )).resolves.toEqual({ outcome: "delivery_uncertain" });
+
+    expect(mocks.complete).toHaveBeenCalledTimes(1);
+    expect(mocks.complete).toHaveBeenCalledWith(
+      appClient,
+      preparation.deliveryAttemptId,
+      {
+        outcome: "delivery_uncertain",
+        errorCode: "delivery_completion_uncertain",
+      },
+    );
+    expect(JSON.stringify(mocks.complete.mock.calls)).not.toContain(
+      "ouder@example.nl",
+    );
+  });
+
+  it("valt bij onzekere provideracknowledgement terug op het v1-ledgerpad", async () => {
+    mocks.send.mockResolvedValue({
+      delivered: true,
+      providerMessageId: "smtp-accepted-1",
+    });
+    mocks.complete
+      .mockRejectedValueOnce(new Error("provider evidence acknowledgement failed"))
+      .mockResolvedValueOnce({ status: "completed" });
+    const appClient = { rpc: vi.fn() };
+    const admin = { schema: () => appClient };
+
+    await expect(deliverPreparedParentOtpV3(
+      admin as never,
+      preparation,
+      "ouder@example.nl",
+      "https://tenue.example",
+    )).resolves.toEqual({ outcome: "delivery_uncertain" });
+
+    expect(mocks.complete).toHaveBeenCalledTimes(2);
+    expect(mocks.complete.mock.calls[1]).toEqual([
+      appClient,
+      preparation.deliveryAttemptId,
+      {
+        outcome: "delivery_uncertain",
+        errorCode: "delivery_completion_uncertain",
+      },
+    ]);
+  });
 });
