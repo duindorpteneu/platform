@@ -90,6 +90,37 @@ describe("deliverPreparedParentOtpV3", () => {
     );
   });
 
+  it("bewaart een bekende pre-send blokkade bij databaseacknowledgementfouten", async () => {
+    mocks.authorize.mockResolvedValue(false);
+    mocks.complete.mockRejectedValue(new Error("completion unavailable"));
+    const appClient = { rpc: vi.fn() };
+    const admin = { schema: () => appClient };
+
+    await expect(deliverPreparedParentOtpV3(
+      admin as never,
+      preparation,
+      "ouder@example.nl",
+      "https://tenue.example",
+    )).resolves.toEqual({ outcome: "disabled" });
+
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.complete).toHaveBeenCalledTimes(2);
+    expect(mocks.complete.mock.calls[0]).toEqual([
+      appClient,
+      preparation.deliveryAttemptId,
+      {
+        outcome: "disabled",
+        errorCode: "send_authorization_denied",
+      },
+      {
+        provider: "smtp",
+        providerState: "disabled",
+        recipientFailure: false,
+      },
+    ]);
+    expect(mocks.complete.mock.calls[1]).toEqual(mocks.complete.mock.calls[0]);
+  });
+
   it("sluit een exceptionpad expliciet als delivery uncertain", async () => {
     mocks.send.mockRejectedValue(new Error("provider transport failed"));
     const appClient = { rpc: vi.fn() };
