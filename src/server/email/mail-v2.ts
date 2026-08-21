@@ -301,15 +301,38 @@ function renderProtectedBlock(
     case "otp_code": {
       const value = protectedValue(kind, values);
       return {
-        html: `<div style="background-color:#EEF4FD;border-radius:8px;color:#0B2E63;font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0;padding:16px;text-align:center">${value.code}</div>`,
+        html: `<div style="margin:16px 0"><p style="color:#526070;font-size:12px;font-weight:700;letter-spacing:.08em;margin:0 0 8px;text-align:center">VERIFICATIECODE</p><div style="background-color:#EEF4FD;border-radius:8px;color:#0B2E63;font-size:28px;font-weight:700;letter-spacing:6px;padding:16px;text-align:center">${value.code}</div></div>`,
         text: `Verificatiecode: ${value.code}`,
+      };
+    }
+    case "otp_direct_login": {
+      const value = protectedValue(kind, values);
+      const action = renderAction(
+        value.url,
+        value.label,
+        branding.primaryColor,
+      );
+      return {
+        html: `${action.html}<p style="color:#526070;font-size:14px;line-height:1.6;margin:12px 0">Gebruik je liever de code? Vul bovenstaande zes cijfers in.</p>`,
+        text: `${action.text}\nGebruik je liever de code? Vul bovenstaande zes cijfers in.`,
       };
     }
     case "otp_validity": {
       const value = protectedValue(kind, values);
+      const requestedAt = new Intl.DateTimeFormat("nl-NL", {
+        dateStyle: "long",
+        timeStyle: "short",
+        timeZone: "Europe/Amsterdam",
+      }).format(new Date(value.requestedAt));
+      const expiresAt = new Intl.DateTimeFormat("nl-NL", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Amsterdam",
+      }).format(new Date(value.expiresAt));
+      const text = `Deze code is ${value.minutes} minuten geldig en kan één keer worden gebruikt.\nAangevraagd: ${requestedAt}\nGeldig tot: ${expiresAt}\nVraag je de e-mail opnieuw aan? Zolang de code nog geldig is ontvang je dezelfde code opnieuw.`;
       return {
-        html: `<p style="color:#172033;font-size:14px;line-height:1.6;margin:12px 0">Deze code is ${value.minutes} minuten geldig en kan één keer worden gebruikt.</p>`,
-        text: `Deze code is ${value.minutes} minuten geldig en kan één keer worden gebruikt.`,
+        html: `<div style="color:#172033;font-size:14px;line-height:1.6;margin:12px 0"><p style="margin:0">Deze code is ${value.minutes} minuten geldig en kan één keer worden gebruikt.</p><p style="margin:8px 0 0"><strong>Aangevraagd:</strong><br>${escapeHtml(requestedAt)}</p><p style="margin:8px 0 0"><strong>Geldig tot:</strong><br>${escapeHtml(expiresAt)}</p><p style="margin:12px 0 0">Vraag je de e-mail opnieuw aan? Zolang de code nog geldig is ontvang je dezelfde code opnieuw.</p></div>`,
+        text,
       };
     }
     case "otp_warning": {
@@ -572,7 +595,15 @@ export function mailV2PreviewData(): {
         label: "Open het tenueportaal",
       },
       otp_code: { code: "123456" },
-      otp_validity: { minutes: 10 },
+      otp_direct_login: {
+        url: "https://tenue.duindorpsv.nl/login/direct#voorbeeld",
+        label: "Direct inloggen",
+      },
+      otp_validity: {
+        minutes: 10,
+        requestedAt: "2026-08-21T00:45:00.000Z",
+        expiresAt: "2026-08-21T00:55:00.000Z",
+      },
       otp_warning: {},
       size_table: { rows: exampleRows },
       size_action: {
@@ -628,7 +659,7 @@ export function assertMailV2CatalogIsComplete(keys: readonly string[]) {
     keys.length !== MAIL_SHORTCODE_KEYS.length
     || new Set(keys).size !== keys.length
     || MAIL_SHORTCODE_KEYS.some((key) => !keys.includes(key))
-    || MAIL_PROTECTED_NODE_KEYS.length !== 16
+    || MAIL_PROTECTED_NODE_KEYS.length !== 17
   ) {
     throw new Error("MAIL_V2_CATALOG_INCOMPLETE");
   }

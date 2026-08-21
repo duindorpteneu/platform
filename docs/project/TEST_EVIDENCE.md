@@ -786,3 +786,14 @@ Lokale acceptatie op 20 augustus 2026:
 - `pnpm vitest run src/app/api/members/profile/route.test.ts src/app/api/members/profile/email-preflight/route.test.ts src/lib/member-profile-contract.test.ts`: groen, 3 bestanden en 13 tests.
 - Schone `pnpm exec supabase db reset --local`: groen, alle 166 forward-only migrations en seed toegepast. De volledige pgTAP-suite is groen: 59 bestanden en 1.949 assertions; het gezins-e-mailconcurrencyharnas bewijst opnieuw één commit, één stale loser en één consistente familie.
 - `pnpm lint`, `pnpm typecheck`, volledige `pnpm test` (216 bestanden, 1.333 tests), productiebuild, `pnpm security:migrations`, `pnpm security:secrets` en `git diff --check`: groen.
+
+## Ouderloginbetrouwbaarheid en Email Control Center — 2026-08-21
+
+- Bindend canonbewijs: `docs/canon/MVP_CANON_ADDENDUM_v1.2.md` specificeert stable challenge, code/link-consumptie, supportrollen, providerbewijs, recipienthealth/suppressie en globale-healthgrens.
+- Releasecontract: `.github/workflows/staging-parent-login-acceptance.yml` gebruikt de bestaande trusted exact-main/deploy-SHA-preflight, stagingenvironment, expliciete bevestiging en veilige smoke-ontvanger. Cleanup draait met `if: always()`; resultaat en attestatie bevatten alleen het gesloten evidencebestand.
+- Implementatiebewijs: stabiele v3-challenge, code/direct shared consumption, fragmentvrije directe GET, beheerder+AAL2-support, providerbewijs, recipienthealth/suppressie en het Email Control Center zijn door source- en contracttests gedekt.
+- Definitieve lokale regressies: schone migratiereplay groen; 60 pgTAP-bestanden/1.973 assertions groen; 225 Vitestbestanden/1.368 tests groen; het echte OTP-concurrencyharnas is groen voor challenge, replay, providerbinding en event-ID.
+- `pnpm lint:workflows`, `pnpm lint`, `pnpm typecheck`, productiebuild, dependency-audit, migrationlint, secretscan en `git diff --check` zijn groen.
+- De volledige browser-/a11ygate is groen voor AAL2, dashboard, leden, import, e-mailcentrum, providersemantiek, mobiel, toetsenbord, reduced motion, geautomatiseerde toegankelijkheidscontrole, dynamische import en scanner-PWA.
+- De expliciete taakgates `pnpm test:db:access-concurrency`, `pnpm test:db:mail-projection-concurrency`, `pnpm test:edge-proxy` en `pnpm test:edge-runtime` zijn eveneens groen.
+- Nog niet groen te markeren: protected PR-CI, merged-main-CI, Deploy staging en de hosted parent-loginacceptatierun.

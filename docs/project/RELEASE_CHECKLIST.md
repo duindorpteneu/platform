@@ -3,7 +3,7 @@
 Status: gateformulier; geen deploymentautorisatie
 Release: `________________`
 Commit-SHA: `________________`
-Canon: MVP v1.0 plus goedgekeurd addendum v1.1
+Canon: MVP v1.0 plus goedgekeurde addenda v1.1 en v1.2
 Releasebeheerder: `________________`
 Datum/tijd (UTC): `________________`
 
@@ -61,7 +61,8 @@ Bewijs stagingconfiguratie: `___________________________________________________
 
 ## C. Stagingacceptatie
 
-- [ ] Alle E2E-01 t/m E2E-18 in [STAGING_VERIFICATION.md](STAGING_VERIFICATION.md) zijn groen op exact deze artefact-SHA.
+- [ ] Alle E2E-01 t/m E2E-29 in [STAGING_VERIFICATION.md](STAGING_VERIFICATION.md) zijn groen op exact deze artefact-SHA.
+- [ ] `Staging parent login acceptance` is groen voor exact deze main-SHA en deployrun; bewijs bevat geen adres, OTP, linkproof, cookie of sessietoken en alle runfixtures zijn verwijderd.
 - [ ] Autorisatiematrix bewijst least privilege voor drie staffrollen, ouders en anonieme gebruiker.
 - [ ] CSRF-, Origin-/Host-, rate-limit-, enumeratie-, upload- en bodylimiettests zijn groen.
 - [ ] De publieke edgeprobe onderscheidt proxy-`413` van applicatie-`415` en is op exact deze staging-SHA groen.

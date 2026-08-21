@@ -130,6 +130,110 @@ export const emailWorkspaceSchema = z.object({
   }
 });
 
+export const emailProviderSnapshotSchema = z.object({
+  provider: z.enum(["smtp", "sendgrid"]).nullable(),
+  providerName: z.string().trim().min(1).max(120),
+  runtimeEnabled: z.boolean(),
+  providerConfigured: z.boolean(),
+  senderName: z.string().trim().min(1).max(120).nullable(),
+  feedbackCapability: z.enum([
+    "smtp_sync_only",
+    "sendgrid_webhook",
+    "none",
+  ]),
+}).strict();
+
+const emailFeedbackCapabilitySchema = z.enum([
+  "smtp_sync_only",
+  "smtp_dsn",
+  "sendgrid_webhook",
+]);
+
+export const emailRecipientHealthSchema = z.object({
+  id: uuid,
+  email: z.string().trim().email().max(320).nullable(),
+  emailMasked: z.string().trim().min(3).max(320),
+  healthState: z.enum([
+    "healthy",
+    "accepted",
+    "attention",
+    "invalid_or_bounce",
+    "unknown",
+    "suppressed",
+  ]),
+  suspiciousDomain: z.boolean(),
+  suppressionReason: z.string()
+    .regex(/^[a-z0-9][a-z0-9._-]{0,99}$/u)
+    .nullable(),
+  lastSendAt: timestamp.nullable(),
+  lastProviderAcceptanceAt: timestamp.nullable(),
+  lastProvenDeliveryAt: timestamp.nullable(),
+  lastFailureAt: timestamp.nullable(),
+  lastProviderFeedbackAt: timestamp.nullable(),
+  temporaryFailureCount: z.number().int().nonnegative(),
+  permanentRejectionCount: z.number().int().nonnegative(),
+  hardBounceCount: z.number().int().nonnegative(),
+  dropCount: z.number().int().nonnegative(),
+  deliveryUncertainCount: z.number().int().nonnegative(),
+  lastOtpRequestedAt: timestamp.nullable(),
+  lastOtpOutcome: z.string()
+    .regex(/^[a-z0-9][a-z0-9._-]{0,99}$/u)
+    .nullable(),
+  otpExpiresAt: timestamp.nullable(),
+  linkedChildren: z.array(z.object({
+    memberId: uuid,
+    memberName: z.string().trim().min(1).max(320),
+    team: z.string().trim().min(1).max(160),
+  }).strict()).max(100),
+}).strict().superRefine((recipient, context) => {
+  if (recipient.healthState === "suppressed" && !recipient.suppressionReason) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["suppressionReason"],
+      message: "Een onderdrukte ontvanger vereist een reden.",
+    });
+  }
+});
+
+export const emailControlCenterProjectionSchema = z.object({
+  feedbackCapability: emailFeedbackCapabilitySchema,
+  recipients: z.array(emailRecipientHealthSchema).max(20_000),
+}).strict();
+
+export const emailControlWorkspaceSchema = emailWorkspaceSchema.and(z.object({
+  provider: emailProviderSnapshotSchema,
+  controlCenter: emailControlCenterProjectionSchema,
+}));
+
+export const emailOperationalStateSchema = z.enum([
+  "queued",
+  "processing",
+  "provider_accepted",
+  "delivered",
+  "temporary_failure",
+  "permanent_rejection",
+  "delivery_uncertain",
+  "superseded",
+]);
+
+export function emailJobOperationalState(
+  job: z.infer<typeof emailWorkspaceSchema>["jobs"][number],
+): z.infer<typeof emailOperationalStateSchema> {
+  if (job.deliveryStatus === "delivered") return "delivered";
+  if (["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")) {
+    return "permanent_rejection";
+  }
+  if (job.deliveryStatus === "deferred" || job.status === "retry") {
+    return "temporary_failure";
+  }
+  if (job.status === "delivery_uncertain") return "delivery_uncertain";
+  if (job.status === "failed") return "permanent_rejection";
+  if (job.status === "sent") return "provider_accepted";
+  if (job.status === "processing") return "processing";
+  if (job.status === "superseded") return "superseded";
+  return "queued";
+}
+
 export const updateEmailTemplateRequestSchema = z.object({
   templateId: uuid,
   subjectSource: z.string().trim().min(3).max(180).refine((value) => !/[\r\n<>]/.test(value)),
@@ -380,7 +484,10 @@ export const emailTemplateLabels: Record<z.infer<typeof emailTemplateKeySchema>,
   qr_code_resent: "QR-code opnieuw verzonden",
 };
 
-export type EmailWorkspace = z.infer<typeof emailWorkspaceSchema>;
+export type EmailDatabaseWorkspace = z.infer<typeof emailWorkspaceSchema>;
+export type EmailWorkspace = z.infer<typeof emailControlWorkspaceSchema>;
+export type EmailProviderSnapshot = z.infer<typeof emailProviderSnapshotSchema>;
+export type EmailRecipientHealth = z.infer<typeof emailRecipientHealthSchema>;
 export type EmailTemplateKey = z.infer<typeof emailTemplateKeySchema>;
 export type BulkEmailTemplateKey = z.infer<typeof bulkEmailTemplateKeySchema>;
 export type ClaimedEmailJob = z.infer<typeof claimedEmailJobSchema>;

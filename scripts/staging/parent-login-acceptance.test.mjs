@@ -1,0 +1,165 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  databaseTargetFromEnvironment,
+  fixtureDigest,
+  modeFromEnvironment,
+  recipientFromEnvironment,
+  runAcceptance,
+  stableFailureCode,
+  targetFromEnvironment,
+  validateEvidence,
+} from "./parent-login-acceptance.mjs";
+
+const REF = "dxbdjtbyghsovlrdcwcr";
+const base = {
+  ARTIFACT_DIGEST: `sha256:${"b".repeat(64)}`,
+  PARENT_TOKEN_PEPPER: "staging-parent-login-contract-pepper-long-enough",
+  RELEASE_SHA: "a".repeat(40),
+  STAGING_ACCEPTANCE_RECIPIENT: "acceptance+parent-login@example.invalid",
+  STAGING_ACCEPTANCE_RUN_ID: "12345-2",
+  STAGING_BASE_URL: "https://duindorpsv.dgwebservices.nl",
+  STAGING_DEPLOY_RUN_ID: "98765",
+  STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED: "true",
+  SUPABASE_DB_URL: `postgresql://postgres.${REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require`,
+  SUPABASE_PROJECT_REF: REF,
+};
+
+function evidence(environment, cleanupComplete = false) {
+  const target = targetFromEnvironment(environment);
+  return {
+    cleanupComplete,
+    codeConsumesLink: true,
+    controlCenterLoaded: true,
+    directGetCredentialFree: true,
+    fixtureDigest: fixtureDigest(target, recipientFromEnvironment(environment)),
+    linkConsumesCode: true,
+    linkReplayRejected: true,
+    mailV2RegressionPassed: true,
+    recipientFailureGlobalHealthHealthy: true,
+    releaseSha: target.releaseSha,
+    resendReusedChallenge: true,
+    schemaVersion: 1,
+    smtpAcceptanceNotDelivered: true,
+    staffCredentialExposureCount: 0,
+    supportAuthorizationPassed: true,
+  };
+}
+
+describe("parent-login staging acceptance contract", () => {
+  it("bindt de harness aan exact staging, exact artifact en een expliciete gate", () => {
+    expect(targetFromEnvironment(base).runId).toBe("12345-2");
+    for (const change of [
+      { STAGING_BASE_URL: "https://duindorp.dgwebservices.nl" },
+      { SUPABASE_PROJECT_REF: "wobcbufmmputydtzemyu" },
+      { RELEASE_SHA: "main" },
+      { ARTIFACT_DIGEST: "sha256:short" },
+      { STAGING_DEPLOY_RUN_ID: "latest" },
+      { STAGING_ACCEPTANCE_RUN_ID: "12345" },
+      { STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED: "false" },
+    ]) expect(() => targetFromEnvironment({ ...base, ...change })).toThrow();
+  });
+
+  it("weigert niet-TLS, vreemde databasehosts en multi-recipient invoer", () => {
+    expect(databaseTargetFromEnvironment(base)).toContain(REF);
+    for (const url of [
+      `postgresql://postgres.${REF}:secret@evil.invalid:6543/postgres?sslmode=require`,
+      `postgresql://postgres.${REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=disable`,
+      `postgresql://postgres.${REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require&host=evil.invalid`,
+    ]) expect(() => databaseTargetFromEnvironment({ SUPABASE_DB_URL: url })).toThrow();
+    expect(() => recipientFromEnvironment({ STAGING_ACCEPTANCE_RECIPIENT: "a@example.invalid,b@example.invalid" })).toThrow("STAGING_ACCEPTANCE_RECIPIENT_INVALID");
+  });
+
+  it("heeft exclusieve normal, cleanup en verify modi", () => {
+    expect(modeFromEnvironment({})).toBe("normal");
+    expect(modeFromEnvironment({ CLEANUP_ONLY: "1" })).toBe("cleanup");
+    expect(modeFromEnvironment({ VERIFY_ONLY: "1" })).toBe("verify");
+    expect(() => modeFromEnvironment({ CLEANUP_ONLY: "1", VERIFY_ONLY: "1" })).toThrow("STAGING_ACCEPTANCE_MODE_INVALID");
+  });
+
+  it("stuurt mutaties door dezelfde origin- en CSRF-grens als een browser", async () => {
+    const source = await readFile(new URL("./parent-login-acceptance.mjs", import.meta.url), "utf8");
+    expect(source).toContain('"Sec-Fetch-Site": "same-origin"');
+    expect(source).toContain('"X-Duindorp-CSRF": "same-origin"');
+    expect(source).toContain("Origin: target.baseUrl");
+  });
+
+  it("maakt een run- en releasegebonden digest zonder ontvanger in evidence", () => {
+    const target = targetFromEnvironment(base);
+    const first = fixtureDigest(target, recipientFromEnvironment(base));
+    const second = fixtureDigest({ ...target, runId: "12346-1" }, recipientFromEnvironment(base));
+    expect(first).toMatch(/^[a-f0-9]{64}$/u);
+    expect(first).not.toBe(second);
+    expect(JSON.stringify(evidence(base))).not.toContain(base.STAGING_ACCEPTANCE_RECIPIENT);
+  });
+
+  it("weigert extra evidencevelden, credentialexposure en onvolledige eindstatus", () => {
+    const target = targetFromEnvironment(base);
+    expect(() => validateEvidence({ ...evidence(base), recipient: base.STAGING_ACCEPTANCE_RECIPIENT }, target)).toThrow("STAGING_EVIDENCE_SHAPE_INVALID");
+    expect(() => validateEvidence({ ...evidence(base), staffCredentialExposureCount: 1 }, target)).toThrow("STAGING_EVIDENCE_VALUE_INVALID");
+    expect(() => validateEvidence(evidence(base), target, { requireCleanup: true })).toThrow("STAGING_EVIDENCE_VALUE_INVALID");
+    expect(validateEvidence(evidence(base, true), target, { requireCleanup: true }).cleanupComplete).toBe(true);
+  });
+
+  it("doorloopt normal, always-cleanup en verify zonder state of PII te publiceren", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "parent-login-acceptance-"));
+    const path = join(directory, "evidence.json");
+    const environment = { ...base, EVIDENCE_PATH: path };
+    const events = [];
+    const dependencies = {
+      run: async (context) => {
+        events.push("normal");
+        return {
+          evidence: evidence(environment),
+          state: { challengeIds: ["11111111-1111-4111-8111-111111111111"], fixtureDigest: context.fixtureDigest, startedAt: context.startedAt },
+        };
+      },
+      cleanup: async () => { events.push("cleanup"); return true; },
+      verifyCleanup: async () => { events.push("verify"); return true; },
+    };
+    try {
+      await runAcceptance(environment, dependencies);
+      await runAcceptance({ ...environment, CLEANUP_ONLY: "1" }, dependencies);
+      await runAcceptance({ ...environment, VERIFY_ONLY: "1" }, dependencies);
+      expect(events).toEqual(["normal", "cleanup", "verify"]);
+      const finalEvidence = JSON.parse(await readFile(path, "utf8"));
+      expect(finalEvidence.cleanupComplete).toBe(true);
+      expect(JSON.stringify(finalEvidence)).not.toContain(base.STAGING_ACCEPTANCE_RECIPIENT);
+      await expect(readFile(`${path}.state`, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("legt cleanup-state vast voordat een muterende normal-run kan falen", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "parent-login-failure-"));
+    const path = join(directory, "evidence.json");
+    const environment = { ...base, EVIDENCE_PATH: path };
+    let cleanedState;
+    try {
+      await expect(runAcceptance(environment, {
+        run: async (context) => {
+          await context.recordState(["22222222-2222-4222-8222-222222222222"]);
+          throw new Error("LINK_CONSUMPTION_FAILED");
+        },
+      })).rejects.toThrow("LINK_CONSUMPTION_FAILED");
+      await runAcceptance({ ...environment, CLEANUP_ONLY: "1" }, {
+        cleanup: async (_context, state) => { cleanedState = state; },
+      });
+      expect(cleanedState.challengeIds).toEqual([
+        "22222222-2222-4222-8222-222222222222",
+      ]);
+      expect(JSON.stringify(cleanedState)).not.toContain(base.STAGING_ACCEPTANCE_RECIPIENT);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("maakt onverwachte fouten PII-vrij en behoudt vaste codes", () => {
+    expect(stableFailureCode(new Error("LINK_REPLAY_ACCEPTED"))).toBe("LINK_REPLAY_ACCEPTED");
+    expect(stableFailureCode(new Error("address parent@example.invalid"))).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
+    expect(stableFailureCode("plain")).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
+  });
+});

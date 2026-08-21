@@ -15,12 +15,15 @@ test_tmp_dir="$(mktemp -d -t duindorp-parent-otp.XXXXXX)"
 replay_marker="$test_tmp_dir/replay-holding"
 binding_marker="$test_tmp_dir/binding-holding"
 identity_marker="$test_tmp_dir/identity-holding"
+challenge_marker="$test_tmp_dir/challenge-holding"
 replay_first_log="$test_tmp_dir/replay-first.log"
 replay_second_log="$test_tmp_dir/replay-second.log"
 binding_first_log="$test_tmp_dir/binding-first.log"
 binding_second_log="$test_tmp_dir/binding-second.log"
 identity_first_log="$test_tmp_dir/identity-first.log"
 identity_second_log="$test_tmp_dir/identity-second.log"
+challenge_first_log="$test_tmp_dir/challenge-first.log"
+challenge_second_log="$test_tmp_dir/challenge-second.log"
 
 cleanup_data() {
   "${psql_cmd[@]}" >/dev/null <<'SQL'
@@ -51,8 +54,23 @@ where id in (
   'e2791000-0000-4000-8000-000000000001',
   'e2791000-0000-4000-8000-000000000002'
 );
+delete from private.parent_sessions
+where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+delete from private.parent_otp_challenges
+where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+delete from private.parent_portal_grants
+where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+delete from app.audit_logs
+where entity_id = 'e2790000-0000-4000-8000-000000000003';
+delete from app.member_seasons
+where member_id = 'e2793000-0000-4000-8000-000000000003';
+delete from app.members
+where id = 'e2793000-0000-4000-8000-000000000003';
 delete from private.parent_accounts
-where id = 'e2790000-0000-4000-8000-000000000001';
+where id in (
+  'e2790000-0000-4000-8000-000000000001',
+  'e2790000-0000-4000-8000-000000000003'
+);
 set local session_replication_role = origin;
 commit;
 SQL
@@ -70,9 +88,48 @@ cleanup_data
 
 "${psql_cmd[@]}" >/dev/null <<'SQL'
 insert into private.parent_accounts(id, email_normalized)
-values(
-  'e2790000-0000-4000-8000-000000000001',
-  'otp-concurrency@example.invalid'
+values
+  (
+    'e2790000-0000-4000-8000-000000000001',
+    'otp-concurrency@example.invalid'
+  ),
+  (
+    'e2790000-0000-4000-8000-000000000003',
+    'otp-challenge-race@example.invalid'
+  );
+insert into app.members(
+  id, relation_number, first_name, last_name, email, team
+) values (
+  'e2793000-0000-4000-8000-000000000003',
+  'OTP-RACE-003',
+  'OTP',
+  'Race',
+  'otp-challenge-race@example.invalid',
+  'JO14-1'
+);
+insert into private.parent_portal_grants(
+  id, member_season_id, email_normalized, parent_account_id,
+  status, source, granted_by, granted_at
+)
+select
+  'e2794000-0000-4000-8000-000000000003',
+  season.id,
+  'otp-challenge-race@example.invalid',
+  'e2790000-0000-4000-8000-000000000003',
+  'active',
+  'administrator',
+  'e2795000-0000-4000-8000-000000000003',
+  statement_timestamp()
+from app.member_seasons season
+where season.member_id = 'e2793000-0000-4000-8000-000000000003';
+insert into private.parent_otp_challenges(
+  id, parent_account_id, code_hash, expires_at, credential_version
+) values (
+  'e2796000-0000-4000-8000-000000000003',
+  'e2790000-0000-4000-8000-000000000003',
+  repeat('c', 64),
+  statement_timestamp() + interval '10 minutes',
+  3
 );
 insert into private.parent_otp_delivery_attempts(
   id,
@@ -103,7 +160,7 @@ cross join (
     )
 ) fixture(attempt_id, challenge_id)
 where template_revision.template_key = 'login_otp'
-  and template_revision.status = 'draft'
+  and template_revision.status = 'published'
   and branding.status = 'published';
 
 insert into private.parent_otp_delivery_outcomes(
@@ -328,4 +385,57 @@ if [[ "$event_count" != "3" \
   exit 1
 fi
 
-echo "Parent-OTP-concurrency groen: replay, providerbinding en globale event-ID zijn atomair verwerkt."
+challenge_first() {
+  "${psql_cmd[@]}" <<SQL
+begin;
+select app.consume_parent_login_challenge_v3(
+  'e2796000-0000-4000-8000-000000000003',
+  'code',
+  repeat('c', 64),
+  repeat('d', 64),
+  statement_timestamp() + interval '7 days'
+);
+\\! touch "$challenge_marker"
+select pg_sleep(2);
+commit;
+SQL
+}
+
+challenge_first >"$challenge_first_log" 2>&1 &
+challenge_first_pid=$!
+for _ in $(seq 1 100); do
+  [[ -f "$challenge_marker" ]] && break
+  kill -0 "$challenge_first_pid" 2>/dev/null || break
+  sleep 0.05
+done
+if [[ ! -f "$challenge_marker" ]]; then
+  echo "De gedeelde challengeconsumptiebarrière werd niet bereikt." >&2
+  exit 1
+fi
+"${psql_cmd[@]}" -c "
+  select app.consume_parent_login_challenge_v3(
+    'e2796000-0000-4000-8000-000000000003',
+    'direct',
+    null,
+    repeat('e', 64),
+    statement_timestamp() + interval '7 days'
+  );
+" >"$challenge_second_log" 2>&1 &
+challenge_second_pid=$!
+wait "$challenge_first_pid"
+wait "$challenge_second_pid"
+challenge_output="$test_tmp_dir/challenge-output.log"
+cp "$challenge_first_log" "$challenge_output"
+sed -n '1,$p' "$challenge_second_log" >>"$challenge_output"
+challenge_session_count="$("${psql_cmd[@]}" -c "
+  select count(*) from private.parent_sessions
+  where parent_account_id = 'e2790000-0000-4000-8000-000000000003';
+")"
+if [[ "$(grep -c '"status": "verified"' "$challenge_output")" -ne 1 ]] \
+  || [[ "$(grep -c '"status": "invalid"' "$challenge_output")" -ne 1 ]] \
+  || [[ "$challenge_session_count" != "1" ]]; then
+  echo "Code en directe link konden dezelfde challenge niet atomair verbruiken." >&2
+  exit 1
+fi
+
+echo "Parent-OTP-concurrency groen: challenge, replay, providerbinding en globale event-ID zijn atomair verwerkt."

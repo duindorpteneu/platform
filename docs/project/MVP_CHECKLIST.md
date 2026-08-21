@@ -4,7 +4,7 @@ Codex must expand this checklist from the canonical PDF before implementation an
 
 > Historische v1.0-checklist. De actuele Phase-B-aftekening staat in
 > `PROGRESS.md`, `STAGING_VERIFICATION.md` en `RELEASE_CHECKLIST.md`; het
-> goedgekeurde addendum v1.1 supersedeert conflicterende regels hieronder.
+> goedgekeurde addenda v1.1 en v1.2 supersederen conflicterende regels hieronder.
 
 - [x] Three staff roles only
 - [x] Sportlink CSV import
@@ -13,7 +13,7 @@ Codex must expand this checklist from the canonical PDF before implementation an
 - [x] Handmatige kasregistratie uitsluitend door beheerder+AAL2; legacy pin
       blijft standaard uit achter de expliciete compatibiliteitsflag
 - [x] Parent e-mail OTP, six digits, ten minutes
-- [x] No parent password, magic link or Supabase Auth account
+- [ ] No parent password or Supabase Auth account; stable OTP and optional direct-login proof share one ten-minute challenge
 - [x] Optional explicit linking of matching members
 - [x] One member card and one QR per member/season
 - [x] Partial delivery states and item-level fulfilment

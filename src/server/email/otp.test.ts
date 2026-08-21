@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { PreparedParentOtpV2 } from "@/lib/mail-v2-contract";
+import type {
+  PreparedParentOtpV2,
+  PreparedParentOtpV3,
+} from "@/lib/mail-v2-contract";
 import {
   authorizeParentOtpV2,
   completeParentOtpV2,
   getParentOtpEmailTemplate,
   prepareParentOtpV2,
+  prepareParentOtpV3,
   renderParentOtpEmail,
   renderParentOtpV2,
+  renderParentOtpV3,
 } from "@/server/email/otp";
 
 const template = {
@@ -97,6 +102,41 @@ const preparation: PreparedParentOtpV2 = {
   },
 };
 
+const preparationV3: PreparedParentOtpV3 = {
+  status: "prepared",
+  deliveryAttemptId: preparation.deliveryAttemptId,
+  challengeId: "44444444-4444-4444-8444-444444444444",
+  expiresAt: "2026-08-21T00:55:00.000Z",
+  cooldownUntil: "2026-08-21T00:46:30.000Z",
+  reused: true,
+  expiresInMinutes: 9,
+  template: {
+    ...preparation.template,
+    bodyTipTap: {
+      type: "doc",
+      content: [
+        { type: "protectedBlock", attrs: { kind: "otp_code" } },
+        { type: "protectedBlock", attrs: { kind: "otp_validity" } },
+        { type: "protectedBlock", attrs: { kind: "otp_direct_login" } },
+        { type: "protectedBlock", attrs: { kind: "otp_warning" } },
+      ],
+    },
+    allowedProtectedNodes: [
+      "otp_code",
+      "otp_validity",
+      "otp_direct_login",
+      "otp_warning",
+    ],
+    requiredProtectedNodes: [
+      "otp_code",
+      "otp_validity",
+      "otp_direct_login",
+      "otp_warning",
+    ],
+  },
+  branding: preparation.branding,
+};
+
 describe("ouder-OTP e-mailtemplate", () => {
   it("reads and strictly validates the active database template", async () => {
     const client = { rpc: async () => ({ data: template, error: null }) };
@@ -169,6 +209,75 @@ describe("ouder-OTP e-mailtemplate", () => {
     ]);
   });
 
+  it("bindt challenge-v3 voorbereiding aan de voorgestelde UUID en hash", async () => {
+    const rpc = async (name: string, parameters: Record<string, unknown>) => {
+      expect(name).toBe("prepare_parent_otp_delivery_v3");
+      expect(parameters).toEqual({
+        p_email: "ouder@example.nl",
+        p_challenge_id: preparationV3.challengeId,
+        p_code_hash: "c".repeat(64),
+        p_force_new: false,
+        p_actor_user_id: null,
+      });
+      return { data: preparationV3, error: null };
+    };
+    await expect(prepareParentOtpV3(
+      { rpc },
+      "ouder@example.nl",
+      preparationV3.challengeId,
+      "c".repeat(64),
+    )).resolves.toEqual(preparationV3);
+  });
+
+  it("legt providerbewijs via de v2-completion vast zonder ontvangerdata", async () => {
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    const client = {
+      rpc: async (name: string, parameters: Record<string, unknown>) => {
+        calls.push([name, parameters]);
+        return {
+          data: {
+            status: "completed",
+            outcome: "provider_rejected",
+            reused: false,
+          },
+          error: null,
+        };
+      },
+    };
+
+    await completeParentOtpV2(
+      client,
+      preparation.deliveryAttemptId,
+      {
+        outcome: "provider_rejected",
+        errorCode: "provider_rejected",
+      },
+      {
+        provider: "smtp",
+        providerState: "permanent_rejection",
+        responseCode: "550",
+        enhancedStatusCode: "5.1.1",
+        recipientFailure: true,
+      },
+    );
+
+    expect(calls).toEqual([[
+      "complete_parent_otp_delivery_v2",
+      {
+        p_delivery_attempt_id: preparation.deliveryAttemptId,
+        p_outcome: "provider_rejected",
+        p_provider_http_message_id: null,
+        p_error_code: "provider_rejected",
+        p_provider: "smtp",
+        p_provider_state: "permanent_rejection",
+        p_response_code: "550",
+        p_enhanced_status_code: "5.1.1",
+        p_recipient_failure: true,
+      },
+    ]]);
+    expect(JSON.stringify(calls)).not.toContain("ouder@example.nl");
+  });
+
   it("rendert de code alleen in het vluchtige beschermde blok", () => {
     const rendered = renderParentOtpV2(
       preparation,
@@ -181,5 +290,24 @@ describe("ouder-OTP e-mailtemplate", () => {
     expect(rendered.text).toContain("10 minuten");
     expect(rendered.fromEmail).toBe("kleding@duindorpsv.nl");
     expect(JSON.stringify(preparation)).not.toContain("654321");
+  });
+
+  it("rendert v3 met dezelfde code, vaste deadline en fragmentlink", () => {
+    const credential = `v1.${preparationV3.challengeId}.${"A".repeat(43)}`;
+    const rendered = renderParentOtpV3(
+      preparationV3,
+      "654321",
+      credential,
+      "https://tenue.example",
+    );
+    expect(rendered.text).toContain("654321");
+    expect(rendered.text).toContain("Direct inloggen");
+    expect(rendered.text).toContain("dezelfde code opnieuw");
+    expect(rendered.html).toContain(
+      `https://tenue.example/login/direct#${credential}`,
+    );
+    expect(rendered.html).toContain("Geldig tot:");
+    expect(JSON.stringify(preparationV3)).not.toContain("654321");
+    expect(JSON.stringify(preparationV3)).not.toContain(credential);
   });
 });

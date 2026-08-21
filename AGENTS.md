@@ -6,12 +6,13 @@ Bouw en lever de werkende minimale MVP van het **Duindorp SV Tenueportaal** in d
 
 De bindende bronnen zijn, in deze volgorde:
 
-1. `docs/canon/MVP_CANON_ADDENDUM_v1.1.md`
-2. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`
-3. `docs/canon/MVP_CANON_TEXT.txt`
-4. `docs/design/APPROVED_MASTER_SHOWCASE.png`
-5. deze `AGENTS.md`
-6. overige documenten in `docs/project/`
+1. `docs/canon/MVP_CANON_ADDENDUM_v1.2.md`
+2. `docs/canon/MVP_CANON_ADDENDUM_v1.1.md`
+3. `docs/canon/Duindorp_SV_Tenueportaal_MVP_Canon_v1.0.pdf`
+4. `docs/canon/MVP_CANON_TEXT.txt`
+5. `docs/design/APPROVED_MASTER_SHOWCASE.png`
+6. deze `AGENTS.md`
+7. overige documenten in `docs/project/`
 
 Het addendum vervangt v1.0 uitsluitend voor de onderwerpen die het expliciet noemt. Bij twijfel geldt de strengste interpretatie die de MVP klein, veilig, controleerbaar en canoniek houdt. Verzin geen functionaliteit. Leg een echte canononduidelijkheid vast in `docs/project/DECISIONS.md` en vraag alleen wanneer de keuze niet veilig en niet omkeerbaar is.
 
@@ -20,8 +21,8 @@ Het addendum vervangt v1.0 uitsluitend voor de onderwerpen die het expliciet noe
 - Eén Duindorp SV-product; geen multi-tenant SaaS en geen generieke clubbranding.
 - Eén Next.js-applicatie met drie oppervlakken: backoffice, ledenportaal en uitgifte.
 - Exact drie personeelsrollen: `beheerder`, `kledingcommissie`, `uitgifte`.
-- Ouderlogin via e-mailadres en zescijferige verificatiecode, tien minuten geldig.
-- Geen wachtwoord, geen magic link en geen Supabase Auth-account voor ouders.
+- Ouderlogin via e-mailadres en een zescijferige verificatiecode, tien minuten geldig; dezelfde e-mail bevat aanvullend een eenmalige, challengegebonden directe inloglink.
+- Geen wachtwoord en geen Supabase Auth-account voor ouders. Code en directe link delen exact dezelfde single-use challenge en verlooptermijn.
 - Medewerkers mogen wel via Supabase Auth worden beveiligd.
 - Een ouder kan optioneel meerdere leden met hetzelfde e-mailadres toevoegen; nooit automatisch en nooit verplicht.
 - Elk lid heeft een eigen bestelling, exact verschuldigd bedrag, betaalstatus, QR-code en artikelregels.
@@ -32,7 +33,7 @@ Het addendum vervangt v1.0 uitsluitend voor de onderwerpen die het expliciet noe
 - Dezelfde QR-code per lid en seizoen ondersteunt meerdere uitgiftemomenten.
 - Uitgifte kan alleen werkelijk beschikbare en betaalde/vrijgestelde artikelregels voltooien.
 - Sportlink-leden worden via CSV geïmporteerd.
-- SendGrid verzorgt transactionele en bulk-e-mail met templates en shortcodes.
+- De providerabstractie verzorgt transactionele en bulk-e-mail met templates en shortcodes; SMTP-acceptatie geldt nooit als bewezen aflevering en SendGrid-webhooks blijven ondersteund.
 - Alle gevoelige mutaties zijn geautoriseerd, server-side gevalideerd en auditbaar.
 
 ## 3. Vaste stack
@@ -43,7 +44,7 @@ Het addendum vervangt v1.0 uitsluitend voor de onderwerpen die het expliciet noe
 - Supabase PostgreSQL, Storage en RLS.
 - Supabase Auth uitsluitend voor medewerkers, tenzij de canon later expliciet wijzigt.
 - Mollie Payments API en webhooks.
-- SendGrid API voor e-mail.
+- Providerabstractie voor e-mail: SendGrid API plus de expliciet geconfigureerde VoetbalAssist SMTP-adapter; downstream feedback blijft providergebonden.
 - Zod voor validatie aan servergrenzen.
 - `pnpm` als package manager.
 - Vitest voor unit/integratietests en Playwright voor kritieke end-to-endflows.

@@ -6,6 +6,7 @@ import {
   type MemberListQuery,
 } from "@/lib/member-overview-contract";
 import { memberPackageBulkOptionsSchema } from "@/lib/member-package-bulk-contract";
+import { parentOtpSupportSchema } from "@/lib/parent-otp-support-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { getMemberSavedViews } from "@/server/members/saved-views";
 import { getSupabaseServerClient } from "@/server/supabase/server";
@@ -88,6 +89,7 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
   }
 
   let detail = null;
+  let otpSupport = null;
   if (query.member) {
     const { data: detailData, error: detailError } = await supabase.schema("app").rpc("get_member_detail_v6", {
       p_member_id: query.member,
@@ -99,8 +101,41 @@ export async function getMemberOverview(rawParams: RawSearchParams) {
       const parsedDetail = memberDetailResponseSchema.safeParse(detailData);
       if (!parsedDetail.success) throw new Error("MEMBER_DETAIL_RESPONSE_INVALID");
       detail = parsedDetail.data;
+      if (
+        staff.role === "beheerder"
+        && detail.portalAccess?.active
+        && detail.portalAccess.parentAccountId
+      ) {
+        const { data: supportData, error: supportError } = await supabase
+          .schema("app")
+          .rpc("get_parent_otp_support_v1", {
+            p_parent_account_id: detail.portalAccess.parentAccountId,
+          });
+        if (supportError) {
+          if (supportError.code === "42501") {
+            throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+          }
+          if (supportError.code !== "P0002") {
+            throw new Error("PARENT_OTP_SUPPORT_QUERY_FAILED");
+          }
+        } else {
+          const parsedSupport = parentOtpSupportSchema.safeParse(supportData);
+          if (!parsedSupport.success) {
+            throw new Error("PARENT_OTP_SUPPORT_RESPONSE_INVALID");
+          }
+          otpSupport = parsedSupport.data;
+        }
+      }
     }
   }
 
-  return { list: list.data, detail, query, savedViews, staff, packageOptions };
+  return {
+    list: list.data,
+    detail,
+    otpSupport,
+    query,
+    savedViews,
+    staff,
+    packageOptions,
+  };
 }

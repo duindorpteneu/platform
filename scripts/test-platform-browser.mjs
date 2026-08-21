@@ -72,7 +72,11 @@ let generatedSource = `${
     ].join("\n"),
   );
 
-const legacyEmailEditorCheck = `  for (const expected of ["Verzending gepauzeerd", "6", "Verificatiecode", "Betalingsherinnering"]) {
+const legacyEmailEditorCheck = `  if (!(await page.locator("body").innerText()).includes("Verzending gepauzeerd")) {
+    throw new Error("E-mailcentrum mist verwachte tekst: Verzending gepauzeerd");
+  }
+  await page.getByRole("button", { name: "Templates", exact: true }).click();
+  for (const expected of ["6", "Verificatiecode", "Betalingsherinnering"]) {
     if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(\`E-mailcentrum mist verwachte tekst: \${expected}\`);
   }
   await page.getByRole("button", { name: /Verificatiecode/ }).click();
@@ -84,7 +88,11 @@ const legacyEmailEditorCheck = `  for (const expected of ["Verzending gepauzeerd
   await page.getByRole("button", { name: "Fictief voorbeeld" }).click();
   await page.getByText(/Uw tijdelijke voorbeeldcode is 123456/).waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: "Template opslaan" }).waitFor({ state: "visible" });`;
-const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "19", "Inlogcode", "Betalingsherinnering"]) {
+const mailV2EditorCheck = `  if (!(await page.locator("body").innerText()).includes("Verzending gepauzeerd")) {
+    throw new Error("E-mailcentrum mist verwachte tekst: Verzending gepauzeerd");
+  }
+  await page.getByRole("button", { name: "Templates", exact: true }).click();
+  for (const expected of ["19", "Inlogcode", "Betalingsherinnering"]) {
     if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(\`E-mailcentrum mist verwachte tekst: \${expected}\`);
   }
   await page.getByRole("button", { name: /Inlogcode/ }).click();
@@ -179,7 +187,7 @@ const mailV2EditorCheck = `  for (const expected of ["Verzending gepauzeerd", "1
     state: "visible",
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Branding", exact: true }).click();
+  await page.getByRole("button", { name: "Huisstijl", exact: true }).click();
   await page.getByRole("heading", { name: "Afzender, contact en afhalen" }).waitFor({
     state: "visible",
     timeout: 10_000,

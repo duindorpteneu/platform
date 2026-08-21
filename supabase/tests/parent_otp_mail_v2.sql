@@ -192,62 +192,15 @@ update app.app_settings
 set email_enabled = true
 where id = true;
 select is(
-  app.prepare_parent_otp_delivery_v1(
-    'otp-parent@example.invalid',
-    repeat('b', 64),
-    statement_timestamp() + interval '10 minutes'
-  )->>'status',
-  'blocked',
-  'een gestart cutover valt bij ontbrekende publicatie nooit terug'
-);
-
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"27900000-0000-4000-8000-000000000001","aal":"aal2"}',
-  true
-);
-set local role authenticated;
-create temporary table saved_login_otp as
-select app.save_mail_template_draft_v1(
-  'login_otp',
   (
-    select content_hash
-    from app.mail_template_revisions
-    where template_key = 'login_otp'
-      and status = 'draft'
+    select count(*)::integer
+    from app.mail_template_revisions revision
+    where revision.template_key = 'login_otp'
+      and revision.status = 'published'
+      and revision.body_tiptap @> '{"content":[{"type":"protectedBlock","attrs":{"kind":"otp_direct_login"}}]}'::jsonb
   ),
-  'Inlogcode OTP-v2 fixture',
-  'Uw code voor {{club_name}}',
-  'Gebruik de code binnen {{otp_expiry_minutes}} minuten.',
-  '{
-    "type":"doc",
-    "content":[
-      {
-        "type":"paragraph",
-        "content":[
-          {"type":"text","text":"Gebruik uw eenmalige code."}
-        ]
-      },
-      {"type":"protectedBlock","attrs":{"kind":"otp_code"}},
-      {"type":"protectedBlock","attrs":{"kind":"otp_validity"}},
-      {"type":"protectedBlock","attrs":{"kind":"otp_warning"}}
-    ]
-  }'::jsonb,
-  '<p>Gebruik uw eenmalige code.</p>',
-  'Gebruik uw eenmalige code.',
-  null
-) result;
-create temporary table published_login_otp as
-select app.publish_mail_template_revision_v1(
-  (select (result->>'revisionId')::uuid from saved_login_otp),
-  (select result->>'contentHash' from saved_login_otp),
-  null
-) result;
-reset role;
-select is(
-  (select result->>'status' from published_login_otp),
-  'published',
-  'de beschermde LOGIN_OTP-template kan beheerd worden gepubliceerd'
+  1,
+  'de migratie publiceert exact één LOGIN_OTP-template met directe login'
 );
 
 select is(

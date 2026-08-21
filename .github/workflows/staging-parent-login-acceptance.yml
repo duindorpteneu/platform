@@ -1,0 +1,282 @@
+name: Staging parent login acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exacte 40-teken main-SHA die al naar staging is gedeployed
+        required: true
+        type: string
+      staging_run_id:
+        description: Succesvolle Deploy staging-run voor exact dit artifact
+        required: true
+        type: string
+      confirmation:
+        description: Typ STAGING-PARENT-LOGIN; gebruikt alleen de veilige smoke-ontvanger en zelfopruimende fixtures
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-duindorpteneu-staging
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Trusted staging release preflight
+    uses: ./.github/workflows/_trusted-staging-preflight.yml
+    with:
+      release_sha: ${{ inputs.release_sha }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+    permissions:
+      actions: read
+      contents: read
+
+  parent-login:
+    name: Stable OTP, direct login and e-mail control
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      actions: read
+      contents: read
+    env:
+      RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      ARTIFACT_DIGEST: ${{ needs.preflight.outputs.artifact_digest }}
+      STAGING_DEPLOY_RUN_ID: ${{ needs.preflight.outputs.staging_run_id }}
+      STAGING_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+      STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED: ${{ vars.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED || 'false' }}
+      STAGING_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      PARENT_TOKEN_PEPPER: ${{ secrets.PARENT_TOKEN_PEPPER }}
+      STAGING_ACCEPTANCE_RECIPIENT: ${{ secrets.EMAIL_SMOKE_RECIPIENT }}
+    steps:
+      - name: Checkout exact deployed acceptance harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Validate explicit staging gate and live release
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${CONFIRMATION}" == "STAGING-PARENT-LOGIN" ]]
+          [[ "${STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED}" == "true" ]]
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          [[ -n "${STAGING_ACCEPTANCE_RECIPIENT}" ]]
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.5.2
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked acceptance dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Run safe parent-login and control-center acceptance
+        env:
+          EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
+        run: >-
+          timeout --signal=TERM --kill-after=15s 12m
+          node scripts/staging/parent-login-acceptance.mjs
+
+      - name: Always remove all run-specific staging fixtures
+        if: always()
+        env:
+          CLEANUP_ONLY: "1"
+          EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
+        run: >-
+          timeout --signal=TERM --kill-after=15s 4m
+          node scripts/staging/parent-login-acceptance.mjs
+
+      - name: Verify cleanup and write closed evidence
+        env:
+          VERIFY_ONLY: "1"
+          EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
+        run: >-
+          timeout --signal=TERM --kill-after=15s 3m
+          node scripts/staging/parent-login-acceptance.mjs
+
+      - name: Validate PII- and credential-free evidence contract
+        env:
+          EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
+        run: |
+          set -Eeuo pipefail
+          jq -e --arg release_sha "${RELEASE_SHA}" '
+            keys == [
+              "cleanupComplete",
+              "codeConsumesLink",
+              "controlCenterLoaded",
+              "directGetCredentialFree",
+              "fixtureDigest",
+              "linkConsumesCode",
+              "linkReplayRejected",
+              "mailV2RegressionPassed",
+              "recipientFailureGlobalHealthHealthy",
+              "releaseSha",
+              "resendReusedChallenge",
+              "schemaVersion",
+              "smtpAcceptanceNotDelivered",
+              "staffCredentialExposureCount",
+              "supportAuthorizationPassed"
+            ]
+            and .schemaVersion == 1
+            and .releaseSha == $release_sha
+            and (.fixtureDigest | type == "string" and test("^[a-f0-9]{64}$"))
+            and .resendReusedChallenge == true
+            and .directGetCredentialFree == true
+            and .codeConsumesLink == true
+            and .linkConsumesCode == true
+            and .linkReplayRejected == true
+            and .supportAuthorizationPassed == true
+            and .staffCredentialExposureCount == 0
+            and .controlCenterLoaded == true
+            and .smtpAcceptanceNotDelivered == true
+            and .recipientFailureGlobalHealthHealthy == true
+            and .mailV2RegressionPassed == true
+            and .cleanupComplete == true
+          ' "${EVIDENCE_PATH}" >/dev/null
+
+      - name: Verify final public and internal staging health
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/deploy/check-http.mjs \
+            "${STAGING_BASE_URL}" staging "${RELEASE_SHA}" \
+            "${ARTIFACT_DIGEST}"
+          response="${RUNNER_TEMP}/parent-login-final-health.json"
+          trap 'rm -f "${response}"' EXIT
+          curl --fail --silent --show-error --max-time 30 \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --output "${response}" \
+            "${STAGING_BASE_URL}/api/internal/health"
+          jq -e '.status == "healthy"' "${response}" >/dev/null
+
+      - name: Create exact parent-login acceptance result
+        env:
+          EVIDENCE_PATH: ${{ runner.temp }}/parent-login-acceptance-evidence.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-parent-login.json
+        run: |
+          set -Eeuo pipefail
+          evidence_sha256="sha256:$(sha256sum "${EVIDENCE_PATH}" | cut -d ' ' -f 1)"
+          jq -n \
+            --arg release_sha "${RELEASE_SHA}" \
+            --arg artifact_digest "${ARTIFACT_DIGEST}" \
+            --argjson workflow_run_id "${GITHUB_RUN_ID}" \
+            --argjson workflow_run_attempt "${GITHUB_RUN_ATTEMPT}" \
+            --argjson staging_deploy_run_id "${STAGING_DEPLOY_RUN_ID}" \
+            --arg evidence_sha256 "${evidence_sha256}" \
+            --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              schema_version: 1,
+              result: "passed",
+              workflow_kind: "parent-login",
+              release_sha: $release_sha,
+              artifact_digest: $artifact_digest,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt,
+              staging_deploy_run_id: $staging_deploy_run_id,
+              evidence_sha256: $evidence_sha256,
+              created_at: $created_at
+            }' > "${RESULT_PATH}"
+          chmod 600 "${RESULT_PATH}"
+          jq -e --arg release_sha "${RELEASE_SHA}" \
+            --arg artifact_digest "${ARTIFACT_DIGEST}" '
+              keys == [
+                "artifact_digest", "created_at", "evidence_sha256",
+                "release_sha", "result", "schema_version",
+                "staging_deploy_run_id", "workflow_kind",
+                "workflow_run_attempt", "workflow_run_id"
+              ]
+              and .schema_version == 1
+              and .result == "passed"
+              and .workflow_kind == "parent-login"
+              and .release_sha == $release_sha
+              and .artifact_digest == $artifact_digest
+              and (.evidence_sha256 | test("^sha256:[a-f0-9]{64}$"))
+            ' "${RESULT_PATH}" >/dev/null
+
+      - name: Upload exact parent-login acceptance result
+        id: result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-result-parent-login-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/staging-result-parent-login.json
+            ${{ runner.temp }}/parent-login-acceptance-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create result-bound parent-login attestation
+        env:
+          ATTESTATION_PATH: ${{ runner.temp }}/staging-attestation-parent-login.json
+          RESULT_PATH: ${{ runner.temp }}/staging-result-parent-login.json
+          RESULT_ARTIFACT_ID: ${{ steps.result.outputs.artifact-id }}
+          UPLOADED_RESULT_DIGEST: ${{ steps.result.outputs.artifact-digest }}
+        run: |
+          set -Eeuo pipefail
+          result_sha256="sha256:$(sha256sum "${RESULT_PATH}" | cut -d ' ' -f 1)"
+          result_artifact_digest="${UPLOADED_RESULT_DIGEST}"
+          if [[ "${result_artifact_digest}" != sha256:* ]]; then
+            result_artifact_digest="sha256:${result_artifact_digest}"
+          fi
+          [[ "${RESULT_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${result_artifact_digest}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          jq -n \
+            --arg release_sha "${RELEASE_SHA}" \
+            --arg artifact_digest "${ARTIFACT_DIGEST}" \
+            --argjson workflow_run_id "${GITHUB_RUN_ID}" \
+            --argjson workflow_run_attempt "${GITHUB_RUN_ATTEMPT}" \
+            --argjson staging_deploy_run_id "${STAGING_DEPLOY_RUN_ID}" \
+            --argjson result_artifact_id "${RESULT_ARTIFACT_ID}" \
+            --arg result_artifact_digest "${result_artifact_digest}" \
+            --arg result_sha256 "${result_sha256}" \
+            --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              schema_version: 1,
+              result: "passed",
+              workflow_kind: "parent-login",
+              release_sha: $release_sha,
+              artifact_digest: $artifact_digest,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt,
+              staging_deploy_run_id: $staging_deploy_run_id,
+              result_artifact_id: $result_artifact_id,
+              result_artifact_digest: $result_artifact_digest,
+              result_sha256: $result_sha256,
+              created_at: $created_at
+            }' > "${ATTESTATION_PATH}"
+          chmod 600 "${ATTESTATION_PATH}"
+
+      - name: Upload exact parent-login attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-attestation-parent-login-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-attestation-parent-login.json
+          if-no-files-found: error
+          retention-days: 30

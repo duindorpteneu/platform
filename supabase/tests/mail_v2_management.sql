@@ -26,14 +26,14 @@ select is(
 select is(
   (select count(*) from app.mail_template_revisions
     where status = 'draft'),
-  19::bigint,
-  'ieder catalogusitem start met één veilige conceptrevisie'
+  18::bigint,
+  'alle overige catalogusitems starten met één veilige conceptrevisie'
 );
 select is(
   (select count(*) from app.mail_template_revisions
     where status = 'published'),
-  0::bigint,
-  'geen externe template wordt door de migratie stil gepubliceerd'
+  1::bigint,
+  'alleen de expliciet canonieke LOGIN_OTP-revisie is gepubliceerd'
 );
 select is(
   (select count(*) from app.mail_branding_revisions

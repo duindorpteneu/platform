@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { bulkEmailTemplateKeySchema, createEmailBulkResponseSchema, emailWorkspaceSchema, type BulkEmailTemplateKey, type ClaimedEmailJob, type EmailWorkspace } from "@/lib/email-contract";
+import { bulkEmailTemplateKeySchema, createEmailBulkResponseSchema, emailControlCenterProjectionSchema, emailProviderSnapshotSchema, emailWorkspaceSchema, type BulkEmailTemplateKey, type ClaimedEmailJob, type EmailDatabaseWorkspace } from "@/lib/email-contract";
 import { requireStaffRole } from "@/server/auth/staff";
+import { emailProviderCapabilities } from "@/server/email/provider";
 import { fictionalEmailPreviewValues, renderEmailTemplate, validateTemplateForPurpose } from "@/server/email/templates";
 import { getSupabaseServerClient } from "@/server/supabase/server";
 
@@ -16,20 +17,51 @@ export async function getEmailWorkspace() {
   }
   const parsed = emailWorkspaceSchema.safeParse(data);
   if (!parsed.success) throw new Error("EMAIL_WORKSPACE_RESPONSE_INVALID");
-  return { workspace: parsed.data, staff };
+  const controlCenterResult = await supabase.schema("app").rpc(
+    "get_email_control_center_v1",
+  );
+  if (controlCenterResult.error) {
+    if (controlCenterResult.error.code === "42501") {
+      throw new Error("STAFF_AUTHORIZATION_REQUIRED");
+    }
+    throw new Error("EMAIL_CONTROL_CENTER_QUERY_FAILED");
+  }
+  const controlCenter = emailControlCenterProjectionSchema.safeParse(
+    controlCenterResult.data,
+  );
+  if (!controlCenter.success) {
+    throw new Error("EMAIL_CONTROL_CENTER_RESPONSE_INVALID");
+  }
+  const provider = emailProviderSnapshotSchema.parse(
+    emailProviderCapabilities(),
+  );
+  const feedbackCapability = provider.feedbackCapability === "none"
+    ? controlCenter.data.feedbackCapability
+    : provider.feedbackCapability;
+  return {
+    workspace: {
+      ...parsed.data,
+      provider,
+      controlCenter: {
+        ...controlCenter.data,
+        feedbackCapability,
+      },
+    },
+    staff,
+  };
 }
 
-export function templateShortcodeNames(template: EmailWorkspace["templates"][number]) {
+export function templateShortcodeNames(template: EmailDatabaseWorkspace["templates"][number]) {
   return template.allowedShortcodes.map((shortcode) => shortcode.slice(2, -2));
 }
 
-export function renderFictionalTemplatePreview(workspace: EmailWorkspace, templateKey: BulkEmailTemplateKey) {
+export function renderFictionalTemplatePreview(workspace: EmailDatabaseWorkspace, templateKey: BulkEmailTemplateKey) {
   const template = workspace.templates.find((candidate) => candidate.key === templateKey && candidate.active);
   if (!template) throw new Error("EMAIL_TEMPLATE_NOT_ACTIVE");
   return renderEmailTemplate(template.subjectSource, template.bodySource, templateShortcodeNames(template), fictionalEmailPreviewValues());
 }
 
-export function assertEligibleBulkSelection(workspace: EmailWorkspace, templateKey: BulkEmailTemplateKey, orderIds: string[]) {
+export function assertEligibleBulkSelection(workspace: EmailDatabaseWorkspace, templateKey: BulkEmailTemplateKey, orderIds: string[]) {
   const selected = new Set(orderIds);
   const orders = workspace.orders.filter((order) => selected.has(order.orderId));
   if (orders.length !== orderIds.length) throw new Error("EMAIL_BULK_SELECTION_NOT_VISIBLE");

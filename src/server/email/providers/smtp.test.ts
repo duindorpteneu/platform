@@ -30,7 +30,7 @@ describe("VoetbalAssist SMTP-adapter", () => {
   });
 
   it.each([421, 450, 451, 452])("maakt SMTP %i retrybaar", (responseCode) => {
-    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode }))).toMatchObject({ delivered: false, outcome: "retry", providerCode: String(responseCode) });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode }))).toMatchObject({ delivered: false, outcome: "retry", deliveryState: "temporary_failure", providerCode: String(responseCode) });
   });
 
   it("maakt auth failure definitief", () => {
@@ -38,17 +38,37 @@ describe("VoetbalAssist SMTP-adapter", () => {
   });
 
   it("maakt 5xx-reject definitief", () => {
-    expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode: 550 }))).toMatchObject({ reason: "provider_rejected", outcome: "failed" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), {
+      responseCode: 550,
+      response: "550 5.1.1 Mailbox bestaat niet",
+    }))).toMatchObject({
+      reason: "provider_rejected",
+      outcome: "failed",
+      deliveryState: "permanent_rejection",
+      providerCode: "550",
+      enhancedStatusCode: "5.1.1",
+      recipientFailure: true,
+    });
   });
 
   it("onderscheidt pre-DATA timeout van onzekere DATA-disconnect", () => {
-    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ETIMEDOUT", command: "CONN" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
-    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "EHLO" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry" });
-    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "DATA" }))).toMatchObject({ reason: "delivery_uncertain", outcome: "delivery_uncertain" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ETIMEDOUT", command: "CONN" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry", deliveryState: "temporary_failure" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "EHLO" }))).toMatchObject({ reason: "provider_rejected", outcome: "retry", deliveryState: "temporary_failure" });
+    expect(classifySmtpError(Object.assign(new Error("safe"), { code: "ECONNRESET", command: "DATA" }))).toMatchObject({ reason: "delivery_uncertain", outcome: "delivery_uncertain", deliveryState: "delivery_uncertain" });
   });
 
-  it("slaat messageId alleen na SMTP-acceptatie op", async () => {
-    mocks.sendMail.mockResolvedValueOnce({ messageId: "smtp-message-1", accepted: ["accepted"] });
-    await expect(sendSmtpEmail(message)).resolves.toEqual({ delivered: true, providerMessageId: "smtp-message-1" });
+  it("noemt SMTP-acceptatie expliciet geen aflevering", async () => {
+    mocks.sendMail.mockResolvedValueOnce({
+      messageId: "smtp-message-1",
+      accepted: ["accepted"],
+      response: "250 2.0.0 Message accepted",
+    });
+    await expect(sendSmtpEmail(message)).resolves.toEqual({
+      delivered: true,
+      deliveryState: "provider_accepted",
+      providerMessageId: "smtp-message-1",
+      providerCode: "250",
+      enhancedStatusCode: "2.0.0",
+    });
   });
 });

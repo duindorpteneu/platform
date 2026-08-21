@@ -4,23 +4,24 @@ const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   callbacks: [] as Array<() => unknown>,
   admin: vi.fn(),
-  legacyRpc: vi.fn(),
   featureEnabled: vi.fn(),
   rateAllowed: vi.fn(),
   prepare: vi.fn(),
-  authorize: vi.fn(),
-  complete: vi.fn(),
-  getLegacyTemplate: vi.fn(),
-  renderLegacy: vi.fn(),
-  renderV2: vi.fn(),
-  sendLegacy: vi.fn(),
-  sendV2: vi.fn(),
+  deliver: vi.fn(),
+  challengeCookie: undefined as string | undefined,
 }));
 
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return { ...original, after: mocks.after };
 });
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: () => mocks.challengeCookie
+      ? { value: mocks.challengeCookie }
+      : undefined,
+  }),
+}));
 vi.mock("@/lib/env", () => ({
   getServerEnv: () => ({
     APP_BASE_URL: "https://tenue.example",
@@ -38,35 +39,29 @@ vi.mock("@/server/auth/rate-limit", () => ({
   requestRateKey: () => "safe-rate-key",
 }));
 vi.mock("@/server/email/otp", () => ({
-  prepareParentOtpV2: mocks.prepare,
-  authorizeParentOtpV2: mocks.authorize,
-  completeParentOtpV2: mocks.complete,
-  getParentOtpEmailTemplate: mocks.getLegacyTemplate,
-  renderParentOtpEmail: mocks.renderLegacy,
-  renderParentOtpV2: mocks.renderV2,
+  prepareParentOtpV3: mocks.prepare,
 }));
-vi.mock("@/server/email/provider", () => ({
-  sendParentOtpEmail: mocks.sendLegacy,
-  sendParentOtpV2Email: mocks.sendV2,
+vi.mock("@/server/email/otp-delivery", () => ({
+  deliverPreparedParentOtpV3: mocks.deliver,
 }));
 
 import { POST } from "./route";
+import {
+  sealParentChallengeContext,
+  type ParentChallengeContext,
+} from "@/server/auth/parent";
 
 const neutralBody = {
   message: "Als dit e-mailadres bij ons bekend is, is een code verzonden.",
 };
-const deliveryAttemptId = "11111111-1111-4111-8111-111111111111";
-const message = {
-  subject: "Uw verificatiecode",
-  preheader: "Tien minuten geldig",
-  text: "Eenmalige code",
-  html: "<p>Eenmalige code</p>",
-  fromName: "Kledingcommissie Duindorp SV",
-  fromEmail: "kleding@duindorpsv.nl",
-  replyToEmail: "kleding@duindorpsv.nl",
-};
+const challengeId = "11111111-1111-4111-8111-111111111111";
+const deliveryAttemptId = "22222222-2222-4222-8222-222222222222";
+const expiresAt = "2099-08-21T03:00:00.000Z";
+const cooldownUntil = "2099-08-21T02:51:30.000Z";
 
-function request(email = "ouder@example.nl") {
+function request(body: Record<string, unknown> = {
+  email: "ouder@example.nl",
+}) {
   return new Request(
     "https://tenue.example/api/parent-auth/request-code",
     {
@@ -78,7 +73,7 @@ function request(email = "ouder@example.nl") {
         "sec-fetch-site": "same-origin",
         "x-duindorp-csrf": "same-origin",
       },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(body),
     },
   );
 }
@@ -86,123 +81,113 @@ function request(email = "ouder@example.nl") {
 describe("POST /api/parent-auth/request-code", () => {
   beforeEach(() => {
     process.env.PARENT_TOKEN_PEPPER = "p".repeat(32);
+    mocks.challengeCookie = undefined;
     mocks.callbacks.length = 0;
     mocks.after.mockReset().mockImplementation(
-      (callback: () => unknown) => {
-        mocks.callbacks.push(callback);
-      },
+      (callback: () => unknown) => mocks.callbacks.push(callback),
     );
-    mocks.legacyRpc.mockReset().mockResolvedValue({
-      data: "22222222-2222-4222-8222-222222222222",
-      error: null,
-    });
-    const appClient = { rpc: vi.fn() };
     mocks.admin.mockReset().mockReturnValue({
-      schema: () => appClient,
-      rpc: mocks.legacyRpc,
+      schema: () => ({ rpc: vi.fn() }),
     });
     mocks.featureEnabled.mockReset().mockResolvedValue(true);
     mocks.rateAllowed.mockReset().mockResolvedValue(true);
     mocks.prepare.mockReset().mockResolvedValue({
       status: "prepared",
-      deliveryAttemptId,
-    });
-    mocks.authorize.mockReset().mockResolvedValue(true);
-    mocks.complete.mockReset().mockResolvedValue({
-      status: "completed",
-      outcome: "accepted",
+      challengeId,
+      expiresAt,
+      cooldownUntil,
       reused: false,
+      deliveryAttemptId,
+      expiresInMinutes: 10,
     });
-    mocks.getLegacyTemplate.mockReset().mockResolvedValue({});
-    mocks.renderLegacy.mockReset().mockReturnValue(message);
-    mocks.renderV2.mockReset().mockReturnValue(message);
-    mocks.sendLegacy.mockReset().mockResolvedValue({ delivered: true });
-    mocks.sendV2.mockReset().mockResolvedValue({
-      delivered: true,
-      providerMessageId: "otp-http-message-1",
+    mocks.deliver.mockReset().mockResolvedValue({
+      outcome: "provider_accepted",
     });
   });
 
-  it("antwoordt neutraal vóór de providercall en levert daarna attempt-gebonden", async () => {
+  it("antwoordt neutraal en levert daarna dezelfde prepared challenge", async () => {
     const response = await POST(request());
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual(neutralBody);
     expect(response.headers.get("set-cookie")).toContain(
       "duindorp_parent_challenge=",
     );
-    expect(mocks.sendV2).not.toHaveBeenCalled();
-    expect(mocks.callbacks).toHaveLength(1);
-
+    expect(mocks.prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      "ouder@example.nl",
+      expect.any(String),
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+      false,
+    );
+    expect(mocks.deliver).not.toHaveBeenCalled();
     await mocks.callbacks[0]();
-    expect(mocks.authorize).toHaveBeenCalledWith(
+    expect(mocks.deliver).toHaveBeenCalledWith(
       expect.anything(),
-      deliveryAttemptId,
-    );
-    expect(mocks.sendV2).toHaveBeenCalledWith({
-      deliveryAttemptId,
-      recipientEmail: "ouder@example.nl",
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-      fromName: message.fromName,
-      fromEmail: message.fromEmail,
-      replyToEmail: message.replyToEmail,
-    });
-    expect(mocks.sendV2.mock.calls[0]?.[0]).not.toHaveProperty(
-      "preheader",
-    );
-    expect(mocks.complete).toHaveBeenCalledWith(
-      expect.anything(),
-      deliveryAttemptId,
-      {
-        outcome: "accepted",
-        providerMessageId: "otp-http-message-1",
-      },
+      expect.objectContaining({ challengeId, deliveryAttemptId }),
+      "ouder@example.nl",
+      "https://tenue.example",
     );
   });
 
-  it.each(["ineligible", "blocked"] as const)(
+  it.each(["cooldown", "rate_limited"] as const)(
+    "houdt bij %s dezelfde challenge-context zonder een mail te sturen",
+    async (status) => {
+      mocks.prepare.mockResolvedValueOnce({
+        status,
+        challengeId,
+        expiresAt,
+        cooldownUntil,
+      });
+      const response = await POST(request());
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual(neutralBody);
+      expect(mocks.deliver).not.toHaveBeenCalled();
+      expect(mocks.callbacks).toHaveLength(0);
+    },
+  );
+
+  it.each(["ineligible", "blocked", "unavailable"] as const)(
     "geeft voor interne status %s exact hetzelfde neutrale antwoord",
     async (status) => {
       mocks.prepare.mockResolvedValueOnce({ status });
       const response = await POST(request());
       expect(response.status).toBe(202);
       expect(await response.json()).toEqual(neutralBody);
-      expect(mocks.sendV2).not.toHaveBeenCalled();
-      expect(mocks.sendLegacy).not.toHaveBeenCalled();
-      await mocks.callbacks[0]();
-      expect(mocks.sendV2).not.toHaveBeenCalled();
-      expect(mocks.sendLegacy).not.toHaveBeenCalled();
+      expect(mocks.deliver).not.toHaveBeenCalled();
     },
   );
 
-  it("gebruikt legacy uitsluitend vóór het v2-cutover en eveneens na de respons", async () => {
-    mocks.prepare.mockResolvedValueOnce({ status: "unavailable" });
-    const response = await POST(request());
+  it("resendt via de opaque cookie zonder het volledige adres in de body", async () => {
+    const context: ParentChallengeContext = {
+      version: 3,
+      email: "ouder@example.nl",
+      challengeId,
+      expiresAt,
+      cooldownUntil,
+    };
+    mocks.challengeCookie = sealParentChallengeContext(context);
+    mocks.prepare.mockResolvedValueOnce({
+      status: "prepared",
+      ...context,
+      reused: true,
+      deliveryAttemptId,
+      expiresInMinutes: 10,
+    });
+    const response = await POST(request({ resend: true }));
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual(neutralBody);
-    expect(mocks.sendLegacy).not.toHaveBeenCalled();
-    await mocks.callbacks[0]();
-    expect(mocks.legacyRpc).toHaveBeenCalledWith(
-      "create_parent_otp",
-      expect.objectContaining({
-        p_email: "ouder@example.nl",
-      }),
-    );
-    expect(mocks.sendLegacy).toHaveBeenCalledWith(
+    expect(mocks.prepare).toHaveBeenCalledWith(
+      expect.anything(),
       "ouder@example.nl",
-      message,
+      expect.any(String),
+      expect.any(String),
+      false,
     );
   });
 
-  it("redigeert ook een voorbereiding- of databasefout naar dezelfde 202", async () => {
-    mocks.prepare.mockRejectedValueOnce(
-      new Error("database details of persoonsgegevens"),
-    );
+  it("redigeert ook een voorbereidingsfout naar dezelfde 202", async () => {
+    mocks.prepare.mockRejectedValueOnce(new Error("database details"));
     const response = await POST(request());
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual(neutralBody);
-    expect(mocks.sendV2).not.toHaveBeenCalled();
-    expect(mocks.sendLegacy).not.toHaveBeenCalled();
   });
 });

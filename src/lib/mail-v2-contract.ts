@@ -47,6 +47,7 @@ export const MAIL_SHORTCODE_KEYS = [
 export const MAIL_PROTECTED_NODE_KEYS = [
   "portal_route",
   "otp_code",
+  "otp_direct_login",
   "otp_validity",
   "otp_warning",
   "size_table",
@@ -319,7 +320,12 @@ const paymentSummaryLineSchema = z.object({
 export const mailProtectedValueSchemas = {
   portal_route: protectedActionSchema,
   otp_code: z.object({ code: z.string().regex(/^\d{6}$/u) }).strict(),
-  otp_validity: z.object({ minutes: z.number().int().min(1).max(30) }).strict(),
+  otp_direct_login: protectedActionSchema,
+  otp_validity: z.object({
+    minutes: z.number().int().min(1).max(30),
+    requestedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+  }).strict(),
   otp_warning: z.object({}).strict(),
   size_table: protectedTableSchema,
   size_action: protectedActionSchema,
@@ -360,8 +366,8 @@ export const mailTemplateSourceSchema = z.object({
   preheaderSource: z.string().trim().min(3).max(240).refine((value) => !/[\r\n<>]/u.test(value)),
   bodyTipTap: mailTipTapDocumentSchema,
   allowedShortcodes: z.array(mailShortcodeKeySchema).min(1).max(32),
-  allowedProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(16),
-  requiredProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(16),
+  allowedProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(32),
+  requiredProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(32),
 }).strict();
 export type MailTemplateSource = z.infer<typeof mailTemplateSourceSchema>;
 
@@ -397,6 +403,36 @@ export type ParentOtpV2Preparation = z.infer<
 >;
 export type PreparedParentOtpV2 = Extract<
   ParentOtpV2Preparation,
+  { status: "prepared" }
+>;
+
+export const parentOtpV3PreparationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("blocked") }).strict(),
+  z.object({ status: z.literal("unavailable") }).strict(),
+  z.object({ status: z.literal("ineligible") }).strict(),
+  z.object({
+    status: z.enum(["cooldown", "rate_limited"]),
+    challengeId: uuid,
+    expiresAt: timestamp,
+    cooldownUntil: timestamp,
+  }).strict(),
+  z.object({
+    status: z.literal("prepared"),
+    challengeId: uuid,
+    expiresAt: timestamp,
+    cooldownUntil: timestamp,
+    reused: z.boolean(),
+    deliveryAttemptId: uuid,
+    expiresInMinutes: z.number().int().min(1).max(10),
+    template: parentOtpTemplateSnapshotSchema,
+    branding: parentOtpBrandingSnapshotSchema,
+  }).strict(),
+]);
+export type ParentOtpV3Preparation = z.infer<
+  typeof parentOtpV3PreparationSchema
+>;
+export type PreparedParentOtpV3 = Extract<
+  ParentOtpV3Preparation,
   { status: "prepared" }
 >;
 
@@ -447,8 +483,8 @@ const mailTemplateWorkspaceItemSchema = z.object({
   active: z.boolean(),
   allowedShortcodes: z.array(mailShortcodeKeySchema).min(1).max(32),
   requiredShortcodes: z.array(mailShortcodeKeySchema).max(32),
-  allowedProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(16),
-  requiredProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(16),
+  allowedProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(32),
+  requiredProtectedNodes: z.array(mailProtectedNodeKeySchema).min(1).max(32),
   draft: mailTemplateRevisionSchema.extend({ status: z.literal("draft") }).nullable(),
   published: mailTemplateRevisionSchema.extend({ status: z.literal("published") }).nullable(),
 }).strict();

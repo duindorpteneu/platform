@@ -1,7 +1,7 @@
 # Omgevingsmatrix
 
 Status: vereiste configuratie tot en met stagingverificatie
-Canon: MVP v1.0, hoofdstuk 20, plus goedgekeurd addendum v1.1
+Canon: MVP v1.0, hoofdstuk 20, plus goedgekeurde addenda v1.1 en v1.2
 
 ## Harde scheiding
 
@@ -50,6 +50,11 @@ Staging en production delen nooit projecten, databases, Auth-users, service-role
 | `MOLLIE_API_KEY` | Hoog geheim, server-only | Leeg | Testkey in staging; uitsluitend voor de operationeel publieke cluborigin mag dezelfde stagingruntime een afzonderlijke live key gebruiken; production gebruikt een eigen live key |
 | `MOLLIE_PROFILE_ID` | Beschermde providerbinding | Leeg | Protected secret of variable volgens workflow; actueel als secret aanwezig |
 | `EMAIL_ENABLED` | Harde runtime-safety switch | `false` | Alleen `true` na de bijbehorende gate; database-instelling moet daarnaast aan staan |
+| `EMAIL_PROVIDER` | Omgevingsgebonden providerkeuze | Mock/lokale opvang | Exact `smtp` of `sendgrid`; wijziging vereist nieuwe provider- en stagingacceptatie |
+| `STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED` | Acceptatie-only safety switch | `false` | Uitsluitend staging `true`; production ontbreekt of is `false` |
+| `EMAIL_SMOKE_RECIPIENT` | PII, acceptatie-only secret | Leeg | Alleen staging; vooraf geautoriseerde veilige ontvanger voor SMTP/OTP-acceptatie, nooit in bewijs of output |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | Beschermde providerconfiguratie | Leeg | Alleen bij `EMAIL_PROVIDER=smtp`; exact de beheerde VoetbalAssist-host en TLS-modus |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | Hoog geheim, server-only | Leeg | Uniek in staging/production-secretstore; nooit beschikbaar voor UI, logs of artifacts |
 | `SENDGRID_API_KEY` | Hoog geheim, server-only | Leeg | Unieke minimaal bevoegde Mail Send-key |
 | `SENDGRID_API_KEY_FINGERPRINT` | Niet-geheime runtimebinding | Leeg | SHA-256 van exact de omgevingsspecifieke Mail Send-key; de applicatie vergelijkt alleen in constant-time en publiceert de waarde niet |
 | `SENDGRID_ADMIN_API_KEY` | Hoog geheim, acceptatie-only | Leeg | Alleen staging; afzonderlijke minimaal bevoegde key voor webhookconfiguratie |
@@ -154,6 +159,8 @@ Gebruik daarna uitsluitend fictieve `example.invalid`-leden. Maak ten minste Ã©Ã
 - [ ] Alle stagingsecrets zijn uniek en staan alleen in de secretstore.
 - [ ] Mollie gebruikt testmode; een live key is niet aanwezig.
 - [ ] SendGrid gebruikt de expliciet goedgekeurde stagingconfiguratie.
+- [ ] De actieve e-mailprovider en feedbackcapability zijn expliciet; SMTP-acceptatie wordt niet als aflevering gepresenteerd.
+- [ ] Parent-loginacceptatie is alleen op staging geactiveerd en gebruikt uitsluitend de vooraf geautoriseerde `EMAIL_SMOKE_RECIPIENT`.
 - [ ] Providers starten uitgeschakeld.
 - [ ] Database bevat alleen fictieve/geanonimiseerde records.
 - [ ] Health, scheduler en alerts wijzen naar staging.

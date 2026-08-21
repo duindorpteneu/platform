@@ -2,12 +2,62 @@ import { describe, expect, it } from "vitest";
 import {
   claimedEmailJobSchema,
   emailBulkRequestSchema,
+  emailControlCenterProjectionSchema,
+  emailJobOperationalState,
   emailTemplateKeySchema,
   emailWorkspaceSchema,
   updateEmailTemplateRequestSchema,
 } from "@/lib/email-contract";
 
 describe("email contracts", () => {
+  it("valideert recipient-health zonder een volledig adres voor kledingcommissie", () => {
+    const recipient = {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: null,
+      emailMasked: "o***@example.nl",
+      healthState: "accepted",
+      suspiciousDomain: false,
+      suppressionReason: null,
+      lastSendAt: "2026-08-21T12:00:00.000Z",
+      lastProviderAcceptanceAt: "2026-08-21T12:00:01.000Z",
+      lastProvenDeliveryAt: null,
+      lastFailureAt: null,
+      lastProviderFeedbackAt: "2026-08-21T12:00:01.000Z",
+      temporaryFailureCount: 0,
+      permanentRejectionCount: 0,
+      hardBounceCount: 0,
+      dropCount: 0,
+      deliveryUncertainCount: 0,
+      lastOtpRequestedAt: "2026-08-21T11:59:55.000Z",
+      lastOtpOutcome: "accepted",
+      otpExpiresAt: "2026-08-21T12:09:55.000Z",
+      linkedChildren: [{
+        memberId: "22222222-2222-4222-8222-222222222222",
+        memberName: "Sophie de Bruin",
+        team: "JO11-1",
+      }],
+    };
+    expect(emailControlCenterProjectionSchema.safeParse({
+      feedbackCapability: "smtp_sync_only",
+      recipients: [recipient],
+    }).success).toBe(true);
+    expect(emailControlCenterProjectionSchema.safeParse({
+      feedbackCapability: "smtp_sync_only",
+      recipients: [{
+        ...recipient,
+        healthState: "suppressed",
+        suppressionReason: null,
+      }],
+    }).success).toBe(false);
+    expect(emailControlCenterProjectionSchema.safeParse({
+      feedbackCapability: "smtp_sync_only",
+      recipients: [{
+        ...recipient,
+        email: "not-an-email",
+      }],
+    }).success).toBe(false);
+  });
+
   it("contains the durable portal invitation beside the six legacy templates", () => {
     expect(emailTemplateKeySchema.options).toEqual([
       "verification_code", "portal_access_invite", "payment_request", "payment_received", "ready_for_pickup", "payment_reminder", "qr_code_resent",
@@ -187,7 +237,21 @@ describe("email contracts", () => {
       orders: [],
     };
 
-    expect(emailWorkspaceSchema.safeParse(workspace).success).toBe(true);
+    const parsed = emailWorkspaceSchema.safeParse(workspace);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw new Error("workspace fixture invalid");
+    expect(emailJobOperationalState(parsed.data.jobs[0])).toBe(
+      "permanent_rejection",
+    );
+    expect(emailJobOperationalState({
+      ...parsed.data.jobs[0],
+      status: "sent",
+    })).toBe("provider_accepted");
+    expect(emailJobOperationalState({
+      ...parsed.data.jobs[0],
+      status: "sent",
+      deliveryStatus: "delivered",
+    })).toBe("delivered");
     expect(emailWorkspaceSchema.safeParse({
       ...workspace,
       jobs: [{ ...workspace.jobs[0], recipientEmail: "ouder@example.invalid" }],
