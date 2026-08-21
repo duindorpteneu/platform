@@ -116,7 +116,7 @@ describe("deliverPreparedParentOtpV3", () => {
     );
   });
 
-  it("valt bij onzekere provideracknowledgement terug op het v1-ledgerpad", async () => {
+  it("bewaart het bekende providerresultaat bij een onzekere databaseacknowledgement", async () => {
     mocks.send.mockResolvedValue({
       delivered: true,
       providerMessageId: "smtp-accepted-1",
@@ -132,16 +132,24 @@ describe("deliverPreparedParentOtpV3", () => {
       preparation,
       "ouder@example.nl",
       "https://tenue.example",
-    )).resolves.toEqual({ outcome: "delivery_uncertain" });
+    )).resolves.toEqual({ outcome: "provider_accepted" });
 
     expect(mocks.complete).toHaveBeenCalledTimes(2);
-    expect(mocks.complete.mock.calls[1]).toEqual([
+    expect(mocks.complete.mock.calls[0]).toEqual([
       appClient,
       preparation.deliveryAttemptId,
       {
-        outcome: "delivery_uncertain",
-        errorCode: "delivery_completion_uncertain",
+        outcome: "accepted",
+        providerMessageId: "smtp-accepted-1",
+      },
+      {
+        provider: "smtp",
+        providerState: "provider_accepted",
+        responseCode: undefined,
+        enhancedStatusCode: undefined,
+        recipientFailure: false,
       },
     ]);
+    expect(mocks.complete.mock.calls[1]).toEqual(mocks.complete.mock.calls[0]);
   });
 });

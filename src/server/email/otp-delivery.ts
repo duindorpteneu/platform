@@ -75,45 +75,66 @@ export async function deliverPreparedParentOtpV3(
       fromEmail: message.fromEmail,
       replyToEmail: message.replyToEmail,
     });
-    await completeParentOtpV2(
-      appClient,
-      preparation.deliveryAttemptId,
-      delivery.delivered
-        ? {
-            outcome: "accepted",
-            providerMessageId: delivery.providerMessageId,
-          }
-        : { outcome: delivery.reason, errorCode: delivery.reason },
-      provider ? {
-        provider,
-        providerState: delivery.delivered
-          ? "provider_accepted"
-          : delivery.deliveryState ?? (
-              delivery.reason === "delivery_uncertain"
-                ? "delivery_uncertain"
-                : delivery.reason === "configuration_error"
-                  ? "configuration_error"
-                  : delivery.reason === "disabled"
-                    ? "disabled"
-                    : delivery.outcome === "retry"
-                      ? "temporary_failure"
-                      : "permanent_rejection"
-            ),
-        responseCode: delivery.providerCode,
-        enhancedStatusCode: delivery.enhancedStatusCode,
-        recipientFailure: delivery.delivered
-          ? false
-          : delivery.recipientFailure ?? false,
-      } : undefined,
-    );
+    const completion = delivery.delivered
+      ? {
+          outcome: "accepted" as const,
+          providerMessageId: delivery.providerMessageId,
+        }
+      : {
+          outcome: delivery.reason,
+          errorCode: delivery.reason,
+        };
+    const evidence = provider ? {
+      provider,
+      providerState: delivery.delivered
+        ? "provider_accepted" as const
+        : delivery.deliveryState ?? (
+            delivery.reason === "delivery_uncertain"
+              ? "delivery_uncertain" as const
+              : delivery.reason === "configuration_error"
+                ? "configuration_error" as const
+                : delivery.reason === "disabled"
+                  ? "disabled" as const
+                  : delivery.outcome === "retry"
+                    ? "temporary_failure" as const
+                    : "permanent_rejection" as const
+          ),
+      responseCode: delivery.providerCode,
+      enhancedStatusCode: delivery.enhancedStatusCode,
+      recipientFailure: delivery.delivered
+        ? false
+        : delivery.recipientFailure ?? false,
+    } : undefined;
+    try {
+      await completeParentOtpV2(
+        appClient,
+        preparation.deliveryAttemptId,
+        completion,
+        evidence,
+      );
+    } catch {
+      // A response can be lost after the exact provider result committed. An
+      // idempotent retry preserves that known result; it must never be
+      // downgraded to delivery_uncertain.
+      try {
+        await completeParentOtpV2(
+          appClient,
+          preparation.deliveryAttemptId,
+          completion,
+          evidence,
+        );
+      } catch {
+        // Operational health keeps an uncommitted attempt fail-closed.
+      }
+    }
     return {
       outcome: delivery.delivered ? "provider_accepted" : delivery.reason,
     };
   } catch {
-    // A provider call or its acknowledgement can fail after the immutable
-    // attempt is prepared. Preserve that uncertainty explicitly so the
-    // ledger never remains permanently open. A conflicting already-recorded
-    // outcome is safe and deliberately left unchanged.
+    // An unexpected failure before any provider result can happen after the
+    // immutable attempt is prepared. Preserve that uncertainty explicitly.
+    // Known provider results are handled and retried above and never enter
+    // this downgrade path.
     try {
       await completeParentOtpV2(appClient, preparation.deliveryAttemptId, {
         outcome: "delivery_uncertain",
