@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
@@ -129,6 +130,39 @@ describe("POST /api/parent-auth/request-code", () => {
       "ouder@example.nl",
       "https://tenue.example",
     );
+  });
+
+  it("gebruikt alleen een geldig ondertekend stagingvoorstel", async () => {
+    const fixtureDigest = "a".repeat(64);
+    const proof = createHmac("sha256", "p".repeat(32)).update(
+      `parent-login-staging-challenge:v1\0${fixtureDigest}\0${challengeId}`,
+      "utf8",
+    ).digest("hex");
+    const original = request();
+    const signed = new Request(original, {
+      headers: {
+        ...Object.fromEntries(original.headers),
+        "x-duindorp-staging-challenge-id": challengeId,
+        "x-duindorp-staging-challenge-proof": proof,
+        "x-duindorp-staging-fixture-digest": fixtureDigest,
+      },
+    });
+    process.env.APP_ENVIRONMENT = "staging";
+    process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED = "true";
+    try {
+      await POST(signed);
+      expect(mocks.prepare).toHaveBeenCalledWith(
+        expect.anything(),
+        "ouder@example.nl",
+        challengeId,
+        expect.stringMatching(/^[0-9a-f]{64}$/u),
+        false,
+        null,
+      );
+    } finally {
+      delete process.env.APP_ENVIRONMENT;
+      delete process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED;
+    }
   });
 
   it.each(["cooldown", "rate_limited"] as const)(

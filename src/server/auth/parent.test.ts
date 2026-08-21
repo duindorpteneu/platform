@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import {
   createNeutralParentChallengeContext,
   deriveParentCode,
@@ -13,6 +14,8 @@ import {
   parentCodeSchema,
   parentEmailSchema,
   sealParentChallengeContext,
+  stagingAcceptanceChallengeId,
+  stagingAcceptanceSessionCorrelation,
   verifyParentDirectCredential,
 } from "@/server/auth/parent";
 
@@ -25,6 +28,8 @@ describe("parent authentication boundary", () => {
   });
   afterEach(() => {
     delete process.env.PARENT_TOKEN_PEPPER;
+    delete process.env.APP_ENVIRONMENT;
+    delete process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED;
   });
 
   it("normalizes and masks parent email addresses", () => {
@@ -91,5 +96,64 @@ describe("parent authentication boundary", () => {
     expect(PARENT_SESSION_DATABASE_MAX_AGE_SECONDS).toBe(
       PARENT_SESSION_COOKIE_MAX_AGE_SECONDS - 5 * 60,
     );
+  });
+
+  it("accepts signed challenge ownership only behind the staging gate", () => {
+    const fixtureDigest = "a".repeat(64);
+    const proof = createHmac(
+      "sha256",
+      process.env.PARENT_TOKEN_PEPPER!,
+    ).update(
+      `parent-login-staging-challenge:v1\0${fixtureDigest}\0${challengeId}`,
+      "utf8",
+    ).digest("hex");
+    const request = new Request("https://tenue.example/login", {
+      headers: {
+        "x-duindorp-staging-challenge-id": challengeId,
+        "x-duindorp-staging-challenge-proof": proof,
+        "x-duindorp-staging-fixture-digest": fixtureDigest,
+      },
+    });
+    expect(stagingAcceptanceChallengeId(request)).toBeNull();
+    process.env.APP_ENVIRONMENT = "staging";
+    process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED = "true";
+    expect(stagingAcceptanceChallengeId(request)).toBe(challengeId);
+    expect(stagingAcceptanceChallengeId(new Request(request, {
+      headers: { ...Object.fromEntries(request.headers),
+        "x-duindorp-staging-challenge-proof": "b".repeat(64) },
+    }))).toBeNull();
+    process.env.APP_ENVIRONMENT = "production";
+    expect(stagingAcceptanceChallengeId(request)).toBeNull();
+  });
+
+  it("derives a signed staging-only session correlation", () => {
+    const fixtureDigest = "c".repeat(64);
+    const correlationId = "33333333-3333-4333-8333-333333333333";
+    const secret = process.env.PARENT_TOKEN_PEPPER!;
+    const proof = createHmac("sha256", secret).update(
+      `parent-login-staging-session:v1\0${fixtureDigest}\0${correlationId}`,
+      "utf8",
+    ).digest("hex");
+    const request = new Request("https://tenue.example/login", {
+      headers: {
+        "x-duindorp-staging-fixture-digest": fixtureDigest,
+        "x-duindorp-staging-session-id": correlationId,
+        "x-duindorp-staging-session-proof": proof,
+      },
+    });
+    process.env.APP_ENVIRONMENT = "staging";
+    process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED = "true";
+    expect(stagingAcceptanceSessionCorrelation(request)).toBe(
+      createHmac("sha256", secret).update(
+        `parent-login-staging-session-correlation:v1\0${fixtureDigest}\0${correlationId}`,
+        "utf8",
+      ).digest("hex"),
+    );
+    expect(stagingAcceptanceSessionCorrelation(new Request(request, {
+      headers: {
+        ...Object.fromEntries(request.headers),
+        "x-duindorp-staging-session-proof": "d".repeat(64),
+      },
+    }))).toBeNull();
   });
 });

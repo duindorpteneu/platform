@@ -222,6 +222,7 @@ jobs:
           MOLLIE_ENABLED: ${{ vars.MOLLIE_ENABLED || 'false' }}
           EMAIL_ENABLED: ${{ vars.EMAIL_ENABLED || 'false' }}
           EMAIL_BULK_ENABLED: ${{ vars.EMAIL_BULK_ENABLED || 'false' }}
+          STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED: ${{ vars.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED || 'false' }}
           EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}
           SMTP_HOST: ${{ vars.SMTP_HOST || 'mail.voetbalassist.nl' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}

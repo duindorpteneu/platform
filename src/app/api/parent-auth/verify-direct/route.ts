@@ -8,6 +8,7 @@ import {
   parentSessionExpiresAt,
   PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
   parentDirectCredentialInputSchema,
+  stagingAcceptanceSessionCorrelation,
   verifyParentDirectCredential,
 } from "@/server/auth/parent";
 import {
@@ -83,13 +84,15 @@ export async function POST(request: Request) {
 
   const sessionToken = generateParentSessionToken();
   const { data, error } = await admin.rpc(
-    "consume_parent_login_challenge_v3",
+    "consume_parent_login_challenge_v4",
     {
       p_challenge_id: challengeId,
       p_credential_kind: "direct",
       p_code_hash: null,
       p_session_token_hash: hashParentSecret(sessionToken),
       p_session_expires_at: parentSessionExpiresAt(),
+      p_acceptance_correlation_hash:
+        stagingAcceptanceSessionCorrelation(request),
     },
   );
   const result = consumeResultSchema.safeParse(data);

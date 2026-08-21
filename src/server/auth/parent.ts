@@ -71,6 +71,56 @@ export function hashParentSecret(value: string) {
   return createHmac("sha256", pepper()).update(value).digest("hex");
 }
 
+export function stagingAcceptanceChallengeId(request: Request) {
+  if (process.env.APP_ENVIRONMENT !== "staging"
+    || process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED !== "true") {
+    return null;
+  }
+  const challengeId = request.headers.get("x-duindorp-staging-challenge-id") ?? "";
+  const fixtureDigest = request.headers.get("x-duindorp-staging-fixture-digest") ?? "";
+  const proof = request.headers.get("x-duindorp-staging-challenge-proof") ?? "";
+  if (!uuidSchema.safeParse(challengeId).success
+    || !/^[a-f0-9]{64}$/u.test(fixtureDigest)
+    || !/^[a-f0-9]{64}$/u.test(proof)) {
+    return null;
+  }
+  const expected = createHmac("sha256", pepper()).update(
+    `parent-login-staging-challenge:v1\0${fixtureDigest}\0${challengeId}`,
+    "utf8",
+  ).digest();
+  const supplied = Buffer.from(proof, "hex");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected)
+    ? challengeId
+    : null;
+}
+
+export function stagingAcceptanceSessionCorrelation(request: Request) {
+  if (process.env.APP_ENVIRONMENT !== "staging"
+    || process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED !== "true") {
+    return null;
+  }
+  const correlationId = request.headers.get("x-duindorp-staging-session-id") ?? "";
+  const fixtureDigest = request.headers.get("x-duindorp-staging-fixture-digest") ?? "";
+  const proof = request.headers.get("x-duindorp-staging-session-proof") ?? "";
+  if (!uuidSchema.safeParse(correlationId).success
+    || !/^[a-f0-9]{64}$/u.test(fixtureDigest)
+    || !/^[a-f0-9]{64}$/u.test(proof)) {
+    return null;
+  }
+  const expected = createHmac("sha256", pepper()).update(
+    `parent-login-staging-session:v1\0${fixtureDigest}\0${correlationId}`,
+    "utf8",
+  ).digest();
+  const supplied = Buffer.from(proof, "hex");
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    return null;
+  }
+  return createHmac("sha256", pepper()).update(
+    `parent-login-staging-session-correlation:v1\0${fixtureDigest}\0${correlationId}`,
+    "utf8",
+  ).digest("hex");
+}
+
 function uuidBytes(challengeId: string) {
   const parsed = uuidSchema.parse(challengeId).replaceAll("-", "");
   return Buffer.from(parsed, "hex");

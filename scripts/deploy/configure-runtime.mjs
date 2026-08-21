@@ -262,6 +262,11 @@ const runtime = {
   HOSTNAME: "0.0.0.0",
   PORT: "3000",
   APP_ENVIRONMENT: environment,
+  STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED:
+    environment === "staging"
+    && process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED === "true"
+      ? "true"
+      : "false",
   RELEASE_SHA: releaseSha,
   RELEASE_ARTIFACT_DIGEST: releaseArtifactDigest,
   APP_BASE_URL: appUrl,
