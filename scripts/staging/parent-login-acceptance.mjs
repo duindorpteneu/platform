@@ -417,6 +417,14 @@ function databaseContractProbe(databaseUrl, recipient) {
   };
 }
 
+function databaseStartBoundary(databaseUrl) {
+  const boundary = runPsql(databaseUrl, "select clock_timestamp();");
+  if (Number.isNaN(Date.parse(boundary))) {
+    throw new Error("STAGING_DATABASE_BOUNDARY_INVALID");
+  }
+  return boundary;
+}
+
 async function defaultCleanup(context, state) {
   if (!state || state.fixtureDigest !== context.fixtureDigest
     || !Array.isArray(state.challengeIds) || state.challengeIds.length > 4
@@ -465,9 +473,12 @@ export async function runAcceptance(environment = process.env, dependencies = {}
   required(environment, "PARENT_TOKEN_PEPPER");
   const evidencePath = required(environment, "EVIDENCE_PATH");
   const mode = modeFromEnvironment(environment);
+  const startBoundary = dependencies.startBoundary ?? databaseStartBoundary;
   const context = {
     databaseUrl, evidencePath, fixtureDigest: fixtureDigest(target, recipient),
-    recipient, startedAt: new Date().toISOString(), target,
+    recipient,
+    startedAt: mode === "normal" ? await startBoundary(databaseUrl) : null,
+    target,
   };
   context.recordState = async (challengeIds) => writePrivateJson(
     statePath(evidencePath),

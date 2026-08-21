@@ -138,6 +138,7 @@ describe("parent-login staging acceptance contract", () => {
     const environment = { ...base, EVIDENCE_PATH: path };
     const events = [];
     const dependencies = {
+      startBoundary: async () => "2026-08-21 21:00:00+00",
       run: async (context) => {
         events.push("normal");
         return {
@@ -169,6 +170,7 @@ describe("parent-login staging acceptance contract", () => {
     let cleanedState;
     try {
       await expect(runAcceptance(environment, {
+        startBoundary: async () => "2026-08-21 21:00:00+00",
         run: async (context) => {
           await context.recordState(["22222222-2222-4222-8222-222222222222"]);
           throw new Error("LINK_CONSUMPTION_FAILED");
@@ -192,6 +194,7 @@ describe("parent-login staging acceptance contract", () => {
       "utf8",
     );
     expect(source).toContain("set closed_at = statement_timestamp()");
+    expect(source).toContain('runPsql(databaseUrl, "select clock_timestamp();")');
     expect(source.match(/challenge\.created_at >= :'started_at'::timestamptz/gu))
       .toHaveLength(2);
     expect(source).toContain("session_row.created_at >= :'started_at'::timestamptz");
