@@ -6,6 +6,8 @@ import {
   generateParentSessionToken,
   hashParentSecret,
   openParentChallengeContext,
+  parentSessionExpiresAt,
+  PARENT_SESSION_MAX_AGE_SECONDS,
   parentCodeInputSchema,
 } from "@/server/auth/parent";
 import {
@@ -89,9 +91,7 @@ export async function POST(request: Request) {
       p_credential_kind: "code",
       p_code_hash: hashParentSecret(parsed.data.code),
       p_session_token_hash: hashParentSecret(sessionToken),
-      p_session_expires_at: new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1_000,
-      ).toISOString(),
+      p_session_expires_at: parentSessionExpiresAt(),
     },
   );
   const result = consumeResultSchema.safeParse(data);
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: PARENT_SESSION_MAX_AGE_SECONDS,
   });
   cookieStore.set("duindorp_parent_challenge", "", {
     httpOnly: true,

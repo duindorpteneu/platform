@@ -431,6 +431,13 @@ async function defaultCleanup(context, state) {
     where challenge.id = any(string_to_array(:'challenge_ids', ',')::uuid[])
       and session_row.parent_account_id = challenge.parent_account_id
       and session_row.created_at >= :'started_at'::timestamptz;
+    update private.parent_otp_challenges challenge
+    set closed_at = statement_timestamp(),
+        close_reason = 'support_reset',
+        used_at = coalesce(challenge.used_at, statement_timestamp())
+    where challenge.id = any(string_to_array(:'challenge_ids', ',')::uuid[])
+      and challenge.created_at >= :'started_at'::timestamptz
+      and challenge.closed_at is null;
     commit;
     select (
       not exists(select 1 from private.parent_sessions session_row
@@ -439,6 +446,7 @@ async function defaultCleanup(context, state) {
           and session_row.created_at >= :'started_at'::timestamptz)
       and not exists(select 1 from private.parent_otp_challenges challenge
         where challenge.id = any(string_to_array(:'challenge_ids', ',')::uuid[])
+          and challenge.created_at >= :'started_at'::timestamptz
           and challenge.closed_at is null)
     )::int;
   `, { CHALLENGE_IDS: state.challengeIds.join(","), STARTED_AT: state.startedAt });

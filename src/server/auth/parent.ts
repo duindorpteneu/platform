@@ -13,6 +13,16 @@ import { getServerEnv } from "@/lib/env";
 const uuidSchema = z.string().uuid();
 const timestampSchema = z.string().datetime({ offset: true });
 
+// Keep the application-supplied expiry strictly inside the database's
+// 30-day upper bound. This absorbs ordinary app/database clock skew without
+// extending the canonical parent-session lifetime.
+export const PARENT_SESSION_MAX_AGE_SECONDS =
+  30 * 24 * 60 * 60 - 5 * 60;
+
+export function parentSessionExpiresAt(now = Date.now()) {
+  return new Date(now + PARENT_SESSION_MAX_AGE_SECONDS * 1_000).toISOString();
+}
+
 export const parentEmailSchema = z.object({
   email: z.string().trim().email().max(320),
 });

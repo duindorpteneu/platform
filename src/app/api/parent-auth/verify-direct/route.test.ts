@@ -20,7 +20,10 @@ vi.mock("@/server/auth/rate-limit", () => ({
 }));
 
 import { POST } from "./route";
-import { deriveParentDirectCredential } from "@/server/auth/parent";
+import {
+  deriveParentDirectCredential,
+  PARENT_SESSION_MAX_AGE_SECONDS,
+} from "@/server/auth/parent";
 
 const challengeId = "11111111-1111-4111-8111-111111111111";
 
@@ -55,9 +58,11 @@ describe("POST /api/parent-auth/verify-direct", () => {
   });
 
   it("verifieert het HMAC-bewijs en consumeert dezelfde challenge", async () => {
+    const startedAt = Date.now();
     const response = await POST(request(
       deriveParentDirectCredential(challengeId),
     ));
+    const completedAt = Date.now();
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
@@ -72,7 +77,20 @@ describe("POST /api/parent-auth/verify-direct", () => {
     expect(mocks.cookieSet).toHaveBeenCalledWith(
       "duindorp_parent_session",
       expect.any(String),
-      expect.objectContaining({ httpOnly: true }),
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: PARENT_SESSION_MAX_AGE_SECONDS,
+      }),
+    );
+    const rpcInput = mocks.rpc.mock.calls[0]?.[1] as {
+      p_session_expires_at: string;
+    };
+    const expiresAt = Date.parse(rpcInput.p_session_expires_at);
+    expect(expiresAt).toBeGreaterThanOrEqual(
+      startedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+    );
+    expect(expiresAt).toBeLessThanOrEqual(
+      completedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
     );
   });
 
