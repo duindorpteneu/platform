@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ smtp: vi.fn(), sendgrid: vi.fn() }));
 vi.mock("@/server/email/providers/smtp", () => ({ sendSmtpEmail: mocks.smtp, smtpRuntimeHealth: () => ({ providerConfigured: true }) }));
 vi.mock("@/server/email/sendgrid", () => ({ sendEmailJob: mocks.sendgrid, sendMailV2TestEmail: mocks.sendgrid, sendParentOtpV2Email: mocks.sendgrid, sendParentOtpEmail: mocks.sendgrid, sendGridRuntimeHealth: () => ({ providerConfigured: true, keyFingerprintMatches: true }) }));
-import { sendEmailJob, sendMailV2TestEmail } from "@/server/email/provider";
+import { emailProviderCapabilities, sendEmailJob, sendMailV2TestEmail } from "@/server/email/provider";
 
 const message = { jobId: crypto.randomUUID(), deliveryAttemptId: crypto.randomUUID(), recipientEmail: "x@example.nl", subject: "s", text: "t", html: "h", fromName: "Name", fromEmail: "from@example.nl", replyToEmail: "reply@example.nl" };
 
@@ -19,6 +19,26 @@ describe("e-mailproviderselectie", () => {
     mocks.smtp.mockResolvedValue({ delivered: true, providerMessageId: "smtp-1" });
     await expect(sendEmailJob(message)).resolves.toMatchObject({ delivered: true });
     expect(mocks.sendgrid).not.toHaveBeenCalled();
+  });
+  it("rapporteert SMTP zonder late afleverfeedback en zonder credentials", () => {
+    Object.assign(process.env, {
+      EMAIL_PROVIDER: "smtp",
+      EMAIL_ENABLED: "true",
+      SMTP_FROM_NAME: "Kledingcommissie Duindorp SV",
+      SMTP_USERNAME: "secret-user@example.nl",
+      SMTP_PASSWORD: "secret-password",
+    });
+    const capabilities = emailProviderCapabilities();
+    expect(capabilities).toEqual({
+      provider: "smtp",
+      providerName: "VoetbalAssist SMTP",
+      runtimeEnabled: true,
+      providerConfigured: true,
+      senderName: "Kledingcommissie Duindorp SV",
+      feedbackCapability: "smtp_sync_only",
+    });
+    expect(JSON.stringify(capabilities)).not.toContain("secret-user");
+    expect(JSON.stringify(capabilities)).not.toContain("secret-password");
   });
   it("hergebruikt de bestaande smoke inbox bij tijdelijke SMTP-staging", async () => {
     process.env.EMAIL_PROVIDER = "smtp";

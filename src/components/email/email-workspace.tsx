@@ -2,8 +2,9 @@
 
 import { AlertTriangle, BellRing, Check, CheckCircle2, Clock3, Eye, FileText, Loader2, Mail, Palette, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { emailTemplateLabels, type BulkEmailTemplateKey, type EmailWorkspace as Workspace } from "@/lib/email-contract";
+import { emailJobOperationalState, emailTemplateLabels, type BulkEmailTemplateKey, type EmailWorkspace as Workspace } from "@/lib/email-contract";
 import {
   mailV2CampaignConfirmSchema,
   mailV2CampaignPreviewSchema,
@@ -26,7 +27,7 @@ import {
   parseFreshMemberBulkContext,
 } from "@/lib/member-bulk-contract";
 
-type Tab = "templates" | "branding" | "reminders" | "bulk" | "delivery";
+type Tab = "overview" | "problems" | "recipients" | "otp" | "campaigns" | "flow" | "templates" | "branding";
 type Notice = { tone: "success" | "error"; text: string } | null;
 type Preview = { subject: string; text: string };
 type CampaignTarget = {
@@ -93,38 +94,61 @@ export function EmailWorkspace({
   initialTab?: "templates" | "bulk" | "branding";
 }) {
   const [tab, setTab] = useState<Tab>(
-    initialTab ?? (canManageTemplates ? "templates" : "bulk"),
+    initialTab === "bulk"
+      ? "campaigns"
+      : initialTab ?? "overview",
   );
-  const failed = workspace.jobs.filter((job) => ["failed", "delivery_uncertain"].includes(job.status) || ["bounced", "dropped", "failed"].includes(job.deliveryStatus ?? "")).length;
-  const queued = workspace.jobs.filter((job) => ["queued", "processing", "retry"].includes(job.status)).length;
-  const delivered = workspace.jobs.filter((job) => job.deliveryStatus === "delivered").length;
+  const operationalStates = workspace.jobs.map(emailJobOperationalState);
+  const failed = operationalStates.filter((state) => [
+    "temporary_failure",
+    "permanent_rejection",
+    "delivery_uncertain",
+  ].includes(state)).length;
+  const queued = operationalStates.filter((state) => [
+    "queued",
+    "processing",
+  ].includes(state)).length;
+  const providerAccepted = operationalStates.filter(
+    (state) => state === "provider_accepted",
+  ).length;
+  const delivered = operationalStates.filter(
+    (state) => state === "delivered",
+  ).length;
   const activeTemplateCount = mailV2Workspace
     ? mailV2Workspace.templates.filter((template) => template.published).length
     : workspace.templates.filter((template) => template.active).length;
   const navigation = canManageTemplates
     ? ([
+      { id: "overview", label: "Overzicht", icon: CheckCircle2 },
+      { id: "problems", label: "Problemen", icon: AlertTriangle },
+      { id: "recipients", label: "Ontvangers", icon: Users },
+      { id: "otp", label: "Login & OTP", icon: ShieldCheck },
+      { id: "campaigns", label: "Campagnes", icon: BellRing },
+      { id: "flow", label: "Mailstroom", icon: Send },
       { id: "templates", label: "Templates", icon: FileText },
-      { id: "branding", label: "Branding", icon: Palette },
-      { id: "reminders", label: "Herinneringen", icon: BellRing },
-      { id: "bulk", label: "Bulkmail", icon: Users },
-      { id: "delivery", label: "Verzending", icon: Send },
+      { id: "branding", label: "Huisstijl", icon: Palette },
     ] as const)
     : ([
-      { id: "bulk", label: "Bulkmail", icon: Users },
-      { id: "delivery", label: "Verzending", icon: Send },
+      { id: "overview", label: "Overzicht", icon: CheckCircle2 },
+      { id: "problems", label: "Problemen", icon: AlertTriangle },
+      { id: "recipients", label: "Ontvangers", icon: Users },
+      { id: "otp", label: "Login & OTP", icon: ShieldCheck },
+      { id: "campaigns", label: "Campagnes", icon: BellRing },
+      { id: "flow", label: "Mailstroom", icon: Send },
     ] as const);
 
   return <div className="mx-auto max-w-[1400px]">
     <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-      <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-500">Transactionele communicatie</p><h1 className="mt-2 text-[30px] font-bold tracking-[-0.04em] text-brand-900 md:text-[34px]">E-mailcentrum</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Beheer veilige clubtemplates, stel handmatige bulkacties samen en volg de duurzame verzendwachtrij.</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-500">E-mail Control Center</p><h1 className="mt-2 text-[30px] font-bold tracking-[-0.04em] text-brand-900 md:text-[34px]">E-mailcentrum</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Volg provideracceptatie en echte afleverfeedback afzonderlijk, behandel problemen en beheer de bestaande campagnes, templates en huisstijl.</p></div>
       <div className={`inline-flex h-10 items-center gap-2 self-start rounded-lg border px-3 text-xs font-bold ${emailEnabled ? "border-emerald-200 bg-emerald-50 text-success" : "border-amber-200 bg-amber-50 text-amber-800"}`}><span className={`size-2 rounded-full ${emailEnabled ? "bg-emerald-500" : "bg-amber-500"}`} />{emailEnabled ? "Verzending actief" : "Verzending gepauzeerd"}</div>
     </header>
 
-    <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <Metric icon={FileText} label="Actieve templates" value={String(activeTemplateCount)} detail="Canonieke berichttypen" />
       <Metric icon={Clock3} label="In wachtrij" value={String(queued)} detail="Inclusief veilige retries" />
-      <Metric icon={CheckCircle2} label="Afgeleverd" value={String(delivered)} detail="Recente operationele jobs" />
-      <Metric icon={AlertTriangle} label="Aandacht nodig" value={String(failed)} detail="Failed, bounce of drop" tone={failed ? "danger" : "normal"} />
+      <Metric icon={Send} label="Provider geaccepteerd" value={String(providerAccepted)} detail="Aflevering nog niet bewezen" />
+      <Metric icon={CheckCircle2} label="Aflevering bewezen" value={String(delivered)} detail="Downstream providerbewijs" />
+      <Metric icon={AlertTriangle} label="Actie nodig" value={String(failed)} detail="Tijdelijk, definitief of onzeker" tone={failed ? "danger" : "normal"} />
     </section>
 
     <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-white p-1 shadow-card" aria-label="E-mailonderdelen">
@@ -132,6 +156,18 @@ export function EmailWorkspace({
     </nav>
 
     <div className="mt-6">
+      {tab === "overview" && (
+        <OverviewPanel workspace={workspace} />
+      )}
+      {tab === "problems" && (
+        <ProblemsPanel workspace={workspace} />
+      )}
+      {tab === "recipients" && (
+        <RecipientsPanel recipients={workspace.controlCenter.recipients} />
+      )}
+      {tab === "otp" && (
+        <OtpPanel recipients={workspace.controlCenter.recipients} />
+      )}
       {tab === "templates" && canManageTemplates && (
         mailV2Workspace && mailV2Cutover
           ? (
@@ -145,26 +181,248 @@ export function EmailWorkspace({
       {tab === "branding" && canManageTemplates && mailV2Workspace && (
         <MailV2BrandingPanel workspace={mailV2Workspace} />
       )}
-      {tab === "reminders" && canManageTemplates && reminderWorkspace && (
-        <MailV2RemindersPanel workspace={reminderWorkspace} />
+      {tab === "campaigns" && (
+        <div className="space-y-6">
+          {canManageTemplates && reminderWorkspace && (
+            <MailV2RemindersPanel workspace={reminderWorkspace} />
+          )}
+          {campaignWorkspace.cutoverStarted
+            ? (
+              <MailV2CampaignPanel
+                campaignWorkspace={campaignWorkspace}
+                emailEnabled={emailEnabled}
+              />
+            )
+            : <BulkPanel workspace={workspace} emailEnabled={emailEnabled} />}
+        </div>
       )}
-      {tab === "bulk" && (
-        campaignWorkspace.cutoverStarted
-          ? (
-            <MailV2CampaignPanel
-              campaignWorkspace={campaignWorkspace}
-              emailEnabled={emailEnabled}
-            />
-          )
-          : <BulkPanel workspace={workspace} emailEnabled={emailEnabled} />
-      )}
-      {tab === "delivery" && <DeliveryPanel workspace={workspace} />}
+      {tab === "flow" && <DeliveryPanel workspace={workspace} />}
     </div>
   </div>;
 }
 
 function Metric({ icon: Icon, label, value, detail, tone = "normal" }: { icon: typeof Mail; label: string; value: string; detail: string; tone?: "normal" | "danger" }) {
   return <div className="rounded-xl border border-line bg-white p-5 shadow-card"><div className="flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{label}</p><span className={`flex size-8 items-center justify-center rounded-lg ${tone === "danger" ? "bg-red-50 text-danger" : "bg-brand-50 text-brand-700"}`}><Icon className="size-4" /></span></div><p className={`mt-3 text-2xl font-bold ${tone === "danger" ? "text-danger" : "text-brand-900"}`}>{value}</p><p className="mt-1 text-[11px] text-slate-400">{detail}</p></div>;
+}
+
+function OverviewPanel({ workspace }: { workspace: Workspace }) {
+  const provider = workspace.provider;
+  const feedbackCapability = workspace.controlCenter.feedbackCapability;
+  const connectionActive = provider.runtimeEnabled
+    && provider.providerConfigured;
+  const feedbackLabel = feedbackCapability === "sendgrid_webhook"
+    ? "Webhook actief"
+    : feedbackCapability === "smtp_dsn"
+      ? "DSN actief"
+      : "Niet gekoppeld";
+  return <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
+    <section className="rounded-xl border border-line bg-white p-6 shadow-card">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-500">Bewijsmodel</p>
+      <h2 className="mt-2 text-lg font-bold text-brand-900">Acceptatie is nog geen aflevering</h2>
+      <p className="mt-3 text-xs leading-6 text-slate-600">Een SMTP-server kan een bericht accepteren en het later alsnog weigeren. Daarom toont dit centrum provideracceptatie en bewezen aflevering als twee afzonderlijke statussen.</p>
+      {feedbackCapability === "smtp_sync_only" && <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>De huidige provider geeft na SMTP-acceptatie geen late bounce- of afleverbevestiging terug. De juiste status is daarom <strong>aflevering niet bevestigd</strong>.</p></div>}
+    </section>
+    <section className="rounded-xl border border-line bg-white p-6 shadow-card" aria-label="Providerstatus">
+      <div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><Send className="size-5" /></span><div><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Providerstatus</p><h2 className="mt-1 text-sm font-bold text-brand-900">{provider.providerName}</h2></div></div>
+      <dl className="mt-5 space-y-3 text-xs">
+        <div className="flex justify-between gap-4"><dt className="text-slate-500">Verzending</dt><dd className={`font-bold ${connectionActive ? "text-success" : "text-amber-800"}`}>{connectionActive ? "Configuratie actief" : "Niet actief"}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-slate-500">Van</dt><dd className="text-right font-semibold text-ink">{provider.senderName ?? "Niet ingesteld"}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-slate-500">Direct providerantwoord</dt><dd className="text-right font-semibold text-ink">{provider.provider === "smtp" ? "Beschikbaar" : provider.provider === "sendgrid" ? "Beschikbaar" : "Niet beschikbaar"}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-slate-500">Late afleverfeedback</dt><dd className="text-right font-semibold text-ink">{feedbackLabel}</dd></div>
+      </dl>
+    </section>
+  </div>;
+}
+
+function ProblemsPanel({ workspace }: { workspace: Workspace }) {
+  const recipientProblems = workspace.controlCenter.recipients.filter(
+    (recipient) => recipient.suspiciousDomain || [
+      "attention",
+      "invalid_or_bounce",
+      "suppressed",
+    ].includes(recipient.healthState),
+  );
+  const problems = workspace.jobs.filter((job) => [
+    "temporary_failure",
+    "permanent_rejection",
+    "delivery_uncertain",
+  ].includes(emailJobOperationalState(job)));
+  return <div className="space-y-6">
+    <RecipientDirectory
+      recipients={recipientProblems}
+      title="Ontvangers met actie"
+      description="Geaggregeerd per genormaliseerd e-mailadres en probleemepisode."
+      emptyTitle="Geen ontvangerproblemen"
+      emptyText="Er zijn geen suppressies, bounces, onzekere afleveringen of verdachte domeinen gevonden."
+      mode="problems"
+    />
+    <EmailJobsTable
+      jobs={problems}
+      recoveryAllowed={workspace.recoveryAllowed}
+      title="Technische jobproblemen"
+      description="Tijdelijke fouten, definitieve weigeringen en onzekere overdrachten blijven afzonderlijk zichtbaar."
+      emptyTitle="Geen actuele jobproblemen"
+      emptyText="Binnen de honderd recentste jobs is geen probleemstatus gevonden."
+    />
+  </div>;
+}
+
+function RecipientsPanel({
+  recipients,
+}: {
+  recipients: Workspace["controlCenter"]["recipients"];
+}) {
+  return <RecipientDirectory
+    recipients={recipients}
+    title="Ontvangergezondheid"
+    description="Eén actuele projectie per genormaliseerd e-mailadres, met alle gekoppelde kinderen."
+    emptyTitle="Nog geen ontvangers"
+    emptyText="Ontvangers verschijnen zodra mail- of OTP-bewijs beschikbaar is."
+    mode="recipients"
+  />;
+}
+
+function OtpPanel({
+  recipients,
+}: {
+  recipients: Workspace["controlCenter"]["recipients"];
+}) {
+  return <RecipientDirectory
+    recipients={recipients.filter((recipient) => (
+      recipient.lastOtpRequestedAt !== null
+      || recipient.lastOtpOutcome !== null
+      || recipient.otpExpiresAt !== null
+    ))}
+    title="Login & OTP-support"
+    description="Alleen deliverymetadata; verificatiecodes en directe logincredentials worden nooit getoond."
+    emptyTitle="Nog geen OTP-activiteit"
+    emptyText="Recente inlogaanvragen verschijnen hier zonder authenticatiecredential."
+    mode="otp"
+  />;
+}
+
+type RecipientHealth = Workspace["controlCenter"]["recipients"][number];
+type RecipientDirectoryMode = "problems" | "recipients" | "otp";
+
+const recipientHealthLabels: Record<RecipientHealth["healthState"], string> = {
+  healthy: "Gezond",
+  accepted: "Geaccepteerd",
+  attention: "Let op",
+  invalid_or_bounce: "Ongeldig / bounce",
+  unknown: "Onbekend",
+  suppressed: "Onderdrukt",
+};
+
+function recipientHealthTone(state: RecipientHealth["healthState"]) {
+  if (state === "healthy") return "bg-emerald-50 text-success";
+  if (state === "accepted") return "bg-brand-50 text-brand-700";
+  if (state === "invalid_or_bounce" || state === "suppressed") {
+    return "bg-red-50 text-danger";
+  }
+  return "bg-amber-50 text-amber-800";
+}
+
+function recipientProblemLabel(recipient: RecipientHealth) {
+  if (recipient.suspiciousDomain) return "Waarschijnlijk typefout";
+  if (recipient.healthState === "suppressed") return "Verzending onderdrukt";
+  if (recipient.hardBounceCount > 0) return "Harde bounce";
+  if (recipient.permanentRejectionCount > 0) return "Permanent geweigerd";
+  if (recipient.deliveryUncertainCount > 0) return "Aflevering onbekend";
+  if (recipient.temporaryFailureCount > 0) return "Tijdelijk mislukt";
+  if (recipient.dropCount > 0) return "Provider heeft mail gedropt";
+  return recipientHealthLabels[recipient.healthState];
+}
+
+function recipientDisplayEmail(recipient: RecipientHealth) {
+  return recipient.email ?? recipient.emailMasked;
+}
+
+function latestRecipientMoment(recipient: RecipientHealth) {
+  return [
+    recipient.lastProviderFeedbackAt,
+    recipient.lastFailureAt,
+    recipient.lastOtpRequestedAt,
+    recipient.lastSendAt,
+  ].filter((value): value is string => value !== null)
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
+}
+
+function RecipientDirectory({
+  recipients,
+  title,
+  description,
+  emptyTitle,
+  emptyText,
+  mode,
+}: {
+  recipients: Workspace["controlCenter"]["recipients"];
+  title: string;
+  description: string;
+  emptyTitle: string;
+  emptyText: string;
+  mode: RecipientDirectoryMode;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visible = recipients.filter((recipient) => {
+    if (!normalizedQuery) return true;
+    return [
+      recipientDisplayEmail(recipient),
+      ...recipient.linkedChildren.flatMap((child) => [
+        child.memberName,
+        child.team,
+      ]),
+    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+  });
+  const selected = recipients.find((recipient) => recipient.id === selectedId)
+    ?? null;
+  return <div className={`grid items-start gap-6 ${selected ? "xl:grid-cols-[minmax(0,1fr)_390px]" : ""}`}>
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+      <div className="border-b border-line px-6 py-5">
+        <h2 className="text-base font-bold text-brand-900">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{description}</p>
+        {recipients.length > 0 && <label className="relative mt-4 block"><span className="sr-only">Zoek ontvanger</span><Search className="absolute left-3 top-3 size-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Zoek op e-mail, kind of team" className="h-10 w-full rounded-lg border border-line pl-9 pr-3 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" /></label>}
+      </div>
+      {visible.length === 0
+        ? <Empty icon={mode === "otp" ? ShieldCheck : Users} title={normalizedQuery ? "Geen zoekresultaten" : emptyTitle} text={normalizedQuery ? "Geen ontvanger voldoet aan de zoekopdracht." : emptyText} />
+        : <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left"><thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="px-6 py-3">Ontvanger</th><th className="px-3 py-3">Lid / gezin</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">{mode === "otp" ? "Laatste OTP-uitkomst" : "Signaal"}</th><th className="px-3 py-3">Laatste activiteit</th><th className="px-6 py-3 text-right">Actie</th></tr></thead><tbody className="divide-y divide-line">{visible.map((recipient) => {
+          const latest = latestRecipientMoment(recipient);
+          return <tr key={recipient.id} className="align-middle"><td className="px-6 py-4"><p className="max-w-64 truncate text-xs font-bold text-brand-900">{recipientDisplayEmail(recipient)}</p>{recipient.suspiciousDomain && <p className="mt-1 text-[10px] font-bold text-amber-800">Waarschijnlijk typefout</p>}</td><td className="px-3 py-4"><p className="text-xs font-semibold text-ink">{recipient.linkedChildren.length === 0 ? "Geen actief kind" : recipient.linkedChildren.length === 1 ? recipient.linkedChildren[0].memberName : `${recipient.linkedChildren.length} kinderen`}</p>{recipient.linkedChildren.length > 0 && <p className="mt-1 max-w-56 truncate text-[10px] text-slate-400">{recipient.linkedChildren.map((child) => child.team).join(", ")}</p>}</td><td className="px-3 py-4"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${recipientHealthTone(recipient.healthState)}`}>{recipientHealthLabels[recipient.healthState]}</span></td><td className="px-3 py-4 text-[11px] font-semibold text-slate-600">{mode === "otp" ? recipient.lastOtpOutcome?.replaceAll("_", " ") ?? "Aangevraagd" : recipientProblemLabel(recipient)}</td><td className="px-3 py-4 text-[11px] text-slate-500">{latest ? dateFormatter.format(new Date(latest)) : "—"}</td><td className="px-6 py-4 text-right"><button type="button" onClick={() => setSelectedId(recipient.id)} className="h-9 rounded-lg border border-brand-200 px-3 text-[11px] font-bold text-brand-700 hover:bg-brand-50">Details</button></td></tr>;
+        })}</tbody></table></div>}
+    </section>
+    {selected && <RecipientDrawer recipient={selected} onClose={() => setSelectedId(null)} />}
+  </div>;
+}
+
+function RecipientDrawer({
+  recipient,
+  onClose,
+}: {
+  recipient: RecipientHealth;
+  onClose: () => void;
+}) {
+  const timeline = [
+    { label: "Mail klaargezet of verzonden", at: recipient.lastSendAt },
+    { label: "Door provider geaccepteerd", at: recipient.lastProviderAcceptanceAt },
+    { label: "Aflevering bewezen", at: recipient.lastProvenDeliveryAt },
+    { label: "Laatste fout", at: recipient.lastFailureAt },
+    { label: "Laatste providerfeedback", at: recipient.lastProviderFeedbackAt },
+    { label: "Laatste OTP aangevraagd", at: recipient.lastOtpRequestedAt },
+    { label: "OTP geldig tot", at: recipient.otpExpiresAt },
+  ].filter((entry): entry is { label: string; at: string } => entry.at !== null)
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+  const firstChild = recipient.linkedChildren[0];
+  return <aside className="sticky top-6 overflow-hidden rounded-xl border border-line bg-white shadow-card" aria-label={`Ontvangerdetail ${recipient.emailMasked}`}>
+    <div className="border-b border-line bg-brand-900 p-5 text-white"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-200">Ontvanger</p><h3 className="mt-2 truncate text-sm font-bold">{recipientDisplayEmail(recipient)}</h3><span className={`mt-3 inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${recipientHealthTone(recipient.healthState)}`}>{recipientHealthLabels[recipient.healthState]}</span></div><button type="button" onClick={onClose} aria-label="Sluit ontvangerdetail" className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-lg hover:bg-white/20">×</button></div></div>
+    <div className="max-h-[720px] divide-y divide-line overflow-y-auto">
+      {(recipient.suspiciousDomain || recipient.suppressionReason) && <section className="p-5"><h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Actie nodig</h4>{recipient.suspiciousDomain && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Waarschijnlijk typefout — controleer het e-mailadres. Het systeem corrigeert dit nooit automatisch.</p>}{recipient.suppressionReason && <p className="mt-3 rounded-lg border border-red-100 bg-red-50 p-3 text-xs font-semibold text-danger">Onderdrukt: {recipient.suppressionReason.replaceAll("_", " ")}</p>}</section>}
+      <section className="p-5"><h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Kinderen</h4>{recipient.linkedChildren.length === 0 ? <p className="mt-3 text-xs text-slate-500">Geen actuele kindkoppeling.</p> : <ul className="mt-3 space-y-2">{recipient.linkedChildren.map((child) => <li key={child.memberId} className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold text-ink">{child.memberName}</p><p className="mt-1 text-[10px] text-slate-500">{child.team}</p></li>)}</ul>}{firstChild && <Link href={`/backoffice/leden?member=${firstChild.memberId}`} className="mt-3 inline-flex h-9 items-center rounded-lg border border-brand-200 px-3 text-[11px] font-bold text-brand-700 hover:bg-brand-50">Open lidprofiel</Link>}</section>
+      <section className="p-5"><h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Bewijs in cijfers</h4><dl className="mt-3 grid grid-cols-2 gap-2 text-[10px]">{[["Tijdelijk mislukt", recipient.temporaryFailureCount], ["Permanent geweigerd", recipient.permanentRejectionCount], ["Harde bounces", recipient.hardBounceCount], ["Drops", recipient.dropCount], ["Onzekere aflevering", recipient.deliveryUncertainCount]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><dt className="text-slate-500">{label}</dt><dd className="mt-1 text-sm font-bold text-brand-900">{value}</dd></div>)}</dl></section>
+      <section className="p-5"><h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">OTP-status</h4><dl className="mt-3 space-y-2 text-xs"><div className="flex justify-between gap-3"><dt className="text-slate-500">Laatste uitkomst</dt><dd className="text-right font-semibold text-ink">{recipient.lastOtpOutcome?.replaceAll("_", " ") ?? "Geen"}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Geldig tot</dt><dd className="text-right font-semibold text-ink">{recipient.otpExpiresAt ? dateFormatter.format(new Date(recipient.otpExpiresAt)) : "—"}</dd></div></dl></section>
+      <section className="p-5"><h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Tijdlijn</h4>{timeline.length === 0 ? <p className="mt-3 text-xs text-slate-500">Nog geen deliverybewijs.</p> : <ol className="mt-4 space-y-4">{timeline.map((entry) => <li key={`${entry.label}:${entry.at}`} className="flex gap-3"><span className="mt-1.5 size-2 shrink-0 rounded-full bg-brand-500" /><div><p className="text-xs font-semibold text-ink">{entry.label}</p><p className="mt-1 text-[10px] text-slate-500">{dateFormatter.format(new Date(entry.at))}</p></div></li>)}</ol>}</section>
+    </div>
+  </aside>;
 }
 
 function TemplatesPanel({ workspace }: { workspace: Workspace }) {
@@ -798,11 +1056,60 @@ function BulkPanel({ workspace, emailEnabled }: { workspace: Workspace; emailEna
 }
 
 function DeliveryPanel({ workspace }: { workspace: Workspace }) {
-  const statusLabels: Record<string, string> = { queued: "In wachtrij", processing: "Bezig", retry: "Nieuwe poging", sent: "Verzonden", failed: "Mislukt", delivery_uncertain: "Aflevering onzeker", superseded: "Vervangen", delivered: "Afgeleverd", bounced: "Bounce", deferred: "Uitgesteld", dropped: "Geweigerd" };
   return <div className="space-y-6">
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-base font-bold text-brand-900">Recente e-mailjobs</h2><p className="mt-1 text-xs text-slate-500">Maximaal vijf pogingen; gevoelige ontvangergegevens worden hier niet getoond.</p></div><RefreshCw className="size-4 text-slate-400" /></div>{workspace.jobs.length === 0 ? <Empty icon={Send} title="Nog geen e-mailjobs" text="Transactionele triggers en bevestigde bulkacties verschijnen hier." /> : <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="px-6 py-3">Template</th><th className="px-3 py-3">Wachtrijstatus</th><th className="px-3 py-3">Afleverstatus</th><th className="px-3 py-3">Pogingen</th><th className="px-3 py-3">Herstel</th><th className="px-6 py-3 text-right">Aangemaakt</th></tr></thead><tbody className="divide-y divide-line">{workspace.jobs.map((job) => <tr key={job.id} className="align-top"><td className="px-6 py-3 text-xs font-bold text-brand-900">{emailJobLabels[job.templateKey] ?? job.templateKey}</td><td className="px-3 py-3"><StatusBadge status={job.status} label={statusLabels[job.status]} /></td><td className="px-3 py-3">{job.deliveryStatus ? <StatusBadge status={job.deliveryStatus} label={statusLabels[job.deliveryStatus]} /> : <span className="text-xs text-slate-300">—</span>}</td><td className="px-3 py-3 text-xs text-slate-600">{job.attempts} / 5</td><td className="max-w-[360px] px-3 py-3">{workspace.recoveryAllowed && job.recoverable ? <RecoveryControls job={job} /> : <span className="text-[11px] text-slate-300">—</span>}</td><td className="px-6 py-3 text-right text-[11px] text-slate-400">{dateFormatter.format(new Date(job.createdAt))}</td></tr>)}</tbody></table></div>}</section>
+    {workspace.controlCenter.feedbackCapability === "smtp_sync_only" && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>Een status <strong>provider geaccepteerd</strong> bewijst alleen overdracht aan de SMTP-server. Zonder DSN of webhook blijft de uiteindelijke aflevering onbekend.</p></div>}
+    <EmailJobsTable
+      jobs={workspace.jobs}
+      recoveryAllowed={workspace.recoveryAllowed}
+      title="Recente e-mailjobs"
+      description="Maximaal vijf pogingen; provideracceptatie en downstream afleverbewijs worden apart getoond."
+      emptyTitle="Nog geen e-mailjobs"
+      emptyText="Transactionele triggers en bevestigde bulkacties verschijnen hier."
+    />
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="border-b border-line px-6 py-5"><h2 className="text-base font-bold text-brand-900">Recente bulkacties</h2><p className="mt-1 text-xs text-slate-500">Idempotente batches per template, selectie en bevestigingssleutel.</p></div>{workspace.batches.length === 0 ? <Empty icon={Users} title="Nog geen bulkacties" text="Handmatig bevestigde herinneringen en gereedmeldingen verschijnen hier." /> : <div className="divide-y divide-line">{workspace.batches.map((batch) => <div key={batch.id} className="flex items-center justify-between gap-4 px-6 py-4"><div><p className="text-xs font-bold text-brand-900">{emailTemplateLabels[batch.templateKey]}</p><p className="mt-1 text-[10px] text-slate-400">{dateFormatter.format(new Date(batch.createdAt))}</p></div><span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-bold text-brand-700">{batch.selectedCount.toLocaleString("nl-NL")} jobs</span></div>)}</div>}</section>
   </div>;
+}
+
+const jobStatusLabels: Record<string, string> = {
+  queued: "In wachtrij",
+  processing: "Bezig",
+  retry: "Nieuwe poging",
+  sent: "Overgedragen aan provider",
+  failed: "Definitief mislukt",
+  delivery_uncertain: "Overdracht onzeker",
+  superseded: "Vervangen",
+};
+
+const operationalStateLabels = {
+  queued: "In wachtrij",
+  processing: "Bezig",
+  provider_accepted: "Provider geaccepteerd",
+  delivered: "Aflevering bewezen",
+  temporary_failure: "Tijdelijk mislukt",
+  permanent_rejection: "Definitief geweigerd",
+  delivery_uncertain: "Aflevering onbekend",
+  superseded: "Vervangen",
+};
+
+function EmailJobsTable({
+  jobs,
+  recoveryAllowed,
+  title,
+  description,
+  emptyTitle,
+  emptyText,
+}: {
+  jobs: Workspace["jobs"];
+  recoveryAllowed: boolean;
+  title: string;
+  description: string;
+  emptyTitle: string;
+  emptyText: string;
+}) {
+  return <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-base font-bold text-brand-900">{title}</h2><p className="mt-1 text-xs text-slate-500">{description}</p></div><RefreshCw className="size-4 text-slate-400" /></div>{jobs.length === 0 ? <Empty icon={Send} title={emptyTitle} text={emptyText} /> : <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="border-b border-line bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"><th className="px-6 py-3">Template</th><th className="px-3 py-3">Wachtrijstatus</th><th className="px-3 py-3">Bewijsstatus</th><th className="px-3 py-3">Pogingen</th><th className="px-3 py-3">Herstel</th><th className="px-6 py-3 text-right">Aangemaakt</th></tr></thead><tbody className="divide-y divide-line">{jobs.map((job) => {
+    const operationalState = emailJobOperationalState(job);
+    return <tr key={job.id} className="align-top"><td className="px-6 py-3 text-xs font-bold text-brand-900">{emailJobLabels[job.templateKey] ?? job.templateKey}</td><td className="px-3 py-3"><StatusBadge status={job.status} label={jobStatusLabels[job.status]} /></td><td className="px-3 py-3"><StatusBadge status={operationalState} label={operationalStateLabels[operationalState]} /></td><td className="px-3 py-3 text-xs text-slate-600">{job.attempts} / 5</td><td className="max-w-[360px] px-3 py-3">{recoveryAllowed && job.recoverable ? <RecoveryControls job={job} /> : <span className="text-[11px] text-slate-300">—</span>}</td><td className="px-6 py-3 text-right text-[11px] text-slate-400">{dateFormatter.format(new Date(job.createdAt))}</td></tr>;
+  })}</tbody></table></div>}</section>;
 }
 
 function RecoveryControls({ job }: { job: Workspace["jobs"][number] }) {
@@ -840,20 +1147,21 @@ function RecoveryControls({ job }: { job: Workspace["jobs"][number] }) {
   if (!open) return <button type="button" onClick={() => setOpen(true)} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">Bewijs beoordelen</button>;
   return <form onSubmit={(event) => void recover(event)} className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
     <p className="text-[11px] font-bold text-amber-900">Geen automatische herverzending</p>
-    <p className="text-[10px] leading-4 text-amber-800">Controleer eerst bij SendGrid of het bericht aantoonbaar is geaccepteerd of aantoonbaar niet is geaccepteerd.</p>
+    <p className="text-[10px] leading-4 text-amber-800">Controleer eerst in het geselecteerde providerkanaal of het bericht aantoonbaar is geaccepteerd of aantoonbaar niet is geaccepteerd.</p>
     <label className="block text-[10px] font-bold text-amber-900">Besluit<select value={resolution} onChange={(event) => { setResolution(event.target.value as typeof resolution); setAttested(false); }} className={`${fieldClass} h-9 text-[11px]`}><option value="confirm_sent">Geaccepteerd — niet opnieuw sturen</option><option value="retry_proven_not_accepted">Niet geaccepteerd — opnieuw inplannen</option></select></label>
     {resolution === "confirm_sent" && <label className="block text-[10px] font-bold text-amber-900">Providerbericht-ID<input value={providerMessageId} onChange={(event) => setProviderMessageId(event.target.value)} required minLength={3} maxLength={240} autoComplete="off" className={`${fieldClass} h-9 text-[11px]`} /></label>}
-    <label className="block text-[10px] font-bold text-amber-900">Bewijsreferentie<input value={evidenceRef} onChange={(event) => setEvidenceRef(event.target.value)} required minLength={8} maxLength={120} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" autoComplete="off" placeholder="ticket/SG-12345" className={`${fieldClass} h-9 text-[11px]`} /></label>
-    {resolution === "retry_proven_not_accepted" && <label className="flex items-start gap-2 text-[10px] leading-4 text-amber-900"><input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} required className="mt-0.5 size-4 accent-brand-700" /><span>Ik bevestig dat providerbewijs aantoont dat SendGrid dit bericht niet heeft geaccepteerd.</span></label>}
+    <label className="block text-[10px] font-bold text-amber-900">Bewijsreferentie<input value={evidenceRef} onChange={(event) => setEvidenceRef(event.target.value)} required minLength={8} maxLength={120} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" autoComplete="off" placeholder="ticket/MAIL-12345" className={`${fieldClass} h-9 text-[11px]`} /></label>
+    {resolution === "retry_proven_not_accepted" && <label className="flex items-start gap-2 text-[10px] leading-4 text-amber-900"><input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} required className="mt-0.5 size-4 accent-brand-700" /><span>Ik bevestig dat providerbewijs aantoont dat dit bericht niet is geaccepteerd.</span></label>}
     <StatusNotice notice={notice} />
     <div className="flex gap-2"><button type="submit" disabled={busy} className="h-8 rounded-lg bg-brand-700 px-3 text-[10px] font-bold text-white disabled:opacity-50">{busy ? "Bezig…" : "Besluit vastleggen"}</button><button type="button" onClick={() => setOpen(false)} disabled={busy} className="h-8 px-2 text-[10px] font-bold text-slate-500">Annuleren</button></div>
   </form>;
 }
 
 function StatusBadge({ status, label }: { status: string; label: string }) {
-  const danger = ["failed", "bounced", "dropped", "delivery_uncertain"].includes(status);
-  const success = ["sent", "delivered"].includes(status);
-  return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${danger ? "bg-red-50 text-danger" : success ? "bg-emerald-50 text-success" : "bg-amber-50 text-amber-700"}`}>{label}</span>;
+  const danger = ["failed", "bounced", "dropped", "delivery_uncertain", "permanent_rejection"].includes(status);
+  const success = status === "delivered";
+  const accepted = ["sent", "provider_accepted"].includes(status);
+  return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${danger ? "bg-red-50 text-danger" : success ? "bg-emerald-50 text-success" : accepted ? "bg-brand-50 text-brand-700" : "bg-amber-50 text-amber-700"}`}>{label}</span>;
 }
 
 function Empty({ icon: Icon, title, text }: { icon: typeof Mail; title: string; text: string }) {

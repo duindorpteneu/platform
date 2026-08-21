@@ -66,8 +66,8 @@ select is(
 );
 select is(
   (select result->>'publishedCount' from initial_mail_cutover),
-  '0',
-  'de migratie publiceert geen externe templates stil'
+  '1',
+  'alleen de canonieke LOGIN_OTP-revisie is bewust vooraf gepubliceerd'
 );
 select is(
   (select result->>'producerCount' from initial_mail_cutover),

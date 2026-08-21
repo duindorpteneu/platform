@@ -546,7 +546,11 @@ async function verifyProviderSprint(page, screenshotDir) {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${baseUrl}/backoffice/emails`);
   await page.getByRole("heading", { name: "E-mailcentrum" }).waitFor({ timeout: 5_000 });
-  for (const expected of ["Verzending gepauzeerd", "6", "Verificatiecode", "Betalingsherinnering"]) {
+  if (!(await page.locator("body").innerText()).includes("Verzending gepauzeerd")) {
+    throw new Error("E-mailcentrum mist verwachte tekst: Verzending gepauzeerd");
+  }
+  await page.getByRole("button", { name: "Templates", exact: true }).click();
+  for (const expected of ["6", "Verificatiecode", "Betalingsherinnering"]) {
     if (!(await page.locator("body").innerText()).includes(expected)) throw new Error(`E-mailcentrum mist verwachte tekst: ${expected}`);
   }
   await page.getByRole("button", { name: /Verificatiecode/ }).click();
@@ -558,7 +562,7 @@ async function verifyProviderSprint(page, screenshotDir) {
   await page.getByRole("button", { name: "Fictief voorbeeld" }).click();
   await page.getByText(/Uw tijdelijke voorbeeldcode is 123456/).waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: "Template opslaan" }).waitFor({ state: "visible" });
-  await page.getByRole("button", { name: "Bulkmail" }).click();
+  await page.getByRole("button", { name: "Campagnes", exact: true }).click();
   await page.getByRole("heading", { name: "Bestellingen selecteren" }).waitFor({ timeout: 5_000 });
   await page.getByText("Elk geselecteerd lid krijgt één afzonderlijk bericht.").waitFor({ timeout: 5_000 });
   const emailDimensions = await page.evaluate(() => ({ clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth }));

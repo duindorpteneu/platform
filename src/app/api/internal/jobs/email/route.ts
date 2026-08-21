@@ -190,6 +190,10 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
   let outcome: "sent" | "retry" | "failed" | "delivery_uncertain" = "failed";
   let providerMessageId: string | null = null;
   let errorCode: string | null = "render_invalid";
+  let providerState: "provider_accepted" | "temporary_failure" | "permanent_rejection" | "delivery_uncertain" | "configuration_error" | "disabled" = "configuration_error";
+  let providerCode: string | null = null;
+  let enhancedStatusCode: string | null = null;
+  let recipientFailure = false;
   const authorization = await admin.schema("app").rpc(
     "authorize_claimed_email_job_v4",
     {
@@ -245,21 +249,43 @@ async function processJob(job: ClaimedEmailJob, claimToken: string, appBaseUrl: 
       outcome = "sent";
       providerMessageId = delivery.providerMessageId;
       errorCode = null;
+      providerState = delivery.deliveryState ?? "provider_accepted";
+      providerCode = delivery.providerCode ?? null;
+      enhancedStatusCode = delivery.enhancedStatusCode ?? null;
     } else {
       outcome = delivery.outcome;
       errorCode = delivery.reason;
+      providerState = delivery.deliveryState ?? (
+        delivery.reason === "delivery_uncertain"
+          ? "delivery_uncertain"
+          : delivery.reason === "configuration_error"
+            ? "configuration_error"
+            : delivery.reason === "disabled"
+              ? "disabled"
+              : delivery.outcome === "retry"
+                ? "temporary_failure"
+                : "permanent_rejection"
+      );
+      providerCode = delivery.providerCode ?? null;
+      enhancedStatusCode = delivery.enhancedStatusCode ?? null;
+      recipientFailure = delivery.recipientFailure ?? false;
     }
   } catch {
     outcome = "failed";
     errorCode = "render_invalid";
   }
-  const { data, error } = await admin.schema("app").rpc("complete_email_job_v2", {
+  const { data, error } = await admin.schema("app").rpc("complete_email_job_v3", {
     p_job_id: job.id,
     p_claim_token: claimToken,
     p_delivery_attempt_id: job.deliveryAttemptId,
     p_outcome: outcome,
     p_provider_message_id: providerMessageId,
     p_error: errorCode,
+    p_provider: process.env.EMAIL_PROVIDER === "sendgrid" ? "sendgrid" : "smtp",
+    p_provider_state: providerState,
+    p_response_code: providerCode,
+    p_enhanced_status_code: enhancedStatusCode,
+    p_recipient_failure: recipientFailure,
   });
   const completion = completionResponseSchema.safeParse(data);
   if (error || !completion.success || completion.data.jobId !== job.id) {

@@ -18,6 +18,32 @@ export function emailRuntimeHealth() {
   return { ...base, providerConfigured: false, keyFingerprintMatches: false };
 }
 
+export function emailProviderCapabilities() {
+  const health = emailRuntimeHealth();
+  const provider = health.provider;
+  const senderName = provider === "smtp"
+    ? process.env.SMTP_FROM_NAME?.trim() || null
+    : provider === "sendgrid"
+      ? process.env.SENDGRID_FROM_NAME?.trim() || null
+      : null;
+  return {
+    provider,
+    providerName: provider === "smtp"
+      ? "VoetbalAssist SMTP"
+      : provider === "sendgrid"
+        ? "SendGrid"
+        : "Niet geconfigureerd",
+    runtimeEnabled: health.runtimeEnabled,
+    providerConfigured: health.providerConfigured,
+    senderName,
+    feedbackCapability: provider === "smtp"
+      ? "smtp_sync_only" as const
+      : provider === "sendgrid"
+        ? "sendgrid_webhook" as const
+        : "none" as const,
+  };
+}
+
 function smtpMessage(message: EmailMessage) { return sendSmtpEmail(message); }
 
 export async function sendEmailJob(message: EmailMessage & { jobId: string; deliveryAttemptId: string }): Promise<EmailDeliveryResult> {

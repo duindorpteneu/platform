@@ -327,18 +327,21 @@ select ok((select result::text from operational_health_result)
   'health bevat geen PII, provider-ID, secret of issue-tekst');
 
 insert into private.parent_otp_challenges(
-  parent_account_id, code_hash, expires_at, used_at, created_at
+  parent_account_id, code_hash, expires_at, used_at, created_at,
+  closed_at, close_reason
 ) values
   ('f9000000-0000-4000-8000-000000000030', repeat('7', 64), timezone('utc', now()) + interval '1 day',
-    timezone('utc', now()) - interval '24 hours' - interval '1 second', timezone('utc', now()) - interval '2 days'),
+    timezone('utc', now()) - interval '24 hours' - interval '1 second', timezone('utc', now()) - interval '2 days',
+    null, null),
   ('f9000000-0000-4000-8000-000000000030', repeat('8', 64), timezone('utc', now()) + interval '1 day',
-    timezone('utc', now()) - interval '24 hours', timezone('utc', now()) - interval '2 days'),
+    timezone('utc', now()) - interval '24 hours', timezone('utc', now()) - interval '2 days',
+    null, null),
   ('f9000000-0000-4000-8000-000000000030', repeat('9', 64), timezone('utc', now()) - interval '24 hours' - interval '1 second',
-    null, timezone('utc', now()) - interval '2 days'),
+    null, timezone('utc', now()) - interval '2 days', timezone('utc', now()) - interval '24 hours' - interval '1 second', 'expired'),
   ('f9000000-0000-4000-8000-000000000030', repeat('a', 64), timezone('utc', now()) - interval '24 hours',
-    null, timezone('utc', now()) - interval '2 days'),
+    null, timezone('utc', now()) - interval '2 days', timezone('utc', now()) - interval '24 hours', 'expired'),
   ('f9000000-0000-4000-8000-000000000030', repeat('b', 64), timezone('utc', now()) - interval '23 hours',
-    null, timezone('utc', now()) - interval '2 days');
+    null, timezone('utc', now()) - interval '2 days', timezone('utc', now()) - interval '23 hours', 'expired');
 
 insert into private.rate_limit_events(scope, key_hash, occurred_at) values
   ('search', repeat('c', 64), timezone('utc', now()) - interval '30 days' - interval '1 second'),

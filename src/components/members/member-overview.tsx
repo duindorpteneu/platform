@@ -13,6 +13,7 @@ import type {
   MemberSavedViewsResponse,
 } from "@/lib/member-overview-contract";
 import type { MemberPackageBulkOptions } from "@/lib/member-package-bulk-contract";
+import type { ParentOtpSupport } from "@/lib/parent-otp-support-contract";
 import { cn } from "@/lib/utils";
 import { MEMBER_LIST_PAGE_SIZE } from "@/server/members/overview";
 
@@ -28,9 +29,10 @@ function hrefFor(query: MemberListQuery, overrides: Partial<Record<keyof MemberL
   return suffix ? `/backoffice/leden?${suffix}` : "/backoffice/leden";
 }
 
-export function MemberOverview({ list, detail, query, savedViews, staffRole, packageOptions }: {
+export function MemberOverview({ list, detail, otpSupport, query, savedViews, staffRole, packageOptions }: {
   list: MemberListResponse;
   detail: MemberDetailResponse | null;
+  otpSupport: ParentOtpSupport | null;
   query: MemberListQuery;
   savedViews: MemberSavedViewsResponse | null;
   staffRole?: "beheerder" | "kledingcommissie" | "uitgifte";
@@ -81,7 +83,7 @@ export function MemberOverview({ list, detail, query, savedViews, staffRole, pac
         </section>
 
         <div className="space-y-6">
-          {detail ? <MemberDetailPanel detail={detail} closeHref={closeDetailHref} staffRole={staffRole} /> : <section className="rounded-xl border border-brand-100 bg-brand-50 p-5"><h2 className="text-sm font-bold text-brand-900">Selecteer een lid</h2><p className="mt-1 text-xs leading-5 text-brand-700">Open een rij voor bedrag, betaling, artikelregels, QR-status, ouderkoppelingen en relevante historie.</p></section>}
+          {detail ? <MemberDetailPanel detail={detail} otpSupport={otpSupport} closeHref={closeDetailHref} staffRole={staffRole} /> : <section className="rounded-xl border border-brand-100 bg-brand-50 p-5"><h2 className="text-sm font-bold text-brand-900">Selecteer een lid</h2><p className="mt-1 text-xs leading-5 text-brand-700">Open een rij voor bedrag, betaling, artikelregels, QR-status, ouderkoppelingen en relevante historie.</p></section>}
           <TeamMemberStatusPanel teams={list.filterOptions.teams} initialTeam={query.team} disabled={!list.activeSeason} />
           {staffRole === "beheerder" && <ManualMemberPanel />}
           {staffRole === "beheerder" && <ImportPanel />}

@@ -223,7 +223,7 @@ describe("deployment environment isolation", () => {
     expect(contractScript).toContain('"get_parent_package_workspace_v6"');
     expect(contractScript).toContain('"get_member_detail_v5"');
     expect(contractScript).toContain('"remove_loose_order_line_v1"');
-    expect(contractScript).toContain('"get_operational_health_v13"');
+    expect(contractScript).toContain('"get_operational_health_v14"');
     expect(contractScript).toContain('"register_order_qr_locator"');
     expect(contractScript).toContain('"exchange_order_qr_locator_v2"');
     expect(contractScript).toContain('"commit_fulfilment_v3"');

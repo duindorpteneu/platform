@@ -1,7 +1,7 @@
 # Stagingverificatie
 
 Status: nog uit te voeren op een externe stagingomgeving
-Canon: MVP v1.0, sectie 19 en 20.1, plus goedgekeurd addendum v1.1
+Canon: MVP v1.0 plus goedgekeurde addenda v1.1 en v1.2
 Artefact/commit-SHA: `________________`
 Staging-URL: `________________`
 Testrun (UTC): `________________`
@@ -21,6 +21,7 @@ Deze verificatie gebruikt alleen fictieve gegevens en provider-testmodi. Elk sce
 - [ ] Mollie staat in testmode en webhook gebruikt publiek HTTPS.
 - [ ] De Mollie-acceptatie vindt een bestaand actief open stagingseizoen en `mollie_enabled=true`; het productschema retourneert voor alle vier verwijderde fixture-RPC's `404/PGRST202`.
 - [ ] SendGrid-afzender/template en signed event webhook zijn staging-specifiek.
+- [ ] `STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED=true` en de afzonderlijke veilige `EMAIL_SMOKE_RECIPIENT` zijn uitsluitend in de stagingenvironment geconfigureerd; de ontvanger is vooraf voor deze herhaalde OTP-test geautoriseerd.
 - [ ] Publieke en interne health, queue, webhook- en reconciliatiemonitoring zijn zichtbaar.
 - [ ] Providerflags starten uit en worden alleen binnen de expliciete providerscenario’s aangezet.
 
@@ -60,14 +61,16 @@ Bewijs: `________________`
 Verwacht canoniek resultaat: één gedeeld account, uitsluitend beheerdergrants, geen automatische gezinskoppeling.
 Bewijs: `________________`
 
-### E2E-04 — OTP-bruteforce en enumeratie
+### E2E-04 — Stabiele OTP, bruteforce en enumeratie
 
 - [ ] Voer vijf foutieve codes voor dezelfde challenge in.
 - [ ] De challenge wordt onbruikbaar; ook de correcte oude code faalt en een nieuwe code is vereist.
 - [ ] Bekend en onbekend e-mailadres krijgen dezelfde neutrale HTTP-status, responsevorm en gebruikerscopy.
-- [ ] Controleer 60-secondenresend, maximaal vijf aanvragen per uur per e-mail en IP-limiet; overschrijding is neutraal/rate-limited.
+- [ ] Controleer negentig seconden resendcooldown, maximaal vijf openbare verzendingen per uur per e-mail en de IP-limiet; overschrijding is neutraal/rate-limited.
+- [ ] Vraag na de cooldown opnieuw aan en bewijs dezelfde challenge-ID, codehash en oorspronkelijke vervaldatum; de eerdere mailcode verifieert daarna nog steeds.
+- [ ] Verifieer code en link ieder afzonderlijk op een verse fixture: de eerste methode consumeert de uitdaging, waarna de andere methode en linkreplay falen.
 
-Verwacht canoniek resultaat: code ongeldig; nieuwe code vereist; geen accountinformatie gelekt.
+Verwacht canoniek resultaat: resend vervangt niets; vijf fouten of één succes consumeren beide methoden; geen accountinformatie gelekt.
 Bewijs: `________________`
 
 ### E2E-05 — Mollie exact paid
@@ -284,6 +287,24 @@ Bewijs: `________________`
 - [ ] Zonder geldige QR-exchange, volledige betaling en harde reservering blijft commit geweigerd.
 - [ ] Ongeldige/onbevoegde zoek- of scanrequest toont geen PII.
 
+### E2E-29 — Parent Login Reliability en Email Control Center
+
+- [ ] Start `.github/workflows/staging-parent-login-acceptance.yml` op `main` met de exact gedeployde SHA, de succesvolle `Deploy staging`-run en bevestiging `STAGING-PARENT-LOGIN`.
+- [ ] De trusted preflight bewijst actuele `origin/main`, deployrun, artifactdigest en publieke stagingrelease vóór environmentsecrets beschikbaar komen.
+- [ ] De harness gebruikt uitsluitend de geconfigureerde veilige smoke-ontvanger en run-unieke fictieve ouder-/lid-/stafffixtures; geen willekeurig of bestaand lid ontvangt mail.
+- [ ] Eerste aanvraag maakt één challenge; resend na cooldown behoudt challenge, codehash, proofhash en deadline. De code uit de eerste mail werkt na resend.
+- [ ] De initiële GET op `/login/direct` bevat geen credential in request-URL/referrer; fragment wordt verwijderd vóór same-origin POST en er laden geen derde-partijassets.
+- [ ] Code-succes laat de link falen; link-succes laat code en replay falen; beide maken de normale HttpOnly-oudersessie en tonen uitsluitend de gegrante fixturekinderen.
+- [ ] AAL2-beheerder en -kledingcommissie kunnen resend en revoke-plus-new uitvoeren zonder credential in response of UI. AAL1 en `uitgifte` worden server-side geweigerd; alleen beheerder kan grants, adres, sessies of suppressie wijzigen.
+- [ ] Het Email Control Center laadt overzicht, problemen, ontvangers, login/OTP, campagnes, mailstroom, templates en huisstijl zonder bestaande Mail-v2-functies te verliezen.
+- [ ] De providerkaart noemt actieve provider en feedbackcapability. SMTP-acceptatie toont `Geaccepteerd`/`Aflevering niet bevestigd`, nooit `Afgeleverd`; een geldig SendGrid-deliveryevent mag wel bewezen aflevering tonen.
+- [ ] Een fixture-hard-bounce verschijnt bij problemen/ontvangergezondheid, maakt één recipient-suppressie en één geaggregeerd actiepunt, maar publieke en interne globale health blijven gezond. Een systemische providerconfiguratiefout degradeert health wel.
+- [ ] Een gezins-e-mailtransfer behoudt bounce/suppressie bij het historische oude adres en maakt voor het nieuwe adres een afzonderlijke healthidentiteit.
+- [ ] De always-cleanup verwijdert alle run-unieke parent-, member-, grant-, staff-, OTP-, sessie- en supportfixtures; het artifact bevat alleen booleans, aantallen, tijden, release-SHA en niet-herleidbare runidentifiers.
+
+Verwacht canoniek resultaat: stable challenge, twee single-use verificatiemethoden, begrensde AAL2-support, eerlijk providerbewijs, recipientproblemen zonder globale 503 en volledige fixturecleanup.
+Bewijs: `________________`
+
 ## 3. Security-, browser- en toegankelijkheidsgates
 
 - [ ] Anoniem, ouder, beheerder, kledingcommissie en uitgifte zijn tegen alle gevoelige routes getest.
@@ -318,7 +339,7 @@ Bewijs: `________________`
 
 ## 5. Eindbesluit
 
-- [ ] Alle 28 E2E-scenario’s zijn groen.
+- [ ] Alle 29 E2E-scenario’s zijn groen.
 - [ ] Alle security-, toegankelijkheids- en operationsgates zijn groen.
 - [ ] Alle providerflows zijn in stagingtestmode uitgevoerd.
 - [ ] Er is geen open blocker, critical of high bevinding.

@@ -2,7 +2,9 @@ import { parentOtpEmailTemplateSchema, type ParentOtpEmailTemplate } from "@/lib
 import {
   parentOtpV2CompletionSchema,
   parentOtpV2PreparationSchema,
+  parentOtpV3PreparationSchema,
   type PreparedParentOtpV2,
+  type PreparedParentOtpV3,
 } from "@/lib/mail-v2-contract";
 import { renderMailV2 } from "@/server/email/mail-v2";
 import { renderEmailTemplate } from "@/server/email/templates";
@@ -50,10 +52,41 @@ type OtpV2Client = {
     name:
       | "prepare_parent_otp_delivery_v1"
       | "authorize_parent_otp_delivery_v1"
-      | "complete_parent_otp_delivery_v1",
+      | "complete_parent_otp_delivery_v1"
+      | "complete_parent_otp_delivery_v2",
     parameters: Record<string, unknown>,
   ): PromiseLike<{ data: unknown; error: { code?: string } | null }>;
 };
+
+type OtpV3Client = {
+  rpc(
+    name: "prepare_parent_otp_delivery_v3",
+    parameters: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { code?: string } | null }>;
+};
+
+export async function prepareParentOtpV3(
+  client: OtpV3Client,
+  email: string,
+  challengeId: string,
+  codeHash: string,
+  forceNew = false,
+) {
+  const { data, error } = await client.rpc(
+    "prepare_parent_otp_delivery_v3",
+    {
+      p_email: email,
+      p_challenge_id: challengeId,
+      p_code_hash: codeHash,
+      p_force_new: forceNew,
+      p_actor_user_id: null,
+    },
+  );
+  if (error) throw new Error("PARENT_OTP_V3_PREPARATION_FAILED");
+  const parsed = parentOtpV3PreparationSchema.safeParse(data);
+  if (!parsed.success) throw new Error("PARENT_OTP_V3_PREPARATION_INVALID");
+  return parsed.data;
+}
 
 export async function prepareParentOtpV2(
   client: OtpV2Client,
@@ -107,9 +140,24 @@ export async function completeParentOtpV2(
   client: OtpV2Client,
   deliveryAttemptId: string,
   outcome: ParentOtpV2Outcome,
+  providerEvidence?: {
+    provider: "smtp" | "sendgrid";
+    providerState:
+      | "provider_accepted"
+      | "temporary_failure"
+      | "permanent_rejection"
+      | "delivery_uncertain"
+      | "configuration_error"
+      | "disabled";
+    responseCode?: string;
+    enhancedStatusCode?: string;
+    recipientFailure: boolean;
+  },
 ) {
   const { data, error } = await client.rpc(
-    "complete_parent_otp_delivery_v1",
+    providerEvidence
+      ? "complete_parent_otp_delivery_v2"
+      : "complete_parent_otp_delivery_v1",
     {
       p_delivery_attempt_id: deliveryAttemptId,
       p_outcome: outcome.outcome,
@@ -119,6 +167,13 @@ export async function completeParentOtpV2(
           : null,
       p_error_code:
         outcome.outcome === "accepted" ? null : outcome.errorCode,
+      ...(providerEvidence ? {
+        p_provider: providerEvidence.provider,
+        p_provider_state: providerEvidence.providerState,
+        p_response_code: providerEvidence.responseCode ?? null,
+        p_enhanced_status_code: providerEvidence.enhancedStatusCode ?? null,
+        p_recipient_failure: providerEvidence.recipientFailure,
+      } : {}),
     },
   );
   if (error) throw new Error("PARENT_OTP_V2_COMPLETION_FAILED");
@@ -159,7 +214,70 @@ export function renderParentOtpV2(
     },
     protectedValues: {
       otp_code: { code },
-      otp_validity: { minutes: preparation.expiresInMinutes },
+      otp_validity: {
+        minutes: preparation.expiresInMinutes,
+        requestedAt: new Date().toISOString(),
+        expiresAt: new Date(
+          Date.now() + preparation.expiresInMinutes * 60_000,
+        ).toISOString(),
+      },
+      otp_warning: {},
+    },
+    appBaseUrl,
+  });
+}
+
+export function renderParentOtpV3(
+  preparation: PreparedParentOtpV3,
+  code: string,
+  directCredential: string,
+  appBaseUrl: string,
+) {
+  if (!/^\d{6}$/u.test(code)) throw new Error("PARENT_OTP_CODE_INVALID");
+  if (!/^v1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/u.test(directCredential)) {
+    throw new Error("PARENT_DIRECT_CREDENTIAL_INVALID");
+  }
+  const expiresAt = new Date(preparation.expiresAt);
+  const requestedAt = new Date(
+    Date.parse(preparation.cooldownUntil) - 90 * 1_000,
+  );
+  const directUrl = new URL("/login/direct", appBaseUrl);
+  directUrl.hash = directCredential;
+  const {
+    id: _templateRevisionId,
+    contentHash: _templateContentHash,
+    ...source
+  } = preparation.template;
+  const {
+    id: _brandingRevisionId,
+    contentHash: _brandingContentHash,
+    ...branding
+  } = preparation.branding;
+  void _templateRevisionId;
+  void _templateContentHash;
+  void _brandingRevisionId;
+  void _brandingContentHash;
+  return renderMailV2({
+    source,
+    branding,
+    shortcodes: {
+      club_name: branding.clubName,
+      recipient_name: "ouder/verzorger",
+      contact_email: branding.contactEmail,
+      otp_expiry_minutes: preparation.expiresInMinutes,
+      privacy_url: branding.privacyUrl,
+    },
+    protectedValues: {
+      otp_code: { code },
+      otp_direct_login: {
+        url: directUrl.toString(),
+        label: "Direct inloggen",
+      },
+      otp_validity: {
+        minutes: preparation.expiresInMinutes,
+        requestedAt: requestedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      },
       otp_warning: {},
     },
     appBaseUrl,

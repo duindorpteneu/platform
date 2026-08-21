@@ -49,7 +49,7 @@ een gedocumenteerd besluit.
 
 ### Route groups and surfaces
 
-- `(public)`: `/login`, `/login/code`.
+- `(public)`: `/login`, `/login/code`, `/login/direct`.
 - `(member)`: `/mijn-tenue`, `/mijn-tenue/lid-toevoegen`, `/mijn-tenue/account`, `/betaling/[orderId]`, `/betaling/terug`.
 - `(staff)`: `/backoffice` and its operational modules, plus `/uitgifte`.
 - Server routes for parent auth, Mollie and SendGrid webhooks, internal e-mail jobs, imports, payments, stock, bulk mail, QR, fulfilment and exports.
@@ -58,7 +58,7 @@ een gedocumenteerd besluit.
 
 - Supabase Postgres with `app` schema for RLS-protected application data and a private schema for OTPs, session-token hashes, QR-token hashes and sensitive audit details.
 - Supabase Auth SSR only for staff; staff access requires active profile, exactly one role and AAL2/TOTP MFA.
-- Parents use a custom six-digit OTP and opaque, revocable, hashed session token in a Secure/HttpOnly/SameSite cookie. No parent Supabase Auth account, password or magic link.
+- Parents use one custom ten-minute challenge with a stable six-digit OTP and optional domain-separated direct-login proof; either method atomically consumes both. The normal session remains opaque, revocable, hashed and stored in a Secure/HttpOnly/SameSite cookie. There is no parent Supabase Auth account or password.
 - Browser code never writes transactional tables directly. All mutations use server actions or route handlers with fresh authorization and state checks.
 - All money is integer eurocents. Database timestamps are UTC and are presented in `Europe/Amsterdam`.
 - Secrets remain server-only; no PII, OTP, session token, QR token, provider secret or full webhook payload in logs.

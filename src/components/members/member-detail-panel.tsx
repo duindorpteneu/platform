@@ -1,12 +1,14 @@
 import { CalendarDays, Clock3, Link2, Mail, PackageCheck, ReceiptText, ShieldCheck, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import type { MemberDetailResponse } from "@/lib/member-overview-contract";
+import type { ParentOtpSupport } from "@/lib/parent-otp-support-contract";
 import { cn } from "@/lib/utils";
 import { OrderAdminActions } from "@/components/members/order-admin-actions";
 import { MemberStatusAction } from "@/components/members/member-status-action";
 import { MemberSizeProfile } from "@/components/members/member-size-profile";
 import { LooseOrderLineRemoval } from "@/components/members/loose-order-line-removal";
 import { MemberProfileEditor } from "@/components/members/member-profile-editor";
+import { ParentOtpSupportCard } from "@/components/members/parent-otp-support-card";
 
 const lineLabels = {
   backorder: "Nalevering",
@@ -61,8 +63,9 @@ const genderLabels = {
   unknown: "Niet geregistreerd",
 };
 
-export function MemberDetailPanel({ detail, closeHref, staffRole }: {
+export function MemberDetailPanel({ detail, otpSupport, closeHref, staffRole }: {
   detail: MemberDetailResponse;
+  otpSupport?: ParentOtpSupport | null;
   closeHref: string;
   staffRole?: "beheerder" | "kledingcommissie" | "uitgifte";
 }) {
@@ -117,6 +120,10 @@ export function MemberDetailPanel({ detail, closeHref, staffRole }: {
             <div className="mt-4 space-y-2">{detail.order.lines.map((line) => <div key={line.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5"><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink">{line.article} · {line.size}</p><p className="mt-0.5 text-[10px] text-slate-400">{line.quantity} stuk{line.quantity === 1 ? "" : "s"} · {line.lineKind === "loose" ? "Los artikel" : "Pakketonderdeel"}</p></div><div className="flex shrink-0 items-center gap-2"><span className="text-[10px] font-semibold text-brand-700">{lineLabels[line.status]}</span>{line.canRemove && <LooseOrderLineRemoval orderLineId={line.id} article={`${line.article} · ${line.size}`} />}</div></div>)}</div>
           </div>}
         </section>
+
+        {staffRole === "beheerder" && otpSupport && (
+          <ParentOtpSupportCard support={otpSupport} />
+        )}
 
         <section className="p-5">
           <div className="flex items-center gap-2"><Link2 className="size-4 text-brand-500" /><h3 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Gekoppelde ouders</h3></div>

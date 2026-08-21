@@ -25,6 +25,7 @@ import type {
 const protectedNodeLabels: Record<MailProtectedNodeKey, string> = {
   portal_route: "Portaalroute",
   otp_code: "OTP-code",
+  otp_direct_login: "Directe inlogknop",
   otp_validity: "OTP-geldigheid",
   otp_warning: "OTP-waarschuwing",
   size_table: "Maattabel",

@@ -38,6 +38,13 @@ const nextConfig: NextConfig = {
         headers: parentPortalHeaders,
       },
       {
+        source: "/login/direct",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
         source: "/mijn-tenue/:path*",
         headers: parentPortalHeaders,
       },

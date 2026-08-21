@@ -37,8 +37,9 @@ De lokale secret scan is defense-in-depth en vervangt de secretstore, GitHub pus
 - [ ] Geblokkeerd staffaccount en eerder uitgegeven sessie verliezen direct toegang.
 - [ ] `uitgifte` ziet alleen lookup/uitgiftedata en krijgt 403/redirect zonder bodydata op backoffice-, export- en beheergrenzen.
 - [ ] Kledingcommissie kan operationele taken uitvoeren maar geen beheerder-only staff-/systeemactie.
-- [ ] Ouders hebben geen Supabase Auth-account, wachtwoord of magic link.
-- [ ] Ouder-OTP is cryptografisch willekeurig, exact zes cijfers, alleen gehasht opgeslagen, tien minuten geldig, single-use en maximaal vijf pogingen.
+- [ ] Ouders hebben geen Supabase Auth-account of wachtwoord; code en optionele directe link gebruiken exact dezelfde app-eigen challenge en sessiegrens.
+- [ ] Eén ouderchallenge levert via domeingescheiden HMAC een stabiele zescijferige code en onafhankelijke high-entropy linkproof, bewaart alleen hashes, leeft exact tien minuten, is single-use en blokkeert beide methoden na maximaal vijf fouten.
+- [ ] `/login/direct` ontvangt de credential uitsluitend via een URL-fragment, verwijdert dit vóór netwerk-/assetverkeer en POST same-origin; GET-URL, referrer, history, logs en analytics blijven credentialvrij en de pagina laadt geen derde-partijassets.
 - [ ] Alleen een bekend actief kandidaat-e-mailadres kan een bruikbare challenge/mail opleveren.
 - [ ] Bekend en onbekend e-mailadres leveren dezelfde neutrale responsevorm/copy.
 - [ ] Oudersessie is opaque en gehasht, herroepbaar en via `Secure; HttpOnly; SameSite` cookie zonder token in URL.
@@ -65,6 +66,8 @@ Test zowel pagina als directe API/RPC; client-side verborgen knoppen tellen niet
 | Niet-gekoppelde lidkaart | Weigeren | Weigeren | Niet van toepassing | Niet van toepassing | Weigeren |
 | QR-exchange/uitgifte | Weigeren | Weigeren | Toestaan | Weigeren | Toestaan, minimale data |
 | Correctie/QR-rotatie | Weigeren | Weigeren | Toestaan | Toestaan | Weigeren |
+| OTP-support resend/reset | Weigeren | Weigeren | Toestaan met AAL2 | Toestaan met AAL2 | Weigeren |
+| Grants/adres/sessie/suppressie beheren | Weigeren | Weigeren | Toestaan met AAL2 | Weigeren | Weigeren |
 
 Negatief bewijs bevat HTTP-status plus controle dat geen gevoelige responsebody of databasewijziging ontstond.
 
@@ -89,8 +92,9 @@ Bewijs: `________________`
 
 ## 5. Rate limits en misbruik
 
-- [ ] OTP-aanvraag: minimaal 60 seconden tussen aanvragen, maximaal vijf per uur per e-mail en aanvullende IP-limiet.
+- [ ] OTP-aanvraag/resend: negentig seconden cooldown, maximaal vijf openbare verzendingen per uur per e-mail en aanvullende IP-limiet; resend hergebruikt challenge en deadline.
 - [ ] OTP-verificatie: maximaal vijf pogingen per challenge plus begrensde e-mail/IP-scope; nieuwe aanvragen omzeilen eerdere limiet niet.
+- [ ] Support-resend/reset heeft een afzonderlijke shared-storelimiet, vereist AAL2 en retourneert geen code, proof of credential-URL.
 - [ ] Mollie-create, QR-lookup, zoeken en exports hebben database-/shared-storelimieten die meerdere appinstances niet omzeilen.
 - [ ] Rate-limitkey is gehasht; langdurige audit bevat geen rauw IP-adres.
 - [ ] Gelijktijdige requests overschrijden de limiet niet door race conditions.

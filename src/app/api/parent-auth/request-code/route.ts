@@ -1,165 +1,137 @@
 import { after, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getServerEnv } from "@/lib/env";
 import { getSupabaseAdminClient } from "@/server/supabase/admin";
-import { generateParentCode, hashParentSecret, normalizeParentEmail, parentEmailSchema, sealParentChallengeEmail } from "@/server/auth/parent";
 import {
-  sendParentOtpEmail,
-  sendParentOtpV2Email,
-} from "@/server/email/provider";
-import {
-  authorizeParentOtpV2,
-  completeParentOtpV2,
-  getParentOtpEmailTemplate,
-  prepareParentOtpV2,
-  renderParentOtpEmail,
-  renderParentOtpV2,
-} from "@/server/email/otp";
+  createNeutralParentChallengeContext,
+  deriveParentCode,
+  generateParentChallengeId,
+  hashParentSecret,
+  normalizeParentEmail,
+  openParentChallengeContext,
+  parentOtpRequestSchema,
+  sealParentChallengeContext,
+  type ParentChallengeContext,
+} from "@/server/auth/parent";
+import { prepareParentOtpV3 } from "@/server/email/otp";
+import { deliverPreparedParentOtpV3 } from "@/server/email/otp-delivery";
 import { consumeRateLimit, requestRateKey } from "@/server/auth/rate-limit";
-import { BODY_POLICIES, guardBrowserMutation, readJsonRequest } from "@/server/security/route-guard";
-import { isOperationalFeatureEnabled, type FeatureFlagClient } from "@/server/operations/feature-flags";
+import {
+  BODY_POLICIES,
+  guardBrowserMutation,
+  readJsonRequest,
+} from "@/server/security/route-guard";
+import {
+  isOperationalFeatureEnabled,
+  type FeatureFlagClient,
+} from "@/server/operations/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const neutralResponse = { message: "Als dit e-mailadres bij ons bekend is, is een code verzonden." };
+const neutralResponse = {
+  message: "Als dit e-mailadres bij ons bekend is, is een code verzonden.",
+};
 
-function neutralChallengeResponse(email: string) {
+function neutralChallengeResponse(context: ParentChallengeContext) {
   const response = NextResponse.json(neutralResponse, { status: 202 });
-  response.cookies.set("duindorp_parent_challenge", sealParentChallengeEmail(email), { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 10 * 60 });
+  response.cookies.set(
+    "duindorp_parent_challenge",
+    sealParentChallengeContext(context),
+    {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 10 * 60,
+    },
+  );
   return response;
 }
 
-async function deliverPreparedParentOtp(
-  admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
-  preparation: Extract<
-    Awaited<ReturnType<typeof prepareParentOtpV2>>,
-    { status: "prepared" }
-  >,
-  email: string,
-  code: string,
-  appBaseUrl: string,
-) {
-  const appClient = admin.schema("app");
-  try {
-    if (!await authorizeParentOtpV2(appClient, preparation.deliveryAttemptId)) {
-      await completeParentOtpV2(
-        appClient,
-        preparation.deliveryAttemptId,
-        {
-          outcome: "disabled",
-          errorCode: "send_authorization_denied",
-        },
-      );
-      return;
-    }
-    let message: ReturnType<typeof renderParentOtpV2>;
-    try {
-      message = renderParentOtpV2(preparation, code, appBaseUrl);
-    } catch {
-      await completeParentOtpV2(
-        appClient,
-        preparation.deliveryAttemptId,
-        {
-          outcome: "render_failed",
-          errorCode: "render_failed",
-        },
-      );
-      return;
-    }
-    const delivery = await sendParentOtpV2Email({
-      deliveryAttemptId: preparation.deliveryAttemptId,
-      recipientEmail: email,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-      fromName: message.fromName,
-      fromEmail: message.fromEmail,
-      replyToEmail: message.replyToEmail,
-    });
-    if (delivery.delivered) {
-      await completeParentOtpV2(
-        appClient,
-        preparation.deliveryAttemptId,
-        {
-          outcome: "accepted",
-          providerMessageId: delivery.providerMessageId,
-        },
-      );
-      return;
-    }
-    await completeParentOtpV2(
-      appClient,
-      preparation.deliveryAttemptId,
-      {
-        outcome: delivery.reason,
-        errorCode: delivery.reason,
-      },
-    );
-  } catch {
-    // The health gate reports an uncompleted attempt. Never retry a transient
-    // OTP send automatically and never log the code or recipient.
-  }
-}
-
 export async function POST(request: Request) {
-  const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonTiny }); if (guarded) return guarded;
+  const guarded = guardBrowserMutation(request, {
+    body: BODY_POLICIES.jsonTiny,
+  });
+  if (guarded) return guarded;
   const body = await readJsonRequest(request, BODY_POLICIES.jsonTiny);
   if (!body.ok) return body.response;
-  const parsed = parentEmailSchema.safeParse(body.data);
-  if (!parsed.success) return NextResponse.json({ error: "Voer een geldig e-mailadres in." }, { status: 400 });
+  const parsed = parentOtpRequestSchema.safeParse(body.data);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Voer een geldig e-mailadres in." },
+      { status: 400 },
+    );
+  }
 
-  const email = normalizeParentEmail(parsed.data.email);
+  const cookieStore = await cookies();
+  const previousContext = openParentChallengeContext(
+    cookieStore.get("duindorp_parent_challenge")?.value ?? "",
+  );
+  const isResend = "resend" in parsed.data;
+  if (isResend && !previousContext) {
+    return NextResponse.json(
+      { error: "Vraag eerst een nieuwe verificatiecode aan." },
+      { status: 401 },
+    );
+  }
+  const email = isResend
+    ? previousContext!.email
+    : normalizeParentEmail("email" in parsed.data ? parsed.data.email : "");
+  const forceNew = parsed.data.forceNew === true;
+  let responseContext = previousContext?.email === email
+    ? previousContext
+    : createNeutralParentChallengeContext(email);
   const admin = getSupabaseAdminClient();
-  if (!admin) return neutralChallengeResponse(email);
+  if (!admin) return neutralChallengeResponse(responseContext);
 
   try {
-    if (!await isOperationalFeatureEnabled(admin as unknown as FeatureFlagClient, "email_enabled")) return neutralChallengeResponse(email);
-    const ipAllowed = await consumeRateLimit(admin, { scope: "otp_request", keyHash: requestRateKey(request, "otp-request-ip"), limit: 20, windowSeconds: 3_600 });
-    if (!ipAllowed) return neutralChallengeResponse(email);
-    const code = generateParentCode();
-    const codeHash = hashParentSecret(code);
-    const expiresAt = new Date(
-      Date.now() + 10 * 60 * 1_000,
-    ).toISOString();
-    const preparation = await prepareParentOtpV2(
+    if (!await isOperationalFeatureEnabled(
+      admin as unknown as FeatureFlagClient,
+      "email_enabled",
+    )) {
+      return neutralChallengeResponse(responseContext);
+    }
+    const ipAllowed = await consumeRateLimit(admin, {
+      scope: "otp_request",
+      keyHash: requestRateKey(request, "otp-request-ip"),
+      limit: 20,
+      windowSeconds: 3_600,
+    });
+    if (!ipAllowed) return neutralChallengeResponse(responseContext);
+
+    const proposedChallengeId = generateParentChallengeId();
+    const proposedCode = deriveParentCode(proposedChallengeId);
+    const preparation = await prepareParentOtpV3(
       admin.schema("app"),
       email,
-      codeHash,
-      expiresAt,
+      proposedChallengeId,
+      hashParentSecret(proposedCode),
+      forceNew,
     );
+    if (
+      preparation.status === "prepared"
+      || preparation.status === "cooldown"
+      || preparation.status === "rate_limited"
+    ) {
+      responseContext = {
+        version: 3,
+        email,
+        challengeId: preparation.challengeId,
+        expiresAt: preparation.expiresAt,
+        cooldownUntil: preparation.cooldownUntil,
+      };
+    }
     if (preparation.status === "prepared") {
-      const appBaseUrl = getServerEnv().APP_BASE_URL;
-      after(() => deliverPreparedParentOtp(
+      after(() => deliverPreparedParentOtpV3(
         admin,
         preparation,
         email,
-        code,
-        appBaseUrl,
+        getServerEnv().APP_BASE_URL,
       ));
-    } else if (preparation.status === "unavailable") {
-      const { data: accountId, error } = await admin.rpc(
-        "create_parent_otp",
-        {
-          p_email: email,
-          p_code_hash: codeHash,
-          p_expires_at: expiresAt,
-        },
-      );
-      after(async () => {
-        if (error || !accountId) return;
-        try {
-          const template = await getParentOtpEmailTemplate(admin);
-          const message = renderParentOtpEmail(template, code);
-          await sendParentOtpEmail(email, message);
-        } catch {
-          // Legacy fallback is only valid before the immutable v2 cutover.
-        }
-      });
-    } else {
-      after(async () => undefined);
     }
   } catch {
-    // Do not reveal whether an e-mail exists or whether delivery infrastructure is configured.
+    // Preserve the same status, body and cookie shape for every eligible state.
   }
-  return neutralChallengeResponse(email);
+  return neutralChallengeResponse(responseContext);
 }
