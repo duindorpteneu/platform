@@ -119,6 +119,8 @@ jobs:
 
       - name: Run e-mail health v14 upgrade reconciliation
         run: pnpm test:db:email-health-v14-upgrade
+      - name: Run parent OTP delivery-gap upgrade reconciliation
+        run: pnpm test:db:parent-otp-delivery-gap-upgrade
 
       - name: Apply all migrations to a clean database
         run: pnpm db:reset

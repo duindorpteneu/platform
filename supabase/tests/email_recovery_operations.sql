@@ -545,6 +545,28 @@ select is(
   0,
   'v14 haalt uitsluitend bewezen recipientfailure uit globale mailhealth'
 );
+select is(
+  (
+    app.get_operational_health_v15(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  0,
+  'v15 behoudt de recipienthealthuitsluitingen uit v14'
+);
+select is(
+  (
+    select metrics->>'reconciledAttemptCount'
+    from private.migration_reconciliations
+    where migration_key =
+      '20260821183154_resolve_pre_v3_otp_delivery_gaps'
+  ),
+  '0',
+  'een schone database reconcileert geen historische OTP-deliverygap'
+);
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');
 

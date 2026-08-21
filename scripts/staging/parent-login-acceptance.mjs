@@ -296,7 +296,7 @@ function databaseContractProbe(databaseUrl, recipient) {
     where account.email_normalized = lower(:'recipient')
       and private.parent_account_has_portal_access(account.id);
     create temporary table baseline_health on commit drop as
-    select app.get_operational_health_v14(repeat('a', 64), 1, null, null) result;
+    select app.get_operational_health_v15(repeat('a', 64), 1, null, null) result;
     select set_config(
       'request.jwt.claims',
       jsonb_build_object(
@@ -352,7 +352,7 @@ function databaseContractProbe(databaseUrl, recipient) {
       true
     ) result;
     create temporary table after_health on commit drop as
-    select app.get_operational_health_v14(repeat('a', 64), 1, null, null) result;
+    select app.get_operational_health_v15(repeat('a', 64), 1, null, null) result;
     select set_config(
       'request.jwt.claims',
       jsonb_build_object(

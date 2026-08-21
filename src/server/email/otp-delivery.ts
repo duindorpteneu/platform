@@ -110,8 +110,19 @@ export async function deliverPreparedParentOtpV3(
       outcome: delivery.delivered ? "provider_accepted" : delivery.reason,
     };
   } catch {
-    // The immutable attempt remains observable by operational health. Never
-    // return or log the recipient, code, direct proof or rendered message.
+    // A provider call or its acknowledgement can fail after the immutable
+    // attempt is prepared. Preserve that uncertainty explicitly so the
+    // ledger never remains permanently open. A conflicting already-recorded
+    // outcome is safe and deliberately left unchanged.
+    try {
+      await completeParentOtpV2(appClient, preparation.deliveryAttemptId, {
+        outcome: "delivery_uncertain",
+        errorCode: "delivery_completion_uncertain",
+      });
+    } catch {
+      // Operational health still exposes the attempt if even this append-only
+      // fallback cannot be committed. Never log recipient or credentials.
+    }
     return { outcome: "delivery_uncertain" };
   }
 }
