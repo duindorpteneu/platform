@@ -6,6 +6,8 @@ import {
   maskParentEmail,
   normalizeParentEmail,
   openParentChallengeContext,
+  parentSessionExpiresAt,
+  PARENT_SESSION_MAX_AGE_SECONDS,
   parentCodeInputSchema,
   parentCodeSchema,
   parentEmailSchema,
@@ -77,5 +79,13 @@ describe("parent authentication boundary", () => {
     expect(openParentChallengeContext(token, 10 * 60 * 1_000 + 1_001))
       .toBeNull();
     expect(openParentChallengeContext(`${token}tampered`, 2_000)).toBeNull();
+  });
+
+  it("keeps parent session expiry inside the database clock-skew boundary", () => {
+    const now = Date.parse("2026-08-21T21:00:00.000Z");
+    expect(parentSessionExpiresAt(now)).toBe(
+      "2026-09-20T20:55:00.000Z",
+    );
+    expect(PARENT_SESSION_MAX_AGE_SECONDS).toBeLessThan(30 * 24 * 60 * 60);
   });
 });

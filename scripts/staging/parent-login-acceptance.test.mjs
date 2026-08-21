@@ -186,6 +186,17 @@ describe("parent-login staging acceptance contract", () => {
     }
   });
 
+  it("sluit bij cleanup alleen challenges die door de eigen run zijn gemaakt", async () => {
+    const source = await readFile(
+      new URL("./parent-login-acceptance.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("set closed_at = statement_timestamp()");
+    expect(source.match(/challenge\.created_at >= :'started_at'::timestamptz/gu))
+      .toHaveLength(2);
+    expect(source).toContain("session_row.created_at >= :'started_at'::timestamptz");
+  });
+
   it("maakt onverwachte fouten PII-vrij en behoudt vaste codes", () => {
     expect(stableFailureCode(new Error("LINK_REPLAY_ACCEPTED"))).toBe("LINK_REPLAY_ACCEPTED");
     expect(stableFailureCode(new Error("address parent@example.invalid"))).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");

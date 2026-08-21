@@ -529,3 +529,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Addendum v1.1 legt het pakke
 - Het runtime-exceptionpad probeert nu altijd een PII-vrije `delivery_uncertain`-uitkomst te appenden; een reeds vastgelegde conflicterende uitkomst blijft intact.
 - Forward migration `20260821183154` bevriest de cutoverset atomair en sluit uitsluitend reeds verlopen outcome-loze pre-v3-pogingen exact en geaudit als `delivery_uncertain` af. Een nog actieve of mogelijk in-flight poging wordt nooit overschreven en blijft fail-closed tot haar echte resultaat is vastgelegd. De rollbackcompatibele health v14 en v15 sluiten uitsluitend de vastgelegde verlopen incidentversies uit; iedere actieve of post-cutovergap/-onzekerheid blijft blokkeren.
 - Lokale migration lint, production-like upgradefixture, 225 Vitestbestanden/1.385 tests, 60 pgTAP-bestanden/1.997 assertions, lint, TypeScript, workflowlint en productiebuild zijn groen. Protected PR-CI, merged-main-CI en stagingredeploy volgen.
+
+## Stagingacceptatie ouderlogin — 2026-08-21
+
+- PR #133 is via protected rebase gemerged als `eaa2ed349a908cf9b04b5f6dd5b3b34e2c1668c5`; exact-main CI-run `32524089882` en stagingdeploy `32524089952` zijn volledig groen. Publieke health bewijst exact deze SHA en artifactdigest op staging.
+- Hosted parent-loginacceptatie `32526364729` vond terecht `CODE_CONSUMPTION_FAILED`: de applicatie gaf een exact dertig dagen vanaf haar eigen klok berekende sessievervaldatum door, terwijl de database strikt maximaal dertig dagen vanaf haar klok accepteert. Normale app/database-klokafwijking kon daardoor een geldige code of directe link generiek afwijzen.
+- De sessie-expiry en cookie-TTL delen nu één grens van dertig dagen minus vijf minuten. De always-cleanup sluit daarnaast uitsluitend nog open challenges die aantoonbaar tijdens de eigen acceptatierun zijn gemaakt; vooraf bestaande challenges van de veilige smoke-ontvanger blijven onaangetast.

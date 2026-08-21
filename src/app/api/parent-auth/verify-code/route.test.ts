@@ -21,7 +21,10 @@ vi.mock("@/server/auth/rate-limit", () => ({
 }));
 
 import { POST } from "./route";
-import { sealParentChallengeContext } from "@/server/auth/parent";
+import {
+  PARENT_SESSION_MAX_AGE_SECONDS,
+  sealParentChallengeContext,
+} from "@/server/auth/parent";
 
 const challengeId = "11111111-1111-4111-8111-111111111111";
 
@@ -65,7 +68,9 @@ describe("POST /api/parent-auth/verify-code", () => {
   });
 
   it("consumeert challenge en creëert de sessie atomair in één RPC", async () => {
+    const startedAt = Date.now();
     const response = await POST(request());
+    const completedAt = Date.now();
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(mocks.rpc).toHaveBeenCalledWith(
@@ -80,7 +85,21 @@ describe("POST /api/parent-auth/verify-code", () => {
     expect(mocks.cookieSet).toHaveBeenCalledWith(
       "duindorp_parent_session",
       expect.any(String),
-      expect.objectContaining({ httpOnly: true, sameSite: "lax" }),
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: PARENT_SESSION_MAX_AGE_SECONDS,
+        sameSite: "lax",
+      }),
+    );
+    const rpcInput = mocks.rpc.mock.calls[0]?.[1] as {
+      p_session_expires_at: string;
+    };
+    const expiresAt = Date.parse(rpcInput.p_session_expires_at);
+    expect(expiresAt).toBeGreaterThanOrEqual(
+      startedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+    );
+    expect(expiresAt).toBeLessThanOrEqual(
+      completedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
     );
   });
 
