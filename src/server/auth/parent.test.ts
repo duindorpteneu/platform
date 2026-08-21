@@ -7,7 +7,8 @@ import {
   normalizeParentEmail,
   openParentChallengeContext,
   parentSessionExpiresAt,
-  PARENT_SESSION_MAX_AGE_SECONDS,
+  PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
+  PARENT_SESSION_DATABASE_MAX_AGE_SECONDS,
   parentCodeInputSchema,
   parentCodeSchema,
   parentEmailSchema,
@@ -86,6 +87,9 @@ describe("parent authentication boundary", () => {
     expect(parentSessionExpiresAt(now)).toBe(
       "2026-09-20T20:55:00.000Z",
     );
-    expect(PARENT_SESSION_MAX_AGE_SECONDS).toBeLessThan(30 * 24 * 60 * 60);
+    expect(PARENT_SESSION_COOKIE_MAX_AGE_SECONDS).toBe(30 * 24 * 60 * 60);
+    expect(PARENT_SESSION_DATABASE_MAX_AGE_SECONDS).toBe(
+      PARENT_SESSION_COOKIE_MAX_AGE_SECONDS - 5 * 60,
+    );
   });
 });

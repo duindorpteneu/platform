@@ -22,7 +22,8 @@ vi.mock("@/server/auth/rate-limit", () => ({
 import { POST } from "./route";
 import {
   deriveParentDirectCredential,
-  PARENT_SESSION_MAX_AGE_SECONDS,
+  PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
+  PARENT_SESSION_DATABASE_MAX_AGE_SECONDS,
 } from "@/server/auth/parent";
 
 const challengeId = "11111111-1111-4111-8111-111111111111";
@@ -79,7 +80,7 @@ describe("POST /api/parent-auth/verify-direct", () => {
       expect.any(String),
       expect.objectContaining({
         httpOnly: true,
-        maxAge: PARENT_SESSION_MAX_AGE_SECONDS,
+        maxAge: PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
       }),
     );
     const rpcInput = mocks.rpc.mock.calls[0]?.[1] as {
@@ -87,10 +88,10 @@ describe("POST /api/parent-auth/verify-direct", () => {
     };
     const expiresAt = Date.parse(rpcInput.p_session_expires_at);
     expect(expiresAt).toBeGreaterThanOrEqual(
-      startedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+      startedAt + PARENT_SESSION_DATABASE_MAX_AGE_SECONDS * 1_000,
     );
     expect(expiresAt).toBeLessThanOrEqual(
-      completedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+      completedAt + PARENT_SESSION_DATABASE_MAX_AGE_SECONDS * 1_000,
     );
   });
 

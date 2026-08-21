@@ -22,7 +22,8 @@ vi.mock("@/server/auth/rate-limit", () => ({
 
 import { POST } from "./route";
 import {
-  PARENT_SESSION_MAX_AGE_SECONDS,
+  PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
+  PARENT_SESSION_DATABASE_MAX_AGE_SECONDS,
   sealParentChallengeContext,
 } from "@/server/auth/parent";
 
@@ -87,7 +88,7 @@ describe("POST /api/parent-auth/verify-code", () => {
       expect.any(String),
       expect.objectContaining({
         httpOnly: true,
-        maxAge: PARENT_SESSION_MAX_AGE_SECONDS,
+        maxAge: PARENT_SESSION_COOKIE_MAX_AGE_SECONDS,
         sameSite: "lax",
       }),
     );
@@ -96,10 +97,10 @@ describe("POST /api/parent-auth/verify-code", () => {
     };
     const expiresAt = Date.parse(rpcInput.p_session_expires_at);
     expect(expiresAt).toBeGreaterThanOrEqual(
-      startedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+      startedAt + PARENT_SESSION_DATABASE_MAX_AGE_SECONDS * 1_000,
     );
     expect(expiresAt).toBeLessThanOrEqual(
-      completedAt + PARENT_SESSION_MAX_AGE_SECONDS * 1_000,
+      completedAt + PARENT_SESSION_DATABASE_MAX_AGE_SECONDS * 1_000,
     );
   });
 
