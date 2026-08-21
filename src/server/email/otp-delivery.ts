@@ -140,15 +140,10 @@ export async function deliverPreparedParentOtpV3(
     // immutable attempt is prepared. Preserve that uncertainty explicitly.
     // Known provider results are handled and retried above and never enter
     // this downgrade path.
-    try {
-      await completeParentOtpV2(appClient, preparation.deliveryAttemptId, {
-        outcome: "delivery_uncertain",
-        errorCode: "delivery_completion_uncertain",
-      });
-    } catch {
-      // Operational health still exposes the attempt if even this append-only
-      // fallback cannot be committed. Never log recipient or credentials.
-    }
+    await completeKnownResult({
+      outcome: "delivery_uncertain",
+      errorCode: "delivery_completion_uncertain",
+    });
     return { outcome: "delivery_uncertain" };
   }
 }

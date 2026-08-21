@@ -123,6 +123,9 @@ describe("deliverPreparedParentOtpV3", () => {
 
   it("sluit een exceptionpad expliciet als delivery uncertain", async () => {
     mocks.send.mockRejectedValue(new Error("provider transport failed"));
+    mocks.complete
+      .mockRejectedValueOnce(new Error("completion temporarily unavailable"))
+      .mockResolvedValueOnce({ status: "completed" });
     const appClient = { rpc: vi.fn() };
     const admin = { schema: () => appClient };
 
@@ -133,15 +136,17 @@ describe("deliverPreparedParentOtpV3", () => {
       "https://tenue.example",
     )).resolves.toEqual({ outcome: "delivery_uncertain" });
 
-    expect(mocks.complete).toHaveBeenCalledTimes(1);
-    expect(mocks.complete).toHaveBeenCalledWith(
+    expect(mocks.complete).toHaveBeenCalledTimes(2);
+    expect(mocks.complete.mock.calls[0]).toEqual([
       appClient,
       preparation.deliveryAttemptId,
       {
         outcome: "delivery_uncertain",
         errorCode: "delivery_completion_uncertain",
       },
-    );
+      undefined,
+    ]);
+    expect(mocks.complete.mock.calls[1]).toEqual(mocks.complete.mock.calls[0]);
     expect(JSON.stringify(mocks.complete.mock.calls)).not.toContain(
       "ouder@example.nl",
     );
