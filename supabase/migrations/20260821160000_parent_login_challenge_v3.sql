@@ -65,7 +65,8 @@ create or replace function app.prepare_parent_otp_delivery_v3(
   p_challenge_id uuid,
   p_code_hash text,
   p_force_new boolean default false,
-  p_actor_user_id uuid default null
+  p_actor_user_id uuid default null,
+  p_expected_challenge_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -95,6 +96,8 @@ begin
     or p_code_hash !~ '^[0-9a-f]{64}$'
     or p_force_new is null
     or p_actor_user_id is not null
+    or (p_force_new and p_expected_challenge_id is null)
+    or (not p_force_new and p_expected_challenge_id is not null)
   then
     raise exception 'PARENT_OTP_V3_INPUT_INVALID' using errcode = '22023';
   end if;
@@ -165,6 +168,17 @@ begin
     and target.closed_at is null
   for update;
 
+  -- A public force-new request is a compare-and-rotate operation. Possession
+  -- of an older sealed context must never close a challenge created later by
+  -- support or another browser tab, nor reveal that newer challenge context.
+  if p_force_new and (
+    challenge.id is null
+    or challenge.credential_version <> 3
+    or challenge.id <> p_expected_challenge_id
+  ) then
+    return jsonb_build_object('status', 'ineligible');
+  end if;
+
   -- Decide whether another send is allowed before replacing any credential.
   -- This preserves the current challenge when a force-new click is cooled down
   -- or rate limited, instead of closing it without sending its replacement.
@@ -211,7 +225,11 @@ begin
     set closed_at = now_utc,
         close_reason = 'support_reset',
         used_at = coalesce(target.used_at, now_utc)
-    where target.id = challenge.id;
+    where target.id = challenge.id
+      and target.id = p_expected_challenge_id;
+    if not found then
+      return jsonb_build_object('status', 'ineligible');
+    end if;
     challenge := null;
   end if;
 
@@ -335,10 +353,10 @@ end;
 $$;
 
 revoke all on function app.prepare_parent_otp_delivery_v3(
-  text, uuid, text, boolean, uuid
+  text, uuid, text, boolean, uuid, uuid
 ) from public, anon, authenticated;
 grant execute on function app.prepare_parent_otp_delivery_v3(
-  text, uuid, text, boolean, uuid
+  text, uuid, text, boolean, uuid, uuid
 ) to service_role;
 
 create or replace function app.consume_parent_login_challenge_v3(
@@ -497,9 +515,9 @@ grant execute on function app.consume_parent_login_challenge_v3(
 ) to service_role;
 
 comment on function app.prepare_parent_otp_delivery_v3(
-  text, uuid, text, boolean, uuid
+  text, uuid, text, boolean, uuid, uuid
 ) is
-  'Prepares one immutable send attempt while reusing one stable v3 challenge; never returns either login credential.';
+  'Prepares one immutable send attempt while reusing one stable v3 challenge; public force-new is compare-and-rotate bound to the expected active challenge and never returns either login credential.';
 comment on function app.consume_parent_login_challenge_v3(
   uuid, text, text, text, timestamptz
 ) is

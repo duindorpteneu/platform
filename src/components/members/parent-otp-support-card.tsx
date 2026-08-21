@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Loader2, MailCheck, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type {
   ParentOtpSupport,
   ParentOtpSupportActionResponse,
@@ -49,12 +49,15 @@ export function ParentOtpSupportCard({
   const router = useRouter();
   const [loading, setLoading] = useState<"resend" | "reset" | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const requestIds = useRef<Partial<Record<"resend" | "reset", string>>>({});
   const [feedback, setFeedback] = useState<{
     kind: "success" | "error";
     text: string;
   } | null>(null);
 
   async function run(mode: "resend" | "reset") {
+    const requestId = requestIds.current[mode] ?? crypto.randomUUID();
+    requestIds.current[mode] = requestId;
     setFeedback(null);
     setLoading(mode);
     try {
@@ -67,6 +70,7 @@ export function ParentOtpSupportCard({
         body: JSON.stringify({
           parentAccountId: support.parentAccountId,
           mode,
+          requestId,
         }),
       });
       const payload = await response.json() as ParentOtpSupportActionResponse & {
@@ -78,6 +82,7 @@ export function ParentOtpSupportCard({
         );
       }
       setFeedback({ kind: "success", text: outcomeMessage(payload) });
+      requestIds.current[mode] = crypto.randomUUID();
       setConfirmReset(false);
       router.refresh();
     } catch (cause) {

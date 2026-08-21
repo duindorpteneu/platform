@@ -38,6 +38,7 @@ const parentAccountId = "44444444-4444-4444-8444-444444444444";
 const challengeId = "11111111-1111-4111-8111-111111111111";
 const deliveryAttemptId = "22222222-2222-4222-8222-222222222222";
 const expiresAt = "2026-08-21T15:30:00.000Z";
+const requestId = "66666666-6666-4666-8666-666666666666";
 
 const preparation = {
   status: "prepared",
@@ -111,7 +112,7 @@ function request(mode: "resend" | "reset" = "resend") {
       "sec-fetch-site": "same-origin",
       "x-duindorp-csrf": "same-origin",
     },
-    body: JSON.stringify({ parentAccountId, mode }),
+    body: JSON.stringify({ parentAccountId, mode, requestId }),
   });
 }
 
@@ -151,6 +152,7 @@ describe("POST /api/parent-auth/support", () => {
         p_mode: "reset",
         p_challenge_id: challengeId,
         p_code_hash: "c".repeat(64),
+        p_request_id: requestId,
       },
     );
     expect(mocks.adminRpc).toHaveBeenCalledWith(
@@ -163,6 +165,47 @@ describe("POST /api/parent-auth/support", () => {
       "ouder@example.nl",
       "https://tenue.example",
     );
+  });
+
+  it("verstuurt een replay met hetzelfde request-ID niet nogmaals", async () => {
+    mocks.serverRpc.mockResolvedValueOnce({
+      data: { ...preparation, supportRequestReused: true },
+      error: null,
+    });
+    mocks.adminRpc.mockImplementationOnce((name: string) => {
+      expect(name).toBe("get_parent_otp_support_request_outcome_v1");
+      return Promise.resolve({ data: "provider_accepted", error: null });
+    });
+
+    const response = await POST(request("reset"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      outcome: "provider_accepted",
+      reused: true,
+      expiresAt,
+    });
+    expect(mocks.adminRpc).toHaveBeenCalledWith(
+      "get_parent_otp_support_request_outcome_v1",
+      { p_request_id: requestId },
+    );
+    expect(mocks.deliver).not.toHaveBeenCalled();
+  });
+
+  it("vertaalt conflicterend request-ID-hergebruik naar 409", async () => {
+    mocks.serverRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "23505" },
+    });
+
+    const response = await POST(request("resend"));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "Dit verzoek-ID is al voor een andere supportactie gebruikt.",
+    });
+    expect(mocks.adminRpc).not.toHaveBeenCalled();
+    expect(mocks.deliver).not.toHaveBeenCalled();
   });
 
   it("retourneert alleen het veilige resultaat, nooit adres, code, link of provider-ID", async () => {

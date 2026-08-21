@@ -37,7 +37,7 @@ describe("VoetbalAssist SMTP-adapter", () => {
     expect(classifySmtpError(Object.assign(new Error("safe"), { responseCode: 535, code: "EAUTH" }))).toMatchObject({ reason: "configuration_error", outcome: "failed" });
   });
 
-  it("maakt 5xx-reject definitief", () => {
+  it("onderdrukt alleen een bewezen permanent onjuist ontvangstadres", () => {
     expect(classifySmtpError(Object.assign(new Error("safe"), {
       responseCode: 550,
       response: "550 5.1.1 Mailbox bestaat niet",
@@ -46,6 +46,34 @@ describe("VoetbalAssist SMTP-adapter", () => {
       outcome: "failed",
       deliveryState: "permanent_rejection",
       providerCode: "550",
+      enhancedStatusCode: "5.1.1",
+      recipientFailure: true,
+    });
+  });
+
+  it.each([
+    [550, "550 5.2.2 Mailbox full"],
+    [550, "550 5.7.1 Rejected by policy"],
+    [554, "554 5.6.0 Message content rejected"],
+    [550, "550 Requested action not taken"],
+  ])("behandelt SMTP %i zonder adresbewijs niet als recipient failure", (responseCode, response) => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), {
+      responseCode,
+      response,
+    }))).toMatchObject({
+      reason: "provider_rejected",
+      outcome: "failed",
+      deliveryState: "permanent_rejection",
+      providerCode: String(responseCode),
+      recipientFailure: false,
+    });
+  });
+
+  it("herkent een enhanced recipientstatus in een multiline SMTP-response", () => {
+    expect(classifySmtpError(Object.assign(new Error("safe"), {
+      responseCode: 551,
+      response: "551-5.1.1 Bad destination mailbox address\n551 5.1.1 User unknown",
+    }))).toMatchObject({
       enhancedStatusCode: "5.1.1",
       recipientFailure: true,
     });

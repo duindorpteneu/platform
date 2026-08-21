@@ -3,6 +3,7 @@ import { parentOtpV3PreparationSchema } from "@/lib/mail-v2-contract";
 import {
   parentOtpSupportActionResponseSchema,
   parentOtpSupportActionSchema,
+  parentOtpSupportDeliveryOutcomeSchema,
 } from "@/lib/parent-otp-support-contract";
 import { getServerEnv } from "@/lib/env";
 import {
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
         p_mode: parsed.data.mode,
         p_challenge_id: proposedChallengeId,
         p_code_hash: codeHash,
+        p_request_id: parsed.data.requestId,
       },
     );
     if (error) {
@@ -79,11 +81,36 @@ export async function POST(request: Request) {
       if (error.code === "22023") {
         return fail("Het supportverzoek is niet geldig.", 400);
       }
+      if (error.code === "23505") {
+        return fail("Dit verzoek-ID is al voor een andere supportactie gebruikt.", 409);
+      }
       return fail("De verificatiemail kon niet veilig worden voorbereid.", 502);
     }
     const preparation = parentOtpV3PreparationSchema.safeParse(data);
     if (!preparation.success || preparation.data.status !== "prepared") {
       return fail("De verificatiemail kan momenteel niet worden verstuurd.", 409);
+    }
+
+    if (preparation.data.supportRequestReused === true) {
+      const { data: previousOutcome } = await admin
+        .schema("app")
+        .rpc("get_parent_otp_support_request_outcome_v1", {
+          p_request_id: parsed.data.requestId,
+        });
+      const parsedOutcome = parentOtpSupportDeliveryOutcomeSchema.safeParse(
+        previousOutcome,
+      );
+      const response = parentOtpSupportActionResponseSchema.parse({
+        outcome: parsedOutcome.success
+          ? parsedOutcome.data
+          : "delivery_uncertain",
+        reused: preparation.data.reused,
+        expiresAt: preparation.data.expiresAt,
+      });
+      return NextResponse.json(response, {
+        status: 200,
+        headers: privateHeaders,
+      });
     }
 
     const { data: recipient, error: recipientError } = await admin

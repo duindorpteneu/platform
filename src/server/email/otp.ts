@@ -71,7 +71,11 @@ export async function prepareParentOtpV3(
   challengeId: string,
   codeHash: string,
   forceNew = false,
+  expectedChallengeId: string | null = null,
 ) {
+  if (forceNew !== Boolean(expectedChallengeId)) {
+    throw new Error("PARENT_OTP_V3_EXPECTED_CHALLENGE_INVALID");
+  }
   const { data, error } = await client.rpc(
     "prepare_parent_otp_delivery_v3",
     {
@@ -80,6 +84,7 @@ export async function prepareParentOtpV3(
       p_code_hash: codeHash,
       p_force_new: forceNew,
       p_actor_user_id: null,
+      p_expected_challenge_id: expectedChallengeId,
     },
   );
   if (error) throw new Error("PARENT_OTP_V3_PREPARATION_FAILED");

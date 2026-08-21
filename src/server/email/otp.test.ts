@@ -218,6 +218,7 @@ describe("ouder-OTP e-mailtemplate", () => {
         p_code_hash: "c".repeat(64),
         p_force_new: false,
         p_actor_user_id: null,
+        p_expected_challenge_id: null,
       });
       return { data: preparationV3, error: null };
     };
@@ -227,6 +228,31 @@ describe("ouder-OTP e-mailtemplate", () => {
       preparationV3.challengeId,
       "c".repeat(64),
     )).resolves.toEqual(preparationV3);
+  });
+
+  it("vereist bij forceNew exact de verwachte actieve challenge", async () => {
+    const rpc = async (_name: string, parameters: Record<string, unknown>) => {
+      expect(parameters).toMatchObject({
+        p_force_new: true,
+        p_expected_challenge_id: preparationV3.challengeId,
+      });
+      return { data: preparationV3, error: null };
+    };
+    await expect(prepareParentOtpV3(
+      { rpc },
+      "ouder@example.nl",
+      "55555555-5555-4555-8555-555555555555",
+      "d".repeat(64),
+      true,
+      preparationV3.challengeId,
+    )).resolves.toEqual(preparationV3);
+    await expect(prepareParentOtpV3(
+      { rpc },
+      "ouder@example.nl",
+      "55555555-5555-4555-8555-555555555555",
+      "d".repeat(64),
+      true,
+    )).rejects.toThrow("PARENT_OTP_V3_EXPECTED_CHALLENGE_INVALID");
   });
 
   it("legt providerbewijs via de v2-completion vast zonder ontvangerdata", async () => {

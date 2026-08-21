@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ParentOtpSupportCard } from "./parent-otp-support-card";
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -31,7 +31,7 @@ const support = {
 describe("ParentOtpSupportCard", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];
 
-  beforeAll(() => {
+  beforeEach(() => {
     vi.stubGlobal("React", React);
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,6 +40,8 @@ describe("ParentOtpSupportCard", () => {
   afterEach(() => {
     for (const root of roots.splice(0)) act(() => root.unmount());
     mocks.refresh.mockReset();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("toont alleen het gemaskeerde adres en waarschuwt vóór intrekken", async () => {
@@ -64,5 +66,48 @@ describe("ParentOtpSupportCard", () => {
       "Hiermee vervalt de huidige verificatiecode op alle apparaten.",
     );
     expect(element.textContent).toContain("Intrekken en sturen");
+  });
+
+  it("bewaart het request-ID na netwerkfout en roteert het pas na succes", async () => {
+    const firstRequestId = "44444444-4444-4444-8444-444444444444";
+    const nextRequestId = "55555555-5555-4555-8555-555555555555";
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce(firstRequestId)
+      .mockReturnValueOnce(nextRequestId);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "Tijdelijke fout" }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          outcome: "provider_accepted",
+          reused: true,
+          expiresAt: "2026-08-21T15:10:00.000Z",
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    const element = document.createElement("div");
+    const root = createRoot(element);
+    roots.push(root);
+    await act(async () => root.render(<ParentOtpSupportCard support={support} />));
+    const resendButton = Array.from(element.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Verificatiemail opnieuw"),
+    );
+
+    await act(async () => resendButton?.click());
+    await act(async () => resendButton?.click());
+    await act(async () => resendButton?.click());
+
+    const requestBodies = fetchMock.mock.calls.map((call) => JSON.parse(
+      String((call[1] as RequestInit).body),
+    ) as { requestId: string });
+    expect(requestBodies.map((body) => body.requestId)).toEqual([
+      firstRequestId,
+      firstRequestId,
+      nextRequestId,
+    ]);
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
   });
 });

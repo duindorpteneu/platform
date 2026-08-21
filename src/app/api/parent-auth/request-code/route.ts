@@ -78,7 +78,8 @@ export async function POST(request: Request) {
   const email = isResend
     ? previousContext!.email
     : normalizeParentEmail("email" in parsed.data ? parsed.data.email : "");
-  const forceNew = parsed.data.forceNew === true;
+  const forceNew = "resend" in parsed.data
+    && parsed.data.forceNew === true;
   let responseContext = previousContext?.email === email
     ? previousContext
     : createNeutralParentChallengeContext(email);
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
       proposedChallengeId,
       hashParentSecret(proposedCode),
       forceNew,
+      forceNew ? previousContext!.challengeId : null,
     );
     if (
       preparation.status === "prepared"

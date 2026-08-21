@@ -47,6 +47,7 @@ vi.mock("@/server/email/otp-delivery", () => ({
 
 import { POST } from "./route";
 import {
+  openParentChallengeContext,
   sealParentChallengeContext,
   type ParentChallengeContext,
 } from "@/server/auth/parent";
@@ -118,6 +119,7 @@ describe("POST /api/parent-auth/request-code", () => {
       expect.any(String),
       expect.stringMatching(/^[0-9a-f]{64}$/u),
       false,
+      null,
     );
     expect(mocks.deliver).not.toHaveBeenCalled();
     await mocks.callbacks[0]();
@@ -181,7 +183,70 @@ describe("POST /api/parent-auth/request-code", () => {
       expect.any(String),
       expect.any(String),
       false,
+      null,
     );
+  });
+
+  it("staat forceNew uitsluitend toe als cookiegebonden resend", async () => {
+    const context: ParentChallengeContext = {
+      version: 3,
+      email: "ouder@example.nl",
+      challengeId,
+      expiresAt,
+      cooldownUntil,
+    };
+    mocks.challengeCookie = sealParentChallengeContext(context);
+    const response = await POST(request({ resend: true, forceNew: true }));
+    expect(response.status).toBe(202);
+    expect(mocks.prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      "ouder@example.nl",
+      expect.any(String),
+      expect.any(String),
+      true,
+      challengeId,
+    );
+  });
+
+  it("houdt bij een stale forceNew-cookie exact die oude context vast", async () => {
+    const staleContext: ParentChallengeContext = {
+      version: 3,
+      email: "ouder@example.nl",
+      challengeId,
+      expiresAt,
+      cooldownUntil,
+    };
+    mocks.challengeCookie = sealParentChallengeContext(staleContext);
+    mocks.prepare.mockResolvedValueOnce({ status: "ineligible" });
+    const response = await POST(request({ resend: true, forceNew: true }));
+    expect(response.status).toBe(202);
+    expect(mocks.prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      "ouder@example.nl",
+      expect.any(String),
+      expect.any(String),
+      true,
+      challengeId,
+    );
+    const sealedContext = response.headers.get("set-cookie")
+      ?.match(/duindorp_parent_challenge=([^;]+)/u)?.[1];
+    expect(openParentChallengeContext(sealedContext ?? "")).toMatchObject({
+      challengeId,
+      email: "ouder@example.nl",
+    });
+    expect(mocks.deliver).not.toHaveBeenCalled();
+  });
+
+  it("weigert een losse e-mailaanvraag die forceNew probeert te zetten", async () => {
+    const response = await POST(request({
+      email: "ouder@example.nl",
+      forceNew: true,
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Voer een geldig e-mailadres in.",
+    });
+    expect(mocks.prepare).not.toHaveBeenCalled();
   });
 
   it("redigeert ook een voorbereidingsfout naar dezelfde 202", async () => {
