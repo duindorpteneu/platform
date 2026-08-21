@@ -144,14 +144,8 @@ reconciled="$("${psql_cmd[@]}" -c "
     reconciliation.metrics->>'auditEntryCount',
     outcome.outcome,
     outcome.error_code,
-    (
-      select open_outcome.outcome
-      from private.parent_otp_delivery_outcomes open_outcome
-      where open_outcome.delivery_attempt_id =
-        'b8315400-0000-4000-8000-000000000013'
-    ),
-    (
-      select open_outcome.error_code
+    exists (
+      select 1
       from private.parent_otp_delivery_outcomes open_outcome
       where open_outcome.delivery_attempt_id =
         'b8315400-0000-4000-8000-000000000013'
@@ -176,8 +170,38 @@ reconciled="$("${psql_cmd[@]}" -c "
   where reconciliation.migration_key =
     '20260821183154_resolve_pre_v3_otp_delivery_gaps'
 ")"
-if [[ "$reconciled" != "passed:2:2:delivery_uncertain:pre_v3_uncompleted_attempt:delivery_uncertain:pre_v3_uncompleted_attempt:0:0:0:0" ]]; then
+if [[ "$reconciled" != "passed:1:1:delivery_uncertain:pre_v3_uncompleted_attempt:f:1:0:1:0" ]]; then
   echo "Onverwachte OTP-gapurgradestaat: $reconciled" >&2
+  exit 1
+fi
+
+"${psql_cmd[@]}" -c "
+  select app.complete_parent_otp_delivery_v1(
+    'b8315400-0000-4000-8000-000000000013',
+    'accepted',
+    'smtp-in-flight-completed',
+    null
+  );
+" >/dev/null
+
+drained_gap="$("${psql_cmd[@]}" -c "
+  select concat_ws(':',
+    app.get_operational_health_v14(
+      repeat('a', 64), 1, null, null
+    ) #>> '{parentOtpDelivery,stalePrepared}',
+    app.get_operational_health_v14(
+      repeat('a', 64), 1, null, null
+    ) #>> '{parentOtpDelivery,deliveryUncertainRecent}',
+    app.get_operational_health_v15(
+      repeat('a', 64), 1, null, null
+    ) #>> '{parentOtpDelivery,stalePrepared}',
+    app.get_operational_health_v15(
+      repeat('a', 64), 1, null, null
+    ) #>> '{parentOtpDelivery,deliveryUncertainRecent}'
+  )
+")"
+if [[ "$drained_gap" != "0:0:0:0" ]]; then
+  echo "Afgeronde in-flight OTP-poging herstelde health niet: $drained_gap" >&2
   exit 1
 fi
 

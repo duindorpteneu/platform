@@ -1,7 +1,7 @@
 -- Parent OTP delivery callbacks before the v3 runtime could terminate after
 -- preparing the immutable attempt without appending an outcome. Preserve the
--- exact cutover evidence, append the only honest terminal fact for incomplete
--- attempts, and keep every post-migration gap or uncertainty fail-closed.
+-- exact cutover evidence, append the only honest terminal fact only after an
+-- attempt has expired, and keep every active or post-migration gap fail-closed.
 
 begin;
 
@@ -20,7 +20,8 @@ select
   'delivery_uncertain',
   'pre_v3_uncompleted_attempt'
 from private.parent_otp_delivery_attempts attempt
-where not exists (
+where attempt.expires_at <= transaction_timestamp()
+  and not exists (
     select 1
     from private.parent_otp_delivery_outcomes outcome
     where outcome.delivery_attempt_id = attempt.id
@@ -61,7 +62,7 @@ select
   'passed',
   jsonb_build_object(
     'strategy',
-      'append uncertain outcomes for every exact pre-v3 delivery gap',
+      'append uncertain outcomes for exact expired pre-v3 delivery gaps',
     'reconciledAttemptCount', (
       select count(*)::integer
       from private.parent_otp_delivery_outcomes outcome
