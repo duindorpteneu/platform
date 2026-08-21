@@ -5,6 +5,7 @@ import {
 } from "@/lib/member-profile-contract";
 import { requireStaffRole } from "@/server/auth/staff";
 import { normalizeCorrelationId } from "@/server/security/correlation";
+import { operationalLogger } from "@/server/security/logger";
 import {
   BODY_POLICIES,
   guardBrowserMutation,
@@ -22,6 +23,7 @@ function fail(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  const correlationId = normalizeCorrelationId(request.headers.get("x-correlation-id"));
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonSmall });
   if (guarded) return guarded;
   try {
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
       p_expected_family_revision: parsed.data.familyRevision ?? null,
       p_reason: parsed.data.reason,
       p_request_id: parsed.data.requestId,
-      p_correlation_id: normalizeCorrelationId(request.headers.get("x-correlation-id")),
+      p_correlation_id: correlationId,
     });
     if (error) {
       if (error.code === "42501") return fail("Alleen een beheerder met MFA kan persoonsgegevens wijzigen.", 403);
@@ -56,6 +58,14 @@ export async function POST(request: Request) {
       if (error.code === "40001") return fail("De leden- of portaltoegang is intussen gewijzigd. Voer de controle opnieuw uit.", 409);
       if (error.code === "22023") return fail("De lidgegevens zijn niet geldig voor dit seizoen.", 400);
       if (error.code === "23514") return fail("De gezinsbrede e-mailwijziging kan niet veilig worden uitgevoerd.", 409);
+      if (error.code === "23505") return fail("De oudertoegang bevat een conflicterende openstaande koppeling. Voer de controle opnieuw uit.", 409);
+      operationalLogger.error("member.profile_update_failed", {
+        code: typeof error.code === "string" ? error.code.toLowerCase() : "rpc_failed",
+        correlationId: correlationId ?? undefined,
+        provider: "supabase",
+        route: "/api/members/profile",
+        status: 422,
+      });
       return fail("De lidgegevens konden niet veilig worden opgeslagen.", 422);
     }
     const result = memberProfileUpdateResponseSchema.safeParse(data);

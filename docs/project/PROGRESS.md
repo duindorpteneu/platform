@@ -506,3 +506,9 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Het bindende addendum v1.1 l
 - De ledeneditor gebruikt een beheerder+AAL2-preflight die het gezin uitsluitend uit actuele portalautorisatie afleidt, alle betrokken namen/teams toont en een misleidende enkel-kindoptie uitsluit.
 - De nieuwe profiel-RPC houdt profielvelden, alle gezins-e-mails, oude/nieuwe grantgeschiedenis, legacyprojecties, sessie-/OTP-intrekking, PII-vrije audit en de bestaande `portal_access_invite`-domeinevents in één idempotente transactie. Een bestaand doelaccount en open doelgrant worden hergebruikt; een bestaande doelsessie ziet de kinderen direct.
 - Een AAL2-beveiligd reconciliatierapport groepeert actuele member-/grantafwijkingen per ouderaccount zonder gegevens te muteren. De twee private transferledgers zijn opgenomen in het gesloten stagingcleanupcontract van 110 operationele tabellen.
+
+## Herstel accountloze doelgrant — 2026-08-21
+
+- De productie-achtige fout na een geslaagde gezins-preflight is lokaal exact gereproduceerd als `23505`: een open doelgrant zonder `parent_account_id` werd niet hergebruikt, waarna de nieuwe actieve grant tegen de unieke open-grantindex botste.
+- Forward-only migration `20260821113000_family_email_transfer_open_grant_fix.sql` bindt zo'n unieke accountloze grant aan het reeds gevonden doelaccount en activeert dezelfde rij. De transactie rondt tevens haar activatiebatch af en gebruikt voor ingetrokken oude uitnodigingen de bestaande veilige terminalreden `access_revoked_before_send`.
+- De beheer-UI wist een geannuleerde preflight volledig, waarschuwt wanneer het doeladres al een portaalaccount heeft en vertaalt een resterend open-grantconflict naar een hercontroleerbare HTTP 409. Onverwachte RPC-fouten loggen uitsluitend SQLSTATE, route, provider, status en optionele correlatie-ID.

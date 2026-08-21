@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ requireRole: vi.fn(), serverClient: vi.fn(), rpc: vi.fn() }));
+const mocks = vi.hoisted(() => ({ requireRole: vi.fn(), serverClient: vi.fn(), rpc: vi.fn(), logError: vi.fn() }));
 vi.mock("@/server/auth/staff", () => ({ requireStaffRole: mocks.requireRole }));
 vi.mock("@/server/supabase/server", () => ({ getSupabaseServerClient: mocks.serverClient }));
+vi.mock("@/server/security/logger", () => ({ operationalLogger: { error: mocks.logError } }));
 vi.mock("@/server/security/route-guard", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/server/security/route-guard")>(),
   guardBrowserMutation: () => null,
@@ -81,6 +82,7 @@ describe("POST /api/members/profile", () => {
     mocks.requireRole.mockReset().mockResolvedValue({});
     mocks.rpc.mockReset().mockResolvedValue({ data: profile, error: null });
     mocks.serverClient.mockReset().mockResolvedValue({ schema: () => ({ rpc: mocks.rpc }) });
+    mocks.logError.mockReset();
   });
 
   it("vereist beheerder en stuurt alle velden naar de geaudite RPC", async () => {
@@ -117,5 +119,26 @@ describe("POST /api/members/profile", () => {
     const response = await POST(request());
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining("intussen gewijzigd") });
+  });
+
+  it("vertaalt een resterend open-grantconflict naar een hercontroleerbaar conflict", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "23505" } });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("openstaande koppeling") });
+    expect(mocks.logError).not.toHaveBeenCalled();
+  });
+
+  it("logt een onbekende databasefout uitsluitend met veilige operationele velden", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "XX000", message: "ouder@example.invalid" } });
+    const response = await POST(request());
+    expect(response.status).toBe(422);
+    expect(mocks.logError).toHaveBeenCalledWith("member.profile_update_failed", {
+      code: "xx000",
+      correlationId: undefined,
+      provider: "supabase",
+      route: "/api/members/profile",
+      status: 422,
+    });
   });
 });

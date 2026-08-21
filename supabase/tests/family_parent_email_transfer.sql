@@ -26,13 +26,6 @@ insert into app.seasons(id, name, default_amount_cents, status) values
 update app.app_settings
 set active_season_id = 'e9100000-0000-4000-8000-000000000001'
 where id = true;
-insert into private.release_cutovers(key, activated_at) values
-  ('parent_access_grants_v2', timezone('utc', now()) - interval '1 hour'),
-  ('mail_templates_v2', timezone('utc', now()) - interval '1 hour')
-on conflict (key) do nothing;
-update app.release_feature_flags set enabled = true
-where key in ('parent_access_grants_v2', 'mail_templates_v2');
-
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -117,9 +110,44 @@ insert into private.parent_portal_grants(
   'e9500000-0000-4000-8000-000000000012',
   'e9300000-0000-4000-8000-000000000002',
   'nieuw@example.invalid',
-  'e9400000-0000-4000-8000-000000000002',
+  null,
   'pending_account', 'administrator'
 );
+insert into private.parent_access_batches(
+  id, batch_key, operation, season_id, selection_hash,
+  selected_count, actor_user_id, result, completed_at
+) values (
+  'e9800000-0000-4000-8000-000000000001',
+  'e9800000-0000-4000-8000-000000000002',
+  'activate', 'e9100000-0000-4000-8000-000000000001', repeat('8', 64),
+  3, 'e9000000-0000-4000-8000-000000000001',
+  '{"committed":true}'::jsonb, timezone('utc', now())
+);
+alter table private.parent_access_batch_items
+  disable trigger parent_access_batch_items_mail_v2;
+insert into private.parent_access_batch_items(
+  batch_id, member_season_id, grant_id, outcome
+) values
+  ('e9800000-0000-4000-8000-000000000001', 'e9300000-0000-4000-8000-000000000001', 'e9500000-0000-4000-8000-000000000001', 'activated'),
+  ('e9800000-0000-4000-8000-000000000001', 'e9300000-0000-4000-8000-000000000002', 'e9500000-0000-4000-8000-000000000002', 'activated'),
+  ('e9800000-0000-4000-8000-000000000001', 'e9300000-0000-4000-8000-000000000003', 'e9500000-0000-4000-8000-000000000003', 'activated');
+alter table private.parent_access_batch_items
+  enable trigger parent_access_batch_items_mail_v2;
+create temporary table old_family_invite_job as
+select private.enqueue_parent_access_invite(
+  'e9400000-0000-4000-8000-000000000001',
+  'e9800000-0000-4000-8000-000000000001'
+) id;
+select ok(
+  (select id is not null from old_family_invite_job),
+  'de fixture bevat een oude nog niet verzonden portaaluitnodiging'
+);
+insert into private.release_cutovers(key, activated_at) values
+  ('parent_access_grants_v2', timezone('utc', now()) - interval '1 hour'),
+  ('mail_templates_v2', timezone('utc', now()) - interval '1 hour')
+on conflict (key) do nothing;
+update app.release_feature_flags set enabled = true
+where key in ('parent_access_grants_v2', 'mail_templates_v2');
 insert into private.parent_sessions(parent_account_id, token_hash, expires_at) values
   ('e9400000-0000-4000-8000-000000000001', repeat('1', 64), timezone('utc', now()) + interval '1 day'),
   ('e9400000-0000-4000-8000-000000000002', repeat('2', 64), timezone('utc', now()) + interval '1 day');
@@ -153,6 +181,8 @@ select is((select result->>'activePortalCount' from family_preview), '3',
   'preflight toont drie actieve huidige grants');
 select is((select result->>'newEmail' from family_preview), 'nieuw@example.invalid',
   'preflight normaliseert het doeladres');
+select is((select result->>'targetAccountReused' from family_preview), 'true',
+  'preflight herkent het bestaande doelaccount naast de accountloze doelgrant');
 select ok(
   not exists(
     select 1 from family_preview,
@@ -233,7 +263,43 @@ select is(
   (select status::text from private.parent_portal_grants
    where id = 'e9500000-0000-4000-8000-000000000012'),
   'active',
-  'een bestaande open doelgrant wordt idempotent geactiveerd'
+  'een bestaande accountloze doelgrant wordt idempotent geactiveerd'
+);
+select is(
+  (select parent_account_id from private.parent_portal_grants
+   where id = 'e9500000-0000-4000-8000-000000000012'),
+  'e9400000-0000-4000-8000-000000000002'::uuid,
+  'de accountloze doelgrant wordt aan het bestaande doelaccount gebonden'
+);
+select ok(
+  (select result is not null and completed_at is not null
+   from private.parent_access_batches
+   where id = (
+     select activation_batch_id from private.parent_family_email_transfers
+     where request_id = 'e9600000-0000-4000-8000-000000000001'
+   )),
+  'de transfer rondt de gebruikte activatiebatch transactioneel af'
+);
+select is(
+  (select last_error from private.email_jobs
+   where id = (select id from old_family_invite_job)),
+  'access_revoked_before_send',
+  'een oude nog niet verzonden uitnodiging eindigt met de bestaande veilige revocatiereden'
+);
+select is(
+  (select count(*) from private.mail_v2_domain_events
+   where template_key = 'internal_email_failure'
+     and source_id = (select id from old_family_invite_job)),
+  0::bigint,
+  'de bewuste pre-send stop opent geen intern mailincident'
+);
+select is(
+  (select count(*) from app.action_items
+   where source_type = 'email_job'
+     and source_id = (select id from old_family_invite_job)
+     and status = 'open'),
+  0::bigint,
+  'de bewuste pre-send stop opent geen operationeel actiepunt'
 );
 select ok(
   (select revoked_at is null from private.parent_sessions
