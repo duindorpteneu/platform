@@ -21,6 +21,13 @@ begin
   if tg_op = 'UPDATE'
     and tg_table_schema = 'private'
     and tg_table_name = 'parent_otp_delivery_attempts'
+    and not exists (
+      select 1
+      from private.migration_reconciliations reconciliation
+      where reconciliation.migration_key =
+        '20260821162000_email_recipient_health'
+        and reconciliation.status = 'passed'
+    )
     and to_jsonb(old)->>'recipient_identity_id' is null
     and to_jsonb(new)->>'recipient_identity_id' is not null
     and (to_jsonb(new) - 'recipient_identity_id')
