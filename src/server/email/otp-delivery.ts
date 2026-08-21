@@ -33,12 +33,38 @@ export async function deliverPreparedParentOtpV3(
     : process.env.EMAIL_PROVIDER === "smtp"
       ? "smtp" as const
       : null;
+  const completeKnownResult = async (
+    outcome: Parameters<typeof completeParentOtpV2>[2],
+    evidence?: Parameters<typeof completeParentOtpV2>[3],
+  ) => {
+    try {
+      await completeParentOtpV2(
+        appClient,
+        preparation.deliveryAttemptId,
+        outcome,
+        evidence,
+      );
+    } catch {
+      // A response can be lost after the exact result committed. Retry the
+      // identical append idempotently and never downgrade a known result.
+      try {
+        await completeParentOtpV2(
+          appClient,
+          preparation.deliveryAttemptId,
+          outcome,
+          evidence,
+        );
+      } catch {
+        // Operational health keeps an uncommitted attempt fail-closed.
+      }
+    }
+  };
   try {
     if (!await authorizeParentOtpV2(
       appClient,
       preparation.deliveryAttemptId,
     )) {
-      await completeParentOtpV2(appClient, preparation.deliveryAttemptId, {
+      await completeKnownResult({
         outcome: "disabled",
         errorCode: "send_authorization_denied",
       }, provider ? {
@@ -58,7 +84,7 @@ export async function deliverPreparedParentOtpV3(
         appBaseUrl,
       );
     } catch {
-      await completeParentOtpV2(appClient, preparation.deliveryAttemptId, {
+      await completeKnownResult({
         outcome: "render_failed",
         errorCode: "render_failed",
       });
@@ -105,28 +131,7 @@ export async function deliverPreparedParentOtpV3(
         ? false
         : delivery.recipientFailure ?? false,
     } : undefined;
-    try {
-      await completeParentOtpV2(
-        appClient,
-        preparation.deliveryAttemptId,
-        completion,
-        evidence,
-      );
-    } catch {
-      // A response can be lost after the exact provider result committed. An
-      // idempotent retry preserves that known result; it must never be
-      // downgraded to delivery_uncertain.
-      try {
-        await completeParentOtpV2(
-          appClient,
-          preparation.deliveryAttemptId,
-          completion,
-          evidence,
-        );
-      } catch {
-        // Operational health keeps an uncommitted attempt fail-closed.
-      }
-    }
+    await completeKnownResult(completion, evidence);
     return {
       outcome: delivery.delivered ? "provider_accepted" : delivery.reason,
     };
