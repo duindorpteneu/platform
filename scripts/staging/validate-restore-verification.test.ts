@@ -41,12 +41,15 @@ async function fixture() {
 }
 
 describe("volledig restoreverificatiecontract", () => {
-  it("bindt exact alle migrations en 138 app/private-tabellen", async () => {
+  it("bindt exact alle migrations en 143 app/private-tabellen", async () => {
     const { expected, raw } = await fixture();
-    expect(expected.entityKeys).toHaveLength(138);
+    expect(expected.entityKeys).toHaveLength(143);
     expect(expected.entityKeys).toContain("app.member_package_assignments");
     expect(expected.entityKeys).toContain("app.member_package_size_selections");
     expect(expected.entityKeys).toContain("private.email_bulk_rate_limit");
+    expect(expected.entityKeys).toContain("private.email_recipient_identities");
+    expect(expected.entityKeys).toContain("private.email_recipient_suppressions");
+    expect(expected.entityKeys).toContain("private.parent_otp_support_events");
     expect(expected.entityKeys).toContain("private.parent_family_email_transfers");
     expect(expected.entityKeys).toContain("private.parent_family_email_transfer_items");
     expect(validateRestoreVerification(raw, expected)).toBe(true);
