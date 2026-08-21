@@ -403,6 +403,18 @@ select is(
 );
 select is(
   (
+    app.get_operational_health_v14(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  1,
+  'v14 behoudt de veilige v13-terminaluitsluitingen zonder echte failures te verbergen'
+);
+select is(
+  (
     select metrics->>'acknowledgedFailedJobCount'
     from private.migration_reconciliations
     where migration_key =
@@ -410,6 +422,16 @@ select is(
   ),
   '0',
   'een schone database legt expliciet nul erkende failed-jobidentiteiten vast'
+);
+select is(
+  (
+    select metrics->>'acknowledgedFailedJobCount'
+    from private.migration_reconciliations
+    where migration_key =
+      '20260821170721_preserve_email_health_v13_exclusions'
+  ),
+  '0',
+  'de v14-herstelmigration erkent op een schone database geen failure'
 );
 update private.migration_reconciliations reconciliation
 set metrics = jsonb_set(
@@ -442,6 +464,18 @@ select is(
   0,
   'uitsluitend de exact vastgelegde failed-jobversie blijft bewaard zonder de release te blokkeren'
 );
+select is(
+  (
+    app.get_operational_health_v14(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  0,
+  'v14 behoudt ook de exact vastgelegde historische v13-erkenning'
+);
 update private.email_jobs
 set updated_at = statement_timestamp() + interval '1 second'
 where id = 'a4000000-0000-4000-8000-000000000006';
@@ -456,6 +490,60 @@ select is(
   )::integer,
   1,
   'een latere failureversie van dezelfde job blijft fail-closed blokkeren'
+);
+select is(
+  (
+    app.get_operational_health_v14(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  1,
+  'v14 blokkeert dezelfde erkende job opnieuw zodra haar failureversie wijzigt'
+);
+insert into private.email_delivery_attempts(
+  id,
+  email_job_id,
+  attempt_number,
+  claim_token,
+  claimed_at
+) values (
+  'a8000000-0000-4000-8000-000000000006',
+  'a4000000-0000-4000-8000-000000000006',
+  1,
+  'a5000000-0000-4000-8000-000000000006',
+  statement_timestamp()
+);
+update private.email_jobs
+set current_delivery_attempt_id =
+  'a8000000-0000-4000-8000-000000000006'
+where id = 'a4000000-0000-4000-8000-000000000006';
+insert into private.email_provider_sync_evidence(
+  delivery_attempt_id,
+  provider,
+  provider_state,
+  response_code,
+  recipient_failure
+) values (
+  'a8000000-0000-4000-8000-000000000006',
+  'sendgrid',
+  'permanent_rejection',
+  '400',
+  true
+);
+select is(
+  (
+    app.get_operational_health_v14(
+      repeat('a', 64),
+      1,
+      null,
+      null
+    ) #>> '{emailJobs,failed}'
+  )::integer,
+  0,
+  'v14 haalt uitsluitend bewezen recipientfailure uit globale mailhealth'
 );
 select ok((select result::text from recovery_health) !~ '(example.invalid|sg-event|ticket/|payload|token)',
   'operationele health bevat geen PII, providerbewijs of secret');

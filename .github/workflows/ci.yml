@@ -117,6 +117,9 @@ jobs:
       - name: Run parent OTP recipient-ledger upgrade reconciliation
         run: pnpm test:db:parent-otp-recipient-upgrade
 
+      - name: Run e-mail health v14 upgrade reconciliation
+        run: pnpm test:db:email-health-v14-upgrade
+
       - name: Apply all migrations to a clean database
         run: pnpm db:reset
 
