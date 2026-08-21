@@ -53,9 +53,19 @@ select ok(
     'app.consume_parent_login_challenge_v3(uuid,text,text,text,timestamptz)',
     'EXECUTE'
   )
+  and has_function_privilege(
+    'service_role',
+    'app.consume_parent_login_challenge_v4(uuid,text,text,text,timestamptz,text)',
+    'EXECUTE'
+  )
   and not has_function_privilege(
     'authenticated',
     'app.prepare_parent_otp_delivery_v3(text,uuid,text,boolean,uuid,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'app.consume_parent_login_challenge_v4(uuid,text,text,text,timestamptz,text)',
     'EXECUTE'
   ),
   'challengevoorbereiding en consumptie blijven service-only'
@@ -548,6 +558,27 @@ select throws_ok(
   'hergebruik van een request-ID voor andere inhoud wordt geweigerd'
 );
 reset role;
+
+create temporary table v4_acceptance_consume as
+select app.consume_parent_login_challenge_v4(
+  '31a40000-0000-4000-8000-000000000004',
+  'code',
+  repeat('6', 64),
+  repeat('9', 64),
+  statement_timestamp() + interval '29 days',
+  repeat('a', 64)
+) result;
+select is(
+  (select result->>'status' from v4_acceptance_consume),
+  'verified',
+  'v4 consumeert dezelfde v3-challenge atomair'
+);
+select is(
+  (select count(*) from private.parent_sessions
+    where acceptance_correlation_hash = repeat('a', 64)),
+  1::bigint,
+  'v4 bewaart exact de optionele acceptatiecorrelatie op de sessie'
+);
 
 select ok(
   not exists(

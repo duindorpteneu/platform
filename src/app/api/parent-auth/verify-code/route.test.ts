@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   admin: vi.fn(),
@@ -75,10 +76,11 @@ describe("POST /api/parent-auth/verify-code", () => {
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "consume_parent_login_challenge_v3",
+      "consume_parent_login_challenge_v4",
       expect.objectContaining({
         p_challenge_id: challengeId,
         p_credential_kind: "code",
+        p_acceptance_correlation_hash: null,
         p_code_hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
         p_session_token_hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
       }),
@@ -102,6 +104,39 @@ describe("POST /api/parent-auth/verify-code", () => {
     expect(expiresAt).toBeLessThanOrEqual(
       completedAt + PARENT_SESSION_DATABASE_MAX_AGE_SECONDS * 1_000,
     );
+  });
+
+  it("bindt een geldig ondertekende stagingverificatie atomair", async () => {
+    const fixtureDigest = "a".repeat(64);
+    const correlationId = "33333333-3333-4333-8333-333333333333";
+    const secret = process.env.PARENT_TOKEN_PEPPER!;
+    const proof = createHmac("sha256", secret).update(
+      `parent-login-staging-session:v1\0${fixtureDigest}\0${correlationId}`,
+      "utf8",
+    ).digest("hex");
+    const original = request();
+    process.env.APP_ENVIRONMENT = "staging";
+    process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED = "true";
+    try {
+      await POST(new Request(original, { headers: {
+        ...Object.fromEntries(original.headers),
+        "x-duindorp-staging-fixture-digest": fixtureDigest,
+        "x-duindorp-staging-session-id": correlationId,
+        "x-duindorp-staging-session-proof": proof,
+      } }));
+      expect(mocks.rpc).toHaveBeenCalledWith(
+        "consume_parent_login_challenge_v4",
+        expect.objectContaining({
+          p_acceptance_correlation_hash: createHmac("sha256", secret).update(
+            `parent-login-staging-session-correlation:v1\0${fixtureDigest}\0${correlationId}`,
+            "utf8",
+          ).digest("hex"),
+        }),
+      );
+    } finally {
+      delete process.env.APP_ENVIRONMENT;
+      delete process.env.STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED;
+    }
   });
 
   it("geeft resterende pogingen alleen vanuit een gebonden challenge terug", async () => {

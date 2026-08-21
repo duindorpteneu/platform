@@ -68,10 +68,11 @@ describe("POST /api/parent-auth/verify-direct", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "consume_parent_login_challenge_v3",
+      "consume_parent_login_challenge_v4",
       expect.objectContaining({
         p_challenge_id: challengeId,
         p_credential_kind: "direct",
+        p_acceptance_correlation_hash: null,
         p_code_hash: null,
       }),
     );

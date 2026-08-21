@@ -11,6 +11,7 @@ import {
   openParentChallengeContext,
   parentOtpRequestSchema,
   sealParentChallengeContext,
+  stagingAcceptanceChallengeId,
   type ParentChallengeContext,
 } from "@/server/auth/parent";
 import { prepareParentOtpV3 } from "@/server/email/otp";
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
     )) {
       return neutralChallengeResponse(responseContext);
     }
+    const stagingChallengeId = stagingAcceptanceChallengeId(request);
     const ipAllowed = await consumeRateLimit(admin, {
       scope: "otp_request",
       keyHash: requestRateKey(request, "otp-request-ip"),
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
     });
     if (!ipAllowed) return neutralChallengeResponse(responseContext);
 
-    const proposedChallengeId = generateParentChallengeId();
+    const proposedChallengeId = stagingChallengeId ?? generateParentChallengeId();
     const proposedCode = deriveParentCode(proposedChallengeId);
     const preparation = await prepareParentOtpV3(
       admin.schema("app"),

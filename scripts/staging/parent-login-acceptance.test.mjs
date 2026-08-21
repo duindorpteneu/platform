@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   databaseTargetFromEnvironment,
   fixtureDigest,
+  fixtureIdentity,
   modeFromEnvironment,
   recipientFromEnvironment,
   runAcceptance,
@@ -18,6 +19,7 @@ import {
 const REF = "dxbdjtbyghsovlrdcwcr";
 const base = {
   ARTIFACT_DIGEST: `sha256:${"b".repeat(64)}`,
+  NEXT_PUBLIC_SUPABASE_URL: `https://${REF}.supabase.co`,
   PARENT_TOKEN_PEPPER: "staging-parent-login-contract-pepper-long-enough",
   RELEASE_SHA: "a".repeat(40),
   STAGING_ACCEPTANCE_RECIPIENT: "acceptance+parent-login@example.invalid",
@@ -26,6 +28,7 @@ const base = {
   STAGING_DEPLOY_RUN_ID: "98765",
   STAGING_PARENT_LOGIN_ACCEPTANCE_ENABLED: "true",
   SUPABASE_DB_URL: `postgresql://postgres.${REF}:secret@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require`,
+  SUPABASE_SERVICE_ROLE_KEY: "staging-service-role-test-key",
   SUPABASE_PROJECT_REF: REF,
 };
 
@@ -36,7 +39,11 @@ function evidence(environment, cleanupComplete = false) {
     codeConsumesLink: true,
     controlCenterLoaded: true,
     directGetCredentialFree: true,
-    fixtureDigest: fixtureDigest(target, recipientFromEnvironment(environment)),
+    fixtureDigest: fixtureDigest(
+      target,
+      recipientFromEnvironment(environment),
+      environment.PARENT_TOKEN_PEPPER,
+    ),
     linkConsumesCode: true,
     linkReplayRejected: true,
     mailV2RegressionPassed: true,
@@ -113,15 +120,43 @@ describe("parent-login staging acceptance contract", () => {
     expect(workflow.match(/--experimental-strip-types/gu)).toHaveLength(3);
     expect(workflow.match(/--import \.\/scripts\/staging\/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
     expect(workflow.match(/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
+    expect(workflow).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}");
+    expect(workflow).toContain("SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}");
+    expect(workflow).toContain("SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}");
   });
 
   it("maakt een run- en releasegebonden digest zonder ontvanger in evidence", () => {
     const target = targetFromEnvironment(base);
-    const first = fixtureDigest(target, recipientFromEnvironment(base));
-    const second = fixtureDigest({ ...target, runId: "12346-1" }, recipientFromEnvironment(base));
+    const first = fixtureDigest(target, recipientFromEnvironment(base), base.PARENT_TOKEN_PEPPER);
+    const second = fixtureDigest({ ...target, runId: "12346-1" }, recipientFromEnvironment(base), base.PARENT_TOKEN_PEPPER);
+    const retry = fixtureDigest({ ...target, runId: "12345-3" }, recipientFromEnvironment(base), base.PARENT_TOKEN_PEPPER);
     expect(first).toMatch(/^[a-f0-9]{64}$/u);
     expect(first).not.toBe(second);
+    expect(first).toBe(retry);
+    expect(first).not.toBe(fixtureDigest(
+      target,
+      recipientFromEnvironment(base),
+      `${base.PARENT_TOKEN_PEPPER}-rotated`,
+    ));
     expect(JSON.stringify(evidence(base))).not.toContain(base.STAGING_ACCEPTANCE_RECIPIENT);
+  });
+
+  it("leidt run-unieke niet-PII fixture-identiteiten deterministisch af", () => {
+    const digest = fixtureDigest(
+      targetFromEnvironment(base),
+      recipientFromEnvironment(base),
+      base.PARENT_TOKEN_PEPPER,
+    );
+    const identity = fixtureIdentity(digest);
+    expect(identity).toEqual(fixtureIdentity(digest));
+    expect(identity.memberId).toMatch(/^[a-f0-9-]{36}$/u);
+    expect(identity.grantId).not.toBe(identity.memberId);
+    expect(identity.parentAccountId).not.toBe(identity.memberId);
+    expect(identity.staffUserId).not.toBe(identity.memberId);
+    expect(identity.relationNumber).toMatch(/^OTP-STG-[A-F0-9]{12}$/u);
+    expect(JSON.stringify(identity)).not.toContain(
+      base.STAGING_ACCEPTANCE_RECIPIENT,
+    );
   });
 
   it("weigert extra evidencevelden, credentialexposure en onvolledige eindstatus", () => {
@@ -195,9 +230,34 @@ describe("parent-login staging acceptance contract", () => {
     );
     expect(source).toContain("set closed_at = statement_timestamp()");
     expect(source).toContain('runPsql(databaseUrl, "select clock_timestamp();")');
-    expect(source.match(/challenge\.created_at >= :'started_at'::timestamptz/gu))
-      .toHaveLength(2);
-    expect(source).toContain("session_row.created_at >= :'started_at'::timestamptz");
+    expect(source).toContain("--no-psqlrc --quiet --tuples-only");
+    expect(source).toContain("insert into app.members(");
+    expect(source).toContain("insert into app.staff_profiles(");
+    expect(source).toContain("private.parent_account_has_portal_access(account.id)");
+    expect(source).toContain("grant select on table probe_context to authenticated");
+    expect(source.match(/perform set_config\(/gu)).toHaveLength(3);
+    expect(source).toContain("delete from private.parent_portal_grants");
+    expect(source).toContain("delete from app.staff_profiles");
+    expect(source).not.toContain("delete from private.rate_limit_events");
+    expect(source).toContain("staging.parent_login.acceptance.challenge_owned");
+    expect(source).toContain("STAGING_PREEXISTING_CHALLENGE_REUSED");
+    expect(source).toContain("X-Duindorp-Staging-Challenge-Id");
+    expect(source).toContain("X-Duindorp-Staging-Challenge-Proof");
+    expect(source).toContain("recordChallengeOwnership(context, firstProposal)");
+    expect(source).toContain("recordChallengeOwnership(context, replacementProposal)");
+    expect(source.indexOf("recordChallengeOwnership(context, firstProposal)")).toBeLessThan(
+      source.indexOf("const first = await requestChallenge("),
+    );
+    expect(source.indexOf("recordChallengeOwnership(context, replacementProposal)")).toBeLessThan(
+      source.indexOf("const replacementCookie = await prepareSupportReplacement("),
+    );
+    expect(source).toContain("session_row.acceptance_correlation_hash");
+    expect(source).toContain("prepare_parent_otp_support_delivery_v1");
+    expect(source).toContain("assertParentSession(context, firstProposal)");
+    expect(source).toContain("assertParentSession(context, replacementProposal)");
+    expect(source).toContain("{ email: context.recipient }");
+    expect(source).not.toContain("{ resend: true, forceNew: true }");
+    expect(source).toContain('const workflowRunId = target.runId.split("-", 1)[0]');
   });
 
   it("maakt onverwachte fouten PII-vrij en behoudt vaste codes", () => {
