@@ -7,6 +7,7 @@ test_tmp_dir="$(mktemp -d -t duindorp-package-finance-race.XXXXXX)"
 previous_active_season="$("${psql_cmd[@]}" -Atc "select coalesce(active_season_id::text, '') from app.app_settings where id=true")"
 previous_package_flag="$("${psql_cmd[@]}" -Atc "select enabled::text from app.release_feature_flags where key='package_orders_v2'")"
 actor_id="f9f00000-0000-4000-8000-000000000001"
+staff_session_hash="f9f0000000000000000000000000000000000000000000000000000000000001"
 
 wait_for_marker() {
   local log_file="$1" marker="$2"
@@ -81,12 +82,14 @@ SQL
 }
 trap cleanup EXIT
 
-"${psql_cmd[@]}" -v actor_id="$actor_id" <<'SQL'
+"${psql_cmd[@]}" -v actor_id="$actor_id" -v staff_session_hash="$staff_session_hash" <<'SQL'
 begin;
 update app.app_settings set active_season_id=null where id=true;
 update app.release_feature_flags set enabled=true where key='package_orders_v2';
 insert into app.staff_profiles(auth_user_id,display_name,role,active)
 values(:'actor_id'::uuid,'Pakket-financerace beheerder','beheerder',true);
+insert into private.staff_sessions(token_hash,auth_user_id,expires_at)
+values(:'staff_session_hash',:'actor_id'::uuid,timezone('utc',now()) + interval '1 hour');
 insert into app.seasons(id,name,starts_on,ends_on,default_amount_cents,status,opened_at)
 values('f9f10000-0000-4000-8000-000000000001','Pakket-financeraces','2055-07-01','2056-06-30',12500,'open',timezone('utc',now()));
 insert into app.articles(id,name,code,icon_type,sort_order) values
@@ -127,12 +130,12 @@ where id::text like 'f9f41000-%';
 insert into app.members(id,relation_number,first_name,last_name,email,team)
 select ('f9f50000-0000-4000-8000-00000000000'||suffix)::uuid,
  'F9-RACE-'||suffix,'Financerace',suffix::text,'finance-race-'||suffix||'@example.invalid','Race'
-from generate_series(1,5) suffix;
+from generate_series(1,6) suffix;
 insert into app.member_seasons(id,member_id,season_id,team_name,participation_status,reconciliation_status)
 select ('f9f51000-0000-4000-8000-00000000000'||suffix)::uuid,
  ('f9f50000-0000-4000-8000-00000000000'||suffix)::uuid,
  'f9f10000-0000-4000-8000-000000000001','Race','active','resolved'
-from generate_series(1,5) suffix;
+from generate_series(1,6) suffix;
 insert into app.member_article_sizes(member_id,season_id,article_id,article_variant_id,
  member_season_id,selection_status,selection_source,confirmed_at,confirmed_by)
 select member.id,'f9f10000-0000-4000-8000-000000000001',article.id,variant.id,
@@ -171,6 +174,11 @@ insert into app.payments(id,order_id,method,status,amount_cents,provider_payment
 select 'f9f60000-0000-4000-8000-000000000005',orders.id,'mollie','paid',12500,
  'tr_finrace5','package-finance-race-payment-5',2,timezone('utc',now()),timezone('utc',now()),timezone('utc',now())
 from app.member_orders orders where orders.member_season_id='f9f51000-0000-4000-8000-000000000005';
+insert into app.payments(id,order_id,method,status,amount_cents,provider_payment_id,
+ idempotency_key,metadata_schema_version,paid_at,provider_created_at,provider_updated_at)
+select 'f9f60000-0000-4000-8000-000000000006',orders.id,'mollie','paid',12500,
+ 'tr_finrace6','package-finance-race-payment-6',2,timezone('utc',now()),timezone('utc',now()),timezone('utc',now())
+from app.member_orders orders where orders.member_season_id='f9f51000-0000-4000-8000-000000000006';
 update app.app_settings set active_season_id='f9f10000-0000-4000-8000-000000000001' where id=true;
 commit;
 SQL
@@ -310,7 +318,7 @@ commit;
 SQL
 )"
 mollie_refund_id="$(printf '%s' "$mollie_apply" | sed -n 's/.*"refundId": "\([^"]*\)".*/\1/p')"
-"${psql_cmd[@]}" -Atc "select app.prepare_mollie_refund_v1('$mollie_refund_id','f9f83000-0000-4000-8000-000000000001',null); select app.bind_mollie_refund_v1('$mollie_refund_id','re_finrace5','pending',timezone('utc',now()));" >/dev/null
+"${psql_cmd[@]}" -Atc "select app.prepare_mollie_refund_v1('$mollie_refund_id','f9f83000-0000-4000-8000-000000000001','$actor_id','$staff_session_hash',null); select app.bind_mollie_refund_v1('$mollie_refund_id','re_finrace5','pending',timezone('utc',now()));" >/dev/null
 second_revision="$(preflight 5 5 7 'Tweede correctie tijdens refundreconciliatie')"
 reconcile_log="$test_tmp_dir/reconcile.log"; second_log="$test_tmp_dir/second.log"
 ("${psql_cmd[@]}" >"$reconcile_log" 2>&1 <<'SQL'
@@ -337,4 +345,51 @@ fi
 reconcile_state="$("${psql_cmd[@]}" -Atc "select refund.status||':'||(select count(*) from app.package_financial_adjustments adjustment where adjustment.order_id=refund.order_id) from app.package_refunds refund where refund.id='$mollie_refund_id'")"
 [[ "$reconcile_state" == "completed:1" ]] || { echo "Onverwachte refund/re-correctiestaat: $reconcile_state"; exit 1; }
 
-echo "Package-financial-adjustment concurrencytests geslaagd: webhook, dubbele switch, allocationworker, dubbele refund en refund/re-correctie zijn raceveilig."
+# Een provider-accepted refund wordt na een lokaal bindverlies uitsluitend via
+# unieke, volledig overeenkomende metadata hersteld. Een oudere observatie mag
+# de eenmaal voltooide geldbeweging daarna niet terugzetten.
+recovery_revision="$(preflight 6 4 8 'Goedkopere correctie voor bindherstel')"
+recovery_apply="$("${psql_cmd[@]}" -v actor_id="$actor_id" -At <<SQL
+begin; select set_config('request.jwt.claims',jsonb_build_object('sub',:'actor_id','aal','aal2')::text,true);
+set local role authenticated;
+select app.apply_package_change_v2('f9f81000-0000-4000-8000-000000000008','$recovery_revision','SWITCH_PACKAGE',null)::text;
+commit;
+SQL
+)"
+recovery_refund_id="$(printf '%s' "$recovery_apply" | sed -n 's/.*"refundId": "\([^"]*\)".*/\1/p')"
+[[ "$recovery_refund_id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Bindherstel-refund-ID ontbreekt"; exit 1; }
+
+set +e
+invalid_session_output="$("${psql_cmd[@]}" -Atc "select app.prepare_mollie_refund_v1('$recovery_refund_id','f9f83000-0000-4000-8000-000000000002','$actor_id','0000000000000000000000000000000000000000000000000000000000000000',null);" 2>&1)"
+invalid_session_status=$?
+set -e
+if [[ "$invalid_session_status" -eq 0 ]] || ! grep -q 'STAFF_AUTHORIZATION_REQUIRED' <<<"$invalid_session_output"; then
+  echo "Ongeldige medewerkersessie werd niet door de database geweigerd"
+  printf '%s\n' "$invalid_session_output"
+  exit 1
+fi
+
+"${psql_cmd[@]}" -Atc "select app.prepare_mollie_refund_v1('$recovery_refund_id','f9f83000-0000-4000-8000-000000000002','$actor_id','$staff_session_hash',null);" >/dev/null
+"${psql_cmd[@]}" -Atc "select app.fail_mollie_refund_v1('$recovery_refund_id','MOLLIE_REFUND_BIND_UNAVAILABLE',true,timezone('utc',now()));" >/dev/null
+"${psql_cmd[@]}" -Atc "select app.reconcile_mollie_refunds_v1('tr_finrace6',
+ '[{\"id\":\"re_finrace6a\",\"status\":\"pending\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"},\"metadata\":{\"package_refund_id\":\"$recovery_refund_id\",\"schema_version\":1}},{\"id\":\"re_finrace6b\",\"status\":\"pending\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"},\"metadata\":{\"package_refund_id\":\"$recovery_refund_id\",\"schema_version\":1}}]'::jsonb,
+ timezone('utc',now()));" >/dev/null
+ambiguous_state="$("${psql_cmd[@]}" -Atc "select status||':'||coalesce(provider_refund_id,'')||':'||failure_code from app.package_refunds where id='$recovery_refund_id'")"
+[[ "$ambiguous_state" == "reconciliation_required::MOLLIE_REFUND_AMBIGUOUS" ]] || { echo "Ambigu bindherstel was niet fail-closed: $ambiguous_state"; exit 1; }
+
+"${psql_cmd[@]}" -Atc "select app.reconcile_mollie_refunds_v1('tr_finrace6',
+ '[{\"id\":\"re_finrace6\",\"status\":\"refunded\",\"paymentId\":\"tr_finrace6\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"},\"metadata\":{\"package_refund_id\":\"$recovery_refund_id\",\"schema_version\":1}}]'::jsonb,
+ timezone('utc',now()) + interval '1 second');" >/dev/null
+"${psql_cmd[@]}" -Atc "select app.reconcile_mollie_refunds_v1('tr_finrace6',
+ '[{\"id\":\"re_finrace6\",\"status\":\"pending\",\"paymentId\":\"tr_finrace6\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"},\"metadata\":{\"package_refund_id\":\"$recovery_refund_id\",\"schema_version\":1}}]'::jsonb,
+ timezone('utc',now()) - interval '1 hour');" >/dev/null
+"${psql_cmd[@]}" -Atc "select app.reconcile_mollie_refunds_v1('tr_finrace6',
+ '[{\"id\":\"re_finrace6\",\"status\":\"processing\",\"paymentId\":\"tr_finrace6\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"},\"metadata\":{\"package_refund_id\":\"$recovery_refund_id\",\"schema_version\":1}}]'::jsonb,
+ timezone('utc',now()) + interval '2 seconds');" >/dev/null
+recovery_state="$("${psql_cmd[@]}" -Atc "select refund.status||':'||refund.provider_refund_id||':'||refund.provider_status||':'||(refund.requested_by='$actor_id')::text||':'||(select count(*) from app.audit_logs audit where audit.entity_id=refund.id and audit.actor_user_id='$actor_id' and audit.action in ('payment.mollie.refund_requested','payment.mollie.refund_failed','payment.mollie.refund_binding_recovered')) from app.package_refunds refund where refund.id='$recovery_refund_id'")"
+[[ "$recovery_state" == "completed:re_finrace6:refunded:true:3" ]] || { echo "Onverwachte bindherstel-/stale-observatiestaat: $recovery_state"; exit 1; }
+
+bind_audit_actor="$("${psql_cmd[@]}" -Atc "select coalesce(actor_user_id::text,'') from app.audit_logs where entity_id='$mollie_refund_id' and action='payment.mollie.refund_provider_accepted' order by created_at desc limit 1")"
+[[ "$bind_audit_actor" == "$actor_id" ]] || { echo "Provider-refundaudit mist medewerkersactor: $bind_audit_actor"; exit 1; }
+
+echo "Package-financial-adjustment concurrencytests geslaagd: webhook, dubbele switch, allocationworker, dubbele refund, refund/re-correctie, sessiebinding, bindherstel en monotone providerobservaties zijn raceveilig."

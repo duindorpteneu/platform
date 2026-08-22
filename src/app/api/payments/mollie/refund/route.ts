@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { mollieRefundRequestSchema } from "@/lib/mollie-contract";
-import { requireStaffRole } from "@/server/auth/staff";
+import { requireStaffSessionBinding } from "@/server/auth/staff";
 import {
   getMollieRuntimeConfig,
   hasTrustedPaymentOrigin,
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const guarded = guardBrowserMutation(request, { body: BODY_POLICIES.jsonTiny });
   if (guarded) return guarded;
   try {
-    await requireStaffRole(["beheerder"]);
+    const staff = await requireStaffSessionBinding(["beheerder"]);
     const config = getMollieRuntimeConfig();
     if (!hasTrustedPaymentOrigin(request, config.appBaseUrl)) {
       return NextResponse.json({ error: "Ongeldige aanvraagbron." }, { status: 403 });
@@ -37,6 +37,8 @@ export async function POST(request: Request) {
     if (!admin) return NextResponse.json({ error: "Databaseverbinding ontbreekt." }, { status: 503 });
     const result = await startMollieRefund({
       ...parsed.data,
+      actorUserId: staff.userId,
+      staffSessionHash: staff.sessionTokenHash,
       correlationId: normalizeCorrelationId(request.headers.get("x-correlation-id")),
     }, { database: admin, config });
     return NextResponse.json(result, {

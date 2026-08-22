@@ -314,7 +314,13 @@ export async function reconcileMollieWebhook(
 }
 
 export async function startMollieRefund(
-  input: { refundId: string; requestId: string; correlationId?: string | null },
+  input: {
+    refundId: string;
+    requestId: string;
+    actorUserId: string;
+    staffSessionHash: string;
+    correlationId?: string | null;
+  },
   dependencies: {
     database: MollieRpcClient;
     config?: MollieRuntimeConfig;
@@ -328,6 +334,8 @@ export async function startMollieRefund(
   const { data, error } = await appDatabase.rpc("prepare_mollie_refund_v1", {
     p_refund_id: input.refundId,
     p_operation_request_id: input.requestId,
+    p_actor_user_id: input.actorUserId,
+    p_staff_session_hash: input.staffSessionHash,
     p_correlation_id: input.correlationId ?? null,
   });
   if (error) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
@@ -362,9 +370,12 @@ export async function startMollieRefund(
     if (!parsed.success) throw new MollieServiceError("DATABASE_UNAVAILABLE", true);
     return { ...parsed.data, reused: false };
   } catch (cause) {
+    // Once the provider call has started, a timeout, unreadable success body,
+    // response mismatch or local bind failure has an uncertain outcome. The
+    // durable Mollie idempotency key makes retrying that same refund safe.
     const retryable = cause instanceof MollieRequestError
       ? cause.retryable
-      : cause instanceof MollieServiceError && cause.retryable;
+      : true;
     await appDatabase.rpc("fail_mollie_refund_v1", {
       p_refund_id: prepared.data.refundId,
       p_failure_code: cause instanceof MollieServiceError
@@ -379,6 +390,6 @@ export async function startMollieRefund(
     if (cause instanceof MollieRequestError) {
       throw new MollieServiceError("PROVIDER_UNAVAILABLE", cause.retryable);
     }
-    throw new MollieServiceError("INVALID_PROVIDER_RESPONSE");
+    throw new MollieServiceError("INVALID_PROVIDER_RESPONSE", true);
   }
 }

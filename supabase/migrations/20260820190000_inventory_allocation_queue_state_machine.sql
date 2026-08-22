@@ -58,6 +58,7 @@ as $$
     where orders.season_id = p_season_id
       and line.article_variant_id = p_variant_id
       and line.status = 'backorder'
+      and private.order_has_effective_paid_payment(orders.id)
       and not exists(
         select 1
         from app.inventory_allocations allocation
@@ -316,6 +317,7 @@ begin
     where orders.season_id = p_season_id
       and line.article_variant_id = p_variant_id
       and line.status = 'backorder'
+      and private.order_has_effective_paid_payment(orders.id)
       and not exists(
         select 1
         from app.inventory_allocations allocation

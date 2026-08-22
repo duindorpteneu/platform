@@ -177,6 +177,24 @@ describe("GET /api/internal/health", () => {
   });
 
   it.each([
+    ["terminally exhausted inventory allocation", {
+      inventoryAllocationQueue: {
+        runnable: 0,
+        processing: 0,
+        terminalExhausted: 1,
+        poisoned: 0,
+        oldestRunnableAt: null,
+      },
+    }],
+    ["poisoned inventory allocation", {
+      inventoryAllocationQueue: {
+        runnable: 0,
+        processing: 0,
+        terminalExhausted: 0,
+        poisoned: 1,
+        oldestRunnableAt: null,
+      },
+    }],
     ["uncertain delivery", { emailJobs: { ...healthy.emailJobs, deliveryUncertain: 1 } }],
     ["missed worker", { operations: { ...healthy.operations, emailWorker: { ...healthy.operations.emailWorker, required: true, stale: true } } }],
     ["delivery failure", { recentDeliveryFailures: 1 }],

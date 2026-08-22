@@ -87,6 +87,7 @@ create table app.package_refunds (
   )),
   operation_request_id uuid unique,
   idempotency_key text unique,
+  requested_by uuid references app.staff_profiles(auth_user_id) on delete restrict,
   requested_at timestamptz,
   provider_accepted_at timestamptz,
   completed_at timestamptz,
@@ -159,6 +160,8 @@ begin
     or old.amount_cents is distinct from new.amount_cents
     or old.currency is distinct from new.currency
     or old.created_at is distinct from new.created_at
+    or (old.requested_by is not null
+      and old.requested_by is distinct from new.requested_by)
   then
     raise exception 'PACKAGE_REFUND_IDENTITY_IMMUTABLE' using errcode = '23514';
   end if;
@@ -361,6 +364,8 @@ begin
     join app.package_credit_allocations allocation
       on allocation.adjustment_id = current_adjustment.id
     join app.payments payment on payment.id = allocation.payment_id
+      and payment.status = 'paid'
+      and payment.reconciliation_issue is null
     union all
     select payment.id, payment.amount_cents, payment.method::text, payment.paid_at
     from target_order
@@ -399,6 +404,13 @@ begin
         where payment.order_id = target_order.id and (
           payment.status = 'duplicate_paid' or payment.reconciliation_issue is not null
         )) payment_conflicts,
+      (select count(*)::integer
+        from current_adjustment
+        join app.package_credit_allocations allocation
+          on allocation.adjustment_id = current_adjustment.id
+        join app.payments payment on payment.id = allocation.payment_id
+        where payment.status <> 'paid' or payment.reconciliation_issue is not null
+      ) unhealthy_credit_sources,
       (select count(*)::integer from app.package_refunds refund
         join current_adjustment on current_adjustment.id = refund.adjustment_id
         where refund.status not in ('completed', 'manual_completed')) refund_blockers,
@@ -445,7 +457,8 @@ begin
     'requiresAllocationRelease', counts.reserved_count > 0,
     'blockedByFulfilment', counts.fulfilled_count > 0 or counts.fulfilment_count > 0,
     'blockedByReconciliation', counts.legacy_count > 0
-      or counts.payment_conflicts > 0 or counts.refund_blockers > 0,
+      or counts.payment_conflicts > 0 or counts.unhealthy_credit_sources > 0
+      or counts.refund_blockers > 0,
     'unresolvedPaymentCount', counts.unresolved_payment_count,
     'targetPackageRequiredSizeCount', counts.required_sizes,
     'targetPackageKnownSizeCount', counts.known_sizes,
@@ -462,6 +475,7 @@ begin
       where item.revision_id=target_order.target_revision_id),'[]'::jsonb),
     'canApply', counts.fulfilled_count = 0 and counts.fulfilment_count = 0
       and counts.legacy_count = 0 and counts.payment_conflicts = 0
+      and counts.unhealthy_credit_sources = 0
       and counts.refund_blockers = 0 and counts.unresolved_payment_count = 0
   ) into result
   from target_order cross join source_summary cross join counts;
@@ -691,6 +705,8 @@ begin
     join app.package_credit_allocations allocation
       on allocation.adjustment_id = prior_adjustment.id
     join app.payments payment on payment.id = allocation.payment_id
+      and payment.status = 'paid'
+      and payment.reconciliation_issue is null
     union all
     select payment.id, payment.amount_cents, payment.paid_at
     from app.payments payment
@@ -719,6 +735,10 @@ begin
     from prior_adjustment
     join app.package_credit_allocations allocation
       on allocation.adjustment_id = prior_adjustment.id
+    join app.payments allocated_payment
+      on allocated_payment.id = allocation.payment_id
+      and allocated_payment.status = 'paid'
+      and allocated_payment.reconciliation_issue is null
     union all
     select payment.id, payment.amount_cents from app.payments payment
     where payment.order_id = target.order_id
@@ -1014,6 +1034,7 @@ grant execute on function app.record_manual_payment_v2(
 -- may complete a Mollie obligation.
 create or replace function app.prepare_mollie_refund_v1(
   p_refund_id uuid, p_operation_request_id uuid,
+  p_actor_user_id uuid, p_staff_session_hash text,
   p_correlation_id uuid default null
 )
 returns jsonb language plpgsql security definer
@@ -1023,6 +1044,13 @@ declare target app.package_refunds%rowtype; payment app.payments%rowtype;
 begin
   if p_refund_id is null or p_operation_request_id is null then
     raise exception 'INVALID_MOLLIE_REFUND_REQUEST' using errcode = '22023';
+  end if;
+  if not private.staff_app_session_authorized(
+    p_actor_user_id,
+    p_staff_session_hash,
+    array['beheerder'::app.staff_role]
+  ) then
+    raise exception 'STAFF_AUTHORIZATION_REQUIRED' using errcode = '42501';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('package-refund:' || p_refund_id::text, 0));
   select * into target from app.package_refunds where id = p_refund_id for update;
@@ -1036,6 +1064,9 @@ begin
     raise exception 'MOLLIE_REFUND_NOT_ALLOWED' using errcode = '23514';
   end if;
   if target.operation_request_id is not null then
+    if target.requested_by is distinct from p_actor_user_id then
+      raise exception 'MOLLIE_REFUND_REQUEST_ACTOR_CONFLICT' using errcode = '42501';
+    end if;
     if target.operation_request_id <> p_operation_request_id then
       raise exception 'MOLLIE_REFUND_ALREADY_REQUESTED' using errcode = '23505';
     end if;
@@ -1069,13 +1100,14 @@ begin
   perform set_config('app.package_refund_internal', 'on', true);
   update app.package_refunds set status = 'requesting',
     operation_request_id = p_operation_request_id,
-    idempotency_key = operation_key, requested_at = timezone('utc', now()),
+    idempotency_key = operation_key, requested_by = p_actor_user_id,
+    requested_at = timezone('utc', now()),
     failure_code = null, retryable = false,
     correlation_id = coalesce(p_correlation_id, correlation_id)
   where id = target.id returning * into target;
   perform set_config('app.package_refund_internal', 'off', true);
   insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata, correlation_id)
-  values(null, 'payment.mollie.refund_requested', 'package_refund', target.id,
+  values(p_actor_user_id, 'payment.mollie.refund_requested', 'package_refund', target.id,
     jsonb_build_object('payment_id', target.payment_id,
       'adjustment_id', target.adjustment_id, 'amount_cents', target.amount_cents,
       'currency', target.currency), p_correlation_id);
@@ -1105,6 +1137,7 @@ begin
   select * into target from app.package_refunds where id = p_refund_id for update;
   if not found then raise exception 'PACKAGE_REFUND_NOT_FOUND' using errcode = 'P0002'; end if;
   if target.method <> 'mollie' or target.status <> 'requesting'
+    or target.operation_request_id is null or target.requested_by is null
     or (target.provider_refund_id is not null and target.provider_refund_id <> p_provider_refund_id)
   then raise exception 'MOLLIE_REFUND_BINDING_CONFLICT' using errcode = '23514'; end if;
   local_status := case p_provider_status
@@ -1125,7 +1158,7 @@ begin
     'mollie-refund:'||p_provider_refund_id||':'||p_provider_status,
     jsonb_build_object('status',p_provider_status)) on conflict(event_key) do nothing;
   insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata, correlation_id)
-  values(null, 'payment.mollie.refund_provider_accepted', 'package_refund', target.id,
+  values(target.requested_by, 'payment.mollie.refund_provider_accepted', 'package_refund', target.id,
     jsonb_build_object('provider_refund_id', p_provider_refund_id,
       'provider_status', p_provider_status, 'amount_cents', target.amount_cents),
     target.correlation_id);
@@ -1154,6 +1187,13 @@ begin
   if target.status in ('completed','manual_completed') then
     return jsonb_build_object('refundId', target.id, 'status', target.status, 'reused', true);
   end if;
+  if target.method <> 'mollie' or target.operation_request_id is null
+    or target.requested_by is null
+    or target.status not in (
+      'requesting', 'queued', 'pending', 'processing', 'failed',
+      'reconciliation_required'
+    )
+  then raise exception 'MOLLIE_REFUND_FAILURE_CONFLICT' using errcode = '23514'; end if;
   perform set_config('app.package_refund_internal', 'on', true);
   update app.package_refunds set status = 'failed', failed_at = p_observed_at,
     failure_code = p_failure_code, retryable = coalesce(p_retryable, false),
@@ -1161,7 +1201,7 @@ begin
   where id = target.id returning * into target;
   perform set_config('app.package_refund_internal', 'off', true);
   insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata, correlation_id)
-  values(null, 'payment.mollie.refund_failed', 'package_refund', target.id,
+  values(target.requested_by, 'payment.mollie.refund_failed', 'package_refund', target.id,
     jsonb_build_object('failure_code', p_failure_code,
       'retryable', coalesce(p_retryable, false)), target.correlation_id);
   return jsonb_build_object('refundId', target.id, 'status', target.status,
@@ -1176,6 +1216,8 @@ returns jsonb language plpgsql security definer
 set search_path = app, private, pg_temp as $$
 declare payment app.payments%rowtype; target app.package_refunds%rowtype;
   provider jsonb; v_provider_status text; v_provider_amount integer;
+  v_provider_refund_id text; v_metadata_refund_id_text text;
+  v_metadata_match_count integer; v_provider_id_conflicts integer;
   updated_count integer := 0;
 begin
   if p_provider_payment_id !~ '^tr_[A-Za-z0-9]+$'
@@ -1185,6 +1227,86 @@ begin
   select * into payment from app.payments
   where provider_payment_id = p_provider_payment_id for update;
   if not found then raise exception 'PAYMENT_NOT_FOUND' using errcode = 'P0002'; end if;
+
+  -- Recover a provider-accepted refund when the provider call succeeded but
+  -- the local bind failed. Metadata alone is not sufficient: the observation
+  -- must identify exactly one local, prepared refund for this payment and its
+  -- provider ID, amount and currency must all agree.
+  for provider in select value from jsonb_array_elements(p_refunds) item(value)
+  loop
+    v_metadata_refund_id_text := provider#>>'{metadata,package_refund_id}';
+    if v_metadata_refund_id_text is null
+      or v_metadata_refund_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    then continue; end if;
+
+    select count(*)::integer into v_metadata_match_count
+    from jsonb_array_elements(p_refunds) candidate(value)
+    where candidate.value#>>'{metadata,package_refund_id}' = v_metadata_refund_id_text;
+
+    select * into target from app.package_refunds refund
+    where refund.id = v_metadata_refund_id_text::uuid
+      and refund.payment_id = payment.id
+      and refund.method = 'mollie'
+      and refund.provider_refund_id is null
+    for update;
+    if not found or target.status = 'completed'
+      or (target.reconciled_at is not null and p_observed_at < target.reconciled_at)
+    then continue; end if;
+
+    v_provider_refund_id := provider->>'id';
+    v_provider_status := provider->>'status';
+    v_provider_amount := null;
+    if provider#>>'{amount,currency}' = target.currency
+      and (provider#>>'{amount,value}') ~ '^\d+\.\d{2}$'
+    then
+      v_provider_amount := split_part(provider#>>'{amount,value}', '.', 1)::integer * 100
+        + split_part(provider#>>'{amount,value}', '.', 2)::integer;
+    end if;
+    select count(*)::integer into v_provider_id_conflicts
+    from app.package_refunds refund
+    where refund.provider_refund_id = v_provider_refund_id
+      and refund.id <> target.id;
+
+    if v_metadata_match_count <> 1
+      or target.operation_request_id is null
+      or target.idempotency_key is distinct from 'package-refund:' || target.id::text
+      or target.requested_by is null
+      or target.status not in ('requesting', 'failed', 'reconciliation_required')
+      or v_provider_refund_id is null
+      or v_provider_refund_id !~ '^re_[A-Za-z0-9]+$'
+      or v_provider_status is null
+      or v_provider_status not in ('queued','pending','processing','refunded','failed','canceled')
+      or v_provider_amount is distinct from target.amount_cents
+      or provider#>>'{metadata,schema_version}' is distinct from '1'
+      or (provider->>'paymentId' is not null
+        and provider->>'paymentId' <> p_provider_payment_id)
+      or v_provider_id_conflicts > 0
+    then
+      perform set_config('app.package_refund_internal', 'on', true);
+      update app.package_refunds set status = 'reconciliation_required',
+        reconciled_at = p_observed_at,
+        failure_code = case when v_metadata_match_count <> 1
+          or v_provider_id_conflicts > 0
+          then 'MOLLIE_REFUND_AMBIGUOUS' else 'MOLLIE_REFUND_MISMATCH' end,
+        retryable = false
+      where id = target.id;
+      perform set_config('app.package_refund_internal', 'off', true);
+      continue;
+    end if;
+
+    perform set_config('app.package_refund_internal', 'on', true);
+    update app.package_refunds set provider_refund_id = v_provider_refund_id,
+      provider_accepted_at = coalesce(provider_accepted_at, p_observed_at)
+    where id = target.id returning * into target;
+    perform set_config('app.package_refund_internal', 'off', true);
+    insert into app.audit_logs(actor_user_id, action, entity_type, entity_id, metadata, correlation_id)
+    values(target.requested_by, 'payment.mollie.refund_binding_recovered',
+      'package_refund', target.id,
+      jsonb_build_object('provider_refund_id', v_provider_refund_id,
+        'payment_id', target.payment_id, 'amount_cents', target.amount_cents,
+        'currency', target.currency), target.correlation_id);
+  end loop;
+
   for target in select refund.* from app.package_refunds refund
     where refund.payment_id = payment.id and refund.provider_refund_id is not null
     order by refund.created_at, refund.id for update
@@ -1192,7 +1314,11 @@ begin
     select value into provider from jsonb_array_elements(p_refunds) item(value)
     where value->>'id' = target.provider_refund_id limit 1;
     if provider is null then continue; end if;
+    if target.reconciled_at is not null and p_observed_at < target.reconciled_at then
+      continue;
+    end if;
     v_provider_status := provider->>'status';
+    v_provider_amount := null;
     if v_provider_status not in ('queued','pending','processing','refunded','failed','canceled')
       or provider#>>'{amount,currency}' <> 'EUR'
       or (provider#>>'{amount,value}') !~ '^\d+\.\d{2}$'
@@ -1202,6 +1328,12 @@ begin
       v_provider_amount := split_part(provider#>>'{amount,value}', '.', 1)::integer * 100
         + split_part(provider#>>'{amount,value}', '.', 2)::integer;
     end if;
+    -- A completed refund is factual money movement and is never regressed by
+    -- a delayed or contradictory provider observation.
+    if target.status = 'completed'
+      and (v_provider_status is distinct from 'refunded'
+        or v_provider_amount is distinct from target.amount_cents)
+    then continue; end if;
     perform set_config('app.package_refund_internal', 'on', true);
     if v_provider_status is null or v_provider_amount <> target.amount_cents then
       update app.package_refunds set status = 'reconciliation_required',
@@ -1235,12 +1367,12 @@ begin
 end;
 $$;
 
-revoke all on function app.prepare_mollie_refund_v1(uuid, uuid, uuid),
+revoke all on function app.prepare_mollie_refund_v1(uuid, uuid, uuid, text, uuid),
   app.bind_mollie_refund_v1(uuid, text, text, timestamptz),
   app.fail_mollie_refund_v1(uuid, text, boolean, timestamptz),
   app.reconcile_mollie_refunds_v1(text, jsonb, timestamptz)
 from public, anon, authenticated, service_role;
-grant execute on function app.prepare_mollie_refund_v1(uuid, uuid, uuid),
+grant execute on function app.prepare_mollie_refund_v1(uuid, uuid, uuid, text, uuid),
   app.bind_mollie_refund_v1(uuid, text, text, timestamptz),
   app.fail_mollie_refund_v1(uuid, text, boolean, timestamptz),
   app.reconcile_mollie_refunds_v1(text, jsonb, timestamptz)

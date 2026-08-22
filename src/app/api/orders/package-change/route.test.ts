@@ -1,15 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  requireRole: vi.fn(),
+  requireSession: vi.fn(),
   serverClient: vi.fn(),
+  adminClient: vi.fn(),
+  startRefund: vi.fn(),
   rpc: vi.fn(),
 }));
 vi.mock("@/server/auth/staff", () => ({
-  requireStaffRole: mocks.requireRole,
+  requireStaffSessionBinding: mocks.requireSession,
 }));
 vi.mock("@/server/supabase/server", () => ({
   getSupabaseServerClient: mocks.serverClient,
+}));
+vi.mock("@/server/supabase/admin", () => ({
+  getSupabaseAdminClient: mocks.adminClient,
+}));
+vi.mock("@/server/payments/mollie-service", () => ({
+  startMollieRefund: mocks.startRefund,
 }));
 
 import { POST } from "./route";
@@ -17,6 +25,11 @@ import { POST } from "./route";
 const orderId = "10000000-0000-4000-8000-000000000001";
 const targetId = "20000000-0000-4000-8000-000000000001";
 const requestId = "30000000-0000-4000-8000-000000000001";
+const staff = {
+  userId: "80000000-0000-4000-8000-000000000001",
+  role: "beheerder",
+  sessionTokenHash: "b".repeat(64),
+};
 
 function request(body: unknown) {
   return new Request(
@@ -75,9 +88,7 @@ const response = {
 describe("POST /api/orders/package-change", () => {
   beforeEach(() => {
     process.env.APP_BASE_URL = "https://tenue.example";
-    mocks.requireRole.mockReset().mockResolvedValue({
-      role: "beheerder",
-    });
+    mocks.requireSession.mockReset().mockResolvedValue(staff);
     mocks.rpc.mockReset().mockResolvedValue({
       data: response,
       error: null,
@@ -85,6 +96,8 @@ describe("POST /api/orders/package-change", () => {
     mocks.serverClient.mockReset().mockResolvedValue({
       schema: () => ({ rpc: mocks.rpc }),
     });
+    mocks.adminClient.mockReset().mockReturnValue(null);
+    mocks.startRefund.mockReset().mockResolvedValue({});
   });
 
   it("preflights without changing payment or package", async () => {
@@ -96,7 +109,7 @@ describe("POST /api/orders/package-change", () => {
       requestId,
     }));
     expect(result.status).toBe(200);
-    expect(mocks.requireRole).toHaveBeenCalledWith(["beheerder"]);
+    expect(mocks.requireSession).toHaveBeenCalledWith(["beheerder"]);
     expect(mocks.rpc).toHaveBeenCalledWith(
       "preflight_package_change_v2",
       expect.objectContaining({
@@ -131,7 +144,65 @@ describe("POST /api/orders/package-change", () => {
       confirmation: "REFUND_AND_SWITCH",
     }));
     expect(result.status).toBe(400);
-    expect(mocks.requireRole).not.toHaveBeenCalled();
+    expect(mocks.requireSession).not.toHaveBeenCalled();
+  });
+
+  it("bindt een automatische Mollie-refund aan dezelfde beheerderssessie", async () => {
+    const refundId = "90000000-0000-4000-8000-000000000001";
+    mocks.rpc.mockResolvedValueOnce({
+      data: {
+        ...response,
+        status: "applied",
+        canApply: true,
+        result: {
+          requestId,
+          adjustmentId: "91000000-0000-4000-8000-000000000001",
+          orderId,
+          memberSeasonId: response.memberSeasonId,
+          fromSnapshotId: response.fromSnapshotId,
+          toSnapshotId: "92000000-0000-4000-8000-000000000001",
+          toPackageRevisionId: response.toPackageRevisionId,
+          priceDeltaCents: -2500,
+          creditAppliedCents: 7500,
+          additionalDueCents: 0,
+          refundDueCents: 2500,
+          releasedAllocationCount: 0,
+          targetSizesConfirmed: true,
+          materialization: {
+            orderLinesMaterialized: 2,
+            snapshotItemsLinked: 2,
+          },
+          paymentTransferred: false,
+          refunds: [{
+            refundId,
+            paymentId: response.paymentSources[0]!.paymentId,
+            method: "mollie",
+            amountCents: 2500,
+            status: "due",
+          }],
+          status: "applied",
+        },
+      },
+      error: null,
+    });
+    mocks.adminClient.mockReturnValue({ schema: vi.fn() });
+
+    const result = await POST(request({
+      action: "apply",
+      requestId,
+      revision: "a".repeat(64),
+      confirmation: "SWITCH_PACKAGE",
+    }));
+
+    expect(result.status).toBe(200);
+    expect(mocks.startRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refundId,
+        actorUserId: staff.userId,
+        staffSessionHash: staff.sessionTokenHash,
+      }),
+      expect.objectContaining({ database: expect.any(Object) }),
+    );
   });
 
   it("maps financial or fulfilment blockers without leaking SQL", async () => {

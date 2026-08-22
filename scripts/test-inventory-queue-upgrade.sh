@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-database_url="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54339/postgres}"
+database_url="postgresql://postgres:postgres@127.0.0.1:54339/postgres"
 psql_cmd=(psql "$database_url" -X -q -v ON_ERROR_STOP=1 -At)
 reset_log="$(mktemp)"
 restored=false

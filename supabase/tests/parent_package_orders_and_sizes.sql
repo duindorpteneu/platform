@@ -2309,6 +2309,29 @@ select is((select count(*)::integer from app.payments payment where payment.orde
 select is((select payment.amount_cents from app.payments payment
   where payment.idempotency_key='package-change-paid-001'),12500,
   'gelijk geprijsde correctie behoudt het historische betaalbedrag');
+
+update app.payments set status='refunded',refunded_at=timezone('utc',now())
+where idempotency_key='package-change-paid-001';
+select set_config('request.jwt.claims',
+  '{"sub":"ea000000-0000-4000-8000-000000000001","aal":"aal2"}',true);
+set local role authenticated;
+select set_config('test.package.finance_v2_unhealthy_credit',app.preflight_package_change_v2(
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid),
+  'ea410000-0000-4000-8000-000000000002','Ongezonde historische bron blokkeren',
+  'eaf40000-0000-4000-8000-000000000014',null)::text,true);
+select is(current_setting('test.package.finance_v2_unhealthy_credit')::jsonb->>'status','blocked',
+  'een niet langer betaalde carried-creditbron blokkeert de preflight');
+select is(current_setting('test.package.finance_v2_unhealthy_credit')::jsonb->>'creditAppliedCents','0',
+  'een refunded historische bron wordt niet opnieuw als tegoed gedragen');
+select is(current_setting('test.package.finance_v2_unhealthy_credit')::jsonb->>'blockedByReconciliation','true',
+  'preflight maakt de ongezonde carried-creditbron expliciet zichtbaar als reconciliatieblokker');
+select throws_ok(format($sql$select app.apply_package_change_v2(
+  'eaf40000-0000-4000-8000-000000000014',%L,'SWITCH_PACKAGE',null)$sql$,
+  current_setting('test.package.finance_v2_unhealthy_credit')::jsonb->>'revision'),
+  '23514','PACKAGE_CHANGE_BLOCKED',
+  'apply kan een preflight met ongezonde carried-creditbron niet omzeilen');
+reset role;
 rollback to savepoint package_finance_v2_equal_price;
 
 savepoint package_finance_v2_more_expensive;
@@ -2346,6 +2369,10 @@ select is((select balance.remaining_due_cents from private.order_financial_balan
   (select orders.id from app.member_orders orders where orders.member_season_id=
     current_setting('test.package.staff_member_season')::uuid)) balance),2000,
   'de canonieke actieve balans bevat na de correctie alleen 20 euro verschil');
+select ok(not private.order_has_effective_paid_payment(
+  (select orders.id from app.member_orders orders where orders.member_season_id=
+    current_setting('test.package.staff_member_season')::uuid)),
+  'een historische betaling maakt een duurdere pakketcorrectie niet volledig betaald');
 select is((select payment.amount_cents from app.payments payment
   where payment.idempotency_key='package-change-paid-001'),12500,
   'de oorspronkelijke betaling en het oorspronkelijke bedrag blijven ongewijzigd');

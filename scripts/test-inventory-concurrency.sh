@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-database_url="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54339/postgres}"
+database_url="postgresql://postgres:postgres@127.0.0.1:54339/postgres"
 psql_cmd=(psql "$database_url" -X -q -A -t -v ON_ERROR_STOP=1)
 test_tmp_dir="$(mktemp -d -t duindorp-inventory-concurrency.XXXXXX)"
+identity="$("${psql_cmd[@]}" -c "select concat_ws('|',current_database(),current_user,inet_server_port())")"
+if [[ "$identity" != "postgres|postgres|5432" ]]; then
+  echo "Voorraadconcurrencytest weigert onverwachte lokale database-identiteit." >&2
+  exit 2
+fi
 previous_flag="$("${psql_cmd[@]}" -c "select enabled::text from app.release_feature_flags where key='allocation_qr_v2'")"
 previous_cutover="$("${psql_cmd[@]}" -c "select count(*)::text from private.release_cutovers where key='allocation_qr_v2'")"
 previous_mail_flag="$("${psql_cmd[@]}" -c "select enabled::text from app.release_feature_flags where key='mail_templates_v2'")"

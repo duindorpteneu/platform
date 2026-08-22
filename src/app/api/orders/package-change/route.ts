@@ -3,7 +3,7 @@ import {
   packageChangeRequestSchema,
   packageChangeResponseSchema,
 } from "@/lib/package-change-contract";
-import { requireStaffRole } from "@/server/auth/staff";
+import { requireStaffSessionBinding } from "@/server/auth/staff";
 import { normalizeCorrelationId } from "@/server/security/correlation";
 import {
   BODY_POLICIES,
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return fail("Controleer pakketwijziging, reden en bevestiging.", 400);
   }
   try {
-    await requireStaffRole(["beheerder"]);
+    const staff = await requireStaffSessionBinding(["beheerder"]);
     const supabase = await getSupabaseServerClient();
     if (!supabase) return fail("Databaseverbinding ontbreekt.", 503);
     const correlationId = normalizeCorrelationId(
@@ -116,6 +116,8 @@ export async function POST(request: Request) {
             await startMollieRefund({
               refundId: refund.refundId,
               requestId: refund.refundId,
+              actorUserId: staff.userId,
+              staffSessionHash: staff.sessionTokenHash,
               correlationId,
             }, { database: admin });
           } catch {

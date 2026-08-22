@@ -532,6 +532,18 @@ select ok(
 delete from private.inventory_allocation_queue
 where season_id = 'f1100000-0000-4000-8000-000000000001'
   and article_variant_id = 'f1300000-0000-4000-8000-000000000001';
+select ok(
+  pg_get_functiondef(
+    'private.inventory_queue_has_allocatable_demand(uuid,uuid)'::regprocedure
+  ) like '%private.order_has_effective_paid_payment(orders.id)%',
+  'queue-demand vereist de canonieke volledig-betaaldstatus'
+);
+select ok(
+  pg_get_functiondef(
+    'private.allocate_inventory_fifo_variant(uuid,uuid,text,uuid,uuid,uuid)'::regprocedure
+  ) like '%private.order_has_effective_paid_payment(orders.id)%',
+  'FIFO-allocator controleert de canonieke volledig-betaaldstatus onafhankelijk'
+);
 select private.enqueue_inventory_variant(
   'f1100000-0000-4000-8000-000000000001',
   'f1300000-0000-4000-8000-000000000001',
