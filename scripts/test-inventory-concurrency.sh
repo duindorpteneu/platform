@@ -26,6 +26,11 @@ where event_id in (
   select id from private.mail_v2_domain_events
   where parent_account_id = 'f2700000-0000-4000-8000-000000000001'
 );
+delete from private.mail_v2_episode_transitions
+where episode_id in (
+  select id from private.mail_v2_notification_episodes
+  where parent_account_id = 'f2700000-0000-4000-8000-000000000001'
+);
 delete from private.mail_v2_notification_episodes
 where parent_account_id = 'f2700000-0000-4000-8000-000000000001';
 delete from private.mail_v2_domain_events
@@ -384,6 +389,12 @@ where event_id in (
   select id from private.mail_v2_domain_events
   where template_key = 'payment_received_waiting_stock'
     and order_id = 'f2500000-0000-4000-8000-000000000002'
+);
+delete from private.mail_v2_episode_transitions
+where episode_id in (
+  select id from private.mail_v2_notification_episodes
+  where parent_account_id = 'f2700000-0000-4000-8000-000000000001'
+    and scope_id = 'f2500000-0000-4000-8000-000000000002'
 );
 delete from private.mail_v2_notification_episodes
 where parent_account_id = 'f2700000-0000-4000-8000-000000000001'
