@@ -550,3 +550,11 @@ Fase B is op 2 augustus 2026 expliciet goedgekeurd. Addendum v1.1 legt het pakke
 - Forward-only migration `20260820200000_package_financial_adjustment_refunds.sql` introduceert immutable correcties, creditallocaties, duurzame refundverplichtingen en één actieve-pakketbalans zonder historische betalingen te muteren.
 - Pakketwissel-v2 ondersteunt gelijk geprijsd, duurder en goedkoper: geen nieuwe geldbeweging, uitsluitend het resterende verschil betalen, of exact het overschot terugbetalen. Maat-, voorraad-, uitgifte-, MFA-, revisie- en reconciliatiegrenzen blijven fail-closed.
 - Mollie gebruikt een provider-idempotente partial-refundoperatie en webhook-first statusreconciliatie; een partial refund verandert de oorspronkelijke payment niet in een volledige refund. De betaalworkspace toont provider-, handmatige en bijbetaalstatus met pakketcontext.
+
+## PR128-reviewherstel en backoffice-maatbevestiging — 2026-08-21
+
+- De volledige PR128-review is afgerond vóór de nieuwe UI-taak. Voorraadqueue en FIFO-allocator vereisen nu de canonieke volledig-betaaldstatus; een onbetaald prijsverschil kan niet via een historische betaling voorraad reserveren.
+- Refundinitiatie vereist een geldige beheerderssessiebinding en bewaart de actor in audit. Onzekere post-dispatchuitkomsten blijven met dezelfde provider-idempotencykey retrybaar; uniek matchende ongebonden providerrefunds worden hersteld en verouderde observaties kunnen `completed` niet terugzetten.
+- Ongezonde carried-creditbronnen blokkeren pakketpreflight/apply. Terminale of poisoned inventoryqueue-status degradeert operationele health en de destructieve inventorytestharnassen accepteren uitsluitend de exacte lokale projectdatabase.
+- De backoffice kan een reeds ingevulde `imported_unconfirmed`-maat nu direct ongewijzigd bevestigen. De confirmation-only flow toont `Maten bevestigen`, gebruikt een vaste auditreden en geeft geen reservering vrij; echte wijzigingen behouden reden- en vrijgavecontrole.
+- Lokale schone migratiereplay, alle 60 pgTAP-bestanden/2.038 assertions, finance- en inventoryconcurrency, 228 Vitestbestanden/1.403 tests, ESLint, TypeScript en productiebuild zijn groen. Protected PR-CI, merge, exact-main-CI en stagingdeploy blijven de releasepoorten.

@@ -874,3 +874,14 @@ from (
 ```
 
 Acceptatie: `poisoned_queued = 0`, reconciliatie `passed`, geen dubbele projecties, de natuurlijke inventoryworker-run is HTTP 200 en events verlaten `pending` zodra geen processing/retrybaar werk resteert.
+
+## PR128-reviewherstel en ongewijzigde importmaatbevestiging — 2026-08-21 lokaal
+
+- Schone lokale Supabase-reset: alle 176 migrations plus seed toegepast.
+- `parent_package_orders_and_sizes.sql`: 155/155 assertions groen, inclusief blokkade van ongezonde carried-creditbronnen en een duurder pakket dat na historische betaling niet volledig betaald is.
+- `inventory_journal_fifo.sql`: 48/48 assertions groen; queue-demand en FIFO-allocator bevatten beide onafhankelijk de canonieke volledig-betaaldcontrole.
+- `pnpm test:db:package-finance-concurrency`: groen voor sessiebinding, actoraudit, ongebonden refundherstel, ambigue metadata fail-closed en monotone providerobservaties.
+- `pnpm test:db:inventory-concurrency` en `pnpm test:db:inventory-queue-upgrade`: groen; beide scripts zijn exact aan `127.0.0.1:54339/postgres` en de verwachte lokale database-identiteit gebonden.
+- Gerichte Vitest-regressie: 6 bestanden, 44 tests groen voor maatbevestiging, refundroutes/service, pakketcorrectieroute, health en lokale-databasebinding.
+- Volledige databasesuite: 60 bestanden en 2.038 assertions groen.
+- Volledige applicatiesuite: 228 bestanden en 1.403 tests groen. ESLint, TypeScript, `git diff --check` en productiebuild zijn eveneens groen.
