@@ -235,6 +235,15 @@ async function requestChallenge(target, body, cookie, acceptance) {
   return { context, cookie: nextCookie };
 }
 
+function requireVerificationStatus(response, expectedStatus, failureCode) {
+  if (response.status === 503) {
+    throw new Error("PARENT_VERIFICATION_UNAVAILABLE");
+  }
+  if (response.status !== expectedStatus) {
+    throw new Error(failureCode);
+  }
+}
+
 function challengeProposal(context) {
   const challengeId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
@@ -296,16 +305,16 @@ async function defaultRun(context, helpers = {}) {
     resent.cookie,
     firstProposal,
   );
-  if (codeResponse.status !== 200) {
-    throw new Error(codeResponse.status === 401
-      ? "CODE_CONSUMPTION_REJECTED"
-      : codeResponse.status === 429
-        ? "CODE_CONSUMPTION_RATE_LIMITED"
-        : "CODE_CONSUMPTION_FAILED");
+  if (codeResponse.status === 401) {
+    throw new Error("CODE_CONSUMPTION_REJECTED");
   }
+  if (codeResponse.status === 429) {
+    throw new Error("CODE_CONSUMPTION_RATE_LIMITED");
+  }
+  requireVerificationStatus(codeResponse, 200, "CODE_CONSUMPTION_FAILED");
   assertParentSession(context, firstProposal);
   const consumedLink = await postJson(context.target, "/api/parent-auth/verify-direct", { credential: firstDirect });
-  if (consumedLink.status !== 401) throw new Error("CODE_DID_NOT_CONSUME_LINK");
+  requireVerificationStatus(consumedLink, 401, "CODE_DID_NOT_CONSUME_LINK");
 
   const replacementProposal = challengeProposal(context);
   recordChallengeOwnership(context, replacementProposal);
@@ -326,7 +335,7 @@ async function defaultRun(context, helpers = {}) {
     undefined,
     replacementProposal,
   );
-  if (linkResponse.status !== 200) throw new Error("LINK_CONSUMPTION_FAILED");
+  requireVerificationStatus(linkResponse, 200, "LINK_CONSUMPTION_FAILED");
   assertParentSession(context, replacementProposal);
   const consumedCode = await postJson(
     context.target,
@@ -334,9 +343,9 @@ async function defaultRun(context, helpers = {}) {
     { code: secondCode },
     replacementCookie,
   );
-  if (consumedCode.status !== 401) throw new Error("LINK_DID_NOT_CONSUME_CODE");
+  requireVerificationStatus(consumedCode, 401, "LINK_DID_NOT_CONSUME_CODE");
   const replay = await postJson(context.target, "/api/parent-auth/verify-direct", { credential: secondDirect });
-  if (replay.status !== 401) throw new Error("LINK_REPLAY_ACCEPTED");
+  requireVerificationStatus(replay, 401, "LINK_REPLAY_ACCEPTED");
 
   const database = databaseContractProbe(context);
   return {

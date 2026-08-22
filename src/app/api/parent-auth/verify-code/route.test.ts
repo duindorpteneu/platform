@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   admin: vi.fn(),
+  schema: vi.fn(),
   rpc: vi.fn(),
   rateAllowed: vi.fn(),
   cookieGet: vi.fn(),
@@ -65,7 +66,8 @@ describe("POST /api/parent-auth/verify-code", () => {
       },
       error: null,
     });
-    mocks.admin.mockReset().mockReturnValue({ rpc: mocks.rpc });
+    mocks.schema.mockReset().mockReturnValue({ rpc: mocks.rpc });
+    mocks.admin.mockReset().mockReturnValue({ schema: mocks.schema });
     mocks.rateAllowed.mockReset().mockResolvedValue(true);
   });
 
@@ -75,6 +77,7 @@ describe("POST /api/parent-auth/verify-code", () => {
     const completedAt = Date.now();
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.schema).toHaveBeenCalledWith("app");
     expect(mocks.rpc).toHaveBeenCalledWith(
       "consume_parent_login_challenge_v4",
       expect.objectContaining({
@@ -149,6 +152,19 @@ describe("POST /api/parent-auth/verify-code", () => {
     expect(await response.json()).toEqual({
       error: "Deze code klopt niet of is niet meer geldig.",
       attemptsRemaining: 3,
+    });
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("maskeert een RPC-fout niet als een ongeldige code", async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "PGRST202" },
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Inloggen is tijdelijk niet beschikbaar.",
     });
     expect(mocks.cookieSet).not.toHaveBeenCalled();
   });

@@ -259,6 +259,8 @@ describe("parent-login staging acceptance contract", () => {
     expect(source).toContain("prepare_parent_otp_support_delivery_v1");
     expect(source).toContain("assertParentSession(context, firstProposal)");
     expect(source).toContain("assertParentSession(context, replacementProposal)");
+    expect(source.match(/requireVerificationStatus\(/gu)).toHaveLength(6);
+    expect(source).toContain("PARENT_VERIFICATION_UNAVAILABLE");
     expect(source).toContain("{ email: context.recipient }");
     expect(source).not.toContain("{ resend: true, forceNew: true }");
     expect(source).toContain('const workflowRunId = target.runId.split("-", 1)[0]');
@@ -266,6 +268,7 @@ describe("parent-login staging acceptance contract", () => {
 
   it("maakt onverwachte fouten PII-vrij en behoudt vaste codes", () => {
     expect(stableFailureCode(new Error("LINK_REPLAY_ACCEPTED"))).toBe("LINK_REPLAY_ACCEPTED");
+    expect(stableFailureCode(new Error("PARENT_VERIFICATION_UNAVAILABLE"))).toBe("PARENT_VERIFICATION_UNAVAILABLE");
     expect(stableFailureCode(new Error("address parent@example.invalid"))).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
     expect(stableFailureCode("plain")).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
   });
