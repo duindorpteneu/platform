@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  requireRole: vi.fn(),
+  requireSession: vi.fn(),
   admin: vi.fn(),
   startRefund: vi.fn(),
   trustedOrigin: vi.fn(),
 }));
-vi.mock("@/server/auth/staff", () => ({ requireStaffRole: mocks.requireRole }));
+vi.mock("@/server/auth/staff", () => ({
+  requireStaffSessionBinding: mocks.requireSession,
+}));
 vi.mock("@/server/supabase/admin", () => ({ getSupabaseAdminClient: mocks.admin }));
 vi.mock("@/server/payments/mollie-service", async (load) => {
   const actual = await load<typeof import("@/server/payments/mollie-service")>();
@@ -21,6 +23,11 @@ vi.mock("@/server/payments/mollie-service", async (load) => {
 import { POST } from "./route";
 
 const refundId = "10000000-0000-4000-8000-000000000001";
+const staff = {
+  userId: "20000000-0000-4000-8000-000000000001",
+  role: "beheerder",
+  sessionTokenHash: "a".repeat(64),
+};
 
 function request(body: unknown) {
   return new Request("https://tenue.example/api/payments/mollie/refund", {
@@ -37,7 +44,7 @@ function request(body: unknown) {
 describe("POST /api/payments/mollie/refund", () => {
   beforeEach(() => {
     process.env.APP_BASE_URL = "https://tenue.example";
-    mocks.requireRole.mockReset().mockResolvedValue({ role: "beheerder" });
+    mocks.requireSession.mockReset().mockResolvedValue(staff);
     mocks.admin.mockReset().mockReturnValue({ schema: vi.fn() });
     mocks.trustedOrigin.mockReset().mockReturnValue(true);
     mocks.startRefund.mockReset().mockResolvedValue({
@@ -48,9 +55,14 @@ describe("POST /api/payments/mollie/refund", () => {
   it("vereist MFA-beheer en start alleen de bestaande refundverplichting", async () => {
     const response = await POST(request({ refundId, requestId: refundId }));
     expect(response.status).toBe(200);
-    expect(mocks.requireRole).toHaveBeenCalledWith(["beheerder"]);
+    expect(mocks.requireSession).toHaveBeenCalledWith(["beheerder"]);
     expect(mocks.startRefund).toHaveBeenCalledWith(
-      expect.objectContaining({ refundId, requestId: refundId }),
+      expect.objectContaining({
+        refundId,
+        requestId: refundId,
+        actorUserId: staff.userId,
+        staffSessionHash: staff.sessionTokenHash,
+      }),
       expect.objectContaining({ database: expect.any(Object) }),
     );
   });

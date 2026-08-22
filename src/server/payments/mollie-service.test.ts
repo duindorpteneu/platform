@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { hasTrustedPaymentOrigin, reconcileMollieWebhook, startMollieCheckout, startMollieRefund, type MollieRpcClient } from "@/server/payments/mollie-service";
+import { MollieRequestError } from "@/server/payments/mollie";
 
 const ids = {
   payment: "00000000-0000-4000-8000-000000000001",
@@ -55,6 +56,10 @@ const context = {
   seasonId: ids.season,
   amountDueCents: 7500,
 } as const;
+const refundStaff = {
+  actorUserId: "00000000-0000-4000-8000-000000000007",
+  staffSessionHash: "c".repeat(64),
+};
 
 function providerPayment(overrides: Record<string, unknown> = {}) {
   return {
@@ -87,7 +92,11 @@ describe("Mollie-applicatieservice", () => {
       amount: { currency: "EUR", value: "7.50" },
       metadata: { package_refund_id: refundId, schema_version: 1 },
     });
-    await expect(startMollieRefund({ refundId, requestId: refundId }, {
+    await expect(startMollieRefund({
+      refundId,
+      requestId: refundId,
+      ...refundStaff,
+    }, {
       database: databaseWithAppRpc(appRpc).database, config, createRefund,
       now: new Date("2026-08-20T12:00:00Z"),
     })).resolves.toMatchObject({ providerRefundId: "re_test123", status: "pending" });
@@ -95,7 +104,10 @@ describe("Mollie-applicatieservice", () => {
       amountCents: 750, idempotencyKey: `package-refund:${refundId}`,
       providerPaymentId: "tr_test123",
     }));
-    expect(appRpc).toHaveBeenNthCalledWith(1, "prepare_mollie_refund_v1", expect.any(Object));
+    expect(appRpc).toHaveBeenNthCalledWith(1, "prepare_mollie_refund_v1", expect.objectContaining({
+      p_actor_user_id: refundStaff.actorUserId,
+      p_staff_session_hash: refundStaff.staffSessionHash,
+    }));
     expect(appRpc).toHaveBeenNthCalledWith(2, "bind_mollie_refund_v1", expect.objectContaining({
       p_provider_refund_id: "re_test123", p_provider_status: "pending",
     }));
@@ -117,7 +129,11 @@ describe("Mollie-applicatieservice", () => {
       metadata: { package_refund_id: refundId, schema_version: 1 },
     });
 
-    await expect(startMollieRefund({ refundId, requestId: refundId }, {
+    await expect(startMollieRefund({
+      refundId,
+      requestId: refundId,
+      ...refundStaff,
+    }, {
       database: databaseWithAppRpc(appRpc).database, config, createRefund,
       now: new Date("2026-08-20T12:00:00Z"),
     })).rejects.toMatchObject({ code: "DATABASE_UNAVAILABLE", retryable: true });
@@ -125,6 +141,72 @@ describe("Mollie-applicatieservice", () => {
     expect(appRpc).toHaveBeenNthCalledWith(3, "fail_mollie_refund_v1", expect.objectContaining({
       p_failure_code: "MOLLIE_REFUND_BIND_UNAVAILABLE",
       p_retryable: true,
+    }));
+  });
+
+  it.each([
+    ["provider-timeout", new DOMException("timeout", "TimeoutError")],
+    ["ongeldige providersuccessrespons", new Error("MOLLIE_REFUND_RESPONSE_MISMATCH")],
+  ])("houdt een onzekere %s met dezelfde idempotencykey retrybaar", async (_label, providerError) => {
+    const refundId = "00000000-0000-4000-8000-000000000006";
+    const appRpc = vi.fn()
+      .mockResolvedValueOnce({ data: {
+        refundId, paymentId: ids.payment, providerPaymentId: "tr_test123",
+        providerRefundId: null, amountCents: 750, currency: "EUR",
+        status: "requesting", idempotencyKey: `package-refund:${refundId}`, reused: false,
+      }, error: null })
+      .mockResolvedValueOnce({ data: { refundId, status: "failed", retryable: true }, error: null });
+    const createRefund = vi.fn().mockRejectedValue(providerError);
+
+    await expect(startMollieRefund({
+      refundId,
+      requestId: refundId,
+      ...refundStaff,
+    }, {
+      database: databaseWithAppRpc(appRpc).database,
+      config,
+      createRefund,
+      now: new Date("2026-08-20T12:00:00Z"),
+    })).rejects.toMatchObject({
+      code: "INVALID_PROVIDER_RESPONSE",
+      retryable: true,
+    });
+
+    expect(createRefund).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: `package-refund:${refundId}`,
+    }));
+    expect(appRpc).toHaveBeenNthCalledWith(2, "fail_mollie_refund_v1", expect.objectContaining({
+      p_failure_code: "MOLLIE_PROVIDER_UNAVAILABLE",
+      p_retryable: true,
+    }));
+  });
+
+  it("markeert een definitieve provider-4xx als terminaal", async () => {
+    const refundId = "00000000-0000-4000-8000-000000000006";
+    const appRpc = vi.fn()
+      .mockResolvedValueOnce({ data: {
+        refundId, paymentId: ids.payment, providerPaymentId: "tr_test123",
+        providerRefundId: null, amountCents: 750, currency: "EUR",
+        status: "requesting", idempotencyKey: `package-refund:${refundId}`, reused: false,
+      }, error: null })
+      .mockResolvedValueOnce({ data: { refundId, status: "failed", retryable: false }, error: null });
+
+    await expect(startMollieRefund({
+      refundId,
+      requestId: refundId,
+      ...refundStaff,
+    }, {
+      database: databaseWithAppRpc(appRpc).database,
+      config,
+      createRefund: vi.fn().mockRejectedValue(new MollieRequestError(422, false)),
+    })).rejects.toMatchObject({
+      code: "PROVIDER_UNAVAILABLE",
+      retryable: false,
+    });
+
+    expect(appRpc).toHaveBeenNthCalledWith(2, "fail_mollie_refund_v1", expect.objectContaining({
+      p_failure_code: "MOLLIE_REFUND_RESPONSE_INVALID",
+      p_retryable: false,
     }));
   });
 

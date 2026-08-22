@@ -166,7 +166,9 @@ export function emailDeliveryAttemptHealthHasIntegrityBlocker(
 export function operationalHealthIsDegraded(
   data: z.infer<typeof operationalHealthSchema>,
 ) {
-  return data.emailJobs.processingStale > 0
+  return data.inventoryAllocationQueue.terminalExhausted > 0
+    || data.inventoryAllocationQueue.poisoned > 0
+    || data.emailJobs.processingStale > 0
     || data.emailJobs.deliveryUncertain > 0
     || data.emailJobs.failed > 0
     || emailDeliveryAttemptHealthHasIntegrityBlocker(data)
