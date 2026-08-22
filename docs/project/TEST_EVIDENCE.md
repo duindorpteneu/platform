@@ -901,3 +901,9 @@ Acceptatie: `poisoned_queued = 0`, reconciliatie `passed`, geen dubbele projecti
 - Schedulerregressie bewijst dat een 503/degraded interne health de onafhankelijke heartbeat nog uitvoert, zonder de containerhealthmarker te verversen of de fout te verbergen.
 - Schone migrationreplay en seed groen; `pnpm test:db` groen met 60 bestanden/2.040 assertions; `pnpm test:db:package-finance-concurrency` groen; ESLint, TypeScript, volledige Vitest met 228 bestanden/1.409 tests en productiebuild groen.
 - `inventory_journal_fifo.sql` blijft 48/48 groen. Herhaalde inventoryconcurrency, inclusief een schone niet-geïnstrumenteerde `test:db:inventory-concurrency`, en `test:db:package-finance-concurrency` zijn groen voor FIFO, dubbele triggers, terminale lockretry, processing-follow-up, correctiebalans, sessiebinding en monotone refundobservaties.
+
+## Exact-main inventoryconcurrencyfixture — 2026-08-22 lokaal
+
+- Exact-main CI-run `32550058020` stopte fail-closed in de inventoryconcurrencygate. De aangevulde foutdiagnose reproduceerde lokaal dat een setup-event met een oude maatstatusmomentopname kon botsen met de gelijktijdige betaal-/maattransitie die de test werkelijk wilde meten.
+- Het fixture verwijdert vóór de race uitsluitend het eigen voorbereidende waiting-stock-event en bijbehorende episode, onder dezelfde tijdelijke replicatriggeruitschakeling als de bestaande fixturecleanup. De daaropvolgende betaling maakt daardoor het event onder test zelf aan; productiecode en append-only runtimegedrag wijzigen niet.
+- Tien opeenvolgende volledige runs van `scripts/test-inventory-concurrency.sh` zijn groen. Bij een toekomstige subprocessfout worden de tijdelijke, uitsluitend synthetische PostgreSQL-logs vóór cleanup getoond.
