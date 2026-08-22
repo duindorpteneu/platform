@@ -121,8 +121,12 @@ describe("parent-login staging acceptance contract", () => {
     expect(workflow.match(/--import \.\/scripts\/staging\/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
     expect(workflow.match(/typescript-path-alias-loader\.mjs/gu)).toHaveLength(3);
     expect(workflow).toContain("EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}");
+    expect(workflow).toContain("APP_BASE_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}");
+    expect(workflow).toContain("CRON_SECRET: ${{ secrets.CRON_SECRET }}");
     expect(workflow).toContain("SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}");
     expect(workflow).toContain("SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}");
+    expect(workflow).toContain("SENDGRID_API_KEY_FINGERPRINT: ${{ vars.SENDGRID_API_KEY_FINGERPRINT }}");
+    expect(workflow).toContain("SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY: ${{ vars.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY }}");
   });
 
   it("maakt een run- en releasegebonden digest zonder ontvanger in evidence", () => {

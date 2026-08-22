@@ -185,3 +185,5 @@ comment on function app.consume_parent_login_challenge_v4(
   uuid, text, text, text, timestamptz, text
 ) is
   'Backward-compatible successor that atomically stores an optional staging acceptance correlation with the parent session.';
+
+notify pgrst, 'reload schema';
