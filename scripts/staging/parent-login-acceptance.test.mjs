@@ -266,6 +266,7 @@ describe("parent-login staging acceptance contract", () => {
 
   it("maakt onverwachte fouten PII-vrij en behoudt vaste codes", () => {
     expect(stableFailureCode(new Error("LINK_REPLAY_ACCEPTED"))).toBe("LINK_REPLAY_ACCEPTED");
+    expect(stableFailureCode(new Error("CODE_CONSUMPTION_UNAVAILABLE"))).toBe("CODE_CONSUMPTION_UNAVAILABLE");
     expect(stableFailureCode(new Error("address parent@example.invalid"))).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
     expect(stableFailureCode("plain")).toBe("PARENT_LOGIN_ACCEPTANCE_FAILED");
   });

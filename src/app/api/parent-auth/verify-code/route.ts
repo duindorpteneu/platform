@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   }
 
   const sessionToken = generateParentSessionToken();
-  const { data, error } = await admin.rpc(
+  const { data, error } = await admin.schema("app").rpc(
     "consume_parent_login_challenge_v4",
     {
       p_challenge_id: context.challengeId,
@@ -98,7 +98,13 @@ export async function POST(request: Request) {
     },
   );
   const result = consumeResultSchema.safeParse(data);
-  if (error || !result.success || result.data.status !== "verified") {
+  if (error || !result.success) {
+    return NextResponse.json(
+      { error: "Inloggen is tijdelijk niet beschikbaar." },
+      { status: 503 },
+    );
+  }
+  if (result.data.status !== "verified") {
     return NextResponse.json(
       {
         error: "Deze code klopt niet of is niet meer geldig.",

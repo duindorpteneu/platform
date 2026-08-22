@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   admin: vi.fn(),
+  schema: vi.fn(),
   rpc: vi.fn(),
   rateAllowed: vi.fn(),
   cookieSet: vi.fn(),
@@ -54,7 +55,8 @@ describe("POST /api/parent-auth/verify-direct", () => {
       },
       error: null,
     });
-    mocks.admin.mockReset().mockReturnValue({ rpc: mocks.rpc });
+    mocks.schema.mockReset().mockReturnValue({ rpc: mocks.rpc });
+    mocks.admin.mockReset().mockReturnValue({ schema: mocks.schema });
     mocks.rateAllowed.mockReset().mockResolvedValue(true);
   });
 
@@ -67,6 +69,7 @@ describe("POST /api/parent-auth/verify-direct", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(mocks.schema).toHaveBeenCalledWith("app");
     expect(mocks.rpc).toHaveBeenCalledWith(
       "consume_parent_login_challenge_v4",
       expect.objectContaining({
@@ -116,6 +119,20 @@ describe("POST /api/parent-auth/verify-direct", () => {
       deriveParentDirectCredential(challengeId),
     ));
     expect(response.status).toBe(401);
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("onderscheidt een RPC-fout van een ongeldige of verbruikte link", async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "PGRST202" },
+    });
+    const response = await POST(request(
+      deriveParentDirectCredential(challengeId),
+    ));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(mocks.cookieSet).not.toHaveBeenCalled();
   });
 });

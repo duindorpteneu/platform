@@ -301,6 +301,8 @@ async function defaultRun(context, helpers = {}) {
       ? "CODE_CONSUMPTION_REJECTED"
       : codeResponse.status === 429
         ? "CODE_CONSUMPTION_RATE_LIMITED"
+        : codeResponse.status === 503
+          ? "CODE_CONSUMPTION_UNAVAILABLE"
         : "CODE_CONSUMPTION_FAILED");
   }
   assertParentSession(context, firstProposal);
