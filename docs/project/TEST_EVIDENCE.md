@@ -885,3 +885,11 @@ Acceptatie: `poisoned_queued = 0`, reconciliatie `passed`, geen dubbele projecti
 - Gerichte Vitest-regressie: 6 bestanden, 44 tests groen voor maatbevestiging, refundroutes/service, pakketcorrectieroute, health en lokale-databasebinding.
 - Volledige databasesuite: 60 bestanden en 2.038 assertions groen.
 - Volledige applicatiesuite: 228 bestanden en 1.403 tests groen. ESLint, TypeScript, `git diff --check` en productiebuild zijn eveneens groen.
+
+## PR128-capaciteitsherstel — 2026-08-22 lokaal
+
+- Protected PR-run `32543685586` passeerde CodeQL, de volledige applicatiegate, alle upgrades, 2.038 pgTAP-asserties en alle concurrencytests vóór de capaciteitsstap; die stap werd na 30:59 zonder resultaat door de 45-minutenjoblimiet afgebroken. Auto-merge bleef daardoor gesloten en er is niet gedeployed.
+- Functieprofiling op een wegwerpbare lokale database wees bij 1.000 regels `1.153.084` aanroepen van `private.order_has_effective_paid_payment` vanuit één allocatorrun aan. De herhaalde `LIMIT 1`-kandidaatquery maakte de nieuwe canonieke betaalgrens kwadratisch.
+- Forward migration `20260822013000_effective_payment_unpaid_fast_path.sql` behoudt de volledige financiële balans voor iedere order met betaal- of correctiehistorie en verandert de allocator naar één geordende kandidatencursor onder hetzelfde globale inventorymutatielock.
+- Volledige canonieke capaciteit na herstel: 1.500 leden, 10.000 orderregels en 25 gelijktijdige staffsessies groen in 2:39; staff-p95 `396 ms`, QR-p95 `169 ms`, uitgifte-p95 `573 ms`, alle ruim onder 2 seconden.
+- `inventory_journal_fifo.sql` blijft 48/48 groen. Herhaalde inventoryconcurrency, inclusief een schone niet-geïnstrumenteerde `test:db:inventory-concurrency`, en `test:db:package-finance-concurrency` zijn groen voor FIFO, dubbele triggers, terminale lockretry, processing-follow-up, correctiebalans, sessiebinding en monotone refundobservaties.
