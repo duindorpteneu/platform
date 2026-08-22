@@ -113,7 +113,8 @@ insert into app.package_template_revisions(id,template_id,season_id,revision_num
 select ('f9f41000-0000-4000-8000-00000000000'||suffix)::uuid,
  ('f9f40000-0000-4000-8000-00000000000'||suffix)::uuid,
  'f9f10000-0000-4000-8000-000000000001',1,'Financerace pakket '||suffix,'',
- case when suffix<=3 then 12500 else 10000 end,'draft',false,false,
+ case when suffix<=3 then 12500 when suffix<=5 then 10000 else 7500 end,
+ 'draft',false,false,
  :'actor_id'::uuid,null,null
 from generate_series(1,6) suffix;
 insert into app.package_template_items(id,revision_id,article_id,quantity,
@@ -308,6 +309,28 @@ grep -q '"reused": true' "$manual_b_log" || { tail -n 80 "$manual_a_log"; tail -
 manual_state="$("${psql_cmd[@]}" -Atc "select refund.status||':'||(select count(*) from private.manual_payment_corrections where request_id='f9f82000-0000-4000-8000-000000000001')||':'||payment.status from app.package_refunds refund join app.payments payment on payment.id=refund.payment_id where refund.id='$manual_refund_id'")"
 [[ "$manual_state" == "manual_completed:1:paid" ]] || { echo "Onverwachte dubbele-refundstaat: $manual_state"; exit 1; }
 
+# Dezelfde oorspronkelijke kasbetaling kan na een latere, opnieuw goedkopere
+# pakketcorrectie een tweede afzonderlijke refund bewijzen.
+manual_second_revision="$(preflight 4 6 9 'Tweede goedkopere correctie')"
+manual_second_apply="$("${psql_cmd[@]}" -v actor_id="$actor_id" -At <<SQL
+begin; select set_config('request.jwt.claims',jsonb_build_object('sub',:'actor_id','aal','aal2')::text,true);
+set local role authenticated;
+select app.apply_package_change_v2('f9f81000-0000-4000-8000-000000000009','$manual_second_revision','SWITCH_PACKAGE',null)::text;
+commit;
+SQL
+)"
+manual_second_refund_id="$(printf '%s' "$manual_second_apply" | sed -n 's/.*"refundId": "\([^"]*\)".*/\1/p')"
+[[ "$manual_second_refund_id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Tweede handmatige refund-ID ontbreekt"; exit 1; }
+"${psql_cmd[@]}" -v actor_id="$actor_id" -At <<SQL >/dev/null
+begin; select set_config('request.jwt.claims',jsonb_build_object('sub',:'actor_id','aal','aal2')::text,true);
+set local role authenticated;
+select app.record_manual_payment_refund_v2('$manual_second_refund_id','$manual_payment_id',2500,
+ 'Tweede externe terugbetaling','Kasbon F9-002','f9f82000-0000-4000-8000-000000000002',null);
+commit;
+SQL
+manual_payment_evidence_count="$("${psql_cmd[@]}" -Atc "select count(*) from private.manual_payment_corrections where payment_id='$manual_payment_id'")"
+[[ "$manual_payment_evidence_count" == "2" ]] || { echo "Meervoudig handmatig refundbewijs ontbreekt: $manual_payment_evidence_count"; exit 1; }
+
 # Refundreconciliatie versus tweede correctie: refundrijlock + statehash maken de oude correctie stale.
 mollie_revision="$(preflight 5 4 6 'Goedkopere correctie voor Mollie-refundrace')"
 mollie_apply="$("${psql_cmd[@]}" -v actor_id="$actor_id" -At <<SQL
@@ -392,4 +415,30 @@ recovery_state="$("${psql_cmd[@]}" -Atc "select refund.status||':'||refund.provi
 bind_audit_actor="$("${psql_cmd[@]}" -Atc "select coalesce(actor_user_id::text,'') from app.audit_logs where entity_id='$mollie_refund_id' and action='payment.mollie.refund_provider_accepted' order by created_at desc limit 1")"
 [[ "$bind_audit_actor" == "$actor_id" ]] || { echo "Provider-refundaudit mist medewerkersactor: $bind_audit_actor"; exit 1; }
 
-echo "Package-financial-adjustment concurrencytests geslaagd: webhook, dubbele switch, allocationworker, dubbele refund, refund/re-correctie, sessiebinding, bindherstel en monotone providerobservaties zijn raceveilig."
+# Een door Mollie gerapporteerde refund zonder lokale ledgerbinding blokkeert
+# betaling, QR en voorraad fail-closed en schrijft maar één auditmelding.
+for _attempt in 1 2; do
+  "${psql_cmd[@]}" -Atc "select app.reconcile_mollie_refunds_v1('tr_finrace5',
+   '[{\"id\":\"re_finrace5\",\"status\":\"refunded\",\"amount\":{\"currency\":\"EUR\",\"value\":\"25.00\"}},{\"id\":\"re_external999\",\"status\":\"refunded\",\"amount\":{\"currency\":\"EUR\",\"value\":\"1.00\"}}]'::jsonb,
+   timezone('utc',now()));" >/dev/null
+done
+untracked_state="$("${psql_cmd[@]}" -Atc "select payment.reconciliation_issue||':'||private.order_has_effective_paid_payment(payment.order_id)::text||':'||(select count(*) from app.audit_logs audit where audit.entity_id=payment.id and audit.action='payment.mollie.untracked_refund_detected') from app.payments payment where payment.id='f9f60000-0000-4000-8000-000000000005'")"
+[[ "$untracked_state" == "MOLLIE_UNTRACKED_REFUND:false:1" ]] || { echo "Onbekende providerrefund bleef niet fail-closed: $untracked_state"; exit 1; }
+
+# Een door de provider definitief mislukte/canceled refund krijgt geen schijn-
+# retry: de provider-ID blijft bewijs en de actie is niet retrybaar.
+failed_revision="$(preflight 1 4 0 'Goedkopere correctie voor providerfailure')"
+failed_apply="$("${psql_cmd[@]}" -v actor_id="$actor_id" -At <<SQL
+begin; select set_config('request.jwt.claims',jsonb_build_object('sub',:'actor_id','aal','aal2')::text,true);
+set local role authenticated;
+select app.apply_package_change_v2('f9f81000-0000-4000-8000-000000000000','$failed_revision','SWITCH_PACKAGE',null)::text;
+commit;
+SQL
+)"
+failed_refund_id="$(printf '%s' "$failed_apply" | sed -n 's/.*"refundId": "\([^"]*\)".*/\1/p')"
+[[ "$failed_refund_id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Providerfailure-refund-ID ontbreekt"; exit 1; }
+"${psql_cmd[@]}" -Atc "select app.prepare_mollie_refund_v1('$failed_refund_id','f9f83000-0000-4000-8000-000000000003','$actor_id','$staff_session_hash',null); select app.bind_mollie_refund_v1('$failed_refund_id','re_finracefailed','failed',timezone('utc',now())); select app.prepare_mollie_refund_v1('$failed_refund_id','f9f83000-0000-4000-8000-000000000003','$actor_id','$staff_session_hash',null);" >/dev/null
+failed_state="$("${psql_cmd[@]}" -Atc "select status||':'||retryable::text||':'||provider_refund_id from app.package_refunds where id='$failed_refund_id'")"
+[[ "$failed_state" == "failed:false:re_finracefailed" ]] || { echo "Definitieve providerfailure bleef onterecht retrybaar: $failed_state"; exit 1; }
+
+echo "Package-financial-adjustment concurrencytests geslaagd: webhook, dubbele switch, allocationworker, meervoudige refunds, refund/re-correctie, sessiebinding, bindherstel, onbekende providerrefunds en monotone providerobservaties zijn raceveilig."

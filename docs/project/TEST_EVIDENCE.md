@@ -892,4 +892,12 @@ Acceptatie: `poisoned_queued = 0`, reconciliatie `passed`, geen dubbele projecti
 - Functieprofiling op een wegwerpbare lokale database wees bij 1.000 regels `1.153.084` aanroepen van `private.order_has_effective_paid_payment` vanuit één allocatorrun aan. De herhaalde `LIMIT 1`-kandidaatquery maakte de nieuwe canonieke betaalgrens kwadratisch.
 - Forward migration `20260822013000_effective_payment_unpaid_fast_path.sql` behoudt de volledige financiële balans voor iedere order met betaal- of correctiehistorie en verandert de allocator naar één geordende kandidatencursor onder hetzelfde globale inventorymutatielock.
 - Volledige canonieke capaciteit na herstel: 1.500 leden, 10.000 orderregels en 25 gelijktijdige staffsessies groen in 2:39; staff-p95 `396 ms`, QR-p95 `169 ms`, uitgifte-p95 `573 ms`, alle ruim onder 2 seconden.
+
+## PR128-afsluitend reviewbewijs — 2026-08-22 lokaal
+
+- Pakketcorrectieroute legt Mollie-refunds uitsluitend als `due` vast; de aparte beheerder+AAL2-refundroute blijft de enige providergrens. De route-regressie bewijst dat apply geen provideradapter meer aanroept.
+- Package-financeconcurrency bewijst twee opeenvolgende kasrefunds tegen dezelfde immutable betaling, één auditmelding plus effectieve betaalblokkade bij een onbekende Mollie-refund, en `retryable=false` voor een providerrefund met definitieve `failed`-status en duurzame provider-ID.
+- FIFO gebruikt `private.order_financial_balance(...).settled_at`; de pgTAP-contractassertie en volledige capaciteit bewaken het volledige-betaalmoment na een prijsverhoging. Capaciteit: 1.500 leden, 10.000 regels, 25 staffsessies; p95 staff `423 ms`, QR `193 ms`, uitgifte `646 ms`.
+- Schedulerregressie bewijst dat een 503/degraded interne health de onafhankelijke heartbeat nog uitvoert, zonder de containerhealthmarker te verversen of de fout te verbergen.
+- Schone migrationreplay en seed groen; `pnpm test:db` groen met 60 bestanden/2.040 assertions; `pnpm test:db:package-finance-concurrency` groen; ESLint, TypeScript, volledige Vitest met 228 bestanden/1.409 tests en productiebuild groen.
 - `inventory_journal_fifo.sql` blijft 48/48 groen. Herhaalde inventoryconcurrency, inclusief een schone niet-geïnstrumenteerde `test:db:inventory-concurrency`, en `test:db:package-finance-concurrency` zijn groen voor FIFO, dubbele triggers, terminale lockretry, processing-follow-up, correctiebalans, sessiebinding en monotone refundobservaties.
