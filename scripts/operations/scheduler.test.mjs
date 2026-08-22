@@ -114,6 +114,7 @@ describe("operations scheduler", () => {
         "http://app:3000/api/internal/jobs/imports",
         "http://app:3000/api/internal/jobs/inventory",
         "http://app:3000/api/internal/jobs/retention",
+        "http://app:3000/api/internal/health",
       ]);
       expect(state.lastRetentionAt).toBe("2026-08-02T20:00:00.000Z");
     } finally {
@@ -125,6 +126,7 @@ describe("operations scheduler", () => {
     "ververst de containerhealthmarker niet bij een mislukte %s-check",
     async (failurePoint) => {
       const writes = [];
+      const heartbeats = [];
       const config = validateSchedulerConfig(base);
       const invoke = async (_config, path) => {
         if (failurePoint === "health" && path.endsWith("/health")) {
@@ -141,6 +143,7 @@ describe("operations scheduler", () => {
         return { status: "healthy" };
       };
       const heartbeat = async () => {
+        heartbeats.push(failurePoint);
         if (failurePoint === "heartbeat") throw new Error("HEARTBEAT_HTTP_503");
       };
       await expect(runSchedulerCycle(
@@ -153,6 +156,7 @@ describe("operations scheduler", () => {
           healthWriter: async (value) => writes.push(value),
         },
       )).rejects.toThrow();
+      expect(heartbeats).toEqual([failurePoint]);
       expect(writes).toEqual([]);
     },
   );

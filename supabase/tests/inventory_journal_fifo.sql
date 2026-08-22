@@ -541,8 +541,11 @@ select ok(
 select ok(
   pg_get_functiondef(
     'private.allocate_inventory_fifo_variant(uuid,uuid,text,uuid,uuid,uuid)'::regprocedure
-  ) like '%private.order_has_effective_paid_payment(orders.id)%',
-  'FIFO-allocator controleert de canonieke volledig-betaaldstatus onafhankelijk'
+  ) like '%private.order_financial_balance(orders.id)%'
+    and pg_get_functiondef(
+      'private.allocate_inventory_fifo_variant(uuid,uuid,text,uuid,uuid,uuid)'::regprocedure
+    ) like '%balance.settled_at%',
+  'FIFO-allocator gebruikt het canonieke moment waarop de actieve pakketbalans volledig betaald werd'
 );
 select private.enqueue_inventory_variant(
   'f1100000-0000-4000-8000-000000000001',

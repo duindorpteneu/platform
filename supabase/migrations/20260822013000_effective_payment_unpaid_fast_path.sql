@@ -89,13 +89,10 @@ begin
     from app.order_lines line
     join app.member_orders orders on orders.id = line.order_id
     join lateral (
-      select payment.paid_at
-      from app.payments payment
-      where payment.order_id = orders.id
-        and payment.status = 'paid'
-        and payment.reconciliation_issue is null
-      order by payment.paid_at, payment.created_at, payment.id
-      limit 1
+      select balance.settled_at paid_at
+      from private.order_financial_balance(orders.id) balance
+      where balance.effective_status = 'paid'
+        and balance.settled_at is not null
     ) payment on true
     join app.member_article_sizes size_profile
       on size_profile.member_season_id = orders.member_season_id
@@ -106,7 +103,6 @@ begin
     where orders.season_id = p_season_id
       and line.article_variant_id = p_variant_id
       and line.status = 'backorder'
-      and private.order_has_effective_paid_payment(orders.id)
       and not exists(
         select 1
         from app.inventory_allocations allocation

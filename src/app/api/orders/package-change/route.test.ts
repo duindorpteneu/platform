@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
   serverClient: vi.fn(),
-  adminClient: vi.fn(),
-  startRefund: vi.fn(),
   rpc: vi.fn(),
 }));
 vi.mock("@/server/auth/staff", () => ({
@@ -12,12 +10,6 @@ vi.mock("@/server/auth/staff", () => ({
 }));
 vi.mock("@/server/supabase/server", () => ({
   getSupabaseServerClient: mocks.serverClient,
-}));
-vi.mock("@/server/supabase/admin", () => ({
-  getSupabaseAdminClient: mocks.adminClient,
-}));
-vi.mock("@/server/payments/mollie-service", () => ({
-  startMollieRefund: mocks.startRefund,
 }));
 
 import { POST } from "./route";
@@ -96,8 +88,6 @@ describe("POST /api/orders/package-change", () => {
     mocks.serverClient.mockReset().mockResolvedValue({
       schema: () => ({ rpc: mocks.rpc }),
     });
-    mocks.adminClient.mockReset().mockReturnValue(null);
-    mocks.startRefund.mockReset().mockResolvedValue({});
   });
 
   it("preflights without changing payment or package", async () => {
@@ -147,7 +137,7 @@ describe("POST /api/orders/package-change", () => {
     expect(mocks.requireSession).not.toHaveBeenCalled();
   });
 
-  it("bindt een automatische Mollie-refund aan dezelfde beheerderssessie", async () => {
+  it("legt een Mollie-refund alleen vast en start geen automatische geldbeweging", async () => {
     const refundId = "90000000-0000-4000-8000-000000000001";
     mocks.rpc.mockResolvedValueOnce({
       data: {
@@ -185,8 +175,6 @@ describe("POST /api/orders/package-change", () => {
       },
       error: null,
     });
-    mocks.adminClient.mockReturnValue({ schema: vi.fn() });
-
     const result = await POST(request({
       action: "apply",
       requestId,
@@ -195,14 +183,11 @@ describe("POST /api/orders/package-change", () => {
     }));
 
     expect(result.status).toBe(200);
-    expect(mocks.startRefund).toHaveBeenCalledWith(
-      expect.objectContaining({
-        refundId,
-        actorUserId: staff.userId,
-        staffSessionHash: staff.sessionTokenHash,
-      }),
-      expect.objectContaining({ database: expect.any(Object) }),
-    );
+    expect(await result.json()).toMatchObject({
+      result: {
+        refunds: [{ refundId, status: "due" }],
+      },
+    });
   });
 
   it("maps financial or fulfilment blockers without leaking SQL", async () => {

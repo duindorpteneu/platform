@@ -263,6 +263,10 @@
 - Open financiële correcties worden direct uit deze canonieke ledgers geprojecteerd in lid-, bestelling- en betaalworkspaces. Er wordt geen tweede actiepuntrecord met een eigen lifecycle aangemaakt; oplossen van betaling, refund of maatdata verwijdert de operationele aandacht daardoor automatisch zonder synchronisatierisico.
 - Voorraadgeschiktheid gebruikt na een pakketcorrectie altijd de canonieke actieve balans. Een historische betaalrij kan een nog open prijsverschil niet zelfstandig voldoen.
 - Providerrefunds zijn sessie- en actorgebonden. Een provider-acceptatie die lokaal nog niet was gebonden, wordt alleen via unieke metadata plus overeenkomende payment, bedrag en valuta hersteld; ambigue of tegenstrijdige observaties blijven fail-closed.
+- Het toepassen van een pakketcorrectie verplaatst nooit automatisch geld. Een refund blijft `due` totdat een beheerder de afzonderlijke MFA-beveiligde provideractie uitvoert of een reeds extern uitgevoerde kas-/pinrefund met bewijs registreert.
+- Een providerrefund met een bekende definitieve failure en provider-ID wordt niet opnieuw gestart: de provider-ID blijft duurzaam bewijs en `retryable=false`. Alleen een onzekere call zonder gebonden provider-ID mag met dezelfde idempotencykey worden herhaald. Iedere providerrefund zonder unieke lokale ledgerbinding zet de betaling in reconciliatie en blokkeert betaalde entitlement fail-closed.
+- Meerdere opeenvolgende pakketprijsverlagingen mogen afzonderlijke immutable handmatige refundbewijzen tegen dezelfde oorspronkelijke betaling vastleggen; request-ID en refundverplichting blijven elk uniek.
+- FIFO gebruikt het moment waarop de actieve pakketbalans volledig is voldaan, niet de oudste historische payment. De externe schedulerheartbeat is liveness en wordt ook bij degraded applicatiehealth verstuurd; de cyclus blijft daarna falen en schrijft geen gezonde containerstatus.
 
 ## D-115 — Een ingevulde importmaat kan ongewijzigd worden bevestigd
 

@@ -1070,7 +1070,9 @@ begin
     if target.operation_request_id <> p_operation_request_id then
       raise exception 'MOLLIE_REFUND_ALREADY_REQUESTED' using errcode = '23505';
     end if;
-    if target.status = 'failed' and target.retryable then
+    if target.status = 'failed' and target.retryable
+      and target.provider_refund_id is null
+    then
       perform set_config('app.package_refund_internal', 'on', true);
       update app.package_refunds set status='requesting',requested_at=timezone('utc',now()),
         failed_at=null,failure_code=null,retryable=false
@@ -1140,16 +1142,23 @@ begin
     or target.operation_request_id is null or target.requested_by is null
     or (target.provider_refund_id is not null and target.provider_refund_id <> p_provider_refund_id)
   then raise exception 'MOLLIE_REFUND_BINDING_CONFLICT' using errcode = '23514'; end if;
-  local_status := case p_provider_status
-    when 'refunded' then 'completed' else p_provider_status end;
+  local_status := case
+    when p_provider_status = 'refunded' then 'completed'
+    when p_provider_status in ('failed', 'canceled') then 'failed'
+    else p_provider_status
+  end;
   perform set_config('app.package_refund_internal', 'on', true);
   update app.package_refunds set provider_refund_id = p_provider_refund_id,
     provider_status = p_provider_status, status = local_status,
     provider_accepted_at = p_observed_at, reconciled_at = p_observed_at,
     completed_at = case when p_provider_status = 'refunded' then p_observed_at else null end,
     failed_at = case when p_provider_status in ('failed','canceled') then p_observed_at else null end,
-    retryable = p_provider_status = 'failed',
-    failure_code = case when p_provider_status = 'failed' then 'MOLLIE_REFUND_FAILED' else null end
+    retryable = false,
+    failure_code = case
+      when p_provider_status = 'failed' then 'MOLLIE_REFUND_FAILED'
+      when p_provider_status = 'canceled' then 'MOLLIE_REFUND_CANCELED'
+      else null
+    end
   where id = target.id returning * into target;
   perform set_config('app.package_refund_internal', 'off', true);
   insert into private.package_refund_events(refund_id,provider_refund_id,provider_status,
@@ -1218,6 +1227,8 @@ declare payment app.payments%rowtype; target app.package_refunds%rowtype;
   provider jsonb; v_provider_status text; v_provider_amount integer;
   v_provider_refund_id text; v_metadata_refund_id_text text;
   v_metadata_match_count integer; v_provider_id_conflicts integer;
+  v_untracked_refund_count integer := 0;
+  v_payment_already_blocked boolean := false;
   updated_count integer := 0;
 begin
   if p_provider_payment_id !~ '^tr_[A-Za-z0-9]+$'
@@ -1307,6 +1318,40 @@ begin
         'currency', target.currency), target.correlation_id);
   end loop;
 
+  -- A refund created outside this portal has no trustworthy local obligation
+  -- to bind to. Fail the payment closed so it cannot remain eligible for QR or
+  -- inventory while the provider reports money movement we cannot explain.
+  select count(*)::integer into v_untracked_refund_count
+  from jsonb_array_elements(p_refunds) item(value)
+  where item.value->>'id' ~ '^re_[A-Za-z0-9]+$'
+    and not exists (
+      select 1
+      from app.package_refunds refund
+      where refund.payment_id = payment.id
+        and refund.provider_refund_id = item.value->>'id'
+    );
+  if v_untracked_refund_count > 0 then
+    v_payment_already_blocked := payment.reconciliation_issue is not null;
+    update app.payments
+    set reconciliation_issue = coalesce(
+        reconciliation_issue,
+        'MOLLIE_UNTRACKED_REFUND'
+      ),
+      reconciled_at = p_observed_at
+    where id = payment.id;
+    if not v_payment_already_blocked then
+      insert into app.audit_logs(
+        actor_user_id, action, entity_type, entity_id, metadata
+      ) values (
+        null,
+        'payment.mollie.untracked_refund_detected',
+        'payment',
+        payment.id,
+        jsonb_build_object('untracked_refund_count', v_untracked_refund_count)
+      );
+    end if;
+  end if;
+
   for target in select refund.* from app.package_refunds refund
     where refund.payment_id = payment.id and refund.provider_refund_id is not null
     order by refund.created_at, refund.id for update
@@ -1341,14 +1386,22 @@ begin
       where id = target.id;
     else
       update app.package_refunds set provider_status = v_provider_status,
-        status = case when v_provider_status = 'refunded' then 'completed' else v_provider_status end,
+        status = case
+          when v_provider_status = 'refunded' then 'completed'
+          when v_provider_status in ('failed', 'canceled') then 'failed'
+          else v_provider_status
+        end,
         reconciled_at = p_observed_at,
         completed_at = case when v_provider_status = 'refunded'
           then coalesce(completed_at, p_observed_at) else completed_at end,
         failed_at = case when v_provider_status in ('failed','canceled')
           then coalesce(failed_at, p_observed_at) else null end,
-        failure_code = case when v_provider_status = 'failed' then 'MOLLIE_REFUND_FAILED' else null end,
-        retryable = v_provider_status = 'failed'
+        failure_code = case
+          when v_provider_status = 'failed' then 'MOLLIE_REFUND_FAILED'
+          when v_provider_status = 'canceled' then 'MOLLIE_REFUND_CANCELED'
+          else null
+        end,
+        retryable = false
       where id = target.id;
     end if;
     perform set_config('app.package_refund_internal', 'off', true);
@@ -1377,6 +1430,14 @@ grant execute on function app.prepare_mollie_refund_v1(uuid, uuid, uuid, text, u
   app.fail_mollie_refund_v1(uuid, text, boolean, timestamptz),
   app.reconcile_mollie_refunds_v1(text, jsonb, timestamptz)
 to service_role;
+
+-- A single cash/card payment can fund more than one sequential package-price
+-- correction. Request IDs and refund obligations remain unique; the immutable
+-- evidence rows no longer mistake the source payment for the operation key.
+alter table private.manual_payment_corrections
+  drop constraint if exists manual_payment_corrections_payment_id_key;
+create index if not exists manual_payment_corrections_payment_idx
+  on private.manual_payment_corrections(payment_id, recorded_at desc);
 
 create or replace function app.record_manual_payment_refund_v2(
   p_refund_id uuid, p_payment_id uuid, p_amount_cents integer,

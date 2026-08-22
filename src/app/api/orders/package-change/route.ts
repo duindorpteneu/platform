@@ -11,8 +11,6 @@ import {
   readJsonRequest,
 } from "@/server/security/route-guard";
 import { getSupabaseServerClient } from "@/server/supabase/server";
-import { getSupabaseAdminClient } from "@/server/supabase/admin";
-import { startMollieRefund } from "@/server/payments/mollie-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +38,7 @@ export async function POST(request: Request) {
     return fail("Controleer pakketwijziging, reden en bevestiging.", 400);
   }
   try {
-    const staff = await requireStaffSessionBinding(["beheerder"]);
+    await requireStaffSessionBinding(["beheerder"]);
     const supabase = await getSupabaseServerClient();
     if (!supabase) return fail("Databaseverbinding ontbreekt.", 503);
     const correlationId = normalizeCorrelationId(
@@ -107,28 +105,9 @@ export async function POST(request: Request) {
     if (!output.success) {
       return fail("Ongeldig antwoord van de database.", 502);
     }
-    if (parsed.data.action === "apply" && output.data.result) {
-      const admin = getSupabaseAdminClient();
-      if (admin) {
-        for (const refund of output.data.result.refunds) {
-          if (refund.method !== "mollie") continue;
-          try {
-            await startMollieRefund({
-              refundId: refund.refundId,
-              requestId: refund.refundId,
-              actorUserId: staff.userId,
-              staffSessionHash: staff.sessionTokenHash,
-              correlationId,
-            }, { database: admin });
-          } catch {
-            return fail(
-              "Het pakket is gecorrigeerd, maar Mollie kon de duurzame refund nog niet starten. Probeer hetzelfde verzoek opnieuw of gebruik Betalingen.",
-              503,
-            );
-          }
-        }
-      }
-    }
+    // Applying a package correction only records the refund obligation. The
+    // administrator must start a Mollie refund through the dedicated MFA-
+    // protected action, so changing a package never moves money by itself.
     return NextResponse.json(output.data, {
       headers: privateHeaders,
     });

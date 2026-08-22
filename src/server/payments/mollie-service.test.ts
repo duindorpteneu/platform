@@ -113,6 +113,41 @@ describe("Mollie-applicatieservice", () => {
     }));
   });
 
+  it("start geen tweede provideroperatie voor een definitief mislukte refund met provider-ID", async () => {
+    const refundId = "00000000-0000-4000-8000-000000000006";
+    const appRpc = vi.fn().mockResolvedValueOnce({
+      data: {
+        refundId,
+        paymentId: ids.payment,
+        providerPaymentId: "tr_test123",
+        providerRefundId: "re_failed123",
+        amountCents: 750,
+        currency: "EUR",
+        status: "failed",
+        idempotencyKey: `package-refund:${refundId}`,
+        reused: true,
+      },
+      error: null,
+    });
+    const createRefund = vi.fn();
+
+    await expect(startMollieRefund({
+      refundId,
+      requestId: refundId,
+      ...refundStaff,
+    }, {
+      database: databaseWithAppRpc(appRpc).database,
+      config,
+      createRefund,
+    })).resolves.toEqual({
+      refundId,
+      providerRefundId: "re_failed123",
+      status: "failed",
+      reused: true,
+    });
+    expect(createRefund).not.toHaveBeenCalled();
+  });
+
   it("houdt een reeds door Mollie gemaakte refund retrybaar wanneer lokaal binden tijdelijk faalt", async () => {
     const refundId = "00000000-0000-4000-8000-000000000006";
     const appRpc = vi.fn()

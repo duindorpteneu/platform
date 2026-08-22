@@ -230,9 +230,20 @@ export async function runSchedulerCycle(
       firstFailure ??= error;
     }
   }
+  try {
+    await invoke(config, "/api/internal/health", "GET");
+  } catch (error) {
+    firstFailure ??= error;
+  }
+  // The heartbeat is an independent liveness signal. A degraded application
+  // health response must remain visible, but must not make a running scheduler
+  // look dead to the external monitor.
+  try {
+    await heartbeat(config);
+  } catch (error) {
+    firstFailure ??= error;
+  }
   if (firstFailure) throw firstFailure;
-  await invoke(config, "/api/internal/health", "GET");
-  await heartbeat(config);
   await healthWriter(now.toISOString());
   return state;
 }
